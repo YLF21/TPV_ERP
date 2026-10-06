@@ -35,7 +35,7 @@ export function CashPaymentValidationDialog({ message, locale = "es", onAccept }
       >
         <header><h2 id="cash-payment-validation-title">{t("cashPayment.validation.title")}</h2></header>
         <p id="cash-payment-validation-message">{message}</p>
-        <footer><button type="button" autoFocus onClick={onAccept}>{t("cashPayment.validation.accept")}</button></footer>
+        <footer className="erp-dialog-actions-row"><button type="button" className="erp-dialog-action-confirm" autoFocus onClick={onAccept}>{t("cashPayment.validation.accept")}</button></footer>
       </section>
     </div>
   );

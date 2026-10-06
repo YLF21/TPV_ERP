@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { hasPermission } from "../auth/auth";
@@ -318,7 +320,7 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
           <h2 id="customer-receivables-title">{t(view === "OPEN" ? "receivables.title" : view === "HISTORY" ? "receivables.history.title" : "receivables.account.title")}</h2>
           <p id="customer-receivables-subtitle">{t(view === "OPEN" ? "receivables.subtitle" : view === "HISTORY" ? "receivables.history.subtitle" : "receivables.account.subtitle")}{customerContext ? <strong> · {customerContext}</strong> : null}</p>
         </div>
-        <button type="button" className="customer-receivables-close" aria-label={t("common.close")} disabled={printing} onClick={close}>×</button>
+        <WindowCloseButton type="button" className="customer-receivables-close" aria-label={t("common.close")} disabled={printing} onClick={close} >×</WindowCloseButton>
       </header>
       <nav className="receivables-view-tabs" aria-label={t("receivables.view.label")}>
         <button type="button" disabled={printing} aria-pressed={view === "OPEN"} onClick={() => setView("OPEN")}>{t("receivables.view.open")}</button>
@@ -380,20 +382,22 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
         </>}
       </div>}
       </div>
-      <footer className="customer-receivables-dialog-footer">
-        <p aria-live="polite"><strong>{resultCount}</strong> {t("receivables.results")}</p>
-        <span><kbd>Esc</kbd> {t("common.close")}</span>
-        <button type="button" disabled={printing} onClick={close}>{t("common.close")}</button>
+      <footer className="customer-receivables-dialog-footer erp-dialog-actions-row">
+        <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" disabled={printing} onClick={close}>{t("common.close")}</DialogDismissButton>
+        <div className="erp-dialog-actions-group">
+          <p aria-live="polite"><strong>{resultCount}</strong> {t("receivables.results")}</p>
+          <span><kbd>Esc</kbd> {t("common.close")}</span>
+        </div>
       </footer>
     </section>
     {selected && <CustomerReceivablePaymentDialog locale={locale} receivable={selected} token={session.accessToken} terminalCode={terminalContext.terminalCode} terminalContext={terminalContext} request={request} printReceipt={printReceipt} onCancel={() => setSelected(null)} onPayment={(updated, retry) => { setRows((current) => current.map((row) => row.documentId === updated.documentId ? updated : row)); setRetryPrint((current) => retry ?? current); setSelected(updated); }} onPaid={(updated, retry) => { setRows((current) => current.map((row) => row.documentId === updated.documentId ? updated : row)); setRetryPrint((current) => retry ?? current); setSelected(null); void load(); }} />}
     {selectedHistory && <div className="sale-action-overlay" role="presentation">
       <section className="customer-receivable-payment-dialog receivable-history-dialog" role="dialog" aria-modal="true" aria-labelledby="receivable-history-title">
-        <header><h2 id="receivable-history-title">{t("receivables.history.detailTitle")}</h2><button type="button" aria-label={t("common.close")} disabled={printing} onClick={closeHistory}>×</button></header>
+        <header><h2 id="receivable-history-title">{t("receivables.history.detailTitle")}</h2><WindowCloseButton type="button" aria-label={t("common.close")} disabled={printing} onClick={closeHistory} onLight >×</WindowCloseButton></header>
         <dl><div><dt>{t("receivables.column.document")}</dt><dd>{selectedHistory.documentNumber}</dd></div><div><dt>{t("receivables.column.customer")}</dt><dd>{selectedHistory.customerName}</dd></div><div><dt>{t("receivables.column.collectedAt")}</dt><dd>{dateTime(selectedHistory.collectedAt, locale)}</dd></div><div><dt>{t("receivables.column.method")}</dt><dd>{selectedHistory.paymentMethodName}</dd></div><div><dt>{t("receivables.column.amount")}</dt><dd>{money(selectedHistory.amount, locale)}</dd></div><div><dt>{t("receivables.column.transferDate")}</dt><dd>{selectedHistory.transferDate || "-"}</dd></div><div><dt>{t("receivables.column.reference")}</dt><dd>{selectedHistory.reference || "-"}</dd></div>{receipt && <div><dt>{t("receivables.column.pending")}</dt><dd>{money(receipt.remaining, locale)}</dd></div>}</dl>
         {detailLoading && <p>{t("common.loading")}</p>}
         {detailError && <p className="sale-action-error" role="alert">{detailError}</p>}
-        <footer><button type="button" disabled={printing} onClick={closeHistory}>{t("common.close")}</button><button type="button" disabled={detailLoading || printing} onClick={() => void reprintReceipt()}>{printing ? t("receivables.history.printing") : t("receivables.action.reprint")}</button></footer>
+        <footer className="erp-dialog-actions-row"><DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" disabled={printing} onClick={closeHistory}>{t("common.close")}</DialogDismissButton><button type="button" className="erp-dialog-action-confirm" disabled={detailLoading || printing} onClick={() => void reprintReceipt()}>{printing ? t("receivables.history.printing") : t("receivables.action.reprint")}</button></footer>
       </section>
     </div>}
   </div>;

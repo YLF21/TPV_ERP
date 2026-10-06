@@ -248,7 +248,12 @@ function terminalIdentityPath() {
 
 async function readTerminalIdentity() {
   if (linkingStorage) {
-    try { return { ok: true, identity: (await backendConnection.load()).identity || null }; }
+    try {
+      const loaded = await backendConnection.load();
+      return { ok: true, identity: loaded.identity || null,
+        connectionUnavailable: loaded.connectionUnavailable,
+        ...(loaded.displayContext ? { displayContext: loaded.displayContext } : {}) };
+    }
     catch (error) { return structuredError("TERMINAL_IDENTITY_INVALID", error instanceof Error ? error.message : "No se pudo leer la identidad"); }
   }
   const target = terminalIdentityPath();

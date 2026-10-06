@@ -212,13 +212,15 @@ describe("SalesDocumentScreen", () => {
     );
 
     const topbar = document.querySelector<HTMLElement>(".sales-document-topbar")!;
-    expect(within(topbar).getByText("esPOS VENTA")).toHaveClass("sales-document-app-badge");
+    expect(within(topbar).getByRole("img", { name: "esPOS" }).parentElement)
+      .toHaveClass("sales-document-app-badge");
     expect(within(topbar).getByRole("heading", { name: "Venta documental" })).toBeVisible();
     expect(within(topbar).getByRole("button", { name: "Factura" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    expect(screen.getByText("Añade productos por código o abre el buscador.")).toBeInTheDocument();
+    expect(within(screen.getByRole("table", { name: "Líneas del documento" }))
+      .getAllByRole("row")).toHaveLength(1);
     fireEvent.keyDown(window, { key: "m", ctrlKey: true });
     expect(await screen.findByText("Modo MAYORISTA activado")).toBeVisible();
     fireEvent.click(await screen.findByRole("button", { name: /seleccionar cliente/i }));
@@ -248,7 +250,8 @@ describe("SalesDocumentScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Guardar borrador" }));
 
     expect(await screen.findByText("Borrador guardado")).toBeInTheDocument();
-    expect(screen.getByText("Añade productos por código o abre el buscador.")).toBeInTheDocument();
+    expect(within(screen.getByRole("table", { name: "Líneas del documento" }))
+      .getAllByRole("row")).toHaveLength(1);
   });
 
   it("opens the full product finder when the quick code is unknown", async () => {

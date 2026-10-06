@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { LocaleCode } from "../types";
@@ -157,25 +159,24 @@ export function CashDenominationDialog({ locale, title, interfaceMode = "KEYBOAR
     }
   }}>
     <section ref={root} className={`filter-dialog erp-classic-window erp-classic-tables cash-denomination-dialog${touch ? " cash-denomination-dialog--touch" : ""}`} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`}>
-      <header><h2 id={`${id}-title`}>{title}</h2></header>
+      <header><h2 id={`${id}-title`}>{title}</h2><WindowCloseButton type="button" aria-label={labels.cancel} onClick={onCancel} desktopOnly /></header>
       <form onSubmit={event => { event.preventDefault(); accept(); }} noValidate>
         <div className="cash-denomination-workspace">
           <div className="cash-denomination-groups">{table("notes")}{table("coins")}</div>
           {touch && <section className="cash-denomination-touch" aria-label={labels.keypad}>
             <h3>{activeCents === null ? labels.accept : `${labels.units} ${formatEuros(activeCents, locale)}`}</h3>
             <div className="cash-denomination-keypad-navigation">
-              <Suspense fallback={<div className="cash-denomination-keypad-loading" aria-busy="true" aria-label={labels.keypad} />}><TouchNumericKeypad value={activeCents === null ? "" : quantities[activeCents] ?? ""} disabled={activeCents === null} inputRef={activeQuantity} replaceOnFirstKey ariaLabel={labels.keypad} clearLabel={labels.clear} backspaceLabel={labels.backspace} onChange={raw => { if (activeCents !== null) setQuantities(previous => ({ ...previous, [activeCents]: raw })); }} /></Suspense>
+              <Suspense fallback={<div className="cash-denomination-keypad-loading" aria-busy="true" aria-label={labels.keypad} />}><TouchNumericKeypad locale={locale} value={activeCents === null ? "" : quantities[activeCents] ?? ""} disabled={activeCents === null} inputRef={activeQuantity} replaceOnFirstKey ariaLabel={labels.keypad} clearLabel={labels.clear} backspaceLabel={labels.backspace} enterAction={{ onClick: () => advance(), disabled: activeCents === null && Boolean(error) }} onChange={raw => { if (activeCents !== null) setQuantities(previous => ({ ...previous, [activeCents]: raw })); }} /></Suspense>
               <div className="cash-denomination-navigation">
                 <button type="button" onPointerDown={event => event.preventDefault()} onClick={previous} disabled={activeCents === rows[0]?.cents || rows.length === 0}><span aria-hidden="true">↑</span>{labels.previous}</button>
                 <button type="button" onPointerDown={event => event.preventDefault()} onClick={() => advance()} disabled={activeCents === null}><span aria-hidden="true">↓</span>{labels.next}</button>
-                <button type="button" onPointerDown={event => event.preventDefault()} onClick={() => advance()} disabled={activeCents === null && Boolean(error)}><span aria-hidden="true">↵</span>Enter</button>
               </div>
             </div>
           </section>}
         </div>
         <div className="cash-denomination-total"><span>{labels.total}</span><strong>{tooLarge ? "—" : formatEuros(totalCents, locale)}</strong></div>
         {error && <p className="cash-denomination-error" role="alert">{error}</p>}
-        <footer className="filter-actions"><button type="button" onClick={onCancel}>{labels.cancel}</button><button ref={acceptButton} type="submit" disabled={Boolean(error)} onFocus={() => { activeQuantity.current = null; setActiveCents(null); }}>{labels.accept}</button></footer>
+        <footer className="filter-actions erp-dialog-actions-row"><DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={onCancel}>{labels.cancel}</DialogDismissButton><button ref={acceptButton} type="submit" className="erp-dialog-action-confirm" disabled={Boolean(error)} onFocus={() => { activeQuantity.current = null; setActiveCents(null); }}>{labels.accept}</button></footer>
       </form>
     </section>
   </div>, document.body);

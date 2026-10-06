@@ -1,9 +1,12 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 import { TouchAlphaKeyboard } from "./TouchAlphaKeyboard";
+import "./SaleSerialNumberDialog.css";
 
 type Props = {
   locale: LocaleCode;
@@ -56,7 +59,7 @@ export function SaleSerialNumberDialog({
   }
 
   return (
-    <div className="sale-action-overlay" role="presentation">
+    <div className="sale-action-overlay sale-serial-number-overlay" role="presentation">
       <section
         ref={dialogRef}
         className={`sale-action-dialog sale-serial-number-dialog${interfaceMode === "TOUCH" ? " sale-touch-keyboard-dialog" : ""}`}
@@ -78,48 +81,50 @@ export function SaleSerialNumberDialog({
             <h2 id="sale-serial-number-title">{t("sale.serialNumber.title")}</h2>
             <p>{productName}</p>
           </div>
-          <button type="button" aria-label={t("common.close")} onClick={onCancel}>×</button>
+          <WindowCloseButton type="button" aria-label={t("common.close")} onClick={onCancel}>×</WindowCloseButton>
         </header>
-        <p>{t("sale.serialNumber.description")}</p>
-        <div className="sale-serial-number-fields">
-          {values.map((value, index) => (
-            <label key={index}>
-              <span>{t("sale.serialNumber.unit")} {index + 1}</span>
+        <div className="sale-serial-number-body">
+          <p className="sale-serial-number-description">{t("sale.serialNumber.description")}</p>
+          <div className="sale-serial-number-fields">
+            {values.map((value, index) => (
+              <label key={index}>
+                <span>{t("sale.serialNumber.unit")} {index + 1}</span>
+                <input
+                  autoFocus={index === 0}
+                  maxLength={128}
+                  autoComplete="off"
+                  inputMode={interfaceMode === "TOUCH" ? "none" : undefined}
+                  value={value}
+                  onFocus={(event) => {
+                    activeInputRef.current = event.currentTarget;
+                    activeIndexRef.current = index;
+                    setActiveIndex(index);
+                  }}
+                  onChange={(event) => updateValue(index, event.currentTarget.value)}
+                />
+              </label>
+            ))}
+          </div>
+          {interfaceMode === "TOUCH" && unitCount > 0 && (
+            <TouchAlphaKeyboard locale={locale} value={values[activeIndex] ?? ""} onChange={(value) => updateValue(activeIndexRef.current, value)} inputRef={activeInputRef} maxLength={128} />
+          )}
+          {hasTrimmedSerials && (
+            <label className="sale-serial-number-trim">
               <input
-                autoFocus={index === 0}
-                maxLength={128}
-                autoComplete="off"
-                inputMode={interfaceMode === "TOUCH" ? "none" : undefined}
-                value={value}
-                onFocus={(event) => {
-                  activeInputRef.current = event.currentTarget;
-                  activeIndexRef.current = index;
-                  setActiveIndex(index);
-                }}
-                onChange={(event) => updateValue(index, event.currentTarget.value)}
+                type="checkbox"
+                checked={acknowledgeTrim}
+                onChange={(event) => setAcknowledgeTrim(event.currentTarget.checked)}
               />
+              {t("sale.serialNumber.trimConfirm")}
             </label>
-          ))}
+          )}
+          {validation && <p className="sale-action-error" role="alert">{validation}</p>}
         </div>
-        {interfaceMode === "TOUCH" && unitCount > 0 && (
-          <TouchAlphaKeyboard locale={locale} value={values[activeIndex] ?? ""} onChange={(value) => updateValue(activeIndexRef.current, value)} inputRef={activeInputRef} maxLength={128} />
-        )}
-        {hasTrimmedSerials && (
-          <label>
-            <input
-              type="checkbox"
-              checked={acknowledgeTrim}
-              onChange={(event) => setAcknowledgeTrim(event.currentTarget.checked)}
-            />
-            {t("sale.serialNumber.trimConfirm")}
-          </label>
-        )}
-        {validation && <p className="sale-action-error" role="alert">{validation}</p>}
-        <footer className="sale-action-buttons">
-          <button type="button" onClick={onCancel}>{t("common.cancel")}</button>
+        <footer className="sale-action-buttons erp-dialog-actions-row">
+          <DialogDismissButton notice={hasTrimmedSerials} className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onCancel}>{t("common.cancel")}</DialogDismissButton>
           <button
             type="button"
-            className="primary"
+            className="primary erp-dialog-action-confirm"
             disabled={!valid}
             onClick={() => onConfirm(values.map((value) => value.trim()))}
           >

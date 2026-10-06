@@ -59,7 +59,10 @@ describe("CashDenominationDialog", () => {
     expect(quantity).toHaveFocus();
     accept.focus();
     fireEvent.keyDown(accept, { key: "Tab" });
-    expect(quantity).toHaveFocus();
+    const headerClose = screen.getByRole("dialog").querySelector("header button")!;
+    expect(headerClose).toHaveFocus();
+    fireEvent.keyDown(headerClose, { key: "Tab", shiftKey: true });
+    expect(accept).toHaveFocus();
     const parentKeyDown = vi.fn();
     document.addEventListener("keydown", parentKeyDown);
     fireEvent.keyDown(quantity, { key: "Escape" });
@@ -119,7 +122,7 @@ describe("CashDenominationDialog", () => {
     const fields = screen.getAllByRole("spinbutton");
     const previous = screen.getByRole("button", { name: "Anterior" });
     const next = screen.getByRole("button", { name: "Siguiente" });
-    const enter = screen.getByRole("button", { name: "Enter" });
+    const enter = await screen.findByRole("button", { name: "Enter" });
     expect(previous).toBeDisabled();
     await user.click(await screen.findByRole("button", { name: "3" }));
     expect(document.querySelectorAll(".touch-numeric-keypad")).toHaveLength(1);
@@ -146,7 +149,7 @@ describe("CashDenominationDialog", () => {
     expect(onAccept).toHaveBeenCalledExactlyOnceWith([{ denomination: 100, quantity: 3 }, { denomination: 0.01, quantity: 5 }], 300.05);
   });
 
-  it("returns to the invalid quantity when advancing from the last field", () => {
+  it("returns to the invalid quantity when advancing from the last field", async () => {
     const onAccept = vi.fn();
     render(<CashDenominationDialog locale="en" title="Count" interfaceMode="TOUCH" denominations={[100, 0.01]} onAccept={onAccept} onCancel={vi.fn()} />);
     const fields = screen.getAllByRole("spinbutton");
@@ -156,7 +159,7 @@ describe("CashDenominationDialog", () => {
     fireEvent.keyDown(fields[1], { key: "Enter" });
     expect(fields[0]).toHaveFocus();
     expect(screen.getByRole("button", { name: "Accept" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Enter" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Enter" }));
     expect(onAccept).not.toHaveBeenCalled();
   });
 
@@ -167,7 +170,7 @@ describe("CashDenominationDialog", () => {
     expect(dialog.querySelector(".cash-value-icon--banknote--5000 text")).toHaveTextContent("50");
     expect(dialog.querySelector(".cash-value-icon--coin--50 text")).toHaveTextContent("50c");
     expect(dialog.querySelector(".cash-value-icon--coin--1 text")).toHaveTextContent("1c");
-    expect(dialog.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(4);
+    expect(dialog.querySelectorAll('svg.cash-value-icon[aria-hidden="true"]')).toHaveLength(4);
     expect(screen.queryByRole("button", { name: "Siguiente" })).not.toBeInTheDocument();
     expect(dialog.querySelector(".touch-numeric-keypad")).not.toBeInTheDocument();
   });

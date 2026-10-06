@@ -1,3 +1,5 @@
+import { createTranslator } from "../i18n/LocalizedMessages";
+import { WindowCloseButton } from "./WindowCloseButton";
 import { useEffect, useRef, useState } from "react";
 import type { LocaleCode, UserSession } from "../types";
 import languageIcon from "../assets/language.png";
@@ -174,7 +176,7 @@ export function SessionTopControls({
       {shutdownOpen && !exitBlocked && (
         <div className="shutdown-overlay" role="dialog" aria-modal="true" aria-labelledby="shutdown-title">
           <section className="shutdown-dialog">
-            <h2 id="shutdown-title">{shutdownConfirmTitle}</h2>
+            <h2 id="shutdown-title" className="erp-window-header" aria-label={shutdownConfirmTitle}>{shutdownConfirmTitle}<WindowCloseButton type="button" aria-label={createTranslator(locale)("common.close")} disabled={shutdownPreparing} onClick={() => setShutdownOpen(false)} desktopOnly /></h2>
             <p>{shutdownConfirmText}</p>
             <div className="shutdown-actions">
               <button type="button" className="shutdown-no" autoFocus disabled={shutdownPreparing} onClick={() => setShutdownOpen(false)}>

@@ -14,6 +14,8 @@ import { PartyFormFields, type CommercialChannelOption } from "./PartyFormFields
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { customerIdentityFailure } from "./customerDocumentIdentity";
 import { CentralCustomerReuse } from "./CentralCustomerReuse";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 
 type Props = {
   locale: LocaleCode;
@@ -134,7 +136,7 @@ export function SaleCustomerCreateDialog({ locale, session, customerId, onCancel
           <h2 id="sale-customer-create-title">{customerId ? t("party.customers.edit") : t("party.customers.new")}</h2>
           <span>{t("party.form.subtitle")}</span>
         </div>
-        <button type="button" aria-label={t("common.close")} disabled={saving || centralBusy} onClick={onCancel}>{t("common.close")}</button>
+        <WindowCloseButton aria-label={t("common.close")} onLight disabled={saving || centralBusy} onClick={onCancel} >{t("common.close")}</WindowCloseButton>
       </header>
       <form className="product-create-form party-create-form" onSubmit={submit}>
         <fieldset disabled={saving || centralBusy || loading || loadFailed}>
@@ -152,9 +154,9 @@ export function SaleCustomerCreateDialog({ locale, session, customerId, onCancel
           />
         </fieldset>
         {status && <p className="product-create-status" role="alert">{status}</p>}
-        <footer className="filter-actions">
-          <button type="button" disabled={saving || centralBusy} onClick={onCancel}>{t("common.cancel")}</button>
-          <button type="submit" disabled={saving || centralBusy || loading || loadFailed}>{saving ? t("party.saving") : t("common.save")}</button>
+        <footer className="filter-actions erp-dialog-actions-row">
+          <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={saving || centralBusy} onClick={onCancel}>{t("common.cancel")}</DialogDismissButton>
+          <button className="erp-dialog-action-confirm" type="submit" disabled={saving || centralBusy || loading || loadFailed}>{saving ? t("party.saving") : t("common.save")}</button>
         </footer>
       </form>
     </section>

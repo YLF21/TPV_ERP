@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
 import { apiRequest } from "../../../packages/app-common/src/api/client";
 import { ErpSelect } from "../../../packages/app-common/src/components/ErpSelect";
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
+import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import { sortProductsByCode } from "../../../packages/app-common/src/components/productSearchOrdering";
 import { activateModalFocusTrap, type ModalFocusRoot } from "../../../packages/app-common/src/components/modalFocusTrap";
 import { StockCountTable } from "./StockCountTable";
@@ -124,11 +126,12 @@ export function StockCountDocumentWindow({ initial, warehouses, session, locale,
     onKeyDown={(event) => { if (event.key === "F9" && !readOnly && !review) { event.preventDefault(); void run(async () => { await save(); }); }
       if (event.key === "Escape") { if (searchOpen) { event.stopPropagation(); setSearchOpen(false); } else if (review) setReview(null); else if (familyOpen) setFamilyOpen(false); else exit(); }
     }}>
-    <div className="inventory-document-bar">
+    <div className="inventory-document-bar erp-window-header">
       <strong>{c("editor")} {document?.number ?? ""}</strong>
       <button disabled={busy || loading || readOnly} onClick={() => void run(async () => { await save(); })}>{c("save")}</button>
       <button disabled={busy || loading || readOnly || !lines.length} onClick={() => void run(openReview)}>{c("review")}</button>
       <button disabled={busy || (!document && !lines.length)} onClick={() => void run(() => exportFile("pdf", true))}>{c("print")}</button>
+      <WindowCloseButton type="button" onLight aria-label={t("common.close")} title={c("exit")} onClick={exit} disabled={busy} />
       <button onClick={exit} disabled={busy}>{c("exit")}</button>
     </div>
     {error && <p className="inventory-error" role="alert">{error}</p>}{notice && <p className="inventory-notice" role="status">{notice}</p>}
@@ -181,15 +184,15 @@ export function StockCountDocumentWindow({ initial, warehouses, session, locale,
         <footer><span>{c("hint")}</span><span>{c("legend")}</span></footer><p className="inventory-notice">{c(readOnly ? "readOnly" : "draftHint")}</p>
       </main>
     </div>
-    {review && <div className="inventory-confirm-overlay"><section ref={confirmRoot} role="alertdialog" aria-modal="true" aria-labelledby="inventory-confirm-title"><h2 id="inventory-confirm-title">{c("confirmTitle")}</h2>
+    {review && <div className="inventory-confirm-overlay"><section ref={confirmRoot} role="alertdialog" aria-modal="true" aria-labelledby="inventory-confirm-title"><header className="inventory-confirm-header"><h2 id="inventory-confirm-title">{c("confirmTitle")}</h2><WindowCloseButton type="button" aria-label={t("common.close")} disabled={busy} onClick={() => setReview(null)} /></header>
       <p>{c("confirmText")}</p>{error && <p role="alert" className="inventory-error">{error}</p>}<p><strong>{warehouses.find((w) => w.id === warehouseId)?.name} · {review.lines.length} {c("counted")} · {review.lines.filter((line) => Number(line.difference) !== 0).length} {c("differences")}</strong></p>
-      <footer><button autoFocus disabled={busy} onClick={() => setReview(null)}>{c("back")}</button><button disabled={busy} onClick={() => void run(async () => {
+      <footer className="erp-dialog-actions-row"><button className="erp-dialog-action-cancel erp-dialog-dismiss" autoFocus disabled={busy} onClick={() => setReview(null)}>{c("back")}</button><button className="erp-dialog-action-confirm" disabled={busy} onClick={() => void run(async () => {
         const confirmed = await confirmStockCount(review.id, token, review.lines, review.version); updateDocument(confirmed); setReview(null); setNotice(c("confirmed")); onSaved();
       })}>{c("confirm")}</button></footer></section></div>}
-    {familyOpen && <div className="inventory-confirm-overlay"><section role="dialog" aria-label={c("selectFamily")}><h2>{c("selectFamily")}</h2><ErpSelect aria-label={c("selectFamily")} value={family} options={[{ value: "", label: "—" }, ...families.map((f) => ({ value: f.id, label: f.name ?? f.nombre ?? "—" }))]} onChange={setFamily} />
-      <footer><button onClick={() => setFamilyOpen(false)}>{c("cancel")}</button><button disabled={!family} onClick={() => { addProducts(products.filter((p) => p.familyId === family).map((product) => ({ product }))); setFamilyOpen(false); }}>{c("add")}</button></footer></section></div>}
-    {closePrompt && <div className="inventory-confirm-overlay"><section role="alertdialog" aria-label={c("closeTitle")}><h2>{c("closeTitle")}</h2><p>{c("closeText")}</p>{error && <p role="alert" className="inventory-error">{error}</p>}<footer>
-      <button disabled={busy} autoFocus onClick={() => setClosePrompt(false)}>{c("stay")}</button><button disabled={busy} onClick={onClose}>{c("discard")}</button><button disabled={busy} onClick={() => void run(async () => { await save(); onClose(); })}>{c("save")}</button></footer></section></div>}
-    {reloadPrompt && <div className="inventory-confirm-overlay"><section role="alertdialog" aria-label={c("reload")}><p>{c("reloadText")}</p>{error && <p role="alert" className="inventory-error">{error}</p>}<footer><button onClick={() => setReloadPrompt(false)}>{c("cancel")}</button><button onClick={() => void run(async () => { updateDocument(await loadStockCount(document!.id, token)); setReloadPrompt(false); })}>{c("reload")}</button></footer></section></div>}
+    {familyOpen && <div className="inventory-confirm-overlay"><section role="dialog" aria-label={c("selectFamily")}><header className="inventory-confirm-header"><h2>{c("selectFamily")}</h2><WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setFamilyOpen(false)} /></header><ErpSelect aria-label={c("selectFamily")} value={family} options={[{ value: "", label: "—" }, ...families.map((f) => ({ value: f.id, label: f.name ?? f.nombre ?? "—" }))]} onChange={setFamily} />
+      <footer className="erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={() => setFamilyOpen(false)}>{c("cancel")}</DialogDismissButton><button className="erp-dialog-action-confirm" disabled={!family} onClick={() => { addProducts(products.filter((p) => p.familyId === family).map((product) => ({ product }))); setFamilyOpen(false); }}>{c("add")}</button></footer></section></div>}
+    {closePrompt && <div className="inventory-confirm-overlay"><section role="alertdialog" aria-label={c("closeTitle")}><header className="inventory-confirm-header"><h2>{c("closeTitle")}</h2><WindowCloseButton type="button" aria-label={t("common.close")} disabled={busy} onClick={() => setClosePrompt(false)} /></header><p>{c("closeText")}</p>{error && <p role="alert" className="inventory-error">{error}</p>}<footer className="erp-dialog-actions-row">
+      <button className="erp-dialog-action-cancel erp-dialog-dismiss" disabled={busy} autoFocus onClick={() => setClosePrompt(false)}>{c("stay")}</button><button className="erp-dialog-action-cancel" disabled={busy} onClick={onClose}>{c("discard")}</button><button className="erp-dialog-action-confirm" disabled={busy} onClick={() => void run(async () => { await save(); onClose(); })}>{c("save")}</button></footer></section></div>}
+    {reloadPrompt && <div className="inventory-confirm-overlay"><section role="alertdialog" aria-label={c("reload")}><header className="inventory-confirm-header"><h2>{c("reload")}</h2><WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setReloadPrompt(false)} /></header><p>{c("reloadText")}</p>{error && <p role="alert" className="inventory-error">{error}</p>}<footer className="erp-dialog-actions-row"><button className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={() => setReloadPrompt(false)}>{c("cancel")}</button><button className="erp-dialog-action-confirm" onClick={() => void run(async () => { updateDocument(await loadStockCount(document!.id, token)); setReloadPrompt(false); })}>{c("reload")}</button></footer></section></div>}
   </div>, globalThis.document.body);
 }

@@ -79,17 +79,18 @@ describe("TouchNumericKeypad", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "2" }));
     expect(onChange).toHaveBeenCalledWith("12");
-    expect(screen.getByRole("button", { name: "Borrar todo" })).toHaveAttribute("type", "button");
+    expect(screen.getByRole("button", { name: "Limpiar todo" })).toHaveAttribute("type", "button");
   });
 
   it("uses the approved 4 by 4 arrangement with a double-width zero and signed utilities", () => {
     render(<TouchNumericKeypad value="" allowDecimal allowNegative ariaLabel="Números" clearLabel="Limpiar"
       backspaceLabel="Retroceso" signLabel="Cambiar signo" onChange={vi.fn()} />);
     const positions = Object.fromEntries(screen.getAllByRole<HTMLButtonElement>("button")
+      .filter((button) => button.dataset.numericKey)
       .map((button) => [button.dataset.numericKey, button.style.gridArea]));
     expect(positions).toEqual({
       "7": "1 / 1", "8": "1 / 2", "9": "1 / 3", BACKSPACE: "1 / 4",
-      "4": "2 / 1", "5": "2 / 2", "6": "2 / 3", CLEAR: "2 / 4",
+      "4": "2 / 1", "5": "2 / 2", "6": "2 / 3", ENTER: "2 / 4",
       "1": "3 / 1", "2": "3 / 2", "3": "3 / 3", SIGN: "3 / 4 / 5 / 5",
       "0": "4 / 1 / 5 / 3", DECIMAL: "4 / 3",
     });
@@ -101,7 +102,7 @@ describe("TouchNumericKeypad", () => {
     const { rerender } = render(<TouchNumericKeypad value="12" ariaLabel="Números" clearLabel="Limpiar"
       backspaceLabel="Retroceso" onChange={onChange} />);
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Retroceso" }).style.gridArea).toBe("1 / 4 / 3 / 5");
-    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Limpiar" }).style.gridArea).toBe("3 / 4 / 5 / 5");
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Enter" }).style.gridArea).toBe("3 / 4 / 5 / 5");
     expect(screen.queryByRole("button", { name: "±" })).toBeNull();
     const decimal = screen.getByRole("button", { name: "," });
     expect(decimal).toBeDisabled();
@@ -165,7 +166,7 @@ describe("TouchNumericKeypad", () => {
   it.each([{ readOnly: true }, { disabled: true }])("does not edit a protected target field: %j", (state) => {
     render(<KeypadField {...state} />);
     fireEvent.click(screen.getByRole("button", { name: "9" }));
-    fireEvent.click(screen.getByRole("button", { name: "Limpiar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar todo" }));
     fireEvent.click(screen.getByRole("button", { name: "Cambiar signo" }));
     expect(screen.getByTestId("draft-value")).toHaveTextContent("123.456");
   });
@@ -178,6 +179,35 @@ describe("TouchNumericKeypad", () => {
     expect(screen.getByTestId("draft-value")).toHaveTextContent("2.");
     fireEvent.click(screen.getByRole("button", { name: "9" }));
     expect(screen.getByTestId("draft-value")).toHaveTextContent("2.9");
+  });
+
+  it("keeps a numeric draft and selected caret across folding", () => {
+    render(<KeypadField initialValue="123.456" />);
+    const field = screen.getByRole<HTMLInputElement>("textbox", { name: "Valor" });
+    field.focus();
+    field.setSelectionRange(1, 3);
+    const close = screen.getByRole("button", { name: "Cerrar teclado" });
+    fireEvent.pointerDown(close);
+    fireEvent.click(close);
+    expect(screen.getByRole("button", { name: "Mostrar teclado" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "9" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "9", hidden: true })).toBeDisabled();
+    expect(field.selectionStart).toBe(1);
+    expect(field.selectionEnd).toBe(3);
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar teclado" }));
+    fireEvent.click(screen.getByRole("button", { name: "9" }));
+    expect(field).toHaveValue("19.456");
+    expect(field.selectionStart).toBe(2);
+  });
+
+  it("localizes its header and omits the toggle when controlled by the scope", () => {
+    const common = { value: "", ariaLabel: "Digits", clearLabel: "Clear", backspaceLabel: "Backspace", onChange: vi.fn() };
+    const { rerender } = render(<TouchNumericKeypad {...common} locale="en" />);
+    expect(screen.getByText("Numeric keypad")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Close keyboard" })).toBeVisible();
+    rerender(<TouchNumericKeypad {...common} locale="zh" collapsible={false} />);
+    expect(screen.queryByRole("button", { name: "关闭键盘" })).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Digits" })).toBeVisible();
   });
 
   it("normalizes comma decimals without treating them as thousands or exceeding configured precision", () => {

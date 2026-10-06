@@ -1,0 +1,26 @@
+.sale-checkout-header .sale-checkout-keyboard-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  margin-right: 8px;
+}
+
+.sale-checkout-keypad .sale-checkout-number-pad {
+  grid-template-areas:
+    "digit-7 digit-8 digit-9 backspace"
+    "digit-4 digit-5 digit-6 enter"
+    "digit-1 digit-2 digit-3 enter"
+    "digit-0 digit-0 decimal enter";
+}
+
+.sale-checkout-keypad .sale-checkout-number-pad > .enter-key {
+  background: #0065fe;
+  border-color: #0065fe;
+  color: #fff;
+}
+
+.sale-checkout-dialog .sale-checkout-keypad[hidden],
+.sale-checkout-dialog .sale-checkout-text-keyboard[hidden] {
+  display: none;
+}

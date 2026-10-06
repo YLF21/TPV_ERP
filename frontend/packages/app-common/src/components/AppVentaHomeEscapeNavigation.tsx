@@ -1,3 +1,4 @@
+import { WindowCloseButton } from "./WindowCloseButton";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
@@ -89,14 +90,15 @@ export function AppVentaHomeEscapeNavigation({ children, locale, onConfirmHome, 
           >
             <header>
               <h2 id="app-venta-home-confirm-title">{t("appVenta.escapeHome.title")}</h2>
+              <WindowCloseButton type="button" aria-label={t("common.close")} onClick={cancelNavigation} desktopOnly />
             </header>
             <p id="app-venta-home-confirm-message">{t("appVenta.escapeHome.message")}</p>
             <p id="app-venta-home-confirm-shortcuts" className="app-venta-home-confirm-shortcuts">
               {t("appVenta.escapeHome.shortcuts")}
             </p>
-            <footer>
-              <button type="button" onClick={cancelNavigation}>{t("common.cancel")}</button>
-              <button ref={confirmButtonRef} type="button" className="primary" onClick={confirmNavigation}>
+          <footer className="erp-dialog-actions-row">
+            <button type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={cancelNavigation}>{t("common.cancel")}</button>
+              <button ref={confirmButtonRef} type="button" className="primary erp-dialog-action-confirm" onClick={confirmNavigation}>
                 {t("appVenta.escapeHome.confirm")}
               </button>
             </footer>

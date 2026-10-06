@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { apiRequest } from "../api/client";
@@ -157,7 +159,7 @@ function CommercialHistoryDialog({ productId, productName, locale, token, onClos
           <h2>{t("product.commercialHistory.title")}</h2>
           <span>{productName}</span>
         </div>
-        <button type="button" aria-label={t("common.close")} onClick={onClose}>×</button>
+        <WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose} >×</WindowCloseButton>
       </header>
       <div className="product-commercial-history-body">
         {state === "loading" && <p role="status">{t("common.loading")}</p>}
@@ -206,7 +208,7 @@ function CommercialHistoryDialog({ productId, productName, locale, token, onClos
           </div>
         )}
       </div>
-      <footer><button type="button" onClick={onClose}>{t("common.close")}</button></footer>
+      <footer className="erp-dialog-actions-row"><DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>{t("common.close")}</DialogDismissButton></footer>
     </dialog>,
     document.body,
   );

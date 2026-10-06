@@ -1,4 +1,6 @@
-import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
+import { useEffect, useId, useLayoutEffect, useReducer, useRef, useState } from "react";
 import { ArrowElbowDownLeft, Backspace } from "@phosphor-icons/react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { localizePaymentDiagnostic } from "../i18n/PaymentMessages";
@@ -11,7 +13,10 @@ import { remainingPaymentCents, type AllocationKind, type PaymentSession } from 
 import type { LocaleCode } from "../types";
 import { MemberWalletDialog, type MemberWalletLot } from "./MemberWalletDialog";
 import { editTouchText, TouchAlphaKeyboard } from "./TouchAlphaKeyboard";
+import { TouchKeyboardToggle } from "./TouchKeyboardToggle";
+import { TouchKeyboardClearButton } from "./TouchKeyboardClearButton";
 import "./PaymentTouchKeyboard.css";
+import "./PaymentKeyboardToggle.css";
 import type { CashInputMode } from "../sale/cashInputMode";
 
 export type CheckoutMethod = "CASH" | "CARD" | "VOUCHER" | "PENDING" | "TRANSFER" | "MEMBER_BALANCE" | "MEMBER_CREDIT" | "DISCOUNT";
@@ -373,7 +378,9 @@ export function PaymentAllocationPanel({
   const [focusAmountAfterSubmit, setFocusAmountAfterSubmit] = useState(false);
   const [focusVoucherAfterResolve, setFocusVoucherAfterResolve] = useState(false);
   const [touchField, setTouchField] = useState<"amount" | "voucher" | "reference" | "comment" | "date">("amount");
-  const touchTextKeyboardVisible = interfaceMode === "TOUCH" && !zero && !walletOpen
+  const [touchKeyboardOpen, setTouchKeyboardOpen] = useState(true);
+  const touchKeyboardId = useId();
+  const touchTextKeyboardActive = interfaceMode === "TOUCH" && !zero && !walletOpen
     && (touchField === "voucher" || touchField === "reference" || touchField === "comment");
   const amountRef = useRef<HTMLInputElement>(null);
   const checkoutDialogRef = useRef<HTMLElement>(null);
@@ -403,6 +410,9 @@ export function PaymentAllocationPanel({
     ? cashInputMode === "touch"
     : interfaceMode === "TOUCH";
   const touchPresentation = interfaceMode === "TOUCH" || touchAmountInput;
+  const touchAmountKeyboardActive = touchAmountInput && !zero && !walletOpen && touchField === "amount";
+  const touchTextKeyboardVisible = touchTextKeyboardActive && touchKeyboardOpen;
+  const touchKeyboardVisible = touchKeyboardOpen && (touchTextKeyboardActive || touchAmountKeyboardActive);
   const integratedPaymentLocked = hasLockedIntegratedPayment(session.allocations);
   const integratedPaymentInFlight = session.allocations.some((allocation) =>
     allocation.kind === "INTEGRATED_CARD"
@@ -805,6 +815,14 @@ export function PaymentAllocationPanel({
     }
   }
 
+  function clearTouchField() {
+    if (entryLocked || !touchKeyboardVisible) return;
+    if (touchField === "amount") appendKey("clear");
+    else if (touchField === "voucher") setVoucherCode("");
+    else if (touchField === "reference") setReference("");
+    else if (touchField === "comment") setComment("");
+  }
+
   function selectTouchAmount(cents: number, addBanknote = false) {
     const input = amountRef.current;
     if (touchField !== "amount" || !input || input.disabled || walletOpen) return;
@@ -817,6 +835,30 @@ export function PaymentAllocationPanel({
       amountSelectionRef.current = { start: 0, end: next.length };
       setAmount(next);
     }
+  }
+
+  function toggleTouchKeyboard() {
+    if (touchKeyboardVisible) {
+      setTouchKeyboardOpen(false);
+      return;
+    }
+    const fields = {
+      amount: amountRef.current,
+      voucher: voucherCodeRef.current,
+      reference: referenceRef.current,
+      comment: commentRef.current,
+    };
+    const editable = (field: HTMLInputElement | null) => Boolean(field?.isConnected && !field.disabled && !field.readOnly);
+    const current = touchField !== "date" ? fields[touchField] : null;
+    const target = current && editable(current) && (touchField !== "amount" ? interfaceMode === "TOUCH" : touchAmountInput)
+      ? current
+      : ([fields.amount, fields.voucher, fields.reference, fields.comment].find((field) =>
+          editable(field) && (field === fields.amount ? touchAmountInput : interfaceMode === "TOUCH")) ?? null);
+    if (!target) return;
+    setTouchKeyboardOpen(true);
+    setTouchField(target === fields.amount ? "amount" : target === fields.voucher ? "voucher"
+      : target === fields.reference ? "reference" : "comment");
+    target.focus({ preventScroll: true });
   }
 
   useEffect(() => {
@@ -901,9 +943,17 @@ export function PaymentAllocationPanel({
       aria-labelledby="sale-checkout-title" aria-busy={busy || voucherResolving}>
       <header className="sale-checkout-header">
         <h2 id="sale-checkout-title">{refund ? (locale === "es" ? "DEVOLUCIÓN" : locale === "en" ? "REFUND" : "退款") : copy.title}</h2>
-        <button type="button" aria-label={copy.cancel}
+        {touchPresentation && !zero && !walletOpen && <span className="sale-checkout-keyboard-control"
+          onPointerDown={(event) => event.preventDefault()}>{touchKeyboardVisible &&
+            <TouchKeyboardClearButton locale={locale} disabled={entryLocked} onClick={clearTouchField} />}
+          <TouchKeyboardToggle
+          className="sale-checkout-keyboard-toggle" expanded={touchKeyboardVisible}
+          controls={touchField === "amount" ? `${touchKeyboardId}-amount` : touchTextKeyboardActive ? `${touchKeyboardId}-text` : undefined}
+          openLabel={t("sale.touch.keyboard.open")} closeLabel={t("sale.touch.keyboard.close")}
+          disabled={entryLocked} onClick={toggleTouchKeyboard} /></span>}
+        <WindowCloseButton type="button" aria-label={copy.cancel}
           disabled={busy || voucherResolving || integratedPaymentLocked || closeDisabled}
-          onClick={onClose}>×</button>
+          onClick={onClose} >×</WindowCloseButton>
       </header>
 
       <div className="sale-checkout-body">
@@ -1033,23 +1083,23 @@ export function PaymentAllocationPanel({
           {(validation || error) && <p className="sale-checkout-error" role="alert">{validation || error}</p>}
           {compensationRequired && <p className="sale-checkout-error" role="alert">{t("payment.split.compensationRequired")}</p>}
 
-          {touchTextKeyboardVisible && <TouchAlphaKeyboard
+          {touchTextKeyboardActive && <div id={`${touchKeyboardId}-text`} className="sale-checkout-text-keyboard" hidden={!touchKeyboardOpen}>
+            <TouchAlphaKeyboard collapsible={false} hideClearButton={true}
             locale={locale}
             value={touchField === "voucher" ? voucherCode : touchField === "reference" ? reference : comment}
             onChange={touchField === "voucher" ? setVoucherCode : touchField === "reference" ? setReference : setComment}
             inputRef={touchField === "voucher" ? voucherCodeRef : touchField === "reference" ? referenceRef : commentRef}
-            disabled={entryLocked}
-          />}
+            disabled={entryLocked || !touchKeyboardOpen}
+          /></div>}
 
-          <footer className="sale-checkout-footer">
+          <footer className="sale-checkout-footer erp-dialog-actions-row">
+            <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" disabled={busy || voucherResolving || integratedPaymentLocked || closeDisabled}
+              onClick={onClose}>{copy.cancel}</DialogDismissButton>
             {clearVisible && <button type="button" className="clear"
               disabled={busy || voucherResolving || integratedPaymentLocked
                 || (session.allocations.length === 0 && memberBalanceCents === 0 && checkoutDiscountCents === 0)}
               onClick={onClear}><kbd>F12</kbd>{copy.clear}</button>}
-            <span />
-            <button type="button" disabled={busy || voucherResolving || integratedPaymentLocked || closeDisabled}
-              onClick={onClose}>{copy.cancel}</button>
-            {acceptVisible && <button type="button" className="primary"
+            {acceptVisible && <button type="button" className="primary erp-dialog-action-confirm"
               disabled={busy || voucherResolving || integratedPaymentBlocksAccept || (acceptAddsCurrentPayment
                 ? !allowAdd || compensationRequired || remaining <= 0
                 : !acceptOpenSession && session.status !== "COVERED")}
@@ -1059,13 +1109,14 @@ export function PaymentAllocationPanel({
           </footer>
         </div>
 
-        {touchAmountInput && !zero && !walletOpen && touchField === "amount" && <aside className="sale-checkout-keypad" aria-label={copy.keypad}
+        {touchAmountKeyboardActive && <aside id={`${touchKeyboardId}-amount`} className="sale-checkout-keypad" aria-label={copy.keypad}
+          hidden={!touchKeyboardOpen}
           onPointerDown={(event) => event.preventDefault()}>
-          <button type="button" className="exact" disabled={entryLocked} aria-label={copy.exact}
+          <button type="button" className="exact" disabled={entryLocked || !touchKeyboardOpen} aria-label={copy.exact}
             onClick={() => selectTouchAmount(remaining)}><span>{copy.exact}</span><strong>{money(remaining)} €</strong></button>
           <div className="sale-checkout-quick-amounts" role="group" aria-label={copy.quickAmounts}>
             {[500, 1000, 2000, 5000].map((cents) =>
-              <button type="button" key={cents} data-banknote={cents / 100} disabled={entryLocked}
+              <button type="button" key={cents} data-banknote={cents / 100} disabled={entryLocked || !touchKeyboardOpen}
                 onClick={() => selectTouchAmount(cents, true)}>{cents / 100} €</button>)}
           </div>
           <div className="sale-checkout-banknote-space">
@@ -1074,20 +1125,18 @@ export function PaymentAllocationPanel({
                 <span>{touchBanknotes.map((cents) => cents / 100).join(" + ")}</span>
                 <strong>= {money(touchBanknoteTotal)} €</strong>
               </output>
-              <button type="button" disabled={entryLocked} aria-label={copy.clearBanknoteSum}
+              <button type="button" disabled={entryLocked || !touchKeyboardOpen} aria-label={copy.clearBanknoteSum}
                 onClick={() => appendKey("clear")}>{copy.clearBanknotes}</button>
             </section>}
           </div>
           <div className="sale-checkout-number-pad">
             {["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", ","].map((key) =>
-              <button type="button" key={key} disabled={entryLocked}
+              <button type="button" key={key} disabled={entryLocked || !touchKeyboardOpen}
                 style={{ gridArea: key === "," ? "decimal" : `digit-${key}` }}
                 onClick={() => appendKey(key)}>{key}</button>)}
-            <button type="button" className="backspace-key" disabled={entryLocked} aria-label={copy.backspace}
+            <button type="button" className="backspace-key" disabled={entryLocked || !touchKeyboardOpen} aria-label={copy.backspace}
               onClick={() => appendKey("backspace")}><Backspace aria-hidden="true" size={26} /></button>
-            <button type="button" className="clear-key" disabled={entryLocked} aria-label={copy.clearAmount}
-              onClick={() => appendKey("clear")}>C</button>
-            <button type="button" className="enter-key" disabled={entryLocked} aria-label={copy.enter}
+            <button type="button" className="enter-key" disabled={entryLocked || !touchKeyboardOpen} aria-label={copy.enter}
               onClick={() => submit(true)}><ArrowElbowDownLeft aria-hidden="true" size={26} /><span>{copy.enter}</span></button>
           </div>
         </aside>}
@@ -1154,8 +1203,10 @@ export function ManualCardReferenceDialog({
       <input autoFocus autoComplete="off" value={reference}
         onChange={(event) => { dispatch({ type: "change", reference: event.currentTarget.value }); onReferenceChange(event.currentTarget.value); }} />
     </label>
-    <button type="button" disabled={!reference.trim()} onClick={onConfirm}>{t("payment.split.confirm")}</button>
-    <button type="button" onClick={onCancel}>{t("payment.split.cancel")}</button>
+    <footer className="erp-dialog-actions-row">
+      <button type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={onCancel}>{t("payment.split.cancel")}</button>
+      <button type="button" className="erp-dialog-action-confirm" disabled={!reference.trim()} onClick={onConfirm}>{t("payment.split.confirm")}</button>
+    </footer>
   </div>;
 }
 

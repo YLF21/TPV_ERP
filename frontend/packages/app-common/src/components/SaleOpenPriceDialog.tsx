@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 
@@ -74,6 +76,7 @@ export function SaleOpenPriceDialog({
       >
         <header>
           <h2 id="sale-open-price-title">{labels.title}</h2>
+          <WindowCloseButton type="button" aria-label={labels.cancel} onClick={onCancel} onLight desktopOnly />
         </header>
         <form onSubmit={submit}>
           <p><span>{labels.product}</span><strong>{productName}</strong></p>
@@ -93,9 +96,9 @@ export function SaleOpenPriceDialog({
             />
           </label>
           {error && <p className="sale-action-error" role="alert">{error}</p>}
-          <footer>
-            <button type="button" onClick={onCancel}>{labels.cancel}</button>
-            <button type="submit" className="primary">{labels.accept}</button>
+          <footer className="erp-dialog-actions-row">
+            <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onCancel}>{labels.cancel}</DialogDismissButton>
+            <button type="submit" className="primary erp-dialog-action-confirm">{labels.accept}</button>
           </footer>
         </form>
       </section>

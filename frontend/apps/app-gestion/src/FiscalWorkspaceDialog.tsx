@@ -1,3 +1,4 @@
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, type ReactNode } from "react";
 
@@ -116,12 +117,12 @@ export function FiscalWorkspaceDialog({
       >
         <header>
           <h2 id={`${id}-title`}>{title}</h2>
-          <button type="button" onClick={onClose} disabled={closeDisabled} aria-label={closeLabel}>
+          <WindowCloseButton type="button" onClick={onClose} disabled={closeDisabled} aria-label={closeLabel} >
             ×
-          </button>
+          </WindowCloseButton>
         </header>
         <div className="fiscal-workspace-dialog-body">{children}</div>
-        {footer && <footer>{footer}</footer>}
+        {footer && <footer className="erp-dialog-actions-row">{footer}</footer>}
       </section>
     </div>,
     document.body

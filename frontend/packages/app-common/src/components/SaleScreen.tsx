@@ -1,3 +1,5 @@
+import { DialogDismissButton } from "./DialogDismissButton";
+import { WindowCloseButton } from "./WindowCloseButton";
 import { AppBrand } from "./AppBrand";
 /// <reference types="vite/client" />
 
@@ -100,6 +102,7 @@ import { SaleProductConsultationDialog } from "./SaleProductConsultationDialog";
 import { SalePriceConsultationDialog } from "./SalePriceConsultationDialog";
 import { SaleProductSalesHistoryDialog } from "./SaleProductSalesHistoryDialog";
 import { SaleCustomerCreateDialog, canCreateSaleCustomer } from "./SaleCustomerCreateDialog";
+import { SaleCustomerList, type SaleCustomerSortColumn } from "./SaleCustomerList";
 import { SaleCustomerReceivablesDialog } from "./SaleCustomerReceivablesDialog";
 import { SaleCashDrawerAuthorizationDialog } from "./SaleCashDrawerAuthorizationDialog";
 import {
@@ -116,7 +119,6 @@ import { SaleCashWithdrawalDialog } from "./SaleCashWithdrawalDialog";
 import { SaleSerialNumberDialog } from "./SaleSerialNumberDialog";
 import { TouchNumericKeypad } from "./TouchNumericKeypad";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
-import { TableSortButton } from "./TableSortButton";
 import { nextTableSort, sortTableRows, type TableSort } from "./tableSorting";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import type { TableColumnDefinition, TableLayout } from "./tableLayoutPreferences";
@@ -336,8 +338,6 @@ type PreviousTicketImportBatch = {
   adjustments: PreviousTicketImportPreview["adjustments"];
   reconciliationAdjustment: number;
 };
-
-type SaleCustomerSortColumn = "code" | "name" | "document" | "member" | "discount" | "debt" | "overdue";
 
 const noCustomerSelectionId = "__NO_CUSTOMER__";
 const previousTicketImportTimeoutMs = 12_000;
@@ -6329,6 +6329,7 @@ export function SaleScreen({
       {calculatorOpen && (
         <SaleCalculatorDialog
           locale={locale}
+          interfaceMode={interfaceMode}
           defaultTaxPercent={selectedLine?.product.taxPercentage ?? products[0]?.taxPercentage}
           terminalKey={terminalContext.terminalId ?? terminalContext.terminalCode}
           onClose={() => {
@@ -6388,28 +6389,28 @@ export function SaleScreen({
           >
             <label>
               <span>{t("sale.comment.label")}</span>
-              <textarea
-                autoFocus
-                ref={commentInputRef}
-                aria-label={t("sale.comment.label")}
-                maxLength={500}
-                rows={5}
-                value={commentInput}
-                onChange={(event) => {
-                  setCommentInput(event.target.value);
-                  setActionError("");
-                }}
-              />
+              <span className="sale-comment-entry">
+                <textarea
+                  autoFocus
+                  ref={commentInputRef}
+                  aria-label={t("sale.comment.label")}
+                  maxLength={500}
+                  rows={5}
+                  value={commentInput}
+                  onChange={(event) => {
+                    setCommentInput(event.target.value);
+                    setActionError("");
+                  }}
+                />
+                <small className="sale-comment-counter">{commentInput.length}/500</small>
+              </span>
             </label>
             {interfaceMode === "TOUCH" && <TouchAlphaKeyboard locale={locale} value={commentInput}
               onChange={setCommentInput} inputRef={commentInputRef} maxLength={500} />}
-            <small className="sale-dialog-hint">
-              {t("sale.comment.hint")} {commentInput.length}/500
-            </small>
             {actionError && <strong className="sale-action-error" role="alert">{actionError}</strong>}
-            <div className="sale-action-buttons sale-business-dialog-actions">
-              <button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
-              <button type="submit" className="primary">{t("sale.dialog.save")}</button>
+            <div className="sale-action-buttons sale-business-dialog-actions erp-dialog-actions-row">
+              <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</DialogDismissButton>
+              <button type="submit" className="primary erp-dialog-action-confirm">{t("sale.dialog.save")}</button>
             </div>
           </form>
         </SaleActionDialog>
@@ -6431,9 +6432,9 @@ export function SaleScreen({
               <p>{t("sale.clearSale.confirm")}</p>
             </div>
           </div>
-          <div className="sale-action-buttons sale-clear-sale-actions">
-            <button ref={clearSaleCancelButtonRef} type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
-            <button ref={clearSaleConfirmButtonRef} type="button" className="danger" onClick={clearSaleFromCommand}>{t("sale.clearSale.action")}</button>
+          <div className="sale-action-buttons sale-clear-sale-actions erp-dialog-actions-row">
+            <button className="erp-dialog-action-cancel erp-dialog-dismiss" ref={clearSaleCancelButtonRef} type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
+            <button ref={clearSaleConfirmButtonRef} type="button" className="danger erp-dialog-action-cancel" onClick={clearSaleFromCommand}>{t("sale.clearSale.action")}</button>
           </div>
         </SaleActionDialog>
       )}
@@ -6454,9 +6455,9 @@ export function SaleScreen({
               <p>{t("sale.clearLines.confirm")}</p>
             </div>
           </div>
-          <div className="sale-action-buttons sale-clear-sale-actions">
-            <button ref={clearLinesCancelButtonRef} type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
-            <button ref={clearLinesConfirmButtonRef} type="button" className="danger" onClick={clearSaleLines}>{t("sale.clearLines.action")}</button>
+          <div className="sale-action-buttons sale-clear-sale-actions erp-dialog-actions-row">
+            <button className="erp-dialog-action-cancel erp-dialog-dismiss" ref={clearLinesCancelButtonRef} type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
+            <button ref={clearLinesConfirmButtonRef} type="button" className="danger erp-dialog-action-cancel" onClick={clearSaleLines}>{t("sale.clearLines.action")}</button>
           </div>
         </SaleActionDialog>
       )}
@@ -6507,9 +6508,9 @@ export function SaleScreen({
             </fieldset>
             <footer className="sale-print-method-footer">
               <p className="sale-dialog-hint">{t("sale.printMethod.hint")}</p>
-              <div className="sale-action-buttons">
-                <button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
-                <button type="submit">{t("sale.dialog.apply")}</button>
+              <div className="sale-action-buttons erp-dialog-actions-row">
+                <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</DialogDismissButton>
+                <button className="erp-dialog-action-confirm" type="submit">{t("sale.dialog.apply")}</button>
               </div>
             </footer>
           </form>
@@ -6545,12 +6546,12 @@ export function SaleScreen({
               <input ref={documentDiscountInputRef} inputMode="decimal" value={documentDiscountInput}
                 onChange={(event) => setDocumentDiscountInput(event.target.value)} />
             </label>
-            <TouchNumericKeypad value={documentDiscountInput} inputRef={documentDiscountInputRef} allowDecimal
+            <TouchNumericKeypad locale={locale} value={documentDiscountInput} inputRef={documentDiscountInputRef} allowDecimal
               ariaLabel={t("sale.touch.numericKeypad")} clearLabel={t("sale.touch.clearNumber")}
               backspaceLabel={t("sale.touch.backspace")} onChange={setDocumentDiscountInput} />
             {actionError && <strong className="sale-action-error" role="alert">{actionError}</strong>}
-            <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
-              <button type="submit" disabled={saleCommandDisabled("sale-discount")}>{t("sale.dialog.apply")}</button></div>
+            <div className="sale-action-buttons erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</DialogDismissButton>
+              <button className="erp-dialog-action-confirm" type="submit" disabled={saleCommandDisabled("sale-discount")}>{t("sale.dialog.apply")}</button></div>
           </form>
         </SaleActionDialog>
       )}
@@ -6565,16 +6566,16 @@ export function SaleScreen({
               <input ref={touchPriceInputRef} inputMode="decimal" value={touchPriceInput} disabled={temporaryPriceAuthorizationBusy}
                 onChange={(event) => { setTouchPriceInput(event.target.value); setActionError(""); }} />
             </label>
-            <TouchNumericKeypad value={touchPriceInput} inputRef={touchPriceInputRef} allowDecimal disabled={temporaryPriceAuthorizationBusy}
+            <TouchNumericKeypad locale={locale} value={touchPriceInput} inputRef={touchPriceInputRef} allowDecimal disabled={temporaryPriceAuthorizationBusy}
               ariaLabel={t("sale.touch.numericKeypad")} clearLabel={t("sale.touch.clearNumber")}
               backspaceLabel={t("sale.touch.backspace")} onChange={setTouchPriceInput} />
             {actionError && <strong className="sale-action-error" role="alert">{actionError}</strong>}
             <div className="sale-action-buttons sale-touch-price-actions">
-              <button type="button" className="sale-touch-change-price" disabled={saleCommandDisabled("temporary-price") || temporaryPriceAuthorizationBusy} onClick={() => {
+              <button type="button" className="sale-touch-change-price erp-dialog-action-confirm" disabled={saleCommandDisabled("temporary-price") || temporaryPriceAuthorizationBusy} onClick={() => {
                 if (!touchPriceInput.trim()) { setActionError(t("sale.touch.invalidFinalPrice")); return; }
                 void saveTemporaryPrice(touchPriceInput);
               }}>{t("sale.touch.changePrice")}</button>
-              <button type="button" disabled={touchDiscountDisabled || temporaryPriceAuthorizationBusy} onClick={() => {
+              <button className="erp-dialog-action-confirm" type="button" disabled={touchDiscountDisabled || temporaryPriceAuthorizationBusy} onClick={() => {
                 const normalized = touchPriceInput.trim().replace(",", ".");
                 if (!/^\d+(?:\.\d{1,2})?$/.test(normalized) || !applyDesiredLinePrice(Number(normalized))) {
                   setActionError(t("sale.touch.invalidFinalPrice"));
@@ -6606,7 +6607,7 @@ export function SaleScreen({
               />
             </label>
             {interfaceMode === "TOUCH" && (
-              <TouchNumericKeypad
+              <TouchNumericKeypad locale={locale}
                 value={quantityInput}
                 inputRef={quantityInputRef}
                 replaceOnFirstKey
@@ -6621,7 +6622,7 @@ export function SaleScreen({
             )}
             {interfaceMode === "TOUCH" && <small className="sale-dialog-hint">{t("sale.touch.signedQuantityHint")}</small>}
             {actionError && <strong className="sale-action-error">{actionError}</strong>}
-            <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button><button type="submit">{t("sale.dialog.save")}</button></div>
+            <div className="sale-action-buttons erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</DialogDismissButton><button className="erp-dialog-action-confirm" type="submit">{t("sale.dialog.save")}</button></div>
           </form>
         </SaleActionDialog>
       )}
@@ -6637,7 +6638,7 @@ export function SaleScreen({
               <input ref={discountInputRef} aria-label={t("sale.discount.inputAria")} type={interfaceMode === "TOUCH" ? "text" : "number"} inputMode="decimal" min="0" max="100" step="0.01" value={discountInput} onChange={(event) => setDiscountInput(event.target.value)} />
             </label>
             {interfaceMode === "TOUCH" && (
-              <TouchNumericKeypad
+              <TouchNumericKeypad locale={locale}
                 value={discountInput}
                 inputRef={discountInputRef}
                 replaceOnFirstKey
@@ -6650,7 +6651,7 @@ export function SaleScreen({
               />
             )}
             {actionError && <strong className="sale-action-error">{actionError}</strong>}
-            <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button><button type="submit">{t("sale.dialog.save")}</button></div>
+            <div className="sale-action-buttons erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</DialogDismissButton><button className="erp-dialog-action-confirm" type="submit">{t("sale.dialog.save")}</button></div>
           </form>
         </SaleActionDialog>
       )}
@@ -6684,9 +6685,9 @@ export function SaleScreen({
               onChange={setTemporaryNameInput} inputRef={temporaryNameInputRef} maxLength={255} />}
             <small className="sale-dialog-hint">{t("sale.temporaryName.hint")}</small>
             {actionError && <strong className="sale-action-error">{actionError}</strong>}
-            <div className="sale-action-buttons">
-              <button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
-              <button type="submit">{t("sale.dialog.save")}</button>
+            <div className="sale-action-buttons erp-dialog-actions-row">
+              <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</DialogDismissButton>
+              <button className="erp-dialog-action-confirm" type="submit">{t("sale.dialog.save")}</button>
             </div>
           </form>
         </SaleActionDialog>
@@ -6719,7 +6720,7 @@ export function SaleScreen({
               />
             </label>
             {interfaceMode === "TOUCH" && (
-              <TouchNumericKeypad
+              <TouchNumericKeypad locale={locale}
                 value={temporaryPriceInput}
                 inputRef={temporaryPriceInputRef}
                 allowDecimal
@@ -6732,9 +6733,9 @@ export function SaleScreen({
             )}
             <small className="sale-dialog-hint">{t("sale.temporaryPrice.hint")}</small>
             {actionError && <strong className="sale-action-error">{actionError}</strong>}
-            <div className="sale-action-buttons">
-              <button type="button" disabled={temporaryPriceAuthorizationBusy} onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
-              <button type="submit" disabled={temporaryPriceAuthorizationBusy}>{t("sale.dialog.save")}</button>
+            <div className="sale-action-buttons erp-dialog-actions-row">
+              <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={temporaryPriceAuthorizationBusy} onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</DialogDismissButton>
+              <button className="erp-dialog-action-confirm" type="submit" disabled={temporaryPriceAuthorizationBusy}>{t("sale.dialog.save")}</button>
             </div>
           </form>
         </SaleActionDialog>
@@ -6790,82 +6791,29 @@ export function SaleScreen({
               onClick={openSelectedCustomerReceivables}
             ><span>{t("sale.customer.collectDebt")}</span><kbd>Enter</kbd></button>}
           </div>
-          <div className="sale-customer-toolbar">
-            <label>
-              <span>{t("sale.customer.search")}</span>
-              <input ref={customerSearchInputRef} aria-label={t("sale.customer.search")} value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} placeholder={t("sale.customer.placeholder")} />
-            </label>
-          </div>
-          <div className="sale-customer-table" role="table" aria-label={t("sale.customer.title")}>
-            <div className="sale-customer-table-header" role="row">
-              {(["code", "name", "document", "member", "discount", "debt", "overdue"] as const).map((column) => (
-                <span
-                  role="columnheader"
-                  aria-sort={customerSort?.column === column
-                    ? customerSort.direction === "asc" ? "ascending" : "descending"
-                    : "none"}
-                  key={column}
-                >
-                  <TableSortButton
-                    direction={customerSort?.column === column ? customerSort.direction : null}
-                    label={`${t("party.sortBy")} ${t(`sale.customer.column.${column}`)}`}
-                    onSort={() => setCustomerSort((current) => nextTableSort(current, column))}
-                  >
-                    {t(`sale.customer.column.${column}`)}
-                  </TableSortButton>
-                </span>
-              ))}
-            </div>
-            <div className="sale-customer-table-body" role="rowgroup">
-              {customerLoading && <p className="sale-search-status">{t("sale.customer.loading")}</p>}
-              {customerError && <p className="sale-action-error">{t("sale.customer.loadError")}</p>}
-              {!customerLoading && !customerError && !pendingCustomerContinuation && <button
-                type="button"
-                aria-label={t("sale.customer.none")}
-                className={`sale-customer-table-row sale-customer-none-row${selectedCustomerResultId === noCustomerSelectionId ? " selected" : ""}`}
-                aria-current={selectedCustomerResultId === noCustomerSelectionId}
-                onClick={() => setSelectedCustomerResultId(noCustomerSelectionId)}
-                onDoubleClick={() => chooseSaleCustomer(null)}
-              >
-                <span role="cell">—</span>
-                <strong role="cell">{t("sale.customer.none")}</strong>
-                <span role="cell"></span><span role="cell"></span><span role="cell"></span>
-                <span role="cell"></span><span role="cell"></span>
-              </button>}
-              {!customerLoading && !customerError && customerResults.map((customer) => (
-                <button
-                  type="button"
-                  aria-label={[customer.clientId, customer.fiscalName, customer.documentNumber].filter(Boolean).join(" · ") || t("sale.customer.unnamed")}
-                  className={`sale-customer-table-row${customer.id === selectedCustomerResultId ? " selected" : ""}`}
-                  aria-current={customer.id === selectedCustomerResultId}
-                  key={customer.id}
-                  onFocus={() => setSelectedCustomerResultId(customer.id)}
-                  onClick={() => setSelectedCustomerResultId(customer.id)}
-                  onDoubleClick={() => chooseSaleCustomer(customer)}
-                >
-                  <strong role="cell">{customer.clientId ?? t("sale.customer.noCode")}</strong>
-                  <span role="cell" title={customer.fiscalName ?? undefined}>{customer.fiscalName ?? t("sale.customer.unnamed")}</span>
-                  <span role="cell">{customer.documentNumber ?? ""}</span>
-                  <span role="cell">{customer.activeMember ? customer.memberCategoryName || t("common.yes") : ""}</span>
-                  <span role="cell">{customer.memberDiscountPercent == null ? "" : `${Number(customer.memberDiscountPercent).toLocaleString(locale, { maximumFractionDigits: 2 })} %`}</span>
-                  <strong role="cell" className={Number(customer.outstandingDebt ?? 0) > 0 ? "debt" : ""}>
-                    {Number(customer.outstandingDebt ?? 0) > 0 ? `${Number(customer.outstandingDebt).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €` : ""}
-                  </strong>
-                  <strong role="cell" className={Number(customer.overdueDebt ?? 0) > 0 ? "overdue-debt" : ""}>
-                    {Number(customer.overdueDebt ?? 0) > 0 ? `${Number(customer.overdueDebt).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €` : ""}
-                  </strong>
-                </button>
-              ))}
-              {!customerLoading && !customerError && customerResults.length === 0 && pendingCustomerContinuation && <p className="sale-customer-empty">{t("sale.customer.empty")}</p>}
-            </div>
-          </div>
+          <SaleCustomerList
+            locale={locale}
+            inputRef={customerSearchInputRef}
+            customers={customerResults}
+            query={customerQuery}
+            onQueryChange={setCustomerQuery}
+            loading={customerLoading}
+            error={customerError}
+            selectedCustomerId={selectedCustomerResultId}
+            onHighlight={setSelectedCustomerResultId}
+            onActivate={chooseSaleCustomer}
+            sort={customerSort}
+            onSort={(column) => setCustomerSort((current) => nextTableSort(current, column))}
+            includeNoCustomer={!pendingCustomerContinuation}
+            noCustomerId={noCustomerSelectionId}
+          />
           {interfaceMode === "TOUCH" && <TouchAlphaKeyboard locale={locale} value={customerQuery}
             onChange={setCustomerQuery} inputRef={customerSearchInputRef} />}
-          <footer className="sale-customer-selection-footer">
-            <p className="sale-dialog-hint"><kbd>Insert</kbd> {t("sale.customer.insertHint")}</p>
-            <div className="sale-action-buttons">
-              <button type="button" onClick={closeCustomerDialog}>{t("sale.dialog.close")}</button>
-              <button type="button" disabled={selectedCustomerResult() === undefined} onClick={() => {
+          <footer className="sale-customer-selection-footer erp-dialog-actions-row">
+            <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={closeCustomerDialog}>{t("sale.dialog.close")}</DialogDismissButton>
+            <p className="sale-dialog-hint erp-dialog-actions-group"><kbd>Insert</kbd> {t("sale.customer.insertHint")}</p>
+            <div className="sale-action-buttons erp-dialog-actions-group">
+              <button className="erp-dialog-action-confirm" type="button" disabled={selectedCustomerResult() === undefined} onClick={() => {
                 const customer = selectedCustomerResult();
                 if (customer !== undefined) chooseSaleCustomer(customer);
               }}>{t("sale.customer.select")}</button>
@@ -6921,7 +6869,7 @@ export function SaleScreen({
             <div className="sale-inline-edit-product"><strong>{selectedLine.product.code && `${selectedLine.product.code} · `}{selectedLine.temporaryName ?? selectedLine.product.name ?? t("sale.removeLine.productFallback")}</strong></div>
             <p>{t("sale.removeLine.touchConfirm")}</p>
           </> : <p>{saleMainMessage(t, "sale.removeLine.confirm", { product: selectedLine.product.name ?? t("sale.removeLine.productFallback") })}</p>}
-          <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button><button ref={removeConfirmButtonRef} type="button" className="danger" onClick={confirmRemoveLine}>{t("sale.removeLine.action")}</button></div>
+          <div className="sale-action-buttons erp-dialog-actions-row"><button className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button><button ref={removeConfirmButtonRef} type="button" className="danger erp-dialog-action-cancel" onClick={confirmRemoveLine}>{t("sale.removeLine.action")}</button></div>
         </SaleActionDialog>
       )}
 
@@ -7053,9 +7001,9 @@ export function SaleScreen({
           <p>{saleMainMessage(t, "sale.inactiveProduct.warning", {
             name: pendingInactiveProduct.name ?? t("sale.main.unnamedProduct")
           })}</p>
-          <div className="sale-action-buttons">
-            <button type="button" onClick={cancelInactiveProduct}>{t("common.cancel")}</button>
-            <button type="button" autoFocus onClick={confirmInactiveProduct}>{t("sale.inactiveProduct.continue")}</button>
+          <div className="sale-action-buttons erp-dialog-actions-row">
+            <button className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={cancelInactiveProduct}>{t("common.cancel")}</button>
+            <button className="erp-dialog-action-confirm" type="button" autoFocus onClick={confirmInactiveProduct}>{t("sale.inactiveProduct.continue")}</button>
           </div>
         </SaleActionDialog>
       )}
@@ -7186,7 +7134,7 @@ function SaleActionDialog({
   return (
     <div className="sale-action-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section ref={dialogRef} className={`sale-action-dialog${wide ? " wide" : ""}${className ? ` ${className}` : ""}`} role="dialog" aria-modal="true" aria-label={title} onKeyDown={handleKeyDown}>
-        <header><h2>{title}</h2><button type="button" aria-label={closeLabel} onClick={onClose}>x</button></header>
+        <header><h2>{title}</h2><WindowCloseButton type="button" aria-label={closeLabel} onClick={onClose} onLight={!className || !/sale-business-dialog|sale-inline-edit-dialog|sale-print-method-dialog|sale-customer-selection-dialog|sale-touch-entry-dialog/.test(className)} >x</WindowCloseButton></header>
         {children}
       </section>
     </div>

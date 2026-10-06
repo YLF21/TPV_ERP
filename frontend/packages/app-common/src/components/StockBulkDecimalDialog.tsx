@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
 import { X } from "@phosphor-icons/react";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
+import { useEffect, useMemo, useState } from "react";
 import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { enterNavigationIntent } from "./keyboardNavigation";
@@ -45,7 +47,7 @@ export function StockBulkDecimalDialog({
             <h2 id="stock-bulk-decimal-title">{t("stock.bulkEdit.decimalAdjust")}</h2>
             <p>{fieldLabel} · {t("stock.bulkEdit.decimal.selected").replace("{count}", String(selectedCount))}</p>
           </div>
-          <button type="button" aria-label={t("common.close")} onClick={onClose}><X size={18} weight="bold" aria-hidden="true" /></button>
+          <WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose} ><X size={18} weight="bold" aria-hidden="true" /></WindowCloseButton>
         </header>
         <label className="stock-bulk-decimal-field">
           <span>{t("stock.bulkEdit.decimal.ending")}</span>
@@ -77,9 +79,9 @@ export function StockBulkDecimalDialog({
           <small>{t("stock.bulkEdit.decimal.help")}</small>
         </label>
         {!cents && <p className="stock-bulk-dialog-error" role="alert">{t("stock.bulkEdit.decimal.invalid")}</p>}
-        <footer className="filter-actions">
-          <button type="button" className="secondary" onClick={onClose}>{t("common.cancel")}</button>
-          <button type="button" disabled={!cents || selectedCount === 0} onClick={() => onApply(Number(cents))}>{t("stock.filter.apply")}</button>
+        <footer className="filter-actions erp-dialog-actions-row">
+          <DialogDismissButton type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>{t("common.cancel")}</DialogDismissButton>
+          <button type="button" className="erp-dialog-action-confirm" disabled={!cents || selectedCount === 0} onClick={() => onApply(Number(cents))}>{t("stock.filter.apply")}</button>
         </footer>
       </section>
     </div>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import {
   TableLayoutHeaderCell,
   useTableLayoutPreference,
@@ -533,8 +534,8 @@ export function FiscalComplianceView({
           closeDisabled={exportJobs.creating}
           className="gestion-fiscal-export-dialog"
           footer={<>
-            <button type="button" disabled={exportJobs.creating} onClick={() => setExportDialogOpen(false)}>{t("verifactu.ui.close")}</button>
-            <button type="submit" form="fiscal-export-dialog-form" className="primary" disabled={exportJobs.creating || !fiscalTimezone}>
+            <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={exportJobs.creating} onClick={() => setExportDialogOpen(false)}>{t("verifactu.ui.close")}</DialogDismissButton>
+            <button type="submit" form="fiscal-export-dialog-form" className="primary erp-dialog-action-confirm" disabled={exportJobs.creating || !fiscalTimezone}>
               {exportJobs.creating ? t("verifactu.compliance.exporting") : t("verifactu.compliance.createExport")}
             </button>
           </>}

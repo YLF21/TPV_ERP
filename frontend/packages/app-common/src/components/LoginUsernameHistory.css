@@ -1,0 +1,61 @@
+.login-input-wrap.login-username-history {
+  position: relative;
+}
+
+.login-sale .login-panel .login-username-history-toggle {
+  flex: 0 0 40px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 44px !important;
+  min-height: 44px !important;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: #808080 !important;
+  box-shadow: none !important;
+}
+
+.login-sale .login-panel .login-username-history-toggle:hover:not(:disabled) {
+  background: #f3f6fb !important;
+}
+
+.login-username-history-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: -2px;
+  left: -2px;
+  max-height: 248px;
+  display: grid;
+  gap: 4px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid #cbd7e5;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(12, 29, 53, .16);
+}
+
+.login-sale .login-panel .login-username-history-list button {
+  min-height: 44px !important;
+  height: auto !important;
+  padding: 10px 14px;
+  border: 0 !important;
+  border-radius: 7px !important;
+  background: #fff !important;
+  color: #222 !important;
+  font: inherit;
+  font-size: 20px !important;
+  font-weight: 400 !important;
+  line-height: 1.2;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.login-sale .login-panel .login-username-history-list button[aria-selected="true"] {
+  background: #0065fe !important;
+  color: #fff !important;
+}

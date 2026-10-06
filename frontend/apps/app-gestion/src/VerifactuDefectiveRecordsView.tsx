@@ -174,7 +174,7 @@ export function VerifactuDefectiveRecordsView({
         purpose="filters"
         footer={<>
           <button type="button" onClick={clear}>{t("verifactu.management.clearFilters")}</button>
-          <button type="submit" form="verifactu-defective-filters-form" className="primary">{t("verifactu.management.applyFilters")}</button>
+          <button type="submit" form="verifactu-defective-filters-form" className="primary erp-dialog-action-confirm">{t("verifactu.management.applyFilters")}</button>
         </>}
       >
       <form id="verifactu-defective-filters-form" className="gestion-verifactu-filters" onSubmit={(event) => { apply(event); }}>

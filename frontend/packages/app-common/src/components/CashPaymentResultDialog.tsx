@@ -142,9 +142,11 @@ export function CashPaymentResultContent({
                 {t("payment.result.printTechnicalDetail").replace("{detail}", printTechnicalMessage)}
               </small>
             )}
-            <button type="button" className="cash-payment-print-retry" onClick={onRetryPrint}>{t("payment.result.retryPrint")}</button>
-            {allowFinishWithPendingPrint && <button type="button" className="cash-payment-print-retry"
-              onClick={onFinish}>{t("common.close")}</button>}
+            <div className="erp-dialog-actions-row">
+              {allowFinishWithPendingPrint && <button type="button" className="cash-payment-print-retry erp-dialog-action-cancel erp-dialog-dismiss"
+                onClick={onFinish}>{t("common.close")}</button>}
+              <button type="button" className="cash-payment-print-retry erp-dialog-action-confirm" onClick={onRetryPrint}>{t("payment.result.retryPrint")}</button>
+            </div>
           </div>
         )}
         {issuedVoucher && (
@@ -156,7 +158,7 @@ export function CashPaymentResultContent({
             {voucherPrintStatus === "FAILED" && (
               <div className="cash-payment-print-status cash-payment-print-error" role="alert">
                 <span>{t("payment.result.voucherPrintFailed")}</span>
-                <button type="button" className="cash-payment-print-retry"
+                <button type="button" className="cash-payment-print-retry erp-dialog-action-confirm"
                   onClick={onRetryVoucherPrint}>{t("payment.result.retryVoucherPrint")}</button>
               </div>
             )}

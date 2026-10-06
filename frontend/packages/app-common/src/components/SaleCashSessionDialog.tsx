@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import type { LocaleCode } from "../types";
@@ -361,8 +363,8 @@ export function SaleCashSessionDialog({
       >
         <header>
           <h2 id="sale-cash-session-title">{mode === "OPEN" ? t.openTitle : t.closeTitle}</h2>
-          {!embedded && <button type="button" aria-label={t.closeWindow} disabled={busy || closeAttemptLocked}
-            onClick={() => { if (mode === "OPEN") onExitSales?.(); else onCancel?.(); }}>×</button>}
+          {!embedded && <WindowCloseButton type="button" aria-label={t.closeWindow} disabled={busy || closeAttemptLocked}
+            onClick={() => { if (mode === "OPEN") onExitSales?.(); else onCancel?.(); }} >×</WindowCloseButton>}
         </header>
         <form onSubmit={(event) => void submit(event)}>
           <p>{mode === "OPEN" ? t.openText : t.closeText}</p>
@@ -422,22 +424,22 @@ export function SaleCashSessionDialog({
             </p>
           )}
           {error && <p className="sale-cash-session-error" role="alert">{error}</p>}
-          <footer className="filter-actions">
+          <footer className="filter-actions erp-dialog-actions-row">
             {mode === "OPEN" ? (
-              <button type="button" className="secondary" disabled={busy} onClick={onExitSales}>
+              <DialogDismissButton notice={embedded || openContext === "SALES"} type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" disabled={busy} onClick={onExitSales}>
                 {openContext === "HOME" ? t.cancel : t.exit}
-              </button>
+              </DialogDismissButton>
             ) : !embedded ? (
-              <button
+              <DialogDismissButton
                 type="button"
-                className="secondary"
+                className="secondary erp-dialog-action-cancel erp-dialog-dismiss"
                 disabled={busy || closeAttemptLocked}
                 onClick={onCancel}
               >
                 {t.cancel}
-              </button>
+              </DialogDismissButton>
             ) : null}
-            <button type="submit" className={mode === "CLOSE" ? "cash-close-action" : ""} disabled={busy || (mode === "OPEN" && amount(countedFund) == null)}>
+            <button type="submit" className={`${mode === "CLOSE" ? "cash-close-action" : ""} erp-dialog-action-confirm`} disabled={busy || (mode === "OPEN" && amount(countedFund) == null)}>
               {busy
                 ? mode === "OPEN" ? t.opening : t.closing
                 : mode === "OPEN"

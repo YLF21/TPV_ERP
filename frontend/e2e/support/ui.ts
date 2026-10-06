@@ -8,8 +8,8 @@ export async function loginUi(
   password = process.env.E2E_ADMIN_PASSWORD ?? "0000"
 ) {
   await page.goto(app === "venta" ? ventaUrl : gestionUrl);
-  await page.getByLabel("Usuario").fill(userName);
-  await page.getByLabel("Contraseña").fill(password);
+  await page.getByLabel("Usuario", { exact: true }).fill(userName);
+  await page.getByLabel("Contraseña", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Entrar" }).click();
   await expect(page.locator(app === "venta" ? ".home-screen" : ".gestion-screen")).toBeVisible();
 }

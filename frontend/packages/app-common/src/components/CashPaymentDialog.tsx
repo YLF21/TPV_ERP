@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { TouchKeyboardToggle } from "./TouchKeyboardToggle";
+import { TouchKeyboardClearButton } from "./TouchKeyboardClearButton";
+import { ArrowElbowDownLeft } from "@phosphor-icons/react";
+import "./CashPaymentKeyboard.css";
 import { cashChangeCents, cashInputCents, pressCashKey, setCashShortcut } from "../sale/cashCalculator";
 import type { CashInputMode } from "../sale/cashInputMode";
 import { CashPaymentValidationDialog } from "./CashPaymentValidationDialog";
@@ -40,6 +46,7 @@ export function CashPaymentDialog({ totalCents, submitting, error, initialMode, 
   const restoreInputFocusRef = useRef(false);
   const [received, setReceived] = useState("");
   const [mode, setMode] = useState<CashInputMode>(initialMode);
+  const keypadId = useId();
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const receivedCents = useMemo(() => cashInputCents(received), [received]);
   const changeCents = cashChangeCents(totalCents, receivedCents);
@@ -107,7 +114,7 @@ export function CashPaymentDialog({ totalCents, submitting, error, initialMode, 
       >
         <header>
           <h2 id="cash-payment-title">{t("cashPayment.title")}</h2>
-          <button type="button" aria-label={t("cashPayment.closeAria")} disabled={submitting} onClick={onCancel}>×</button>
+          <WindowCloseButton type="button" aria-label={t("cashPayment.closeAria")} disabled={submitting} onClick={onCancel} onLight >×</WindowCloseButton>
         </header>
         <div className="cash-payment-summary" aria-live="polite">
           <div><span>{t("cashPayment.total")}</span><strong>{money(totalCents, locale)}</strong></div>
@@ -127,9 +134,12 @@ export function CashPaymentDialog({ totalCents, submitting, error, initialMode, 
             if (/^\d*(?:,\d{0,2})?$/.test(normalized)) setReceived(normalized);
           }}
         />
-        <button className="cash-input-mode-toggle" type="button" disabled={submitting} onClick={() => setMode((value) => value === "touch" ? "keyboard" : "touch")}>
-          {t(mode === "touch" ? "cashPayment.usePhysicalKeyboard" : "cashPayment.showTouchKeyboard")}
-        </button>
+        <div className="cash-keyboard-controls">
+          {mode === "touch" && <TouchKeyboardClearButton locale={locale} disabled={submitting || validationMessage !== null} onClick={() => setReceived("")} />}
+          <TouchKeyboardToggle className="cash-input-mode-toggle" expanded={mode === "touch"} controls={keypadId}
+            openLabel={t("cashPayment.showTouchKeyboard")} closeLabel={t("sale.touch.keyboard.close")}
+            disabled={submitting} onClick={() => setMode((value) => value === "touch" ? "keyboard" : "touch")} />
+        </div>
         {mode === "touch" && <>
           <div className="cash-shortcuts">
             <button type="button" disabled={submitting} onClick={() => setReceived(setCashShortcut("EXACT", totalCents))}>{t("cashPayment.exact")}</button>
@@ -137,10 +147,12 @@ export function CashPaymentDialog({ totalCents, submitting, error, initialMode, 
               <button type="button" disabled={submitting} key={amount} onClick={() => setReceived(setCashShortcut(amount, totalCents))}>{amount} €</button>
             ))}
           </div>
-          <div className="cash-keypad">
+          <div className="cash-keypad" id={keypadId}>
             {keypad.map((key) => <button type="button" disabled={submitting} aria-label={`${t("cashPayment.key")} ${key}`} key={key} onClick={() => setReceived((value) => pressCashKey(value, key))}>{key}</button>)}
             <button type="button" disabled={submitting} aria-label={t("cashPayment.backspace")} onClick={() => setReceived((value) => pressCashKey(value, "BACKSPACE"))}>⌫</button>
-            <button type="button" disabled={submitting} aria-label={t("cashPayment.clear")} onClick={() => setReceived("")}>C</button>
+            <button type="button" className="cash-keypad-enter" disabled={submitting || validationMessage !== null}
+              aria-label={locale === "es" ? "Intro" : locale === "zh" ? "回车" : "Enter"}
+              onClick={attemptConfirm}><ArrowElbowDownLeft aria-hidden="true" size={20} /></button>
           </div>
         </>}
         {error && <p className="sale-action-error" role="alert">{error}</p>}
@@ -155,9 +167,9 @@ export function CashPaymentDialog({ totalCents, submitting, error, initialMode, 
           </button>
         )}
         {testCashStatus && <p className="test-cash-session-status" role="status">{testCashStatus}</p>}
-        <footer className="cash-payment-actions">
-          <button type="button" disabled={submitting} onClick={onCancel}>{t("common.cancel")}</button>
-          <button type="button" disabled={submitting} onClick={attemptConfirm}>{t(submitting ? "cashPayment.submitting" : "cashPayment.confirm")}</button>
+        <footer className="cash-payment-actions erp-dialog-actions-row">
+          <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" disabled={submitting} onClick={onCancel}>{t("common.cancel")}</DialogDismissButton>
+          <button type="button" className="erp-dialog-action-confirm" disabled={submitting} onClick={attemptConfirm}>{t(submitting ? "cashPayment.submitting" : "cashPayment.confirm")}</button>
         </footer>
       </section>
       {validationMessage !== null && (

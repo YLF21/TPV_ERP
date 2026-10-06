@@ -10,6 +10,7 @@ export const apiBaseUrl = String(env.VITE_TPV_API_BASE_URL ?? "/api/v1").replace
 export const frontendVersion = String(env.VITE_TPV_APP_VERSION ?? "0.0.1");
 
 export const devTerminalContext: TerminalContext = {
+  companyName: String(env.VITE_TPV_COMPANY_NAME ?? "EMPRESA DEMO"),
   storeName: String(env.VITE_TPV_STORE_NAME ?? "TIENDA DEMO"),
   terminalCode: String(env.VITE_TPV_TERMINAL_CODE ?? "SERVIDOR"),
   terminalId: env.VITE_TPV_TERMINAL_ID ? String(env.VITE_TPV_TERMINAL_ID) : undefined,

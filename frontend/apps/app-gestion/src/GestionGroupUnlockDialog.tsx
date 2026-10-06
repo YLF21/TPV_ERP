@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
+import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, apiProblemCode, apiRequest, type UserSession } from "@tpverp/app-common";
 import {
@@ -80,7 +82,7 @@ export function GestionGroupUnlockDialog({ group, session, t, onUnlocked, onLock
       >
         <header>
           <h2 id="gestion-group-unlock-title">{t("gestion.groupUnlock.title")}</h2>
-          <button type="button" onClick={onCancel} disabled={busy} aria-label={t("gestion.groupUnlock.cancel")}>×</button>
+          <WindowCloseButton type="button" onClick={onCancel} disabled={busy} aria-label={t("gestion.groupUnlock.cancel")} >×</WindowCloseButton>
         </header>
         <p id="gestion-group-unlock-description">{t(`gestion.groupUnlock.description.${group}`)}</p>
         <label>
@@ -96,9 +98,9 @@ export function GestionGroupUnlockDialog({ group, session, t, onUnlocked, onLock
           />
         </label>
         {error && <p className="gestion-group-unlock-error" role="alert">{error}</p>}
-        <footer>
-          <button type="button" onClick={onCancel} disabled={busy}>{t("gestion.groupUnlock.cancel")}</button>
-          <button type="button" className="primary" onClick={() => void submit()} disabled={busy || !password.trim()}>
+        <footer className="erp-dialog-actions-row">
+          <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onCancel} disabled={busy}>{t("gestion.groupUnlock.cancel")}</DialogDismissButton>
+          <button type="button" className="primary erp-dialog-action-confirm" onClick={() => void submit()} disabled={busy || !password.trim()}>
             {busy ? t("gestion.groupUnlock.checking") : t("gestion.groupUnlock.submit")}
           </button>
         </footer>

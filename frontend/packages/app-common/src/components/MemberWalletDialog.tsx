@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import "./MemberWalletDialog.css";
@@ -283,7 +285,7 @@ export function MemberWalletDialog({
             <h2 id={titleId}>{copy.title}</h2>
             <p id={descriptionId}>{copy.subtitle}</p>
           </div>
-          <button type="button" aria-label={copy.close} disabled={busy} onClick={onCancel}>×</button>
+          <WindowCloseButton type="button" aria-label={copy.close} disabled={busy} onClick={onCancel} >×</WindowCloseButton>
         </header>
 
         <form
@@ -386,10 +388,10 @@ export function MemberWalletDialog({
             {displayedError && <p id={errorId} className="member-wallet-error" role="alert">{displayedError}</p>}
           </div>
 
-          <footer className="member-wallet-actions">
-            <span>{copy.keyboardHint}</span>
-            <button type="button" disabled={busy} onClick={onCancel}>{copy.cancel}</button>
-            <button className="member-wallet-primary-action" type="submit" disabled={busy}>
+          <footer className="member-wallet-actions erp-dialog-actions-row">
+            <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" disabled={busy} onClick={onCancel}>{copy.cancel}</DialogDismissButton>
+            <span className="erp-dialog-actions-group">{copy.keyboardHint}</span>
+            <button className="member-wallet-primary-action erp-dialog-action-confirm" type="submit" disabled={busy}>
               {busy ? copy.confirming : copy.confirm}
             </button>
           </footer>

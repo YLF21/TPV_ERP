@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestionTableSearch, matchesGestionTableSearch } from "./GestionTableSearch";
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import {
   ApiError,
   apiRequest,
@@ -494,10 +495,11 @@ export function SalesOperationSecurityScreen({
               <h3 id="sales-operation-security-reset-title">
                 {t("gestion.salesOperationSecurity.resetTitle")}
               </h3>
+              <WindowCloseButton type="button" aria-label={t("common.close")} disabled={Boolean(busy)} onClick={() => setResetConfirmationOpen(false)} />
             </header>
             <p>{t("gestion.salesOperationSecurity.resetDescription")}</p>
-            <footer>
-              <button
+            <footer className="erp-dialog-actions-row">
+              <button className="erp-dialog-action-cancel erp-dialog-dismiss"
                 type="button"
                 disabled={Boolean(busy)}
                 onClick={() => setResetConfirmationOpen(false)}
@@ -506,7 +508,7 @@ export function SalesOperationSecurityScreen({
               </button>
               <button
                 type="button"
-                className="danger"
+                className="danger erp-dialog-action-cancel"
                 disabled={Boolean(busy)}
                 onClick={() => void confirmReset()}
               >

@@ -11,6 +11,7 @@
 
 .sales-document-customer-selector > .sales-document-customer-heading {
   flex: 0 0 auto;
+  border-bottom: 0;
 }
 
 .sales-document-customer-actions > button {
@@ -123,9 +124,9 @@
 }
 
 .sales-document-customer-option[aria-selected="true"] {
-  background: var(--customer-dialog-navy);
-  color: #fff;
-  box-shadow: inset 4px 0 var(--tpv-v3-blue, #2a72b6);
+  background: #d8e9fb;
+  color: var(--tpv-v3-text, #102033);
+  box-shadow: inset 4px 0 #0065fe;
 }
 
 .sales-document-customer-selector :is(button, input):focus-visible {
@@ -185,8 +186,16 @@
 }
 
 .sales-document-customer-actions > .sales-document-customer-confirm {
-  border-color: var(--customer-dialog-navy);
-  background: var(--customer-dialog-navy);
+  --customer-dialog-action-color: #0065fe;
+  border-color: var(--customer-dialog-action-color);
+  background: var(--customer-dialog-action-color);
+  color: #fff;
+}
+
+.sales-document-customer-actions > .sales-document-customer-cancel {
+  --customer-dialog-action-color: #b42318;
+  border-color: var(--customer-dialog-action-color);
+  background: var(--customer-dialog-action-color);
   color: #fff;
 }
 
@@ -194,8 +203,8 @@
   background: #e5eff8;
 }
 
-.sales-document-customer-actions > .sales-document-customer-confirm:hover:not(:disabled) {
-  background: #215488;
+.sales-document-customer-actions > :is(.sales-document-customer-confirm, .sales-document-customer-cancel):hover:not(:disabled) {
+  background: var(--customer-dialog-action-color);
 }
 
 .sales-document-customer-actions > button:disabled {

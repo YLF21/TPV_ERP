@@ -260,7 +260,7 @@ describe("FiscalComplianceView", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Exportar" }));
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toBeTruthy();
-    fireEvent.click(within(dialog).getAllByRole("button", { name: "Cerrar" })[0]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(api.createFiscalExportJob).not.toHaveBeenCalled();
   });

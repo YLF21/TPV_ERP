@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "@phosphor-icons/react";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { AppKind, LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -114,7 +116,7 @@ export function StockBulkFamilyDialog({
             <h2 id="stock-bulk-family-title">{t(titleKey)}</h2>
             <p>{t("stock.bulkEdit.families.selected").replace("{count}", String(selectionCount))}</p>
           </div>
-          <button type="button" aria-label={t("common.close")} onClick={onClose}><X size={18} weight="bold" aria-hidden="true" /></button>
+          <WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose} ><X size={18} weight="bold" aria-hidden="true" /></WindowCloseButton>
         </header>
         <div className="stock-bulk-family-filters erp-filter-search-controls" style={app !== "pda" ? undefined : { display: "contents" }}>
           <label className="bulk-editor-search report-search">
@@ -177,10 +179,10 @@ export function StockBulkFamilyDialog({
             );
           })}
         </div>
-        <footer className="filter-actions">
+        <footer className="filter-actions erp-dialog-actions-row">
+          <DialogDismissButton type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>{t("common.cancel")}</DialogDismissButton>
           <button type="button" onClick={() => { setFamilyIds([]); setSubfamilyIds([]); }}>{t("stock.bulkEdit.filter.clear")}</button>
-          <button type="button" className="secondary" onClick={onClose}>{t("common.cancel")}</button>
-          <button type="button" disabled={selectionCount === 0} onClick={() => onApply(familyIds, subfamilyIds)}>{t(applyLabelKey)}</button>
+          <button type="button" className="erp-dialog-action-confirm" disabled={selectionCount === 0} onClick={() => onApply(familyIds, subfamilyIds)}>{t(applyLabelKey)}</button>
         </footer>
       </section>
     </div>

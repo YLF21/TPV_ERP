@@ -1,0 +1,100 @@
+/* Reserve space for the close control without changing each window's header content. */
+:where(header, .filter-header, .bulk-apply-header):has(> .erp-window-close),
+.erp-window-header:has(.erp-window-close) {
+  position: relative;
+}
+
+:is(header, .filter-header, .bulk-apply-header):has(> button.erp-window-close.erp-window-close),
+.erp-window-header:has(button.erp-window-close.erp-window-close) {
+  box-sizing: border-box;
+  min-height: 51px !important;
+  padding-right: 54px !important;
+}
+
+/* Outrank legacy window-specific !important button rules in both desktop apps. */
+button.erp-window-close.erp-window-close.erp-window-close.erp-window-close {
+  position: absolute !important;
+  inset: 3px 3px auto auto !important;
+  display: grid !important;
+  place-items: center !important;
+  box-sizing: border-box;
+  width: 44px !important;
+  height: 44px !important;
+  min-width: 44px !important;
+  min-height: 44px !important;
+  max-width: 44px !important;
+  max-height: 44px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 4px !important;
+  background: transparent !important;
+  color: #fff !important;
+  box-shadow: none !important;
+  transform: none !important;
+  cursor: pointer;
+  z-index: 2;
+}
+
+button.erp-window-close.erp-window-close.erp-window-close.erp-window-close > svg {
+  width: 22px !important;
+  height: 22px !important;
+}
+
+button.erp-window-close.erp-window-close.erp-window-close.erp-window-close::before,
+button.erp-window-close.erp-window-close.erp-window-close.erp-window-close::after {
+  content: none !important;
+}
+
+button.erp-window-close.erp-window-close.erp-window-close.erp-window-close:hover:not(:disabled),
+button.erp-window-close.erp-window-close.erp-window-close.erp-window-close:focus-visible {
+  background: rgba(255, 255, 255, .12) !important;
+}
+
+button.erp-window-close.erp-window-close.erp-window-close.erp-window-close:focus-visible {
+  outline: 2px solid currentColor !important;
+  outline-offset: 1px !important;
+}
+
+button.erp-window-close.erp-window-close.erp-window-close.erp-window-close-on-light {
+  color: #0b2e59 !important;
+}
+
+button.erp-window-close.erp-window-close.erp-window-close.erp-window-close-on-light:hover:not(:disabled),
+button.erp-window-close.erp-window-close.erp-window-close.erp-window-close-on-light:focus-visible {
+  background: rgba(11, 46, 89, .12) !important;
+}
+
+button.erp-window-close:disabled {
+  cursor: default;
+}
+
+/* The manual card window pads its content, so extend just the new header to its edges. */
+.manual-card-payment-dialog [role="dialog"] > header:has(> .erp-window-close) {
+  margin: -18px -18px 0;
+  padding: 18px;
+}
+
+.cash-payment-dialog > header:has(> .erp-window-close) {
+  margin: -22px -22px 0;
+  padding: 22px;
+}
+
+.shared-excel-confirm-dialog > h2.erp-window-header {
+  margin: -18px -18px 10px;
+  padding: 18px;
+}
+
+.bulk-edit-screen .shared-excel-confirm-dialog > h2.erp-window-header {
+  margin: 0;
+  padding: 14px 18px;
+}
+
+.bulk-edit-screen .shared-excel-confirm-dialog button.erp-window-close.erp-window-close.erp-window-close {
+  color: #fff !important;
+}
+
+.bulk-edit-screen .shared-excel-confirm-dialog button.erp-window-close.erp-window-close.erp-window-close:hover:not(:disabled),
+.bulk-edit-screen .shared-excel-confirm-dialog button.erp-window-close.erp-window-close.erp-window-close:focus-visible {
+  background: rgba(255, 255, 255, .12) !important;
+}

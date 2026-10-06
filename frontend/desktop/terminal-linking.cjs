@@ -23,6 +23,25 @@ function strictString(value, name, max = 100) {
   }
   return value.trim();
 }
+function optionalCompanyName(server) {
+  if (typeof server?.companyName !== 'string') return null;
+  const name = server.companyName.replace(/\s+/g, ' ').trim();
+  return name && name.length <= 255 && !/[\x00-\x1f\x7f]/.test(name) ? name : null;
+}
+function connectionUnavailable(failed) {
+  if (typeof failed?.httpStatus === 'number') return failed.httpStatus >= 500;
+  return failed?.transportFailure === true;
+}
+async function transport(work) {
+  try { return await work(); }
+  catch (failed) {
+    if (!(failed instanceof TypeError || failed?.name === 'AbortError' || failed?.name === 'TimeoutError')) throw failed;
+    const unavailable = error('BACKEND_CONNECTION_FAILED', failed?.message || 'El backend no responde');
+    unavailable.transportFailure = true;
+    unavailable.cause = failed;
+    throw unavailable;
+  }
+}
 function digestKey(publicKey) { return crypto.createHash('sha256').update(Buffer.from(publicKey, 'base64')).digest('hex'); }
 function verifyBootstrap(server, challenge) {
   if (!server || server.protocolVersion !== 1 || server.challenge !== challenge) throw error('INVALID_BOOTSTRAP', 'Respuesta de instalación no válida');
@@ -74,15 +93,15 @@ async function readTextLimited(response, maxBytes = 65536) {
 function createTerminalLinking({ request = fetch, storage, config, discover = async () => [], deviceName = os.hostname(), restart = () => {}, getRuntimeBackendUrl = () => null, getRuntimeBindingId = () => null, getLegacyBackendScope = getRuntimeBackendUrl }) {
   if (!storage || !config) throw new Error('Storage y config obligatorios');
   async function api(url, method, route, body, token) {
-    const response = await request(`${url}/api/v1${route}`, {
+    const response = await transport(() => request(`${url}/api/v1${route}`, {
       method, redirect: 'manual', signal: AbortSignal.timeout(8000),
       headers: { accept: 'application/json', ...(body ? { 'content-type': 'application/json' } : {}), ...(token ? { authorization: `Bearer ${token}` } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {})
-    });
+    }));
     if (!response.ok) {
       let code = `HTTP_${response.status}`;
       try {
-        const problem = JSON.parse(await readTextLimited(response, 8192));
+        const problem = JSON.parse(await transport(() => readTextLimited(response, 8192)));
         if (typeof problem?.code === 'string' && /^[A-Z][A-Z0-9_]{2,80}$/.test(problem.code)) code = problem.code;
       } catch {}
       const failed = error(code, `El backend rechazó la solicitud (${code})`);
@@ -90,7 +109,7 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
       throw failed;
     }
     if (!(response.headers.get('content-type') || '').toLowerCase().includes('application/json')) throw error('INVALID_RESPONSE', 'Respuesta del backend no válida');
-    const text = await readTextLimited(response);
+    const text = await transport(() => readTextLimited(response));
     try { return JSON.parse(text); } catch { throw error('INVALID_RESPONSE', 'JSON del backend no válido'); }
   }
   function known() { return storage.read()?.pending || storage.read()?.identity || null; }
@@ -99,7 +118,24 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
     if (!identity?.installationId) return null;
     return { installationId: identity.installationId, bindingId: identity.bindingId,
       terminalId: identity.terminalId, terminalCode: identity.terminalCode,
-      ...(identity.terminalName ? { terminalName: identity.terminalName } : {}), storeName: identity.storeName };
+      ...(identity.terminalName ? { terminalName: identity.terminalName } : {}), storeName: identity.storeName,
+      ...(identity.companyName ? { companyName: identity.companyName } : {}) };
+  }
+  function displayContext(state) {
+    const identity = state?.identity;
+    if (!identity?.installationId || typeof identity.storeName !== 'string' || typeof identity.terminalCode !== 'string') return null;
+    return { storeName: identity.storeName, terminalCode: identity.terminalCode,
+      ...(typeof identity.companyName === 'string' && identity.companyName ? { companyName: identity.companyName } : {}),
+      ...(typeof identity.terminalName === 'string' && identity.terminalName ? { terminalName: identity.terminalName } : {}) };
+  }
+  function sameLinkedIdentity(expected, latest) {
+    return latest?.identity?.installationId === expected.identity.installationId
+      && latest.identity.bindingId === expected.identity.bindingId
+      && latest.identity.terminalId === expected.identity.terminalId
+      && latest.identity.terminalCode === expected.identity.terminalCode
+      && latest.identity.terminalCredential === expected.identity.terminalCredential
+      && latest.link?.requestId === expected.link.requestId
+      && latest.link.status === expected.link.status;
   }
   function restartRequired() {
     const configured = config.read().configuration?.backendUrl;
@@ -122,24 +158,45 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
     let state = storage.read();
     const current = config.read();
     let verifiedIdentity = null;
+    let unavailable = false;
     if (state?.identity?.installationId && state?.link?.requestId
         && current.configuration?.backendUrl) {
       try {
-        await probeInternal(current.configuration.backendUrl, true);
+        const checked = await probeInternal(current.configuration.backendUrl, true);
         const refreshed = validateLink(await api(current.configuration.backendUrl, 'POST', '/terminal-linking/requests/status',
           { requestId: state.link.requestId, credential: state.identity.terminalCredential }),
           { requestId: state.link.requestId, installationId: state.identity.installationId, code: state.identity.terminalCode });
+        const checkedState = state;
         state = { ...state, link: refreshed };
-        if (refreshed.status === 'ACTIVE' && !restartRequired()) verifiedIdentity = state.identity;
-      } catch {
+        if (refreshed.status === 'ACTIVE') {
+          const name = optionalCompanyName(checked.server);
+          const latest = await mutate(() => {
+            const saved = storage.read();
+            if (!sameLinkedIdentity(checkedState, saved)) return null;
+            if (!name || saved.identity.companyName === name) return saved;
+            const updated = { ...saved, identity: { ...saved.identity, companyName: name } };
+            storage.write(updated);
+            return updated;
+          });
+          if (latest) {
+            state = { ...latest, link: refreshed };
+            if (!restartRequired()) verifiedIdentity = state.identity;
+          } else {
+            state = { ...storage.read(), link: null };
+          }
+        }
+      } catch (failed) {
         // A cached ACTIVE state is not evidence of current approval while offline.
         state = { ...state, link: null };
+        unavailable = connectionUnavailable(failed);
       }
     }
+    const needsRestart = restartRequired();
     return { configuration: current.configuration && { ...current.configuration,
       ...(known()?.installationId ? { installationId: known().installationId } : {}) }, configurationError: current.error,
       link: state?.link || null, identity: verifiedIdentity, linkedIdentity: linkedIdentity(state),
-      deviceName, restartRequired: restartRequired(),
+      deviceName, restartRequired: needsRestart, connectionUnavailable: unavailable,
+      ...(unavailable && !needsRestart && displayContext(state) ? { displayContext: displayContext(state) } : {}),
       ...(state?.identity && !state.identity.installationId ? { legacyIdentity: {
         terminalId: state.identity.terminalId, terminalCode: state.identity.terminalCode,
         storeName: state.identity.storeName
@@ -154,6 +211,7 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
         terminalId: strictString(link.terminalId, 'Terminal', 100), terminalCredential: pending.credential,
         terminalCode: strictString(link.terminalCode, 'Código', 9), terminalName: link.terminalName || pending.name,
         storeId: strictString(link.storeId, 'Tienda', 100), storeName: strictString(link.storeName, 'Tienda', 100),
+        ...(pending.companyName ? { companyName: pending.companyName } : {}),
         bindingId: strictString(link.bindingId, 'Vínculo', 100),
         installationId: pending.installationId, keyFingerprint: pending.keyFingerprint, deviceId: pending.deviceId,
         ...(pending.legacyBackendScope ? { legacyBackendScope: pending.legacyBackendScope,
@@ -176,6 +234,7 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
       throw error('LINK_PENDING', 'Ya existe una solicitud pendiente');
     }
     const checked = await probeInternal(backendUrl);
+    const companyName = optionalCompanyName(checked.server);
     if (checked.localServer && terminalCode !== '001') throw error('SERVER_SLOT_PROTECTED', 'El PC backend utiliza el código 001');
     if (current.identity?.bindingId && checked.sameInstallation) {
       if (!current.link?.requestId) throw error('ALREADY_LINKED', 'El equipo ya está vinculado');
@@ -219,12 +278,13 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
       const login = await api(checked.backendUrl, 'POST', '/auth/installation-login', { userName, password });
       adminToken = strictString(login.accessToken, 'Token', 4096);
     }
-    const pending = retry || {
+    const pending = retry ? { ...retry, ...(companyName ? { companyName } : {}) } : {
       requestId: crypto.randomUUID(), deviceId: current.deviceId || crypto.randomUUID(),
       credential: (terminalCode === '001' || legacyPos) && current.identity
         ? current.identity.terminalCredential : crypto.randomBytes(32).toString('base64url'), code: terminalCode, name: terminalName,
       deviceName: strictString(deviceName, 'Equipo', 100), backendUrl: checked.backendUrl,
       installationId: checked.server.installationId, keyFingerprint: checked.server.keyFingerprint,
+      ...(companyName ? { companyName } : {}),
       mode: terminalCode === '001' ? (current.identity ? 'SERVER_EXISTING' : 'SERVER_ADMIN') : legacyPos ? 'LEGACY_POS' : 'WORKSTATION',
       ...((legacyServer || legacyPos) ? { legacyBackendScope: previousLegacyScope,
         legacyTerminalCode: current.identity.terminalCode } : {})
@@ -285,7 +345,8 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
       }
       throw error('NO_PENDING_LINK', 'No hay solicitud pendiente');
     }
-    await probeInternal(pending.backendUrl, true);
+    const checked = await probeInternal(pending.backendUrl, true);
+    const companyName = optionalCompanyName(checked.server);
     let link;
     try {
       link = validateLink(await api(pending.backendUrl, 'POST', route,
@@ -325,7 +386,7 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
           { requestId: pending.requestId, credential: pending.credential }), pending);
       }
     }
-    return persistLink(current, pending, link);
+    return persistLink(current, companyName ? { ...pending, companyName } : pending, link);
   }
   async function saveAddress({ backendUrl } = {}) {
     const checked = await probeInternal(backendUrl, true);

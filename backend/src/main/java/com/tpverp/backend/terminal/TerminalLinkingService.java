@@ -69,6 +69,7 @@ public class TerminalLinkingService {
         var signed = identity.sign(("TPV-TERMINAL-LINKING-V1\n" + challenge + "\n" + installation.getId())
                 .getBytes(StandardCharsets.UTF_8));
         return new Bootstrap(1, installation.getId(), installation.getReferencia(), store.getId(), store.getNombreEfectivo(),
+                organization.currentCompany().getRazonSocial(),
                 Base64.getEncoder().encodeToString(key), challenge, Base64.getEncoder().encodeToString(signed),
                 capacity(store), slotViews(store, false));
     }
@@ -426,6 +427,7 @@ public class TerminalLinkingService {
     public record Slot(String code, String status, String name, UUID terminalId, UUID bindingId, Instant expiresAt,
             boolean outOfQuota, String deviceName, Instant lastSeenAt) { }
     public record Bootstrap(int protocolVersion, UUID installationId, String installationReference, UUID storeId, String storeName,
+            String companyName,
             String publicKey, String challenge, String signature, int maxWindows, List<Slot> slots) { }
     public record ManagementView(int maxWindows, List<Slot> slots, List<LegacyTerminal> legacyTerminals) { }
     public record LegacyTerminal(UUID id, String name, TerminalType type, boolean approved, boolean active) { }

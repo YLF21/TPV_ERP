@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -401,7 +403,7 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], init
             <h2 id="ticket-return-title">{t(mode === "INVOICE_CANCELLATION" ? "invoiceCancellation.title" : "ticketReturn.title")}</h2>
             <p>{t(mode === "INVOICE_CANCELLATION" ? "invoiceCancellation.description" : "ticketReturn.cartDescription")}</p>
           </div>
-          <button type="button" aria-label={t("common.close")} disabled={busy} onClick={onClose}>×</button>
+          <WindowCloseButton type="button" aria-label={t("common.close")} disabled={busy} onClick={onClose} >×</WindowCloseButton>
         </header>
 
         <div className="ticket-return-body">
@@ -412,7 +414,7 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], init
                 if (event.key === "Enter") { event.preventDefault(); void search(); }
               }} />
             </label>
-            <button type="button" className="primary" disabled={Boolean(lockedSourceCode) || !identifier.trim() || busy} onClick={() => void search()}>{t("ticketReturn.search")}</button>
+            <button type="button" className="primary erp-dialog-action-confirm" disabled={Boolean(lockedSourceCode) || !identifier.trim() || busy} onClick={() => void search()}>{t("ticketReturn.search")}</button>
           </div>
 
           {preview && <>
@@ -433,7 +435,7 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], init
                   }}
                 />
               </label>
-              <button type="button" className="primary" disabled={!productIdentifier.trim() || busy} onClick={selectProduct}>{t("ticketReturn.selectProduct")}</button>
+              <button type="button" className="primary erp-dialog-action-confirm" disabled={!productIdentifier.trim() || busy} onClick={selectProduct}>{t("ticketReturn.selectProduct")}</button>
             </div>}
             <div className="ticket-return-summary">
               <span><small>{preview.sourceType === "GIFT_RECEIPT"
@@ -461,7 +463,7 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], init
               </article>)}
             </div>
             {mode === "RETURN" && <div className="ticket-return-selection-tools">
-              <button type="button" className="primary" disabled={preview.lines.every((line) => availableQuantity(line) <= 0) || busy} onClick={selectAll}>{t("ticketReturn.selectAll")}</button>
+              <button type="button" className="primary erp-dialog-action-confirm" disabled={preview.lines.every((line) => availableQuantity(line) <= 0) || busy} onClick={selectAll}>{t("ticketReturn.selectAll")}</button>
               <button type="button" disabled={selections.length === 0 || busy} onClick={() => setSelections([])}>{t("ticketReturn.clearSelection")}</button>
             </div>}
             <div className="ticket-return-lines">
@@ -546,9 +548,9 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], init
             {error && <p className="sale-action-error" role="alert">{error}</p>}
           </div>}
         </div>
-        <footer className="sale-action-buttons ticket-return-footer">
-          <button type="button" disabled={busy} onClick={onClose}>{t("common.cancel")}</button>
-          {preview && <button type="button" className="primary" disabled={!validSelection() || !valuation || valuationBusy || busy} onClick={addSelectedToCart}>{t(mode === "INVOICE_CANCELLATION" ? "invoiceCancellation.continue" : "ticketReturn.addToCart")}</button>}
+        <footer className="sale-action-buttons ticket-return-footer erp-dialog-actions-row">
+          <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" disabled={busy} onClick={onClose}>{t("common.cancel")}</DialogDismissButton>
+          {preview && <button type="button" className="primary erp-dialog-action-confirm" disabled={!validSelection() || !valuation || valuationBusy || busy} onClick={addSelectedToCart}>{t(mode === "INVOICE_CANCELLATION" ? "invoiceCancellation.continue" : "ticketReturn.addToCart")}</button>}
         </footer>
       </section>
     </div>

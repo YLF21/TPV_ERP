@@ -54,9 +54,9 @@
 .sale-touch-bottom-actions [data-touch-slot="remove"] { grid-area: 2 / 4; }
 .sale-touch-bottom-actions [data-touch-slot="checkout"] { grid-area: 1 / 5 / 3 / 6; }
 .sale-touch-bottom-actions .sale-touch-button { justify-content: center; padding: 8px; }
-.sale-touch-bottom-actions .sale-touch-button-checkout { background: #266fae; color: #fff; border-color: #1d588c; font-size: 1.5rem; }
+.sale-touch-bottom-actions .sale-touch-button-checkout { background: #0065fe; color: #fff; border-color: #0065fe; font-size: 1.5rem; }
 .sale-touch-button-checkout svg { width: 36px; height: 36px; }
-.sale-touch-bottom-actions .sale-touch-button-checkout:hover:not(:disabled) { background: #155d99; }
+.sale-touch-bottom-actions .sale-touch-button-checkout:is(:hover, :active):not(:disabled) { background: #0065fe; }
 .sale-touch-bottom-actions .sale-touch-button-checkout:disabled { background: #edf1f5; color: #67788e; border-color: #9db1ca; }
 
 .sale-touch-more-overlay {

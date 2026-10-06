@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "@phosphor-icons/react";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -125,7 +127,7 @@ export function StockBulkFilterDialog({
             <h2 id="stock-bulk-filter-title">{t("stock.bulkEdit.filter.title")}</h2>
             <p>{t("stock.bulkEdit.filter.activeCount").replace("{count}", String(activeCount))}</p>
           </div>
-          <button type="button" aria-label={t("common.close")} onClick={onClose}><X size={18} weight="bold" aria-hidden="true" /></button>
+          <WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose} ><X size={18} weight="bold" aria-hidden="true" /></WindowCloseButton>
         </header>
 
         <div className="stock-bulk-filter-grid">
@@ -247,12 +249,12 @@ export function StockBulkFilterDialog({
         </div>
 
         {error && <p className="stock-bulk-dialog-error" role="alert">{t(error)}</p>}
-        <footer className="filter-actions">
+        <footer className="filter-actions erp-dialog-actions-row">
+          <DialogDismissButton type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>{t("common.cancel")}</DialogDismissButton>
           <button type="button" onClick={() => setDraft({ ...emptyStockBulkFilterCriteria })}>
             {t("stock.bulkEdit.filter.clear")}
           </button>
-          <button type="button" className="secondary" onClick={onClose}>{t("common.cancel")}</button>
-          <button type="button" disabled={Boolean(error)} onClick={() => onApply({ ...draft })}>
+          <button type="button" className="erp-dialog-action-confirm" disabled={Boolean(error)} onClick={() => onApply({ ...draft })}>
             {t("stock.filter.apply")}
           </button>
         </footer>

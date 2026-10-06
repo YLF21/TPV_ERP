@@ -1,0 +1,17 @@
+.cash-payment-entry-dialog .cash-keyboard-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin: 6px 12px 0;
+}
+
+.cash-payment-entry-dialog .cash-keyboard-controls .cash-input-mode-toggle {
+  margin: 0;
+}
+
+.cash-payment-entry-dialog .cash-keypad .cash-keypad-enter {
+  background: #0065fe;
+  border-color: #0065fe;
+  color: #fff;
+}

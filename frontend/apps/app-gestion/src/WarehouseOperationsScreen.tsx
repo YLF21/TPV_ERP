@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
+import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import { AdjustmentProductSearch } from "./AdjustmentProductSearch";
 import { StockAdjustmentHistoryTable } from "./StockAdjustmentHistoryTable";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -123,6 +125,7 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
     const deactivateFocusTrap = dialog
       ? activateModalFocusTrap(dialog as unknown as ModalFocusRoot, document)
       : undefined;
+    dialog?.querySelector<HTMLButtonElement>("footer button:not([disabled])")?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -546,7 +549,7 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
           {adjustmentFormOpen && <div className="gestion-modal-backdrop"><section className="gestion-security-dialog gestion-warehouse-adjustment-dialog"
             role="dialog" aria-modal="true" aria-labelledby="warehouse-adjustment-title">
             <header><h2 id="warehouse-adjustment-title">{t("warehouse.adjustment.perform")}</h2>
-              <button type="button" aria-label={t("common.close")} onClick={() => setAdjustmentFormOpen(false)}>×</button></header>
+              <WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setAdjustmentFormOpen(false)} >×</WindowCloseButton></header>
             <form className="gestion-warehouse-operation-form" onSubmit={submitAdjustment}>
               <AdjustmentProductSearch token={token} value={productQuery} selected={!!productId} t={t}
                 onChange={(value) => { setProductQuery(value); setProductId(""); }}
@@ -556,8 +559,8 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
               <label><span>{t("warehouse.operations.quantity")}</span><input type="number" min="0.001" step="0.001" value={quantity} onChange={(event) => setQuantity(event.target.value)} required /></label>
               <label className="wide"><span>{t("warehouse.adjustment.reason")}</span><textarea value={reason} onChange={(event) => setReason(event.target.value)} maxLength={250} required /></label>
               <div className="gestion-warehouse-balance"><span>{t("warehouse.operations.currentStock")}</span><strong>{selectedBalance.toLocaleString(undefined, { maximumFractionDigits: 3 })}</strong></div>
-              <footer><button type="button" disabled={saving} onClick={() => setAdjustmentFormOpen(false)}>{t("common.cancel")}</button>
-                <button type="submit" disabled={saving || !productId}>{saving ? t("warehouse.operations.saving") : t("warehouse.adjustment.submit")}</button></footer>
+              <footer className="erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={saving} onClick={() => setAdjustmentFormOpen(false)}>{t("common.cancel")}</DialogDismissButton>
+                <button className="erp-dialog-action-confirm" type="submit" disabled={saving || !productId}>{saving ? t("warehouse.operations.saving") : t("warehouse.adjustment.submit")}</button></footer>
             </form></section></div>}
         </div>
       )}
@@ -643,6 +646,7 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
               <span>{t("warehouse.count.confirmEyebrow")}</span>
               <h3 id="stock-count-confirm-title">{t("warehouse.count.confirmTitle")}</h3>
               <p>{t("warehouse.count.confirmDescription")}</p>
+              <WindowCloseButton type="button" onLight aria-label={t("common.close")} disabled={saving} onClick={() => setConfirmingCount(false)} />
             </header>
             <div className="gestion-stock-count-confirm-metrics">
               <div><span>{t("warehouse.count.productsCounted")}</span><strong>{countedProducts}</strong></div>
@@ -650,9 +654,9 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
               <div><span>{t("warehouse.count.decreases")}</span><strong className="negative">-{countDifferenceSummary.negative.toLocaleString()}</strong></div>
               <div><span>{t("warehouse.count.netDifference")}</span><strong>{countDifferenceSummary.net > 0 ? "+" : ""}{countDifferenceSummary.net.toLocaleString()}</strong></div>
             </div>
-            <footer>
-              <button type="button" disabled={saving} onClick={() => setConfirmingCount(false)}>{t("warehouse.count.keepEditing")}</button>
-              <button type="button" className="primary" disabled={saving} onClick={() => { setConfirmingCount(false); void changeCountStatus("confirm"); }}>{t("warehouse.count.applyDifferences")}</button>
+            <footer className="erp-dialog-actions-row">
+              <button className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={saving} onClick={() => setConfirmingCount(false)}>{t("warehouse.count.keepEditing")}</button>
+              <button type="button" className="primary erp-dialog-action-confirm" disabled={saving} onClick={() => { setConfirmingCount(false); void changeCountStatus("confirm"); }}>{t("warehouse.count.applyDifferences")}</button>
             </footer>
           </section>
         </div>

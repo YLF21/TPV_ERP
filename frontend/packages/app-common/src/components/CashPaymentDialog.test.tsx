@@ -27,9 +27,26 @@ describe("CashPaymentDialog", () => {
     expect(screen.getByRole("button", { name: "Tecla 7" })).toBeVisible();
     fireEvent.focus(screen.getByRole("textbox", { name: "Dinero recibido" }));
     expect(screen.queryByRole("group", { name: "Teclado numérico" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Usar teclado físico" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar teclado" }));
     expect(screen.queryByRole("button", { name: "Tecla 7" })).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Teclado numérico" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mostrar teclado táctil" })).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar teclado táctil" }));
+    expect(screen.getByRole("button", { name: "Tecla 7" })).toBeVisible();
+  });
+  it("clears the received field from the open keyboard header and confirms through the keypad Enter", () => {
+    const onConfirm = vi.fn();
+    render(<CashPaymentDialog {...baseProps} totalCents={1210} initialMode="touch" onConfirm={onConfirm} />);
+    const input = screen.getByRole("textbox", { name: "Dinero recibido" });
+    fireEvent.change(input, { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar todo" }));
+    expect(input).toHaveValue("");
+    expect(onConfirm).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: "12,10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Intro" }));
+    expect(onConfirm).toHaveBeenCalledWith(1210);
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar teclado" }));
+    expect(screen.queryByRole("button", { name: "Limpiar todo" })).not.toBeInTheDocument();
   });
   it("labels and scopes the cash-entry modal", () => {
     const html = renderToStaticMarkup(<CashPaymentDialog {...baseProps} initialMode="touch" />);
@@ -90,7 +107,7 @@ describe("CashPaymentDialog", () => {
     const html = renderToStaticMarkup(<CashPaymentDialog {...baseProps} initialMode="touch" />);
     expect(html).toContain("Exacto");
     expect(html).toContain('aria-label="Tecla 1"');
-    expect(html).toContain("Usar teclado físico");
+    expect(html).toContain("Cerrar teclado");
   });
 
   it("hides touch controls in keyboard mode and offers the touch keyboard", () => {

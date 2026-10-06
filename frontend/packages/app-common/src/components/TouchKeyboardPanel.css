@@ -1,0 +1,27 @@
+.touch-keyboard-panel {
+  min-width: 0;
+  background: transparent;
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+.touch-keyboard-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-height: 48px;
+  padding: 6px 10px;
+  color: #12365e;
+}
+
+.touch-keyboard-panel-heading strong {
+  margin-inline-end: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.touch-keyboard-panel > [hidden] { display: none; }

@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
+import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import type { LocaleCode } from "@tpverp/app-common";
 import {
@@ -398,11 +400,11 @@ function CertificateImportDialog({ active, token, t, onClose, onCompleted }: {
             </ul>
           </div>
         )}
-        <footer>
-          <button type="button" disabled={submitting} onClick={onClose}>{t("verifactu.resolution.cancel")}</button>
+        <footer className="erp-dialog-actions-row">
+          <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={submitting} onClick={onClose}>{t("verifactu.resolution.cancel")}</DialogDismissButton>
           <button
             type="submit"
-            className="primary"
+            className="primary erp-dialog-action-confirm"
             disabled={submitting || !file || !password || Boolean(active && confirmation !== REPLACE_CONFIRMATION)}
           >
             {submitting ? t("verifactu.resolution.processing") : t(active ? "verifactu.certificate.confirmReplace" : "verifactu.certificate.confirmImport")}
@@ -461,11 +463,11 @@ function CertificateDeleteDialog({ token, t, onClose, onCompleted }: {
           <small>{t("verifactu.certificate.typeToConfirm").replace("{text}", DELETE_CONFIRMATION)}</small>
         </label>
         {error && <p className="gestion-inline-error" role="alert">{t("verifactu.certificate.deleteError")}</p>}
-        <footer>
-          <button type="button" disabled={submitting} onClick={onClose}>{t("verifactu.resolution.cancel")}</button>
+        <footer className="erp-dialog-actions-row">
+          <button className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={submitting} onClick={onClose}>{t("verifactu.resolution.cancel")}</button>
           <button
             type="submit"
-            className="danger"
+            className="danger erp-dialog-action-cancel"
             disabled={submitting || confirmation !== DELETE_CONFIRMATION}
           >
             {submitting ? t("verifactu.resolution.processing") : t("verifactu.certificate.confirmDelete")}
@@ -500,7 +502,7 @@ function CertificateModal({ title, closeLabel, busy, onClose, children }: {
       <section className="gestion-verifactu-certificate-dialog" role="dialog" aria-modal="true" aria-label={title}>
         <header>
           <h2>{title}</h2>
-          <button type="button" aria-label={closeLabel} disabled={busy} onClick={onClose}>×</button>
+          <WindowCloseButton type="button" aria-label={closeLabel} disabled={busy} onClick={onClose} >×</WindowCloseButton>
         </header>
         {children}
       </section>

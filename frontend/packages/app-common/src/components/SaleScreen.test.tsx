@@ -2559,7 +2559,7 @@ describe("SaleScreen", () => {
     expect(within(dialog).getByText(expected.quantityLabel)).toBeInTheDocument();
     expect(within(dialog).getByRole("textbox", { name: expected.quantityInput })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: expected.close })).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: expected.cancel })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: expected.cancel })).not.toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: expected.save })).toBeInTheDocument();
     const quantityInput = within(dialog).getByRole("textbox", { name: expected.quantityInput });
     await user.clear(quantityInput);
@@ -2567,13 +2567,13 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(quantityInput).toHaveValue("0"));
     fireEvent.submit(dialog.querySelector("form")!);
     expect(await within(dialog).findByText(expected.quantityInvalid)).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: expected.cancel }));
+    fireEvent.click(within(dialog).getByRole("button", { name: expected.close }));
 
     fireEvent.click(screen.getByRole("button", { name: t("sale.shortcut.lineDiscount") }));
     dialog = screen.getByRole("dialog", { name: expected.discountTitle });
     expect(within(dialog).getByText(expected.discountLabel)).toBeInTheDocument();
     expect(within(dialog).getByRole("textbox", { name: expected.discountInput })).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: expected.cancel })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: expected.cancel })).not.toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: expected.save })).toBeInTheDocument();
     const discountInput = within(dialog).getByRole("textbox", { name: expected.discountInput });
     await user.clear(discountInput);
@@ -2581,7 +2581,7 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(discountInput).toHaveValue("101"));
     fireEvent.submit(dialog.querySelector("form")!);
     expect(await within(dialog).findByText(expected.discountInvalid)).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: expected.cancel }));
+    fireEvent.click(within(dialog).getByRole("button", { name: expected.close }));
 
     fireEvent.click(screen.getByRole("button", { name: `${t("sale.customer.card.title")}: ${t("sale.customer.none")}. ${t("sale.customer.card.open")}` }));
     dialog = screen.getByRole("dialog", { name: expected.customerTitle });
@@ -2719,7 +2719,7 @@ describe("SaleScreen", () => {
       .not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cerrar caja" }))
       .toBeEnabled();
-    expect(screen.getByRole("button", { name: "Cancelar" }))
+    expect(screen.getByRole("button", { name: "Cerrar ventana" }))
       .toBeEnabled();
     expect(screen.getByLabelText("Fondo que queda en caja"))
       .toBeEnabled();
@@ -3498,7 +3498,7 @@ describe("SaleScreen", () => {
     const cancellationDialog = await screen.findByRole("dialog", { name: "Anular ticket" });
     expect(loadSalesOperationSecurity).toHaveBeenCalledTimes(2);
     expect(cancellationDialog.parentElement).toHaveClass("sale-action-overlay");
-    const cancelCancellation = within(cancellationDialog).getByRole("button", { name: "Cancelar" });
+    const cancelCancellation = within(cancellationDialog).getByRole("button", { name: "Cerrar" });
     await waitFor(() => expect(cancelCancellation).toBeEnabled());
     fireEvent.click(cancelCancellation);
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
@@ -3506,9 +3506,10 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(window, { key: "F12" });
     const invoiceDialog = await screen.findByRole("dialog", { name: "Convertir ticket a factura" });
     expect(invoiceDialog.parentElement).toHaveClass("sale-action-overlay");
-    const cancelInvoice = within(invoiceDialog).getByRole("button", { name: "Cancelar" });
-    await waitFor(() => expect(cancelInvoice).toBeEnabled());
-    fireEvent.click(cancelInvoice);
+    expect(within(invoiceDialog).queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
+    const closeInvoice = within(invoiceDialog).getByRole("button", { name: "Cerrar" });
+    await waitFor(() => expect(closeInvoice).toBeEnabled());
+    fireEvent.click(closeInvoice);
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 
     expect(onOpenCustomerReceivables).not.toHaveBeenCalled();
@@ -3682,7 +3683,7 @@ describe("SaleScreen", () => {
 
     fireEvent.keyDown(window, { key: "p", ctrlKey: true });
     expect(await screen.findByRole("radio", { name: "Guardar como PDF" })).toBeChecked();
-    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    fireEvent.click(screen.getByRole("dialog").querySelector<HTMLButtonElement>(".erp-window-close")!);
 
     fireEvent.keyDown(window, { key: "F4", ctrlKey: true });
     const clearSale = await screen.findByRole("dialog", {
@@ -4259,7 +4260,7 @@ describe("SaleScreen", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("response lost");
     expect(localStorage.getItem(pendingSaleRecoveryKey(terminalContext.terminalCode))).not.toBeNull();
     const durableDialog = screen.getByRole("dialog", { name: /venta pendiente/i });
-    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    fireEvent.click(within(durableDialog).getByRole("button", { name: "Cerrar" }));
     fireEvent.keyDown(window, { key: "F12" });
     expect(durableDialog).toBeVisible();
     expect(durableDialog).not.toHaveAttribute("aria-hidden", "true");
@@ -5570,7 +5571,7 @@ describe("SaleScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cantidad" }));
     const dialog = screen.getByRole("dialog", { name: "Cambiar cantidad" });
     expect(within(dialog).getByRole("group", { name: "Teclado numérico" })).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Borrar todo" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Limpiar todo" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "3" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
 
@@ -5752,13 +5753,13 @@ describe("SaleScreen", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Cantidad" }));
     dialog = screen.getByRole("dialog", { name: "Cambiar cantidad" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Borrar todo" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Limpiar todo" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "2" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "±" }));
     fireEvent.submit(dialog.querySelector("form")!);
     expect(within(dialog).getByText(createTranslator("es")("sale.quantity.invalid"))).toBeInTheDocument();
     expect(checkoutProps.current?.sale?.lines[0].quantity).toBe(1);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Borrar todo" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Limpiar todo" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "1" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "±" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
@@ -5788,7 +5789,7 @@ describe("SaleScreen", () => {
     const dialog = screen.getByRole("dialog", { name: "Precio" });
     expect(within(dialog).getByRole("button", { name: "Cambiar precio" })).toBeEnabled();
     expect(within(dialog).getByRole("button", { name: "Aplicar descuento" })).toBeEnabled();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Borrar todo" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Limpiar todo" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "8" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar descuento" }));
     expect(checkoutProps.current?.sale?.lines[0]).toMatchObject({ productId: "coffee", discount: 20 });
@@ -5818,7 +5819,7 @@ describe("SaleScreen", () => {
     submitQuickEntry(search, "CAF-001");
     fireEvent.click(screen.getByRole("button", { name: "Precio" }));
     let dialog = screen.getByRole("dialog", { name: "Precio" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Borrar todo" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Limpiar todo" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "8" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Cambiar precio" }));
     dialog = await screen.findByRole("dialog", { name: "Autorización de la venta" });
@@ -5852,7 +5853,7 @@ describe("SaleScreen", () => {
     let dialog = screen.getByRole("dialog", { name: "Más opciones" });
     fireEvent.click(within(dialog).getByRole("button", { name: createTranslator("es")("sale.touch.documentDiscount") }));
     dialog = screen.getByRole("dialog", { name: createTranslator("es")("sale.touch.documentDiscount") });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Borrar todo" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Limpiar todo" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "1" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "0" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar" }));
@@ -5884,7 +5885,7 @@ describe("SaleScreen", () => {
     const customerKeyboard = await within(createDialog).findByRole("group", { name: "Teclado alfanumérico" });
     fireEvent.click(within(customerKeyboard).getByRole("button", { name: "A" }));
     expect(customerName).toHaveValue("A");
-    fireEvent.click(within(createDialog).getByRole("button", { name: "Cancelar" }));
+    fireEvent.click(within(createDialog).getByRole("button", { name: "Cerrar" }));
     const restoredCustomers = await screen.findByRole("dialog", { name: "Seleccionar cliente" });
     fireEvent.click(within(restoredCustomers.querySelector("header")!).getByRole("button", { name: "Cerrar" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());

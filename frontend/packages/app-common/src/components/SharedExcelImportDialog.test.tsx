@@ -127,10 +127,12 @@ describe("SharedExcelImportDialog", () => {
     const confirm = within(confirmation).getByRole("button", { name: "Cerrar importador" });
     fireEvent.keyDown(cancel, { key: "Escape", repeat: true });
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
-    fireEvent.keyDown(cancel, { key: "Tab", shiftKey: true });
+    const headerClose = within(confirmation).getByRole("button", { name: "Cerrar" });
+    headerClose.focus();
+    fireEvent.keyDown(headerClose, { key: "Tab", shiftKey: true });
     expect(confirm).toHaveFocus();
     fireEvent.keyDown(confirm, { key: "Tab" });
-    expect(cancel).toHaveFocus();
+    expect(headerClose).toHaveFocus();
     fireEvent.keyDown(cancel, { key: "Escape" });
     await waitFor(() => expect(back).toHaveFocus());
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();

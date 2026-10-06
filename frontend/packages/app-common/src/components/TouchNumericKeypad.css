@@ -3,6 +3,11 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-template-rows: repeat(4, minmax(52px, var(--touch-numeric-key-height, 58px)));
   gap: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 3px 10px rgb(7 37 79 / 12%);
+  font-family: Helvetica, Arial, sans-serif;
 }
 
 .touch-numeric-keypad.touch-numeric-keypad-grid > button {
@@ -11,8 +16,8 @@
   min-width: 0;
   min-height: 52px;
   padding: 6px;
-  border: 1px solid #8ea6c1;
-  border-radius: 0;
+  border: 1px solid #d4dbe3;
+  border-radius: 4px;
   background: #fff;
   color: #12365e;
   font: inherit;
@@ -23,9 +28,15 @@
   touch-action: manipulation;
 }
 
-.touch-numeric-keypad.touch-numeric-keypad-grid > button.utility { background: #e5edf5; }
+.touch-numeric-keypad.touch-numeric-keypad-grid > button.utility { background: #fff; }
 .touch-numeric-keypad.touch-numeric-keypad-grid > button > svg { width: 30px; height: 30px; }
+.touch-numeric-keypad.touch-numeric-keypad-grid > button[data-numeric-key="ENTER"] { padding: 3px; }
 .touch-numeric-keypad.touch-numeric-keypad-grid > button:hover:not(:disabled),
 .touch-numeric-keypad.touch-numeric-keypad-grid > button:active:not(:disabled) { background: #d8e8f7; border-color: #1f6dae; }
+.touch-numeric-keypad.touch-numeric-keypad-grid > button[data-numeric-key="ENTER"]:not(:disabled) {
+  background: #0065fe;
+  border-color: #0065fe;
+  color: #fff;
+}
 .touch-numeric-keypad.touch-numeric-keypad-grid > button:focus-visible { outline: 3px solid #176eb4; outline-offset: -3px; }
 .touch-numeric-keypad.touch-numeric-keypad-grid > button:disabled { color: #78899d; background: #f0f3f6; border-color: #b9c7d6; cursor: not-allowed; outline: none; }

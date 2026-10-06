@@ -237,7 +237,7 @@ describe("Stock applied filter chips", () => {
     fireEvent.click(subfamily);
     expect(screen.getByRole("option", { name: "Bebidas / Agua" })).toBeTruthy();
     fireEvent.click(screen.getByRole("option", { name: "Bebidas / Café" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }));
     fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Subfamilia" }));
     expect(container.querySelector('[data-bulk-row-id="row-1"]')).not.toBeNull();
   });

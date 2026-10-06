@@ -2,6 +2,8 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { ArrowFatUp, Backspace } from "@phosphor-icons/react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
+import { TouchKeyboardPanel } from "./TouchKeyboardPanel";
+import { touchKeyboardEnter } from "./touchKeyboardEnter";
 import "./TouchAlphaKeyboard.css";
 
 type TextControl = HTMLInputElement | HTMLTextAreaElement;
@@ -39,6 +41,8 @@ export function TouchAlphaKeyboard({
   inputRef,
   maxLength,
   disabled = false,
+  collapsible = true,
+  hideClearButton = false,
 }: {
   locale: LocaleCode;
   value: string;
@@ -46,6 +50,8 @@ export function TouchAlphaKeyboard({
   inputRef?: { readonly current: TextControl | null };
   maxLength?: number;
   disabled?: boolean;
+  collapsible?: boolean;
+  hideClearButton?: boolean;
 }) {
   const t = createTranslator(locale);
   const [uppercase, setUppercase] = useState(true);
@@ -92,14 +98,14 @@ export function TouchAlphaKeyboard({
     ? ["-_/@#+!?()$%", "&*=:;'\"\\[]{}", "<>|~`^ÁÉÍÓÚÜ"]
     : ["QWERTYUIOP", "ASDFGHJKLÑ", "ZXCVBNM"];
 
-  function characterKeys(row: string) {
+  function characterKeys(row: string, expanded: boolean) {
     return Array.from(row).map((character) => {
       const label = uppercase ? character : character.toLocaleLowerCase(locale);
       return (
         <button
           type="button"
           key={character}
-          disabled={disabled}
+          disabled={disabled || !expanded}
           onPointerDown={(event) => event.preventDefault()}
           onClick={() => press(label)}
         >{label}</button>
@@ -107,51 +113,52 @@ export function TouchAlphaKeyboard({
     });
   }
 
-  const caseButton = (
+  const caseButton = (expanded: boolean) => (
     <button
       key="case"
       type="button"
       className="touch-alpha-keyboard-case"
       aria-label={t("sale.touch.keyboard.case")}
       aria-pressed={uppercase}
-      disabled={disabled}
+      disabled={disabled || !expanded}
       onPointerDown={(event) => event.preventDefault()}
       onClick={() => setUppercase((current) => !current)}
     ><ArrowFatUp size={22} aria-hidden="true" /> Aa</button>
   );
-  const backspaceButton = (
+  const backspaceButton = (expanded: boolean) => (
     <button
       key="backspace"
       type="button"
       className="touch-alpha-keyboard-backspace"
       aria-label={t("sale.touch.keyboard.backspace")}
-      disabled={disabled}
+      disabled={disabled || !expanded}
       onPointerDown={(event) => event.preventDefault()}
       onClick={() => press("BACKSPACE")}
     ><Backspace size={26} aria-hidden="true" /></button>
   );
 
-  return (
+  return <TouchKeyboardPanel locale={locale} title={t("sale.touch.keyboard.title")}
+    disabled={disabled} collapsible={collapsible} hideClearButton={hideClearButton} onClear={() => press("CLEAR")}>{(expanded) => (
     <div className={`touch-alpha-keyboard${extraSymbols ? " touch-alpha-keyboard-extra-symbols" : ""}`} role="group" aria-label={t("sale.touch.keyboard.title")}>
       <div className="touch-alpha-keyboard-text-pad">
         {rows.map((row, index) => (
           <div className={`touch-alpha-keyboard-row touch-alpha-keyboard-row-${index + 1}`} key={index}>
-            {!extraSymbols && index === 2 && caseButton}
-            {characterKeys(row)}
-            {!extraSymbols && index === 2 && backspaceButton}
+            {!extraSymbols && index === 2 && caseButton(expanded)}
+            {characterKeys(row, expanded)}
+            {!extraSymbols && index === 2 && backspaceButton(expanded)}
           </div>
         ))}
         <div className="touch-alpha-keyboard-row touch-alpha-keyboard-utilities">
-          {extraSymbols && caseButton}
-          <button type="button" aria-label={t("sale.touch.keyboard.symbols")} aria-pressed={extraSymbols} disabled={disabled} onPointerDown={(event) => event.preventDefault()} onClick={() => setExtraSymbols((current) => !current)}>#+=</button>
-          <button type="button" className="space" disabled={disabled} onPointerDown={(event) => event.preventDefault()} onClick={() => press(" ")}>
+          {extraSymbols && caseButton(expanded)}
+          <button type="button" aria-label={t("sale.touch.keyboard.symbols")} aria-pressed={extraSymbols} disabled={disabled || !expanded} onPointerDown={(event) => event.preventDefault()} onClick={() => setExtraSymbols((current) => !current)}>#+=</button>
+          <button type="button" className="space" disabled={disabled || !expanded} onPointerDown={(event) => event.preventDefault()} onClick={() => press(" ")}>
             {t("sale.touch.keyboard.space")}
           </button>
-          <button type="button" className="touch-alpha-keyboard-period" disabled={disabled} onPointerDown={(event) => event.preventDefault()} onClick={() => press(".")}>.</button>
-          <button type="button" className="touch-alpha-keyboard-clear" disabled={disabled} onPointerDown={(event) => event.preventDefault()} onClick={() => press("CLEAR")}>
-            {t("sale.touch.keyboard.clear")}
+          <button type="button" className="touch-alpha-keyboard-period" disabled={disabled || !expanded} onPointerDown={(event) => event.preventDefault()} onClick={() => press(".")}>.</button>
+          <button type="button" className="touch-alpha-keyboard-enter" disabled={disabled || !expanded} onPointerDown={(event) => event.preventDefault()} onClick={() => touchKeyboardEnter(inputRef?.current, () => press("\n"))}>
+            {t("sale.touch.keyboard.enter")}
           </button>
-          {extraSymbols && backspaceButton}
+          {extraSymbols && backspaceButton(expanded)}
         </div>
       </div>
       <div className="touch-alpha-keyboard-number-pad">
@@ -160,12 +167,12 @@ export function TouchAlphaKeyboard({
             type="button"
             key={character}
             className={character === "0" ? "touch-alpha-keyboard-zero" : undefined}
-            disabled={disabled}
+            disabled={disabled || !expanded}
             onPointerDown={(event) => event.preventDefault()}
             onClick={() => press(character)}
           >{character}</button>
         ))}
       </div>
     </div>
-  );
+  )}</TouchKeyboardPanel>;
 }

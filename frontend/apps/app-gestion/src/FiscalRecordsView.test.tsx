@@ -142,7 +142,7 @@ describe("FiscalRecordsView", () => {
     expect(within(filterDialog).getByText("Busca por prefijo del número")).toBeTruthy();
     expect(within(filterDialog).getByRole("button", { name: "Aplicar" })).toBeTruthy();
     expect(within(filterDialog).getByRole("button", { name: "Limpiar" })).toBeTruthy();
-    expect(within(filterDialog).getAllByRole("button", { name: "Cerrar" })).toHaveLength(2);
+    expect(within(filterDialog).getAllByRole("button", { name: "Cerrar" })).toHaveLength(1);
     const number = screen.getByRole("textbox", { name: /^Número/ });
     fireEvent.change(number, { target: { value: "T-1" } });
     fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));

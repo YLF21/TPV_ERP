@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
 import type { LocaleCode } from "../types";
@@ -335,7 +337,7 @@ export function SalesInvoiceRectificationDialog({
             <h2 id="rectification-title">{t("rectification.title")}</h2>
             <p>{t("rectification.subtitle")}</p>
           </div>
-          <button type="button" aria-label={t("common.close")} onClick={onClose}>×</button>
+          <WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose} >×</WindowCloseButton>
         </header>
 
         {source && <div className="rectification-context">
@@ -403,16 +405,16 @@ export function SalesInvoiceRectificationDialog({
           </div>}
         </div>
 
-        {!loading && source && <footer className="rectification-footer">
-          <button type="button" onClick={onClose}>{step === "confirmed" ? t("rectification.close") : t("common.cancel")}</button>
-          {step === "edit" && <button className="primary" type="button" disabled={busy} onClick={() => void review()}>{busy ? t("rectification.saving") : t("rectification.preview")}</button>}
+        {!loading && source && <footer className="rectification-footer erp-dialog-actions-row">
+          <DialogDismissButton notice={step === "confirmed"} className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{step === "confirmed" ? t("rectification.close") : t("common.cancel")}</DialogDismissButton>
+          {step === "edit" && <button className="primary erp-dialog-action-confirm" type="button" disabled={busy} onClick={() => void review()}>{busy ? t("rectification.saving") : t("rectification.preview")}</button>}
           {step === "review" && <>
             <button type="button" onClick={() => setStep("edit")}>{t("rectification.backToEdit")}</button>
-            <button className="primary" type="button" disabled={busy} onClick={() => void saveDraft()}>{busy ? t("rectification.saving") : t(draftId ? "rectification.updateDraft" : "rectification.createDraft")}</button>
+            <button className="primary erp-dialog-action-confirm" type="button" disabled={busy} onClick={() => void saveDraft()}>{busy ? t("rectification.saving") : t(draftId ? "rectification.updateDraft" : "rectification.createDraft")}</button>
           </>}
           {step === "draft" && <>
             <button type="button" disabled={busy} onClick={() => setStep("edit")}>{t("rectification.backToEdit")}</button>
-            <button className="primary danger-confirm" type="button" disabled={busy || !canConfirm} onClick={() => void confirmDraft()}>{busy ? t("rectification.saving") : t("rectification.confirm")}</button>
+            <button className="primary danger-confirm erp-dialog-action-cancel" type="button" disabled={busy || !canConfirm} onClick={() => void confirmDraft()}>{busy ? t("rectification.saving") : t("rectification.confirm")}</button>
           </>}
         </footer>}
       </section>

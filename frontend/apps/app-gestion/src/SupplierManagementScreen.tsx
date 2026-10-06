@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
+import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import "../../../packages/app-common/src/components/ErpClassicTables.css";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
@@ -481,7 +483,7 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
         <section className="filter-dialog product-create-dialog representative-management-dialog erp-classic-window" inert={confirmation !== null || undefined}>
           <header className="filter-header">
             <div><h3 id="representative-form-title">{selected ? t("safeManagement.representatives.detail") : t("safeManagement.representatives.new")}</h3><span>{selected?.commercialId ?? t("safeManagement.representatives.subtitle")}</span></div>
-            <button type="button" onClick={() => setDialogOpen(false)} disabled={saving}>{t("common.close")}</button>
+            <WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setDialogOpen(false)} disabled={saving} >{t("common.close")}</WindowCloseButton>
           </header>
           <form className="representative-management-form" onSubmit={saveRepresentative}>
             <label><span>{t("safeManagement.representatives.column.name")}</span><input autoFocus required value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} /></label>
@@ -500,11 +502,11 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
               </div>
             </section>}
             {status && <p className="product-create-status" role="status">{status}</p>}
-            <footer className="filter-actions">
+            <footer className="filter-actions erp-dialog-actions-row">
+              <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={() => setDialogOpen(false)} disabled={saving}>{t("common.cancel")}</DialogDismissButton>
               {selected && <button type="button" className="safe-retirement-open" onClick={openRetirement} disabled={saving}>{t("safeManagement.action.retire")}</button>}
               {selected && <button type="button" onClick={() => setConfirmation({ type: "toggle" })} disabled={saving}>{t(selected.active ? "safeManagement.representatives.deactivate" : "safeManagement.representatives.activate")}</button>}
-              <button type="button" onClick={() => setDialogOpen(false)} disabled={saving}>{t("common.cancel")}</button>
-              <button type="submit" disabled={saving}>{saving ? t("party.saving") : t("common.save")}</button>
+              <button className="erp-dialog-action-confirm" type="submit" disabled={saving}>{saving ? t("party.saving") : t("common.save")}</button>
             </footer>
           </form>
         </section>

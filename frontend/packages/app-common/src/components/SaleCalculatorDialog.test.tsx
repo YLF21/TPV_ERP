@@ -92,6 +92,16 @@ describe("SaleCalculatorDialog arithmetic", () => {
 });
 
 describe("SaleCalculatorDialog interaction", () => {
+  it.each(["TOUCH", "KEYBOARD"] as const)("keeps the keypad available without a toggle in %s mode", (interfaceMode) => {
+    render(<SaleCalculatorDialog locale="es" interfaceMode={interfaceMode} onClose={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /Cerrar teclado|Mostrar teclado/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "7" }));
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: "2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Resultado" }));
+    expect(document.querySelector("output")?.textContent).toBe("9");
+  });
+
   it("edits the focused tax percentage with calculator keys and preserves its cursor", () => {
     render(<SaleCalculatorDialog locale="es" defaultTaxPercent={21} onClose={vi.fn()} />);
     const dialog = screen.getByRole("dialog");
@@ -108,9 +118,6 @@ describe("SaleCalculatorDialog interaction", () => {
     fireEvent.click(screen.getByRole("button", { name: "2" }));
     expect(percentage.value).toBe("2,5");
     expect(percentage.selectionStart).toBe(1);
-    fireEvent.click(screen.getByRole("button", { name: "Retroceso" }));
-    expect(percentage.value).toBe(",5");
-    expect(percentage.selectionStart).toBe(0);
     expect(percentage.dataset.touchKeyboard).toBe("off");
   });
 

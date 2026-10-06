@@ -105,13 +105,14 @@ describe("Touch more options", () => {
     const onGlobalKeyDown = vi.fn();
     document.addEventListener("keydown", onGlobalKeyDown);
     const { unmount } = render(<TouchSaleMoreOptionsDialog locale="es" actions={ids.map((id) => action(id))} onClose={onClose} />);
-    const closeButtons = screen.getAllByRole("button", { name: "Cerrar" });
-    expect(document.activeElement).toBe(closeButtons[0]);
-    fireEvent.keyDown(closeButtons[0], { key: "Tab", shiftKey: true });
-    expect(document.activeElement).toBe(closeButtons[1]);
-    fireEvent.keyDown(closeButtons[1], { key: "Tab" });
-    expect(document.activeElement).toBe(closeButtons[0]);
-    fireEvent.keyDown(closeButtons[0], { key: "Escape" });
+    const closeButton = screen.getByRole("button", { name: "Cerrar" });
+    const lastAction = screen.getAllByRole("button").at(-1);
+    expect(document.activeElement).toBe(closeButton);
+    fireEvent.keyDown(closeButton, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(lastAction);
+    fireEvent.keyDown(lastAction!, { key: "Tab" });
+    expect(document.activeElement).toBe(closeButton);
+    fireEvent.keyDown(closeButton, { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
     expect(onGlobalKeyDown).not.toHaveBeenCalled();
     unmount();
@@ -127,7 +128,7 @@ describe("Touch more options", () => {
   ] as const)("localizes the dialog in %s", (locale, title, close) => {
     render(<TouchSaleMoreOptionsDialog locale={locale} actions={[]} onClose={vi.fn()} />);
     expect(screen.getByRole("dialog", { name: title })).not.toBeNull();
-    expect(screen.getAllByRole("button", { name: close })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: close })).toHaveLength(1);
     expect(screen.queryByText(/^sale\.touch\./)).toBeNull();
   });
 });

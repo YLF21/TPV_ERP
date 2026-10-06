@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -285,9 +287,8 @@ export function ParkedSalesDialog({
             <h2 id={titleId}>{t("parkedSales.title")}</h2>
             <p id={descriptionId}>{t("parkedSales.listDescription")}</p>
           </div>
-          <button type="button" aria-label={`${t("common.close")} ${t("parkedSales.title")}`} disabled={Boolean(busyId)} onClick={onClose}>×</button>
+          <WindowCloseButton type="button" aria-label={`${t("common.close")} ${t("parkedSales.title")}`} disabled={Boolean(busyId)} onClick={onClose} >×</WindowCloseButton>
         </header>
-        <p className="parked-sales-keyboard-hint">{t("parkedSales.keyboardHint")}</p>
         {error && <p className="sale-action-error" role="alert">{error}</p>}
         <div
           ref={listRef}
@@ -337,11 +338,11 @@ export function ParkedSalesDialog({
             );
           })}
         </div>
-        <footer className="parked-sales-footer sale-action-buttons sale-business-dialog-actions">
+        <footer className="parked-sales-footer sale-action-buttons sale-business-dialog-actions erp-dialog-actions-row">
+          <DialogDismissButton type="button" className="parked-sales-close-button erp-dialog-action-cancel erp-dialog-dismiss" disabled={Boolean(busyId)} onClick={onClose}>{t("common.close")}</DialogDismissButton>
           <button type="button" className="danger parked-sales-delete-all-button" disabled={sales.length === 0 || Boolean(busyId)} onClick={() => { setDeleteAllOpen(true); setError(""); }}>
             {t("parkedSales.deleteAll")}
           </button>
-          <button type="button" className="parked-sales-close-button" disabled={Boolean(busyId)} onClick={onClose}>{t("common.close")}</button>
         </footer>
       </section>
 
@@ -360,9 +361,9 @@ export function ParkedSalesDialog({
               <span className="sale-clear-sale-warning-icon" aria-hidden="true">!</span>
               <div><strong>{t("sale.clearSale.warning")}</strong><p>{t("parkedSales.deleteConfirm")}</p></div>
             </div>
-            <div className="sale-action-buttons sale-clear-sale-actions">
-              <button ref={singleCancelRef} autoFocus type="button" disabled={Boolean(busyId)} onClick={() => setPendingDeleteId("")}>{t("common.cancel")}</button>
-              <button ref={singleConfirmRef} type="button" className="danger" disabled={Boolean(busyId)} onClick={() => void removeOne()}>{t("parkedSales.delete")}</button>
+            <div className="sale-action-buttons sale-clear-sale-actions erp-dialog-actions-row">
+              <button ref={singleCancelRef} autoFocus type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" disabled={Boolean(busyId)} onClick={() => setPendingDeleteId("")}>{t("common.cancel")}</button>
+              <button ref={singleConfirmRef} type="button" className="danger erp-dialog-action-cancel" disabled={Boolean(busyId)} onClick={() => void removeOne()}>{t("parkedSales.delete")}</button>
             </div>
           </section>
         </div>
@@ -387,9 +388,9 @@ export function ParkedSalesDialog({
               onUsernameChange={setAuthorizerUsername}
               onPasswordChange={setAuthorizerPassword}
             />
-            <div className="sale-action-buttons sale-business-dialog-actions">
-              <button type="button" disabled={Boolean(busyId)} onClick={closeDeleteAll}>{t("common.cancel")}</button>
-              <button type="button" className="danger" disabled={Boolean(busyId) || !saleOperationAuthorizationComplete(bulkAuthorization, authorizerUsername, authorizerPassword)} onClick={() => void removeAll()}>{t("parkedSales.deleteAll")}</button>
+            <div className="sale-action-buttons sale-business-dialog-actions erp-dialog-actions-row">
+              <button type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" disabled={Boolean(busyId)} onClick={closeDeleteAll}>{t("common.cancel")}</button>
+              <button type="button" className="danger erp-dialog-action-cancel" disabled={Boolean(busyId) || !saleOperationAuthorizationComplete(bulkAuthorization, authorizerUsername, authorizerPassword)} onClick={() => void removeAll()}>{t("parkedSales.deleteAll")}</button>
             </div>
           </section>
         </div>

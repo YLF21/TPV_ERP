@@ -38,7 +38,7 @@ describe("Customer directory document entry", () => {
     expect(name).toHaveFocus();
     expect(screen.queryByRole("dialog", { name: "Documentos del cliente" })).not.toBeInTheDocument();
     const editDialog = screen.getByRole("dialog");
-    fireEvent.click(within(editDialog).getByRole("button", { name: "Cancelar" }));
+    fireEvent.click(within(editDialog).getByRole("button", { name: "Cerrar" }));
     await screen.findByRole("dialog", { name: "Documentos del cliente" });
     expect(screen.getByRole("tab", { name: "Albaranes F3" })).toHaveAttribute("aria-selected", "true");
     fireEvent.keyDown(window, { key: "Escape" });

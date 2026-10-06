@@ -830,7 +830,7 @@ function QueueView({
         purpose="filters"
         footer={<>
           <button type="button" onClick={onClear}>{t("verifactu.management.clearFilters")}</button>
-          <button type="submit" form="verifactu-queue-filters-form" className="primary">{t("verifactu.management.applyFilters")}</button>
+          <button type="submit" form="verifactu-queue-filters-form" className="primary erp-dialog-action-confirm">{t("verifactu.management.applyFilters")}</button>
         </>}
       >
         <form id="verifactu-queue-filters-form" className="gestion-verifactu-filters" onSubmit={(event) => { if (onApply(event)) setFiltersOpen(false); }}>

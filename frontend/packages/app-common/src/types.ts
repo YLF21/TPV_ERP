@@ -72,6 +72,7 @@ export type UserSession = {
 export type LocaleCode = "es" | "en" | "zh";
 
 export type TerminalContext = {
+  companyName?: string;
   storeName: string;
   terminalCode: string;
   terminalId?: string;

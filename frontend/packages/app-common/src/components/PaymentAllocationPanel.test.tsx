@@ -723,7 +723,7 @@ describe("PaymentAllocationPanel", () => {
     expect(within(wallet).getByRole("textbox")).toHaveFocus();
     await waitFor(() => expect(wallet.querySelector(".sale-touch-field-keyboard .touch-numeric-keypad")).not.toBeNull());
     expect(container.querySelector(".touch-alpha-keyboard")).toBeNull();
-    fireEvent.click(within(wallet).getByRole("button", { name: "Cancelar" }));
+    fireEvent.click(within(wallet).getByRole("button", { name: "Cerrar" }));
 
     await waitFor(() => expect(amount).toHaveFocus());
     expect(container.querySelector(".sale-touch-field-keyboard")).toBeNull();
@@ -942,7 +942,7 @@ describe("PaymentAllocationPanel", () => {
     expect(html).toContain("COBRO");
     expect(html).not.toContain("IMPORTE / RECIBIDO");
     expect(html).not.toContain("<kbd>*</kbd>");
-    expect(html).toMatch(/class="primary"[^>]*>ACEPTAR/);
+    expect(html).toMatch(/class="primary(?: [^"]*)?"[^>]*>ACEPTAR/);
   });
 
   it("offers an original transfer refund, keeps its reference, and hides the transfer date", () => {
@@ -1759,6 +1759,70 @@ describe("PaymentAllocationPanel", () => {
     expect(onAdd).not.toHaveBeenCalled();
   });
 
+  it("clears only the active amount from the keyboard header and keeps keypad Enter", async () => {
+    const onAdd = vi.fn();
+    const onClear = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled interfaceMode="TOUCH" onAdd={onAdd} onClear={onClear} onQuery={vi.fn()}
+    />);
+    const amount = within(container).getByRole("textbox", { name: /IMPORTE/ }) as HTMLInputElement;
+    await waitFor(() => expect(amount).toHaveFocus());
+    const keypad = within(container.querySelector(".sale-checkout-keypad") as HTMLElement);
+    expect(keypad.queryByRole("button", { name: "Limpiar importe" })).not.toBeInTheDocument();
+    expect(keypad.getByRole("button", { name: "Intro" })).toBeVisible();
+    fireEvent.click(within(container).getByRole("button", { name: "Limpiar todo" }));
+    expect(amount).toHaveValue("");
+    expect(amount).toHaveFocus();
+    expect(onAdd).not.toHaveBeenCalled();
+    expect(onClear).not.toHaveBeenCalled();
+    fireEvent.click(within(container).getByRole("button", { name: "Cerrar teclado" }));
+    expect(within(container).queryByRole("button", { name: "Limpiar todo" })).not.toBeInTheDocument();
+  });
+
+  it("clears only the active text field and preserves other draft fields", async () => {
+    const onAdd = vi.fn();
+    const onClear = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled interfaceMode="TOUCH" onAdd={onAdd} onClear={onClear} onQuery={vi.fn()}
+    />);
+    const amount = within(container).getByRole("textbox", { name: /IMPORTE/ }) as HTMLInputElement;
+    await waitFor(() => expect(amount).toHaveFocus());
+    const reference = within(container).getByRole("textbox", { name: "Nº DOCUMENTO" }) as HTMLInputElement;
+    const comment = within(container).getByRole("textbox", { name: "COMENTARIO" }) as HTMLInputElement;
+    fireEvent.change(reference, { target: { value: "DOC-7" } });
+    fireEvent.change(comment, { target: { value: "Nota" } });
+    fireEvent.focus(reference);
+    fireEvent.click(within(container).getByRole("button", { name: "Limpiar todo" }));
+    expect(reference).toHaveValue("");
+    expect(comment).toHaveValue("Nota");
+    expect(amount).toHaveValue("12,00");
+    fireEvent.focus(comment);
+    fireEvent.click(within(container).getByRole("button", { name: "Limpiar todo" }));
+    expect(comment).toHaveValue("");
+    expect(onAdd).not.toHaveBeenCalled();
+    expect(onClear).not.toHaveBeenCalled();
+  });
+
+  it("clears the voucher draft without resolving it or clearing payments", async () => {
+    const onResolveVoucher = vi.fn();
+    const onClear = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled initialMethod="VOUCHER" interfaceMode="TOUCH"
+      onAdd={vi.fn()} onClear={onClear} onQuery={vi.fn()} onResolveVoucher={onResolveVoucher}
+    />);
+    const voucher = within(container).getByRole("textbox", { name: "CÓDIGO DE VALE" }) as HTMLInputElement;
+    await waitFor(() => expect(voucher).toHaveFocus());
+    fireEvent.change(voucher, { target: { value: "VALE-42" } });
+    fireEvent.click(within(container).getByRole("button", { name: "Limpiar todo" }));
+    expect(voucher).toHaveValue("");
+    expect(voucher).toHaveFocus();
+    expect(onResolveVoucher).not.toHaveBeenCalled();
+    expect(onClear).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["Exacto", "12,00", "12,00"],
     ["5 €", "5,00", "10,00"],
@@ -2028,6 +2092,91 @@ describe("PaymentAllocationPanel", () => {
     expect(container.querySelector(".sale-checkout-keypad")).toBeNull();
     expect(within(container).queryByRole("group", { name: "Teclado alfanumérico" })).toBeNull();
     expect(amount).toHaveValue("12,00");
+  });
+
+  it("keeps one touch toggle available across amount and text fields without changing the draft", async () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled interfaceMode="TOUCH" onAdd={onAdd} onQuery={vi.fn()}
+    />);
+    const amount = within(container).getByRole("textbox", { name: /IMPORTE/ }) as HTMLInputElement;
+    await waitFor(() => expect(amount).toHaveFocus());
+    amount.setSelectionRange(1, 3);
+    const close = within(container).getByRole("button", { name: "Cerrar teclado" });
+    fireEvent.pointerDown(close);
+    fireEvent.click(close);
+    const keypad = container.querySelector<HTMLElement>(".sale-checkout-keypad");
+    expect(keypad).toHaveAttribute("hidden");
+    expect(within(keypad!).getByRole("button", { name: "7", hidden: true })).toBeDisabled();
+    expect(amount.selectionStart).toBe(1);
+    expect(amount.selectionEnd).toBe(3);
+    const reference = within(container).getByRole("textbox", { name: "Nº DOCUMENTO" }) as HTMLInputElement;
+    fireEvent.focus(reference);
+    expect(within(container).getByRole("button", { name: "Mostrar teclado" })).toBeVisible();
+    expect(container.querySelectorAll(".touch-keyboard-toggle")).toHaveLength(1);
+    expect(container.querySelector<HTMLElement>(".sale-checkout-text-keyboard")).toHaveAttribute("hidden");
+    fireEvent.click(within(container).getByRole("button", { name: "Mostrar teclado" }));
+    expect(reference).toHaveFocus();
+    const keyboard = within(container).getByRole("group", { name: "Teclado alfanumérico" });
+    fireEvent.click(within(keyboard).getByRole("button", { name: "R" }));
+    expect(reference).toHaveValue("R");
+    expect(amount).toHaveValue("12,00");
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  it("reopens from the transfer date on an editable field and never edits the date", async () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled initialMethod="TRANSFER" transferDateEnabled interfaceMode="TOUCH"
+      onAdd={onAdd} onQuery={vi.fn()}
+    />);
+    const amount = within(container).getByRole("textbox", { name: /IMPORTE/ }) as HTMLInputElement;
+    await waitFor(() => expect(amount).toHaveFocus());
+    const date = within(container).getByLabelText<HTMLInputElement>("FECHA DE TRANSFERENCIA");
+    fireEvent.focus(date);
+    expect(within(container).getByRole("button", { name: "Mostrar teclado" })).toBeVisible();
+    fireEvent.click(within(container).getByRole("button", { name: "Mostrar teclado" }));
+    expect(amount).toHaveFocus();
+    expect(container.querySelector(".sale-checkout-keypad")).toBeVisible();
+    fireEvent.click(within(container.querySelector(".sale-checkout-keypad") as HTMLElement).getByRole("button", { name: "7" }));
+    expect(date).toHaveValue("");
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  it("reopens on the voucher code when its amount is disabled", async () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled initialMethod="VOUCHER" interfaceMode="TOUCH"
+      onAdd={onAdd} onQuery={vi.fn()}
+    />);
+    const voucher = within(container).getByRole("textbox", { name: "CÓDIGO DE VALE" }) as HTMLInputElement;
+    await waitFor(() => expect(voucher).toHaveFocus());
+    const amount = within(container).getByRole("textbox", { name: /IMPORTE/ });
+    expect(amount).toBeDisabled();
+    fireEvent.click(within(container).getByRole("button", { name: "Cerrar teclado" }));
+    expect(within(container).getByRole("button", { name: "Mostrar teclado" })).toBeVisible();
+    expect(container.querySelector<HTMLElement>(".sale-checkout-text-keyboard")).toHaveAttribute("hidden");
+    fireEvent.click(within(container).getByRole("button", { name: "Mostrar teclado" }));
+    expect(voucher).toHaveFocus();
+    fireEvent.click(within(within(container).getByRole("group", { name: "Teclado alfanumérico" }))
+      .getByRole("button", { name: "Q" }));
+    expect(voucher).toHaveValue("Q");
+    expect(amount).toHaveValue("12,00");
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  it.each(["en", "zh"] as const)("localizes the persistent toggle in %s", (locale) => {
+    const { container } = render(<PaymentAllocationPanel
+      locale={locale} session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled interfaceMode="TOUCH" onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+    const close = locale === "en" ? "Close keyboard" : "关闭键盘";
+    const open = locale === "en" ? "Show keyboard" : "显示键盘";
+    fireEvent.click(within(container).getByRole("button", { name: close }));
+    expect(within(container).getByRole("button", { name: open })).toHaveAttribute("type", "button");
   });
 
   it("disables pending when the operator lacks permission", () => {

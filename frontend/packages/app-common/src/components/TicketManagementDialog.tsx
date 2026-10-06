@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -328,7 +330,7 @@ export function TicketManagementDialog({ token, locale, terminalContext, permiss
             <h2 id="ticket-management-title">{t("ticketManagement.title")}</h2>
             <p>{t("ticketManagement.subtitle")}</p>
           </div>
-          <button type="button" aria-label={t("ticketManagement.closeAria")} onClick={onClose}>×</button>
+          <WindowCloseButton type="button" aria-label={t("ticketManagement.closeAria")} onClick={onClose} >×</WindowCloseButton>
         </header>
         <div className="ticket-management-toolbar">
           <label className="ticket-management-search">
@@ -394,7 +396,7 @@ export function TicketManagementDialog({ token, locale, terminalContext, permiss
               <div className="ticket-management-actions">
                 <article className="ticket-action-card ticket-action-reprint">
                   <div><h3>{t("ticketManagement.reprint.title")}</h3><p>{t("ticketManagement.reprint.hint")}</p></div>
-                  <button type="button" className="primary" disabled={busy} onClick={() => void reprint()}>{t("ticketManagement.reprint.action")}</button>
+                  <button type="button" className="primary erp-dialog-action-confirm" disabled={busy} onClick={() => void reprint()}>{t("ticketManagement.reprint.action")}</button>
                 </article>
                 <fieldset className="ticket-action-card ticket-action-danger">
                   <legend>{t("ticketManagement.cancel.title")}</legend>
@@ -411,7 +413,7 @@ export function TicketManagementDialog({ token, locale, terminalContext, permiss
                     : t("ticketManagement.invoice.noCustomer")}</p>
                   <div className="ticket-action-row">
                     <select aria-label={t("ticketManagement.invoice.customerAria")} value={invoiceCustomerId} onChange={(event) => setInvoiceCustomerId(event.target.value)}><option value="">{t("ticketManagement.invoice.selectCustomer")}</option>{customers.map((customer) => <option value={customer.id} key={customer.id}>{customer.fiscalName ?? customer.clientId ?? customer.id}</option>)}</select>
-                    <button type="button" className="primary" title={canInvoiceTicket ? undefined : t("ticketManagement.permission.invoice")} disabled={busy || !canInvoiceTicket || selected.estado !== "CONFIRMADO" || !invoiceCustomerId} onClick={() => void execute(() => apiRequest(`/tickets/${encodeURIComponent(selected.id)}/invoice`, { token, method: "POST", body: { customerId: invoiceCustomerId } }), t("ticketManagement.invoice.success"), true)}>{t("ticketManagement.invoice.action")}</button>
+                    <button type="button" className="primary erp-dialog-action-confirm" title={canInvoiceTicket ? undefined : t("ticketManagement.permission.invoice")} disabled={busy || !canInvoiceTicket || selected.estado !== "CONFIRMADO" || !invoiceCustomerId} onClick={() => void execute(() => apiRequest(`/tickets/${encodeURIComponent(selected.id)}/invoice`, { token, method: "POST", body: { customerId: invoiceCustomerId } }), t("ticketManagement.invoice.success"), true)}>{t("ticketManagement.invoice.action")}</button>
                   </div>
                 </fieldset>
                 <fieldset className="ticket-action-card">
@@ -444,7 +446,7 @@ export function TicketManagementDialog({ token, locale, terminalContext, permiss
                       <small className={refundAllocationMatches ? "ticket-refund-balanced" : "sale-action-error"}>{interpolate(t(refundAllocationMatches ? "ticketManagement.refund.allocated" : "ticketManagement.refund.allocationMismatch"), { amount: formatTicketAmount(refundAllocated, locale), total: formatTicketAmount(refundAmount, locale) })}</small>
                     </div>
                     <label><span>{t("ticketManagement.refund.password")}</span><input type="password" inputMode="numeric" autoComplete="current-password" value={refundPassword} onChange={(event) => setRefundPassword(event.target.value)} /></label>
-                    <button type="button" className="primary" disabled={busy || refundAmount <= 0 || !refundPassword || !refundAllocationMatches} onClick={() => void confirmRefund()}>{t("ticketManagement.refund.confirm")}</button>
+                    <button type="button" className="primary erp-dialog-action-confirm" disabled={busy || refundAmount <= 0 || !refundPassword || !refundAllocationMatches} onClick={() => void confirmRefund()}>{t("ticketManagement.refund.confirm")}</button>
                   </div>}
                 </fieldset>
                 <fieldset className="ticket-action-card">
@@ -467,7 +469,7 @@ export function TicketManagementDialog({ token, locale, terminalContext, permiss
                         <option value="">{activeVouchers.length === 0 ? t("ticketManagement.voucher.noActive") : t("ticketManagement.voucher.selectActive")}</option>
                         {activeVouchers.map((voucher) => <option value={voucher.code} key={voucher.code}>{voucher.code} · {formatTicketAmount(voucher.balance, locale)}</option>)}
                       </select>
-                      <button type="button" className="primary" title={voucherConsumeHint} disabled={busy || !canConsumeVoucher} onClick={() => void execute(() => apiRequest(`/vouchers/${encodeURIComponent(voucherCode)}/consume`, { token, method: "POST", body: { ticketId: selected.id, pendingAmount: selected.pendingTotal, reason: "APP VENTA" } }), t("ticketManagement.voucher.consume.success"))}>{t("ticketManagement.voucher.consume.action")}</button>
+                      <button type="button" className="primary erp-dialog-action-confirm" title={voucherConsumeHint} disabled={busy || !canConsumeVoucher} onClick={() => void execute(() => apiRequest(`/vouchers/${encodeURIComponent(voucherCode)}/consume`, { token, method: "POST", body: { ticketId: selected.id, pendingAmount: selected.pendingTotal, reason: "APP VENTA" } }), t("ticketManagement.voucher.consume.success"))}>{t("ticketManagement.voucher.consume.action")}</button>
                       <p className="ticket-action-hint">{voucherConsumeHint}</p>
                     </section>
                   </div>
@@ -476,13 +478,13 @@ export function TicketManagementDialog({ token, locale, terminalContext, permiss
             </>}
           </div>
         </div>
-        <footer className="ticket-management-footer">
-          <div className="ticket-management-feedback">
+        <footer className="ticket-management-footer erp-dialog-actions-row">
+          <DialogDismissButton type="button" className="ticket-management-close erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>{t("common.close")}</DialogDismissButton>
+          <div className="ticket-management-feedback erp-dialog-actions-group">
             {busy && <p aria-live="polite">{t("ticketManagement.processing")}</p>}
             {message && <p className="ticket-management-success" role="status">{message}</p>}
             {error && <p className="sale-action-error" role="alert">{error}</p>}
           </div>
-          <button type="button" className="ticket-management-close" onClick={onClose}>{t("common.close")}</button>
         </footer>
       </section>
     </div>

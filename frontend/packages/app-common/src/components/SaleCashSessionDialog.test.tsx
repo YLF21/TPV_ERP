@@ -29,7 +29,7 @@ describe("SaleCashSessionDialog", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Salir de Ventas" })).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cerrar ventana" }));
     expect(onExitSales).toHaveBeenCalledOnce();
   });
 
@@ -128,7 +128,7 @@ describe("SaleCashSessionDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
     await screen.findByRole("alert");
 
-    expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cerrar ventana" })).toBeDisabled();
     expect(screen.getByLabelText("Retirada final")).toBeDisabled();
     expect(screen.getByLabelText("Motivo o comentario")).toBeDisabled();
     expect(screen.getByLabelText("Fondo que queda en caja")).toBeEnabled();
@@ -206,7 +206,7 @@ describe("SaleCashSessionDialog", () => {
       .toBeInTheDocument();
     expect(screen.getByLabelText("Fondo que queda en caja")).toBeEnabled();
     expect(screen.getByLabelText("Retirada final")).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Cancelar" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Cerrar ventana" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Cerrar caja" })).toBeEnabled();
 
     await userEvent.clear(screen.getByLabelText("Retirada final"));
@@ -270,7 +270,7 @@ describe("SaleCashSessionDialog", () => {
       closeOperationId: expect.any(String),
       reconciliationAttemptId: expect.any(String),
     }));
-    expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cerrar ventana" })).toBeDisabled();
 
     firstRender.unmount();
     render(
@@ -291,7 +291,7 @@ describe("SaleCashSessionDialog", () => {
     expect(screen.getByLabelText("Motivo o comentario")).toHaveValue("Cierre");
     expect(screen.getByLabelText("Fondo que queda en caja")).toBeDisabled();
     expect(screen.getByLabelText("Retirada final")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cerrar ventana" })).toBeDisabled();
 
     await userEvent.keyboard("{Escape}");
     expect(onCancel).not.toHaveBeenCalled();

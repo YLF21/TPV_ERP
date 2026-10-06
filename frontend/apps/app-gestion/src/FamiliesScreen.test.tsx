@@ -535,8 +535,9 @@ describe("FamiliesScreen", () => {
       name: "Cerrar",
     });
     expect(editorClose).toHaveAttribute("title", "Cerrar");
-    expect(editorClose).toHaveTextContent("×");
-    fireEvent.click(within(editorDialog).getByRole("button", { name: "Cancelar" }));
+    expect(editorClose.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(within(editorDialog).queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
+    fireEvent.click(editorClose);
 
     fireEvent.click(await screen.findByText("Bebidas"));
     fireEvent.click(await screen.findByLabelText("Seleccionar Agua producto"));
@@ -551,8 +552,9 @@ describe("FamiliesScreen", () => {
     expect(moveDialog.parentElement).toHaveClass("gestion-modal-backdrop");
     const moveClose = within(moveDialog).getByRole("button", { name: "Cerrar" });
     expect(moveClose).toHaveAttribute("title", "Cerrar");
-    expect(moveClose).toHaveTextContent("×");
-    fireEvent.click(within(moveDialog).getByRole("button", { name: "Cancelar" }));
+    expect(moveClose.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(within(moveDialog).queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
+    fireEvent.click(moveClose);
 
     fireEvent.click(screen.getByRole("button", { name: "Eliminar de familia" }));
     const generalDialog = await screen.findByRole("dialog", {
@@ -566,7 +568,7 @@ describe("FamiliesScreen", () => {
       name: "Cerrar",
     });
     expect(generalClose).toHaveAttribute("title", "Cerrar");
-    expect(generalClose).toHaveTextContent("×");
+    expect(generalClose.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
     fireEvent.click(generalClose);
 
     const family = screen.getByRole("treeitem", { name: /001.*Bebidas/ });
@@ -583,7 +585,7 @@ describe("FamiliesScreen", () => {
       name: "Cerrar",
     });
     expect(impactClose).toHaveAttribute("title", "Cerrar");
-    expect(impactClose).toHaveTextContent("×");
+    expect(impactClose.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
   });
 
   it("opens Add subfamily blank for GENERAL and anchors its list below the family field", async () => {
@@ -609,7 +611,7 @@ describe("FamiliesScreen", () => {
     expect(combo.parentElement).toContainElement(listbox);
     expect(getComputedStyle(listbox).top).toBe("100%");
     expect(getComputedStyle(listbox).width).toBe("100%");
-    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cerrar" }));
     fireEvent.click(screen.getByText("Bebidas"));
     await screen.findByText("Agua");
     fireEvent.click(screen.getByText("Agua"));

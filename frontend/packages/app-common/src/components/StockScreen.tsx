@@ -1,3 +1,5 @@
+import { DialogDismissButton } from "./DialogDismissButton";
+import { WindowCloseButton } from "./WindowCloseButton";
 import { AppBrand } from "./AppBrand";
 import { ReportDateRangeFilter, isValidReportDate, type ReportDateRange } from "./ReportDateRangeFilter";
 import "./ErpClassicWindow.css";
@@ -6176,17 +6178,17 @@ export function StockScreen({
         <section className="filter-dialog bulk-compact-dialog bulk-workspace-dialog bulk-small-dialog">
           <header className="filter-header">
             <h2 id="bulk-swap-title">{t("stock.bulkEdit.swapCodeBarcode")}</h2>
-            <button type="button" aria-label={t("common.close")} onClick={close}>
+            <WindowCloseButton type="button" aria-label={t("common.close")} onClick={close} >
               <X size={18} weight="bold" aria-hidden="true" />
-            </button>
+            </WindowCloseButton>
           </header>
           <p className="bulk-confirm-copy" id="bulk-swap-description">
             {t(confirmation.scope === "selected" ? "stock.bulkEdit.swapConfirmSelected" : "stock.bulkEdit.swapConfirmAll")
               .replace("{count}", String(confirmation.rowIds.length))}
           </p>
-          <footer className="filter-actions">
-            <button type="button" className="secondary" onClick={close}>{t("common.cancel")}</button>
-            <button autoFocus type="button" onClick={confirmBulkSwap}>{t("common.confirm")}</button>
+          <footer className="filter-actions erp-dialog-actions-row">
+            <DialogDismissButton type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={close}>{t("common.cancel")}</DialogDismissButton>
+            <button autoFocus type="button" className="erp-dialog-action-confirm" onClick={confirmBulkSwap}>{t("common.confirm")}</button>
           </footer>
         </section>
       </div>
@@ -6249,7 +6251,7 @@ export function StockScreen({
         <section className={`filter-dialog bulk-compact-dialog bulk-workspace-dialog bulk-editor-dialog bulk-editor-${editor.kind}`}>
           <header className="filter-header">
             <h2 id="bulk-editor-title">{t(titleKey)}</h2>
-            <button type="button" aria-label={t("common.close")} onClick={() => setBulkEditorDialog(null)}><X size={18} weight="bold" aria-hidden="true" /></button>
+            <WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setBulkEditorDialog(null)} ><X size={18} weight="bold" aria-hidden="true" /></WindowCloseButton>
           </header>
 
           {editor.kind === "value" && (
@@ -6559,9 +6561,9 @@ export function StockScreen({
             </div>
           )}
 
-          <footer className="filter-actions">
-            <button type="button" onClick={() => setBulkEditorDialog(null)}>{t("common.cancel")}</button>
-            <button type="button" disabled={applyDisabled} onClick={applyBulkEditorDialog}>{t("stock.filter.apply")}</button>
+          <footer className="filter-actions erp-dialog-actions-row">
+            <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={() => setBulkEditorDialog(null)}>{t("common.cancel")}</DialogDismissButton>
+            <button type="button" className="erp-dialog-action-confirm" disabled={applyDisabled} onClick={applyBulkEditorDialog}>{t("stock.filter.apply")}</button>
           </footer>
         </section>
       </div>
@@ -6577,7 +6579,7 @@ export function StockScreen({
         <section className="filter-dialog bulk-compact-dialog bulk-finder-dialog">
           <header className="filter-header">
             <h2 id="bulk-finder-title">{t("stock.bulkEdit.finderTitle")}</h2>
-            <button type="button" aria-label={t("common.close")} onClick={() => setBulkFinder(null)}><X size={18} weight="bold" aria-hidden="true" /></button>
+            <WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setBulkFinder(null)} ><X size={18} weight="bold" aria-hidden="true" /></WindowCloseButton>
           </header>
           <div className="erp-filter-search-controls">
           <label className="report-search bulk-finder-search">
@@ -6644,7 +6646,7 @@ export function StockScreen({
                   ? "stock.bulkEdit.assignSupplier"
                   : "stock.bulkEdit.importSupplier")}
             </h2>
-            <button type="button" aria-label={t("common.close")} onClick={closeBulkSupplierDialog}><X size={18} weight="bold" aria-hidden="true" /></button>
+            <WindowCloseButton type="button" aria-label={t("common.close")} onClick={closeBulkSupplierDialog} ><X size={18} weight="bold" aria-hidden="true" /></WindowCloseButton>
           </header>
           <div className="erp-filter-search-controls">
           <label className="report-search bulk-finder-search">
@@ -6700,15 +6702,16 @@ export function StockScreen({
               );
             })}
           </div>
-          <footer className="filter-actions">
+          <footer className="filter-actions erp-dialog-actions-row">
             {principalMode && (
               <button type="button" className="secondary" onClick={() => applyBulkPrincipalSupplier(null)}>
                 {t("stock.bulkEdit.removePrincipalSupplier")}
               </button>
             )}
-            <button type="button" className="secondary" onClick={closeBulkSupplierDialog}>{t("common.cancel")}</button>
+            <DialogDismissButton type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={closeBulkSupplierDialog}>{t("common.cancel")}</DialogDismissButton>
             <button
               type="button"
+              className="erp-dialog-action-confirm"
               disabled={!selectedSupplier || ((assignMode || principalMode) && !selectedSupplier.active) || bulkBusy}
               onClick={() => selectedSupplier && applySelectedSupplier(selectedSupplier)}
             >
@@ -6741,7 +6744,7 @@ export function StockScreen({
         <section className="filter-dialog bulk-compact-dialog bulk-workspace-dialog bulk-purchase-document-dialog">
           <header className="filter-header">
             <h2 id="bulk-purchase-document-title">{t(config.titleKey)}</h2>
-            <button type="button" aria-label={t("common.close")} onClick={() => setBulkPurchaseDocumentKind(null)}><X size={18} weight="bold" aria-hidden="true" /></button>
+            <WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setBulkPurchaseDocumentKind(null)} ><X size={18} weight="bold" aria-hidden="true" /></WindowCloseButton>
           </header>
           <div className="erp-filter-search-controls">
           <label className="report-search bulk-finder-search">
@@ -6793,9 +6796,9 @@ export function StockScreen({
               </button>
             ))}
           </div>
-          <footer className="filter-actions">
-            <button type="button" className="secondary" onClick={() => setBulkPurchaseDocumentKind(null)}>{t("common.cancel")}</button>
-            <button type="button" disabled={!selectedDocument || bulkBusy} onClick={() => void applyBulkPurchaseDocument()}>
+          <footer className="filter-actions erp-dialog-actions-row">
+            <DialogDismissButton type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={() => setBulkPurchaseDocumentKind(null)}>{t("common.cancel")}</DialogDismissButton>
+            <button type="button" className="erp-dialog-action-confirm" disabled={!selectedDocument || bulkBusy} onClick={() => void applyBulkPurchaseDocument()}>
               {t("stock.bulkEdit.applySupplier")}
             </button>
           </footer>
@@ -6838,15 +6841,15 @@ export function StockScreen({
           >
             <header className="filter-header">
               <h2 id="bulk-save-title">{t("stock.bulkEdit.saveList")}</h2>
-              <button type="button" aria-label={t("common.close")} onClick={close}><X size={18} weight="bold" aria-hidden="true" /></button>
+              <WindowCloseButton type="button" aria-label={t("common.close")} onClick={close} ><X size={18} weight="bold" aria-hidden="true" /></WindowCloseButton>
             </header>
             <label className="bulk-dialog-field">
               <span>{t("stock.bulkEdit.listName")}</span>
               <input autoFocus maxLength={160} value={bulkDraftName} onChange={(event) => setBulkDraftName(event.target.value)} />
             </label>
-            <footer className="filter-actions">
-              <button type="button" className="secondary" onClick={close}>{t("common.cancel")}</button>
-              <button type="button" disabled={!bulkDraftName.trim() || bulkBusy} onClick={() => void saveBulkDraft()}>{t("common.save")}</button>
+            <footer className="filter-actions erp-dialog-actions-row">
+              <DialogDismissButton type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={close}>{t("common.cancel")}</DialogDismissButton>
+              <button type="button" className="erp-dialog-action-confirm" disabled={!bulkDraftName.trim() || bulkBusy} onClick={() => void saveBulkDraft()}>{t("common.save")}</button>
             </footer>
           </section>
         </div>
@@ -6865,7 +6868,7 @@ export function StockScreen({
           >
             <header className="filter-header">
               <h2 id="bulk-rename-title">{t("stock.bulkEdit.workspace.rename")}</h2>
-              <button type="button" aria-label={t("common.close")} onClick={close}><X size={18} weight="bold" aria-hidden="true" /></button>
+              <WindowCloseButton type="button" aria-label={t("common.close")} onClick={close} ><X size={18} weight="bold" aria-hidden="true" /></WindowCloseButton>
             </header>
             <label className="bulk-dialog-field">
               <span>{t("stock.bulkEdit.listName")}</span>
@@ -6882,10 +6885,11 @@ export function StockScreen({
                 }}
               />
             </label>
-            <footer className="filter-actions">
-              <button type="button" className="secondary" onClick={close}>{t("common.cancel")}</button>
+            <footer className="filter-actions erp-dialog-actions-row">
+              <DialogDismissButton type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={close}>{t("common.cancel")}</DialogDismissButton>
               <button
                 type="button"
+                className="erp-dialog-action-confirm"
                 disabled={!bulkRenameValue.trim() || bulkBusy || bulkRenameValue.trim() === bulkRenameDraft?.name}
                 onClick={() => void renameBulkDraft()}
               >
@@ -6909,7 +6913,7 @@ export function StockScreen({
           >
             <header className="filter-header">
               <h2 id="bulk-comments-title">{t("stock.bulkEdit.comments")}</h2>
-              <button type="button" aria-label={t("common.close")} onClick={close}><X size={18} weight="bold" aria-hidden="true" /></button>
+              <WindowCloseButton type="button" aria-label={t("common.close")} onClick={close} ><X size={18} weight="bold" aria-hidden="true" /></WindowCloseButton>
             </header>
             <div className="bulk-comment-list">
               {activeBulkDraft?.comments.length === 0 && <span className="stock-empty-state">{t("stock.bulkEdit.noComments")}</span>}
@@ -6925,9 +6929,9 @@ export function StockScreen({
               <span>{t("stock.bulkEdit.newComment")}</span>
               <textarea autoFocus maxLength={1000} value={bulkCommentText} onChange={(event) => setBulkCommentText(event.target.value)} />
             </label>
-            <footer className="filter-actions">
-              <button type="button" className="secondary" onClick={close}>{t("common.close")}</button>
-              <button type="button" disabled={!bulkCommentText.trim() || bulkBusy} onClick={() => void addBulkComment()}>{t("stock.bulkEdit.addComment")}</button>
+            <footer className="filter-actions erp-dialog-actions-row">
+              <DialogDismissButton type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={close}>{t("common.close")}</DialogDismissButton>
+              <button type="button" className="erp-dialog-action-confirm" disabled={!bulkCommentText.trim() || bulkBusy} onClick={() => void addBulkComment()}>{t("stock.bulkEdit.addComment")}</button>
             </footer>
           </section>
         </div>
@@ -6952,14 +6956,14 @@ export function StockScreen({
           >
             <header className={applying ? "bulk-apply-header" : "filter-header"}>
               <h2 id="bulk-confirm-title">{t(dialogConfig.title)}</h2>
-              <button type="button" aria-label={t("common.close")} onClick={close}>
+              <WindowCloseButton type="button" aria-label={t("common.close")} onClick={close} >
                 <X size={18} weight="bold" aria-hidden="true" />
-              </button>
+              </WindowCloseButton>
             </header>
             <p className="bulk-confirm-copy" id="bulk-confirm-description">{t(dialogConfig.body)}</p>
-            <footer className={applying ? "bulk-apply-actions" : "filter-actions"}>
-              <button type="button" className="secondary" onClick={close}>{t("common.cancel")}</button>
-              <button autoFocus type="button" disabled={bulkBusy} onClick={dialogConfig.action}>
+            <footer className={`erp-dialog-actions-row ${applying ? "bulk-apply-actions" : "filter-actions"}`}>
+              <button type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={close}>{t("common.cancel")}</button>
+              <button autoFocus type="button" className={bulkDialog === "delete" || bulkDialog === "clear" ? "erp-dialog-action-cancel" : "erp-dialog-action-confirm"} disabled={bulkBusy} onClick={dialogConfig.action}>
                 {t(applying ? "stock.bulkEdit.applyChanges" : "common.confirm")}
               </button>
             </footer>
@@ -6975,13 +6979,13 @@ export function StockScreen({
         >
           <header className="filter-header">
             <h2 id="bulk-close-title">{t("stock.bulkEdit.closeList")}</h2>
-            <button type="button" aria-label={t("common.close")} onClick={close}><X size={18} weight="bold" aria-hidden="true" /></button>
+            <WindowCloseButton type="button" aria-label={t("common.close")} onClick={close} ><X size={18} weight="bold" aria-hidden="true" /></WindowCloseButton>
           </header>
           <p className="bulk-confirm-copy">{t("stock.bulkEdit.closeConfirm")}</p>
-          <footer className="filter-actions bulk-close-actions">
-            <button type="button" className="secondary" onClick={close}>{t("common.cancel")}</button>
-            <button type="button" className="secondary" onClick={resetBulkWorkspace}>{t("stock.bulkEdit.discard")}</button>
-            <button autoFocus type="button" disabled={bulkBusy} onClick={() => void saveBulkDraft("close")}>{t("stock.bulkEdit.saveAndClose")}</button>
+          <footer className="filter-actions bulk-close-actions erp-dialog-actions-row">
+            <button type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={close}>{t("common.cancel")}</button>
+            <button type="button" className="secondary erp-dialog-action-cancel" onClick={resetBulkWorkspace}>{t("stock.bulkEdit.discard")}</button>
+            <button autoFocus type="button" className="erp-dialog-action-confirm" disabled={bulkBusy} onClick={() => void saveBulkDraft("close")}>{t("stock.bulkEdit.saveAndClose")}</button>
           </footer>
         </section>
       </div>
@@ -7764,9 +7768,10 @@ export function StockScreen({
           >
             <header className="filter-header">
               <h2 id="stock-filter-title">{t("stock.filter.title")}</h2>
-              <button type="button" aria-label={t("common.close")} onClick={() => setTopSalesFilterOpen(false)}>
-                {app !== "pda" ? <X size={18} weight="bold" aria-hidden="true" /> : t("common.close")}
-              </button>
+              {app !== "pda" ? <WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setTopSalesFilterOpen(false)} >
+                <X size={18} weight="bold" aria-hidden="true" />
+              </WindowCloseButton> :
+                <button type="button" className="erp-dialog-action-cancel" aria-label={t("common.close")} onClick={() => setTopSalesFilterOpen(false)}>{t("common.close")}</button>}
             </header>
             <div className="filter-grid">
               <div className="filter-field filter-wide">
@@ -7862,13 +7867,13 @@ export function StockScreen({
                     <footer className="date-range-footer">
                       <span>{draftTopSalesDateFrom ? stockSelectedDaysText(stockDateRangeDayCount(draftTopSalesDateFrom, draftTopSalesDateTo), locale) : t("salesReport.filter.pickDateFrom")}</span>
                       <div className="date-range-actions">
-                        <button type="button" onClick={() => {
+                        <button type="button" className="erp-dialog-action-cancel" onClick={() => {
                           setTopSalesDateRangeStart(null);
                           setTopSalesDatePickerOpen(false);
                         }}>
                           {t("common.cancel")}
                         </button>
-                        <button type="button" className="primary" onClick={() => {
+                        <button type="button" className="primary erp-dialog-action-confirm" onClick={() => {
                           setTopSalesDateRangeStart(null);
                           setTopSalesDatePickerOpen(false);
                         }}>
@@ -7921,7 +7926,7 @@ export function StockScreen({
             </div>
             <footer className="filter-actions">
               <button type="button" onClick={clearTopSalesFilters}>{t("salesReport.filter.clear")}</button>
-              <button type="button" onClick={() => applyTopSalesFilters()}>{t("salesReport.filter.apply")}</button>
+              <button type="button" className="erp-dialog-action-confirm" onClick={() => applyTopSalesFilters()}>{t("salesReport.filter.apply")}</button>
             </footer>
           </section>
         </div>
@@ -7938,9 +7943,10 @@ export function StockScreen({
           >
             <header className="filter-header">
               <h2 id="stock-inventory-filter-title">{t("stock.filter.inventoryTitle")}</h2>
-              <button type="button" aria-label={t("common.close")} onClick={() => setInventoryFilterOpen(false)}>
-                {app !== "pda" ? <X size={18} weight="bold" aria-hidden="true" /> : t("common.close")}
-              </button>
+              {app !== "pda" ? <WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setInventoryFilterOpen(false)} >
+                <X size={18} weight="bold" aria-hidden="true" />
+              </WindowCloseButton> :
+                <button type="button" className="erp-dialog-action-cancel" aria-label={t("common.close")} onClick={() => setInventoryFilterOpen(false)}>{t("common.close")}</button>}
             </header>
             <div className="filter-grid">
               {renderInventoryFilterDropdown(
@@ -8012,7 +8018,7 @@ export function StockScreen({
             </div>
             <footer className="filter-actions">
               <button type="button" onClick={clearInventoryFilters}>{t("salesReport.filter.clear")}</button>
-              <button type="button" onClick={applyInventoryFilters}>{t("salesReport.filter.apply")}</button>
+              <button type="button" className="erp-dialog-action-confirm" onClick={applyInventoryFilters}>{t("salesReport.filter.apply")}</button>
             </footer>
           </section>
         </div>
@@ -8023,9 +8029,10 @@ export function StockScreen({
           <section className={`filter-dialog stock-family-dialog${app !== "pda" ? " erp-filter-dialog" : ""}`}>
             <header className="filter-header">
               <h2 id="stock-inventory-family-title">{t("stock.column.family")}</h2>
-              <button type="button" aria-label={t("common.close")} onClick={() => setInventoryFamilyPickerOpen(false)}>
-                {app !== "pda" ? <X size={18} weight="bold" aria-hidden="true" /> : t("common.close")}
-              </button>
+              {app !== "pda" ? <WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setInventoryFamilyPickerOpen(false)} >
+                <X size={18} weight="bold" aria-hidden="true" />
+              </WindowCloseButton> :
+                <button type="button" className="erp-dialog-action-cancel" aria-label={t("common.close")} onClick={() => setInventoryFamilyPickerOpen(false)}>{t("common.close")}</button>}
             </header>
             <div className="stock-family-list">
               {inventoryFamilyTree.length === 0 && <p>{t("stock.filter.noFamilies")}</p>}
@@ -8061,7 +8068,7 @@ export function StockScreen({
             </div>
             <footer className="filter-actions">
               <button type="button" onClick={() => setSelectedInventoryFamily("")}>{t("salesReport.filter.clear")}</button>
-              <button type="button" onClick={applyInventoryFamilySelection}>{t("stock.filter.apply")}</button>
+              <button type="button" className="erp-dialog-action-confirm" onClick={applyInventoryFamilySelection}>{t("stock.filter.apply")}</button>
             </footer>
           </section>
         </div>
@@ -8072,9 +8079,10 @@ export function StockScreen({
           <section className={`filter-dialog stock-family-dialog${app !== "pda" ? " erp-filter-dialog" : ""}`}>
             <header className="filter-header">
               <h2 id="stock-family-title">{t("stock.column.family")}</h2>
-              <button type="button" aria-label={t("common.close")} onClick={() => setFamilyPickerOpen(false)}>
-                {app !== "pda" ? <X size={18} weight="bold" aria-hidden="true" /> : t("common.close")}
-              </button>
+              {app !== "pda" ? <WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setFamilyPickerOpen(false)} >
+                <X size={18} weight="bold" aria-hidden="true" />
+              </WindowCloseButton> :
+                <button type="button" className="erp-dialog-action-cancel" aria-label={t("common.close")} onClick={() => setFamilyPickerOpen(false)}>{t("common.close")}</button>}
             </header>
             <div className="stock-family-list">
               {familyTree.length === 0 && <p>{t("stock.filter.noFamilies")}</p>}
@@ -8138,7 +8146,7 @@ export function StockScreen({
             </div>
             <footer className="filter-actions">
               <button type="button" onClick={() => chooseFamily("", "")}>{t("salesReport.filter.clear")}</button>
-              <button type="button" onClick={() => applyFamilySelection(true)}>{t("stock.filter.apply")}</button>
+              <button type="button" className="erp-dialog-action-confirm" onClick={() => applyFamilySelection(true)}>{t("stock.filter.apply")}</button>
             </footer>
           </section>
         </div>
@@ -8149,7 +8157,7 @@ export function StockScreen({
           <section className={`filter-dialog stock-detail-dialog${app === "gestion" && allowSafeRetirement ? " erp-classic-window" : ""}`}>
             <header className="stock-detail-header">
               <h2 id="stock-detail-title">{t("stock.detail.informationTitle")}</h2>
-              <button type="button" aria-label={t("common.close")} onClick={() => setDetailRow(null)}><X size={20} weight="bold" aria-hidden="true" /></button>
+              <WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setDetailRow(null)} ><X size={20} weight="bold" aria-hidden="true" /></WindowCloseButton>
             </header>
             <div className="stock-detail-toolbar">
               <div className="stock-detail-tabs" role="tablist" aria-label={t("stock.detail.informationTitle")}
@@ -8264,9 +8272,9 @@ export function StockScreen({
                   />
               )}
             </div>
-            <footer className="stock-detail-footer">
-              <span><kbd>{t("stock.detail.closeKey")}</kbd> {t("common.close")}</span>
-              <button type="button" onClick={() => setDetailRow(null)}>{t("common.close")}</button>
+            <footer className="stock-detail-footer erp-dialog-actions-row">
+              <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={() => setDetailRow(null)}>{t("common.close")}</DialogDismissButton>
+              <span className="erp-dialog-actions-group"><kbd>{t("stock.detail.closeKey")}</kbd> {t("common.close")}</span>
             </footer>
           </section>
         </div>

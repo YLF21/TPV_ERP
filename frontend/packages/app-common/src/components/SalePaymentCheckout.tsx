@@ -1,3 +1,5 @@
+import { DialogDismissButton } from "./DialogDismissButton";
+import { WindowCloseButton } from "./WindowCloseButton";
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { apiRequest, ApiError } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -1068,7 +1070,7 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
   onCancel={()=>{setReservationAuthorizations(null);setError("");}}
   onConfirm={submitReservationAuthorizations}
  />;
- const selectedVoucher=vouchers.find(value=>value.code===voucherCode);const voucherAmountCents=Math.round(Number(voucherAmount.replace(",","."))*100);const voucherDialog=voucherOpen?<div className="sale-action-overlay"><section className="sale-action-dialog voucher-payment-dialog" role="dialog" aria-modal="true" aria-labelledby="voucher-payment-title"><header><h2 id="voucher-payment-title">{t("payment.voucher.title")}</h2><button type="button" aria-label={t("common.close")} onClick={()=>setVoucherOpen(false)}>×</button></header><label><span>{t("payment.voucher.code")}</span><select autoFocus value={voucherCode} onChange={event=>{const code=event.currentTarget.value;const voucher=vouchers.find(value=>value.code===code);setVoucherCode(code);if(voucher)setVoucherAmount((Math.min(totalCents,Math.round(Number(voucher.balance)*100))/100).toFixed(2));}}>{vouchers.map(voucher=><option key={voucher.code} value={voucher.code}>{voucher.code} · {Number(voucher.balance).toLocaleString(locale,{minimumFractionDigits:2,maximumFractionDigits:2})} €</option>)}</select></label><label><span>{t("payment.voucher.amount")}</span><input inputMode="decimal" value={voucherAmount} onChange={event=>setVoucherAmount(event.currentTarget.value)}/></label>{selectedVoucher&&<p>{t("payment.voucher.balance")}: {Number(selectedVoucher.balance).toLocaleString(locale,{minimumFractionDigits:2,maximumFractionDigits:2})} €</p>}<div className="sale-action-buttons"><button type="button" onClick={()=>setVoucherOpen(false)}>{t("common.cancel")}</button><button type="button" className="primary" disabled={voucherAmountCents<=0||voucherAmountCents>totalCents||voucherAmountCents>Math.round(Number(selectedVoucher?.balance??0)*100)} onClick={confirmVoucher}>{t("payment.voucher.apply")}</button></div></section></div>:null;
+   const selectedVoucher=vouchers.find(value=>value.code===voucherCode);const voucherAmountCents=Math.round(Number(voucherAmount.replace(",","."))*100);const voucherDialog=voucherOpen?<div className="sale-action-overlay"><section className="sale-action-dialog voucher-payment-dialog" role="dialog" aria-modal="true" aria-labelledby="voucher-payment-title"><header><h2 id="voucher-payment-title">{t("payment.voucher.title")}</h2><WindowCloseButton type="button" aria-label={t("common.close")} onClick={()=>setVoucherOpen(false)} onLight >×</WindowCloseButton></header><label><span>{t("payment.voucher.code")}</span><select autoFocus value={voucherCode} onChange={event=>{const code=event.currentTarget.value;const voucher=vouchers.find(value=>value.code===code);setVoucherCode(code);if(voucher)setVoucherAmount((Math.min(totalCents,Math.round(Number(voucher.balance)*100))/100).toFixed(2));}}>{vouchers.map(voucher=><option key={voucher.code} value={voucher.code}>{voucher.code} · {Number(voucher.balance).toLocaleString(locale,{minimumFractionDigits:2,maximumFractionDigits:2})} €</option>)}</select></label><label><span>{t("payment.voucher.amount")}</span><input inputMode="decimal" value={voucherAmount} onChange={event=>setVoucherAmount(event.currentTarget.value)}/></label>{selectedVoucher&&<p>{t("payment.voucher.balance")}: {Number(selectedVoucher.balance).toLocaleString(locale,{minimumFractionDigits:2,maximumFractionDigits:2})} €</p>}<div className="sale-action-buttons erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={()=>setVoucherOpen(false)}>{t("common.cancel")}</DialogDismissButton><button type="button" className="primary erp-dialog-action-confirm" disabled={voucherAmountCents<=0||voucherAmountCents>totalCents||voucherAmountCents>Math.round(Number(selectedVoucher?.balance??0)*100)} onClick={confirmVoucher}>{t("payment.voucher.apply")}</button></div></section></div>:null;
  const pendingFinalizeReady=Boolean(
   pendingFinalizeAuthorization
   &&effectiveCreatePendingAuthorization
@@ -1129,8 +1131,8 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
     />
    </>}
    {error&&<p className="sale-action-error" role="alert">{error}</p>}
-   <div className="sale-action-buttons">
-    <button type="button" disabled={busy} onClick={()=>{
+    <div className="sale-action-buttons erp-dialog-actions-row">
+     <button className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={busy} onClick={()=>{
      setPendingFinalizeAuthorization(null);
      setPendingUsername("");
      setPendingPassword("");
@@ -1139,7 +1141,7 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
      setCreditOverridePassword("");
      setError("");
     }}>{t("common.cancel")}</button>
-    <button type="button" className="primary" disabled={busy||!pendingFinalizeReady} onClick={()=>void submitPendingFinalizeAuthorization()}>{t("common.confirm")}</button>
+    <button type="button" className="primary erp-dialog-action-confirm" disabled={busy||!pendingFinalizeReady} onClick={()=>void submitPendingFinalizeAuthorization()}>{t("common.confirm")}</button>
    </div>
   </section>
  </div>:null;
@@ -1203,14 +1205,14 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
      onUsernameChange={setCompensationUsername}
      onPasswordChange={setCompensationPassword}
     />
-    <button
+    <button className="erp-dialog-action-confirm"
      type="button"
      disabled={!compensationNote.trim()||!saleOperationAuthorizationComplete(effectiveCompensationAuthorization,compensationUsername,compensationPassword)}
      onClick={()=>void acknowledge()}
     >
      {t("payment.split.confirm")}
     </button>
-    <button
+    <button className="erp-dialog-action-cancel"
      type="button"
      onClick={()=>{
       setCompensationNote("");
@@ -1300,14 +1302,14 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
      onUsernameChange={setAuthorizationUsername}
      onPasswordChange={setAuthorizationPassword}
     />
-    <button
+    <button className="erp-dialog-action-confirm"
      type="button"
      onClick={()=>void authorize()}
      disabled={!saleOperationAuthorizationComplete(authorization.authorization,authorizationUsername,authorizationPassword)||(authorization.kind==="REFUND"&&(!authorization.amount||authorization.lines.some(line=>!line.quantity)))}
     >
      {t("payment.split.confirm")}
     </button>
-    <button
+    <button className="erp-dialog-action-cancel"
      type="button"
      onClick={()=>{
       setAuthorizationUsername("");

@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
+import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
@@ -217,7 +219,7 @@ export function MemberCategoriesScreen({ session, t, request = apiRequest }: {
 
     {dialogOpen && <div className="filter-overlay erp-classic-overlay" role="dialog" aria-modal="true" aria-labelledby="member-category-dialog-title">
       <section className="filter-dialog product-create-dialog party-create-dialog member-category-dialog erp-classic-window">
-        <header className="filter-header"><div><h2 id="member-category-dialog-title">{t(draft.id ? "gestion.memberCategories.editTitle" : "gestion.memberCategories.newTitle")}</h2><span>{t("gestion.memberCategories.formHint")}</span></div><button type="button" disabled={busy} onClick={() => setDialogOpen(false)}>{t("common.close")}</button></header>
+        <header className="filter-header"><div><h2 id="member-category-dialog-title">{t(draft.id ? "gestion.memberCategories.editTitle" : "gestion.memberCategories.newTitle")}</h2><span>{t("gestion.memberCategories.formHint")}</span></div><WindowCloseButton type="button" aria-label={t("common.close")} disabled={busy} onClick={() => setDialogOpen(false)} >{t("common.close")}</WindowCloseButton></header>
         <form className="product-create-form party-create-form member-category-form" onSubmit={(event) => void save(event)}>
           <fieldset disabled={busy || !canManage}>
             <label className="filter-field"><span>{t("party.name")}</span><input autoFocus maxLength={64} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
@@ -227,7 +229,7 @@ export function MemberCategoriesScreen({ session, t, request = apiRequest }: {
             <label className="product-create-check member-category-manual-check"><input type="checkbox" checked={draft.manualOnly} onChange={(event) => setDraft({ ...draft, manualOnly: event.target.checked })} /><span><strong>{t("gestion.memberCategories.manualOnly")}</strong><small>{t("gestion.memberCategories.manualOnlyHint")}</small></span></label>
           </fieldset>
           {error && <p className="product-create-status" role="alert">{error}</p>}
-          <footer className="filter-actions"><button type="button" disabled={busy} onClick={() => setDialogOpen(false)}>{t("common.cancel")}</button><button type="submit" disabled={busy || !canManage}>{busy ? t("common.saving") : t("common.save")}</button></footer>
+          <footer className="filter-actions erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={busy} onClick={() => setDialogOpen(false)}>{t("common.cancel")}</DialogDismissButton><button className="erp-dialog-action-confirm" type="submit" disabled={busy || !canManage}>{busy ? t("common.saving") : t("common.save")}</button></footer>
         </form>
       </section>
     </div>}

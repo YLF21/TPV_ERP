@@ -12,9 +12,10 @@ type TerminalLinkState = {
   status: "PENDING" | "ACTIVE" | "DISABLED" | "RELEASED" | "CANCELLED" | "EXPIRED";
   expiresAt?: string;
 };
+type TerminalDisplayContext = { companyName?: string; storeName: string; terminalCode: string; terminalName?: string };
 type TerminalBootstrap = {
   protocolVersion: number; installationId: string; installationReference: string;
-  storeId: string; storeName: string; publicKey: string; challenge: string;
+  storeId: string; storeName: string; companyName?: string; publicKey: string; challenge: string;
   signature: string; maxWindows: number;
   slots: Array<{ code: string; status: string; name?: string; terminalId?: string;
     bindingId?: string; expiresAt?: string; outOfQuota?: boolean }>;
@@ -27,9 +28,10 @@ declare global {
       backendConnection?: {
         load: () => Promise<BackendConnectionResult<{ configuration?: { backendUrl: string; installationId?: string };
           link?: TerminalLinkState; identity?: TerminalContext | null; deviceName: string; configurationError?: string;
-          restartRequired?: boolean; pendingRequest?: { code: string; name: string; backendUrl: string;
+          restartRequired?: boolean; connectionUnavailable: boolean; displayContext?: TerminalDisplayContext;
+          pendingRequest?: { code: string; name: string; backendUrl: string;
             mode: "SERVER_ADMIN" | "SERVER_EXISTING" | "WORKSTATION" | "LEGACY_POS" };
-          linkedIdentity?: { installationId: string; bindingId: string; terminalId: string; terminalCode: string; terminalName?: string; storeName: string };
+          linkedIdentity?: { installationId: string; bindingId: string; terminalId: string; terminalCode: string; terminalName?: string; storeName: string; companyName?: string };
           legacyIdentity?: { terminalId: string; terminalCode: string; storeName: string } }>>;
         discover: () => Promise<BackendConnectionResult<{ servers: Array<{ backendUrl: string; label: string }> }>>;
         probe: (request: { backendUrl: string }) => Promise<BackendConnectionResult<{ server: TerminalBootstrap; sameInstallation: boolean; localServer: boolean }>>;
@@ -45,7 +47,8 @@ declare global {
       saleControlOutbox?: SaleControlStorageBridge;
       closeApplication: () => Promise<void>;
       terminalIdentity?: {
-        load: () => Promise<DesktopResult & { identity?: TerminalContext | null }>;
+        load: () => Promise<DesktopResult & { identity?: TerminalContext | null;
+          connectionUnavailable?: boolean; displayContext?: TerminalDisplayContext }>;
         save: (identity: TerminalContext) => Promise<DesktopResult>;
       };
       salesDocuments?: {

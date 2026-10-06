@@ -1,7 +1,10 @@
+import { X } from "@phosphor-icons/react";
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
+import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
-import { ArrowClockwise, ArrowRight, BellRinging, CashRegister, FileText, Gear, ListBullets, MinusCircle, Package, Percent, SlidersHorizontal, Tag, Trash, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowRight, BellRinging, CashRegister, FileText, Gear, ListBullets, MinusCircle, Package, Percent, SlidersHorizontal, Tag, Trash } from "@phosphor-icons/react";
 import { classifyApiFailure, useTableLayoutPreference, TableLayoutHeaderCell, tableLayoutGridTemplate, visibleTableColumns, type LocaleCode, type TableColumnDefinition, type UserSession } from "@tpverp/app-common";
 import {
   controlAlertPriorities,
@@ -256,9 +259,9 @@ function ControlAlertsWorkspace({ session, t, locale = "es" }: ControlAlertsScre
         refreshKey={refreshKey} view={view} timeZone={storeTimezone} onChanged={() => setRefreshKey((value) => value + 1)}
         onFiltersChange={changeMetricsFilters} onSortChange={(sortDirection) => void saveView({ ...view, sortDirection }, false)} preferenceSaving={preferenceSaving || !preferenceLoaded} /> : <div className="gestion-alert-list-state">{t("common.loading")}</div>}
       {rulesOpen && <div className="gestion-modal-backdrop" role="presentation"><section className="gestion-control-rules-manager" role="dialog" aria-modal="true" aria-labelledby="control-rules-manager-title">
-        <header><h2 id="control-rules-manager-title">{t("gestion.controlAlerts.configureRules")}</h2><div>
+        <header className="erp-window-header"><h2 id="control-rules-manager-title">{t("gestion.controlAlerts.configureRules")}</h2><div>
           <button type="button" disabled={rulesLoading || rulesError} onClick={() => setEditorType(null)}>{t("gestion.controlRules.add")}</button>
-          <button type="button" aria-label={t("common.close")} onClick={() => setRulesOpen(false)}><X size={20} /></button>
+          <WindowCloseButton type="button" onLight aria-label={t("common.close")} onClick={() => setRulesOpen(false)} ><X size={20} /></WindowCloseButton>
         </div></header>
         {rulesError && <div className="gestion-control-inline-state error" role="alert">{t("gestion.controlAlerts.rulesLoadError")}<button type="button" onClick={() => void refreshRules()}>{t("gestion.controlAlerts.retry")}</button></div>}
         <RuleOverview tiles={tiles} loading={rulesLoading} error={false} canManage={!rulesError} t={t}
@@ -267,13 +270,13 @@ function ControlAlertsWorkspace({ session, t, locale = "es" }: ControlAlertsScre
       {editorType !== undefined && <RuleConfigurationDialog token={token} t={t} initialType={editorType} catalog={catalog} rules={rules}
         onClose={() => setEditorType(undefined)} onSaved={async () => { await refreshRules(); setRefreshKey((value) => value + 1); setEditorType(undefined); }} />}
       {preferencesOpen && <div className="gestion-modal-backdrop" role="presentation"><section className="gestion-control-preferences" role="dialog" aria-modal="true" aria-labelledby="control-preferences-title">
-        <header><h2 id="control-preferences-title">{t("gestion.controlAlerts.personalize")}</h2><button type="button" aria-label={t("common.close")} onClick={() => setPreferencesOpen(false)}><X size={20} /></button></header>
+        <header><h2 id="control-preferences-title">{t("gestion.controlAlerts.personalize")}</h2><WindowCloseButton type="button" onLight aria-label={t("common.close")} onClick={() => setPreferencesOpen(false)} ><X size={20} /></WindowCloseButton></header>
         {(["showIndicators", "groupByDay", "compact"] as const).map((key) => <label key={key}><input type="checkbox" checked={viewDraft[key]} onChange={(event) => setViewDraft((current) => ({ ...current, [key]: event.target.checked }))} />{t(`gestion.controlAlerts.preference.${key}`)}</label>)}
         <label>{t("gestion.controlAlerts.autoRefresh")}<select value={viewDraft.refreshSeconds} onChange={(event) => setViewDraft((current) => ({ ...current, refreshSeconds: Number(event.target.value) as ControlAlertViewPreference["refreshSeconds"] }))}><option value={0}>{t("gestion.controlAlerts.autoRefreshOff")}</option><option value={15}>15 s</option><option value={30}>30 s</option><option value={60}>60 s</option></select></label>
         <label>{t("gestion.controlAlerts.defaultPeriod")}<select value={viewDraft.defaultPeriod} onChange={(event) => setViewDraft((current) => ({ ...current, defaultPeriod: event.target.value as ControlAlertViewPreference["defaultPeriod"] }))}><option value="LAST_7_DAYS">{t("gestion.controlAlerts.lastSevenDays")}</option><option value="TODAY">{t("gestion.controlAlerts.today")}</option><option value="CURRENT_MONTH">{t("gestion.controlAlerts.currentMonth")}</option></select></label>
         <p>{t("gestion.controlAlerts.preferenceScope")}</p>
         {preferenceError && <p role="alert" className="gestion-inline-error">{t("gestion.controlAlerts.preferenceError")}</p>}
-        <footer><button type="button" disabled={preferenceSaving} onClick={() => setViewDraft({ ...defaultControlAlertView, storeTimezone: view.storeTimezone, storeLocale: view.storeLocale })}>{t("gestion.controlAlerts.restoreDefault")}</button><button type="button" className="primary" disabled={preferenceSaving} onClick={() => void saveView(viewDraft)}>{t(preferenceSaving ? "common.loading" : "common.save")}</button></footer>
+        <footer className="erp-dialog-actions-row"><button type="button" disabled={preferenceSaving} onClick={() => setViewDraft({ ...defaultControlAlertView, storeTimezone: view.storeTimezone, storeLocale: view.storeLocale })}>{t("gestion.controlAlerts.restoreDefault")}</button><button type="button" className="primary erp-dialog-action-confirm" disabled={preferenceSaving} onClick={() => void saveView(viewDraft)}>{t(preferenceSaving ? "common.loading" : "common.save")}</button></footer>
       </section></div>}
     </section>
   );
@@ -747,7 +750,7 @@ function ControlAlertDialog({ id, title, closeLabel, children, onClose, inactive
   }}>
     <section ref={dialogRef} className={`gestion-control-dialog gestion-control-dialog-theme ${className}`} role="dialog" aria-modal={!inactive || undefined}
       aria-hidden={inactive || undefined} inert={inactive || undefined} aria-labelledby={`${id}-title`} data-control-dialog tabIndex={-1}>
-      <header><h2 id={`${id}-title`}>{title}</h2><button type="button" disabled={closeDisabled} aria-label={closeLabel} onClick={onClose}><X size={20} /></button></header>
+      <header><h2 id={`${id}-title`}>{title}</h2><WindowCloseButton type="button" disabled={closeDisabled} aria-label={closeLabel} onClick={onClose} ><X size={20} /></WindowCloseButton></header>
       <div className="gestion-control-dialog-body">{children}</div>
     </section>
   </div>, document.body);
@@ -833,7 +836,7 @@ function AlertDetailPanel({ session, t, locale, timeZone, selected, loading, err
                 <label><span>{t("gestion.controlAlerts.dueLabel")}</span><input type="datetime-local" value={workDueAt} onChange={(event) => setWorkDueAt(event.target.value)} /></label>
                 <label><span>{t("gestion.controlAlerts.workComment")}</span><textarea value={workComment} maxLength={500} onChange={(event) => setWorkComment(event.target.value)} /></label>
               </details>
-              {(workChanged || workSaving) && <button type="button" className="primary" disabled={workSaving || pendingAction !== "" || !workChanged || !assigneesLoaded || unavailableAssignee} onClick={() => onSaveWork({ priority: workPriority, assigneeId: workAssigneeId, dueAt: workDueAt, comment: workComment })}>{workSaving ? t("common.loading") : t("gestion.controlAlerts.saveWork")}</button>}
+              {(workChanged || workSaving) && <button type="button" className="primary erp-dialog-action-confirm" disabled={workSaving || pendingAction !== "" || !workChanged || !assigneesLoaded || unavailableAssignee} onClick={() => onSaveWork({ priority: workPriority, assigneeId: workAssigneeId, dueAt: workDueAt, comment: workComment })}>{workSaving ? t("common.loading") : t("gestion.controlAlerts.saveWork")}</button>}
             </section>
           )}
           {canManage && (
@@ -959,13 +962,13 @@ function RuleConfigurationDialog({ token, t, initialType, catalog, rules, onClos
   return (
     <div className="gestion-modal-backdrop" role="presentation">
       <section className={`gestion-rules-dialog compact ${!item && absent.length === 0 ? "empty" : ""}`} role="dialog" aria-modal="true" aria-labelledby="control-rules-title">
-        <header><h2 id="control-rules-title">{existing ? t("gestion.controlRules.edit") : t("gestion.controlRules.add")}</h2><button type="button" aria-label={t("common.close")} onClick={onClose}>×</button></header>
+        <header><h2 id="control-rules-title">{existing ? t("gestion.controlRules.edit") : t("gestion.controlRules.add")}</h2><WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose} >×</WindowCloseButton></header>
         {!item ? (
           <div className="gestion-rule-catalog-picker">
             {absent.length === 0 ? (
               <div className="gestion-rule-catalog-empty">
                 <p>{t("gestion.controlRules.allConfigured")}</p>
-                <button type="button" onClick={onClose}>{t("common.close")}</button>
+                <div className="erp-dialog-actions-row"><DialogDismissButton notice className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.close")}</DialogDismissButton></div>
               </div>
             ) : (
               <>
@@ -993,7 +996,7 @@ function RuleConfigurationDialog({ token, t, initialType, catalog, rules, onClos
             {item.parameterKind === "NONE" && <p className="gestion-rule-no-config">{t("gestion.controlRules.noConfig")}</p>}
             {draft && <label className="gestion-rule-active-control"><input type="checkbox" checked={draft.active} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} /><span>{t("gestion.controlRules.activeRule")}</span></label>}
             {error && <p className="gestion-inline-error">{t("gestion.controlRules.error")}</p>}
-            <div className="gestion-rule-form-actions"><button type="button" onClick={onClose}>{t("common.cancel")}</button><button type="submit" className="primary" disabled={saving}>{saving ? t("common.loading") : t("common.save")}</button></div>
+            <div className="gestion-rule-form-actions erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.cancel")}</DialogDismissButton><button type="submit" className="primary erp-dialog-action-confirm" disabled={saving}>{saving ? t("common.loading") : t("common.save")}</button></div>
           </form>
         )}
       </section>

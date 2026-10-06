@@ -16,6 +16,8 @@ import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { SaleProductSearchDialog, type SaleProductSearchOption } from "./SaleProductSearchDialog";
 import { WarehouseSupplierDialog } from "./WarehouseSupplierDialog";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import "./WarehouseDocumentClassicTables.css";
 import {
   type WarehouseDocumentLineDraft,
@@ -1766,7 +1768,7 @@ export function WarehouseDocumentDialog({
       }}
     >
       <section className="warehouse-document-dialog warehouse-document-dialog-v2">
-        <header className="warehouse-document-topbar">
+        <header className="warehouse-document-topbar erp-window-header">
           <div className="warehouse-document-file-menu" ref={fileMenuRef}>
             <button type="button" onClick={() => setFileMenuOpen((current) => !current)}>{t("warehouseDocument.menu.file")}</button>
             {fileMenuOpen && (
@@ -1797,9 +1799,9 @@ export function WarehouseDocumentDialog({
             )}
           </div>
           <button type="button" disabled={printing} onClick={printDocument}>{t("salesReport.print")}</button>
-          <button type="button" disabled={!canSaveDraft} onClick={() => void saveDraft()}>{t("warehouseDocument.menu.saveShortcut")}</button>
-          <button type="button" disabled={!canSubmitConfirmation} onClick={() => void confirmDocument()}>{t("common.confirm")}</button>
-          <button type="button" onClick={onClose}>{t("warehouseDocument.menu.exitShortcut")}</button>
+          <button type="button" className="erp-dialog-action-confirm" disabled={!canSaveDraft} onClick={() => void saveDraft()}>{t("warehouseDocument.menu.saveShortcut")}</button>
+          <button type="button" className="erp-dialog-action-confirm" disabled={!canSubmitConfirmation} onClick={() => void confirmDocument()}>{t("common.confirm")}</button>
+          {app === "pda" ? <button type="button" className="erp-dialog-action-cancel" onClick={onClose}>{t("warehouseDocument.menu.exitShortcut")}</button> : <WindowCloseButton aria-label={t("common.close")} title={t("warehouseDocument.menu.exitShortcut")} onLight onClick={onClose} >{t("warehouseDocument.menu.exit")}</WindowCloseButton>}
         </header>
 
         <div className="warehouse-document-workspace">
@@ -2074,7 +2076,7 @@ export function WarehouseDocumentDialog({
                 <span>{pendingZeroPriceProduct?.product.name
                   ?? (quickLineEditIndex !== null ? lines[quickLineEditIndex]?.productLabel : "")}</span>
               </div>
-              <button type="button" onClick={closeQuickLineEditor}>{t("common.close")}</button>
+              {app === "pda" ? <button type="button" className="erp-dialog-action-cancel" onClick={closeQuickLineEditor}>{t("common.close")}</button> : <WindowCloseButton aria-label={t("common.close")} onClick={closeQuickLineEditor} >{t("common.close")}</WindowCloseButton>}
             </header>
             <label>
               <span>{t(quickLineEditMode === "name"
@@ -2090,9 +2092,9 @@ export function WarehouseDocumentDialog({
                 onChange={(event) => setQuickLineEditValue(event.target.value)}
               />
             </label>
-            <footer className="filter-actions">
-              <button type="button" onClick={closeQuickLineEditor}>{t("common.cancel")}</button>
-              <button type="submit" className="primary">{t("common.save")}</button>
+            <footer className="filter-actions erp-dialog-actions-row">
+              <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={closeQuickLineEditor}>{t("common.cancel")}</DialogDismissButton>
+              <button type="submit" className="primary erp-dialog-action-confirm">{t("common.save")}</button>
             </footer>
           </form>
         </div>
@@ -2116,15 +2118,15 @@ export function WarehouseDocumentDialog({
                 <h2 id="warehouse-line-editor-title">{t("warehouseDocument.editLine")}</h2>
                 <span>{lines[lineEditorIndex]?.productLabel}</span>
               </div>
-              <button type="button" onClick={() => setLineEditorIndex(null)}>{t("common.close")}</button>
+              {app === "pda" ? <button type="button" className="erp-dialog-action-cancel" onClick={() => setLineEditorIndex(null)}>{t("common.close")}</button> : <WindowCloseButton aria-label={t("common.close")} onClick={closeLineEditor} >{t("common.close")}</WindowCloseButton>}
             </header>
             <label><span>{t("warehouseDocument.quantity")}</span><input autoFocus={lineEditorInitialField === "quantity"} disabled={linkedLinesLocked} type="number" min="0.001" step="0.001" value={lineEditQuantity} onChange={(event) => setLineEditQuantity(event.target.value)} /></label>
             {mode !== "output" && <label><span>{t("warehouseDocument.column.name")}</span><input ref={lineEditNameRef} maxLength={255} value={lineEditName} onChange={(event) => setLineEditName(event.target.value)} /></label>}
             <label><span>{t("warehouseDocument.column.price")}</span><input ref={lineEditPriceRef} type="number" min="0" step="0.001" value={lineEditPrice} onChange={(event) => setLineEditPrice(event.target.value)} /></label>
             <label><span>{t("warehouseDocument.column.discount")}</span><input type="number" min="0" max="100" step="0.01" value={lineEditDiscount} onChange={(event) => setLineEditDiscount(event.target.value)} /></label>
-            <footer className="filter-actions">
-              <button type="button" onClick={closeLineEditor}>{t("common.cancel")}</button>
-              <button type="submit" className="primary">{t("common.save")}</button>
+            <footer className="filter-actions erp-dialog-actions-row">
+              <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={closeLineEditor}>{t("common.cancel")}</DialogDismissButton>
+              <button type="submit" className="primary erp-dialog-action-confirm">{t("common.save")}</button>
             </footer>
           </form>
         </div>
