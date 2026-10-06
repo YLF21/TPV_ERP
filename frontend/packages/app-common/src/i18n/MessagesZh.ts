@@ -83,6 +83,7 @@ export class MessagesZh {
     "login.userHistory": "最近使用的用户",
     "login.password": "密码",
     "login.salesUserPlaceholder": "用户名",
+    "login.salesBrand": "VENTAS",
     "login.showPassword": "显示密码",
     "login.hidePassword": "隐藏密码",
     "login.localChecking": "正在检查与本地服务器的连接...",

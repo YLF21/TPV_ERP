@@ -201,7 +201,7 @@ export function LoginScreen({
       )}
       <div className={saleLogin ? "login-content" : undefined}>
       <div className={saleLogin ? "login-entry" : undefined}>
-      {saleLogin && <div className="login-sale-brand"><AppBrand app="venta" label={screenHeading} /><span>VENTAS</span></div>}
+      {saleLogin && <div className="login-sale-brand"><AppBrand app="venta" label={screenHeading} /><span>{t("login.salesBrand")}</span></div>}
       <form className="login-panel" ref={formRef} onSubmit={submit} onFocusCapture={(event) => {
         const input = event.target;
         if (input instanceof HTMLInputElement && (input.id === `${app}-login-user` || input.id === `${app}-login-password`)) {

@@ -83,6 +83,7 @@ export class MessagesEs {
     "login.userHistory": "Historial de usuarios",
     "login.password": "Contraseña",
     "login.salesUserPlaceholder": "nombre usuario",
+    "login.salesBrand": "VENTAS",
     "login.showPassword": "Mostrar contraseña",
     "login.hidePassword": "Ocultar contraseña",
     "login.localChecking": "Comprobando conexión con el servidor local...",

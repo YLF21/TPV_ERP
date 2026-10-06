@@ -107,6 +107,7 @@ describe("SaleTicketInvoiceDialog", () => {
     const onClose = vi.fn();
     render(<SaleTicketInvoiceDialog token="token" locale="es" terminalContext={terminalContext} printInvoice={printInvoice} onClose={onClose} />);
     await screen.findByText("T-001");
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Código de ticket" })).toHaveFocus());
     const trigger = screen.getByRole("button", { name: "Lista de clientes" });
     trigger.focus();
     fireEvent.click(trigger);

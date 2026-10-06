@@ -788,3 +788,15 @@ final result: passed
 - Compilaciones Vite de Venta/Gestión y diff --check correctos. Presupuestos dentro del límite: CSS Venta 455702 / 460000 bytes y CSS Gestión 444054 / 520000 bytes. Se reutilizan las pruebas funcionales de teclados, cuyo código no cambia.
 
 final result: passed
+
+## PR #213: corrección de las comprobaciones de CI · 06/10/2026
+
+- El guard de traducciones detectó VENTAS como literal nuevo del acceso compartido. Se mueve a login.salesBrand en ES/EN/ZH manteniendo VENTAS en todos los idiomas, conforme al formato aprobado.
+- Las pruebas de documentos de cliente cierran por la cruz Cerrar después de retirar el botón inferior Cancelar. La prueba de factura espera que termine el enfoque inicial de Código de ticket antes de abrir el listado, conservando la comprobación estricta de que Escape devuelve el foco a Lista de clientes.
+- El helper E2E de acceso busca Usuario y Contraseña con coincidencia exacta; evita seleccionar también Mostrar contraseña.
+- Se actualiza exclusivamente source-map-js de 1.2.1 a 1.2.2 en los lockfiles de frontend y frontend-saas, sin modificar metadatos de plataforma ni otras versiones. Aviso: https://github.com/advisories/GHSA-68fv-2mgg-jv7q. La auditoría de frontend-saas exigida por security-artifacts informa cero vulnerabilidades.
+- 38 pruebas focalizadas y 96 pruebas de frontend-saas correctas. TypeScript y Vite de Venta/Gestión y la compilación SaaS correctos. Presupuestos y diff --check correctos.
+
+- Validación completa posterior: 293 archivos y 3257 pruebas frontend correctas (287,58 s). Las 96 pruebas SaaS, auditoría SaaS, TypeScript y compilaciones de Venta/Gestión/SaaS pasan.
+
+final result: passed
