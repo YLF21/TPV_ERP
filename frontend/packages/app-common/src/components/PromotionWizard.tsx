@@ -5,6 +5,7 @@ import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode, UserSession } from "../types";
 import { ErpSelect } from "./ErpSelect";
+import { WindowCloseButton } from "./WindowCloseButton";
 import "./PromotionWizard.css";
 import {
   assertValidPromotionDraft,
@@ -465,8 +466,8 @@ export function PromotionWizard({ locale, session, initialDraft, onClose, onCrea
           <p>{t("promotion.create.subtitle")}</p>
         </div>
         <div className="promotion-create-heading__actions">
-          <button type="button" className="promotion-create-cancel" onClick={onClose}>{t("common.cancel")}</button>
-          <button type="submit" className="promotion-create-save" disabled={saving}>
+          <button type="button" className="promotion-create-cancel erp-dialog-action-cancel" onClick={onClose}>{t("common.cancel")}</button>
+          <button type="submit" className="promotion-create-save erp-dialog-action-confirm" disabled={saving}>
             {t(saving ? "promotion.action.saving" : "promotion.action.save")}
           </button>
         </div>
@@ -709,7 +710,7 @@ export function PromotionWizard({ locale, session, initialDraft, onClose, onCrea
           >
             <header className="filter-header">
               <h2 id="promotion-target-title">{t(`promotion.scope.${draft.scope}`)}</h2>
-              <button type="button" onClick={() => setTargetPickerOpen(false)}>{t("common.close")}</button>
+              <WindowCloseButton aria-label={t("common.close")} onLight onClick={() => setTargetPickerOpen(false)} >{t("common.close")}</WindowCloseButton>
             </header>
             <div className="promotion-form-grid" style={{ padding: 0, overflow: "visible" }}>
               {draft.scope === "SUBFAMILY" && (
@@ -770,7 +771,7 @@ export function PromotionWizard({ locale, session, initialDraft, onClose, onCrea
             </div>
             <footer className="filter-actions">
               <button type="button" onClick={() => setPickerTargetIds([])}>{t("salesReport.filter.clear")}</button>
-              <button type="button" onClick={() => applyTargetSelection()}>{t("stock.filter.apply")}</button>
+              <button type="button" className="erp-dialog-action-confirm" onClick={() => applyTargetSelection()}>{t("stock.filter.apply")}</button>
             </footer>
           </section>
         </div>

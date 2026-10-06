@@ -1,3 +1,5 @@
+import { DialogDismissButton } from "./DialogDismissButton";
+import { WindowCloseButton } from "./WindowCloseButton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -1109,7 +1111,7 @@ export function CustomerPendingSaleDialog({
                 {t("salesDocument.paymentAuthorizationTitle")}
               </h2>
             </div>
-            <button
+            <WindowCloseButton
               type="button"
               aria-label={t("common.close")}
               onClick={() => {
@@ -1117,7 +1119,7 @@ export function CustomerPendingSaleDialog({
                 standardFinalizeCompletionModeRef.current = null;
                 setStandardPaymentAuthorizationOpen(false);
               }}
-            >{"\u00d7"}</button>
+            >{"\u00d7"}</WindowCloseButton>
           </header>
           <form onSubmit={(event) => {
             event.preventDefault();
@@ -1193,17 +1195,17 @@ export function CustomerPendingSaleDialog({
                 onPasswordChange={setTransferPaymentPassword}
               />
             </section>}
-            <div className="sale-action-buttons">
-              <button type="button" onClick={() => {
+            <div className="sale-action-buttons erp-dialog-actions-row">
+              <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={() => {
                 standardFinalizePaymentsRef.current = null;
                 standardFinalizeCompletionModeRef.current = null;
                 setStandardPaymentAuthorizationOpen(false);
               }}>
                 {t("common.cancel")}
-              </button>
+              </DialogDismissButton>
               <button
                 type="submit"
-                className="primary"
+                className="primary erp-dialog-action-confirm"
                 disabled={pendingAuthorizationMissingFor(authorizationSummary.pendingCents)
                   || creditOverrideMissingFor(authorizationSummary.pendingCents)
                   || manualCardAuthorizationMissingFor(authorizationPayments)
@@ -1233,7 +1235,7 @@ export function CustomerPendingSaleDialog({
 
   return <div className="sale-action-overlay pending-sale-overlay" role="presentation">
     <section ref={dialogRef} className="customer-pending-sale-dialog" role="dialog" aria-modal="true" aria-labelledby="customer-pending-title" aria-busy={submitting || quoteLoading} aria-hidden={cashOpen || manualCardOpen || Boolean(mutationAuthorizationAction) ? true : undefined}>
-      <header><h2 id="customer-pending-title">{title ?? t("pendingSale.title")}</h2><button type="button" aria-label={t("common.close")} disabled={submitting || hasCardEffect || createDurable} onClick={cancelPendingSale}>×</button></header>
+      <header><h2 id="customer-pending-title">{title ?? t("pendingSale.title")}</h2><WindowCloseButton type="button" aria-label={t("common.close")} disabled={submitting || hasCardEffect || createDurable} onClick={cancelPendingSale} onLight >×</WindowCloseButton></header>
       <p><strong>{t("pendingSale.customer")}:</strong> {customerName}</p>
       <div className="pending-sale-fields">
         <label>{t("pendingSale.documentType")}<select value={draft.type} disabled={lockDocumentType || disabled || submitting || hasCardEffect || createDurable} onChange={(event) => { if (!lockDocumentType && !disabled && !submitting && !hasCardEffect && !createDurable) setDraft((value) => ({ ...value, type: event.target.value as PendingSaleDraft["type"] })); }}><option value="ALBARAN_VENTA">{t("receivables.type.deliveryNote")}</option><option value="FACTURA_VENTA">{t("receivables.type.invoice")}</option></select></label>
@@ -1367,9 +1369,9 @@ export function CustomerPendingSaleDialog({
         <button type="button" className="pending-sale-payment-button" disabled={disabled || hasCardEffect || createDurable || !resolvedMethods.card || !effectiveCardPaymentMode || saleMutationSecurityUnavailable || (effectiveCardPaymentMode === "MANUAL" && !effectiveManualCardPaymentAuthorization) || summary.pendingCents <= 0 || uncertain || cardCreditAuthorizationBlocked} onClick={() => void chargeCard()}>{t("pendingSale.addCard")}</button>
         <button type="button" className="pending-sale-payment-button" disabled={disabled || hasCardEffect || createDurable || !resolvedMethods.transfer || summary.pendingCents <= 0 || uncertain} onClick={() => { if (!createDurable) setTransferOpen(true); }}>{t("pendingSale.addTransfer")}</button>
       </div>}
-      {transferOpen && <fieldset aria-label={t("receivables.payment.transfer")} disabled={createDurable}><legend>{t("receivables.payment.transfer")}</legend><label>{t("receivables.payment.amount")}<input aria-label={t("pendingSale.transferAmount")} inputMode="decimal" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} /></label><label>{t("receivables.payment.transferReference")}<input value={transferReference} onChange={(event) => setTransferReference(event.target.value)} /></label><button type="button" onClick={saveTransfer}>{t("pendingSale.saveTransfer")}</button><button type="button" onClick={() => setTransferOpen(false)}>{t("pendingSale.cancelTransfer")}</button></fieldset>}
+      {transferOpen && <fieldset aria-label={t("receivables.payment.transfer")} disabled={createDurable}><legend>{t("receivables.payment.transfer")}</legend><label>{t("receivables.payment.amount")}<input aria-label={t("pendingSale.transferAmount")} inputMode="decimal" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} /></label><label>{t("receivables.payment.transferReference")}<input value={transferReference} onChange={(event) => setTransferReference(event.target.value)} /></label><button type="button" className="erp-dialog-action-confirm" onClick={saveTransfer}>{t("pendingSale.saveTransfer")}</button><button type="button" className="erp-dialog-action-cancel" onClick={() => setTransferOpen(false)}>{t("pendingSale.cancelTransfer")}</button></fieldset>}
       {error && <p className="sale-action-error" role="alert">{error}</p>}
-      <footer className="pending-sale-footer"><button type="button" className="pending-sale-cancel-button" disabled={submitting || hasCardEffect || createDurable} onClick={cancelPendingSale}>{t("common.cancel")}</button><button type="button" className="pending-sale-confirm-button" aria-label={createDurable && !submitting ? `${t("pendingSale.retryCreate")} · ${confirmLabel ?? t("pendingSale.confirm")}` : undefined} disabled={disabled || submitting || quoteLoading || !quoteReady || uncertain || cardFinalFailure || summary.pendingCents < 0 || (requireFullPayment && summary.pendingCents !== 0) || !draft.dueDate || creditConfirmationBlocked} onClick={() => void confirm()}>{submitting ? t("pendingSale.creating") : createDurable ? t("pendingSale.retryCreate") : confirmLabel ?? t("pendingSale.confirm")}</button></footer>
+      <footer className="pending-sale-footer erp-dialog-actions-row"><DialogDismissButton type="button" className="pending-sale-cancel-button erp-dialog-action-cancel erp-dialog-dismiss" disabled={submitting || hasCardEffect || createDurable} onClick={cancelPendingSale}>{t("common.cancel")}</DialogDismissButton><button type="button" className="pending-sale-confirm-button erp-dialog-action-confirm" aria-label={createDurable && !submitting ? `${t("pendingSale.retryCreate")} · ${confirmLabel ?? t("pendingSale.confirm")}` : undefined} disabled={disabled || submitting || quoteLoading || !quoteReady || uncertain || cardFinalFailure || summary.pendingCents < 0 || (requireFullPayment && summary.pendingCents !== 0) || !draft.dueDate || creditConfirmationBlocked} onClick={() => void confirm()}>{submitting ? t("pendingSale.creating") : createDurable ? t("pendingSale.retryCreate") : confirmLabel ?? t("pendingSale.confirm")}</button></footer>
     </section>
     {cashOpen && <CashPaymentDialog totalCents={cashAmountCents} submitting={false} error="" initialMode="touch" onCancel={() => setCashOpen(false)} onConfirm={(receivedCents) => { if (createDurable) return; const amountCents = cashAmountCents; setPayments((current) => [...current, { id: uuid(), kind: "CASH", methodId: resolvedMethods.cash!, amountCents, deliveredCents: receivedCents, changeCents: receivedCents - amountCents, status: "APPROVED" }]); setAllocationAmount(""); setCashOpen(false); }} />}
     {manualCardOpen && <div className="sale-action-overlay manual-card-payment-overlay" role="presentation">

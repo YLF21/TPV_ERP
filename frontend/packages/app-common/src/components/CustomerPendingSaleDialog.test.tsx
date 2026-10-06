@@ -380,7 +380,7 @@ describe("CustomerPendingSaleDialog", () => {
     const password = screen.getByLabelText(/contrase.*autorizador/i);
     fireEvent.change(username, { target: { value: "supervisor-tarjeta" } });
     fireEvent.change(password, { target: { value: "card-secret" } });
-    fireEvent.click(screen.getByRole("button", { name: /^cancelar$/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
 
     expect(onCancel).toHaveBeenCalledOnce();
     expect(username).toHaveValue("");
@@ -855,8 +855,8 @@ describe("CustomerPendingSaleDialog", () => {
     const card = screen.getByRole("button", { name: /a\u00f1adir tarjeta/i });
     const transfer = screen.getByRole("button", { name: /a\u00f1adir transferencia/i });
     [cash, card, transfer].forEach((button) => expect(button).toHaveClass("pending-sale-payment-button"));
-    expect(screen.getByRole("button", { name: /^cancelar$/i })).toHaveClass("pending-sale-cancel-button");
-    expect(screen.getByRole("button", { name: /confirmar venta pendiente/i })).toHaveClass("pending-sale-confirm-button");
+    expect(screen.queryByRole("button", { name: /^cancelar$/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /confirmar venta pendiente/i })).toHaveClass("pending-sale-confirm-button", "erp-dialog-action-confirm");
     expect(screen.getByRole("button", { name: /confirmar venta pendiente/i }).parentElement).toHaveClass("pending-sale-footer");
   });
 
@@ -1003,7 +1003,7 @@ describe("CustomerPendingSaleDialog", () => {
     await screen.findAllByText("10,00");
     fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("response lost");
-    expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cerrar" })).toBeDisabled();
     expect(screen.getByRole("button", { name: /reintentar.*finalizar/i })).toBeEnabled();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onCancel).not.toHaveBeenCalled();
@@ -1315,7 +1315,7 @@ describe("CustomerPendingSaleDialog", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/conflicto/i);
     expect(onClearRecovery).toHaveBeenCalledOnce();
-    const cancel = screen.getByRole("button", { name: "Cancelar" });
+    const cancel = screen.getByRole("button", { name: "Cerrar" });
     expect(cancel).toBeEnabled();
     fireEvent.click(cancel);
     expect(onCancel).toHaveBeenCalledOnce();
@@ -1411,7 +1411,7 @@ describe("CustomerPendingSaleDialog", () => {
     expect(dueDate).toHaveValue("2026-08-15");
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onCancel).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cerrar" })).toBeDisabled();
 
     view.rerender(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ card: "card-method" }} request={request} disabled onCancel={onCancel} onSuccess={vi.fn()} />);
     expect(await screen.findByRole("alert")).toHaveTextContent(/recuperaci[oó]n/i);
@@ -1421,7 +1421,7 @@ describe("CustomerPendingSaleDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
     expect(type).toBeEnabled();
     expect(dueDate).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Cancelar" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Cerrar" })).toBeEnabled();
   });
 
   it("closes on a recovered checkout lock before effects and blocks confirmation after effects", async () => {

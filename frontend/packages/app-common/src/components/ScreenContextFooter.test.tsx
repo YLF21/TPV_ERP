@@ -11,9 +11,9 @@ const request = vi.mocked(apiRequest);
 const addressFetch = vi.fn();
 const terminalContext = { storeName: "Tienda Principal", terminalCode: "SERVIDOR" };
 
-async function mountFooter() {
+async function mountFooter(terminalNameOnly = false) {
   let view!: ReturnType<typeof render>;
-  await act(async () => { view = render(<ScreenContextFooter locale="es" terminalContext={terminalContext} />); });
+  await act(async () => { view = render(<ScreenContextFooter locale="es" terminalContext={terminalContext} terminalNameOnly={terminalNameOnly} />); });
   return view;
 }
 
@@ -31,6 +31,19 @@ describe("ScreenContextFooter real connectivity", () => {
     cleanup();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it.each([false, true])("uses the terminal name only when explicitly requested: %s", async (terminalNameOnly) => {
+    await act(async () => { render(<ScreenContextFooter locale="es"
+      terminalContext={{ ...terminalContext, terminalName: "Caja Principal" }} terminalNameOnly={terminalNameOnly} />); });
+    expect(screen.getByText(terminalNameOnly ? "Caja Principal" : "Terminal: SERVIDOR")).toBeInTheDocument();
+    expect(screen.queryByText(terminalNameOnly ? "Terminal: SERVIDOR" : "Caja Principal")).not.toBeInTheDocument();
+  });
+
+  it("uses the code without a prefix when a terminal name is not available", async () => {
+    await mountFooter(true);
+    expect(screen.getByText("SERVIDOR")).toBeInTheDocument();
+    expect(screen.queryByText("Terminal: SERVIDOR")).not.toBeInTheDocument();
   });
 
   it("does not infer a SaaS connection from the browser having a network", async () => {

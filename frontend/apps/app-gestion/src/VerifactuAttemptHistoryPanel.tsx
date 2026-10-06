@@ -1,3 +1,4 @@
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { useEffect, useRef, useState } from "react";
 import type { LocaleCode } from "@tpverp/app-common";
 import {
@@ -76,7 +77,7 @@ export function VerifactuAttemptHistoryPanel({
           <span>{t("verifactu.management.attemptHistory")}</span>
           <h3>{target.documentNumber}</h3>
         </div>
-        <button type="button" onClick={onClose}>{t("verifactu.management.close")}</button>
+        <WindowCloseButton type="button" aria-label={t("verifactu.management.close")} onClick={onClose} >{t("verifactu.management.close")}</WindowCloseButton>
       </header>
 
       {loading && (

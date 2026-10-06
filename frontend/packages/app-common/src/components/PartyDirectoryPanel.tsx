@@ -14,6 +14,8 @@ import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import { SafeRetirementDialog, type RetirementResult } from "./SafeRetirementDialog";
 import { CustomerDocumentsDialog } from "./CustomerDocumentsDialog";
 import { CentralCustomerReuse } from "./CentralCustomerReuse";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { customerDocumentType, customerIdentityFailure } from "./customerDocumentIdentity";
 import stockFilterIcon from "../assets/stock/filter.png";
 import "./PartyDirectoryFilters.css";
@@ -829,7 +831,15 @@ export function PartyDirectoryPanel({
             />
           </fieldset>
           {status && <p className="product-create-status" role="status">{status}</p>}
-          <footer className="filter-actions">{selected && !isMember && allowSafeRetirement && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" onClick={openSafeRetirement} disabled={saving || centralBusy}>{t("safeManagement.action.retire")}</button>}{selected && customerReceivablesActionVisible(kind, true, session.permissions) && onOpenCustomerReceivables && <button type="button" onClick={() => onOpenCustomerReceivables(isMember ? (selected as MemberDirectoryView).customerId : selected.id)}>{t("party.action.viewReceivables")}</button>}{selected && canWrite && (!isMember || selected.active || selectedMember?.customerActive) && <button type="button" className={selected.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving || centralBusy}>{t(selected.active ? "party.action.deactivate" : "party.action.activate")}</button>}<button type="button" disabled={saving || centralBusy} onClick={() => closeDialog()}>{t("common.cancel")}</button>{canWrite && <button type="submit" disabled={saving || centralBusy}>{saving ? t("party.saving") : t("common.save")}</button>}</footer>
+          <footer className="filter-actions erp-dialog-actions-row">
+            <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" disabled={saving || centralBusy} onClick={() => closeDialog()}>{t("common.cancel")}</DialogDismissButton>
+            <div className="erp-dialog-actions-group">
+              {selected && !isMember && allowSafeRetirement && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" onClick={openSafeRetirement} disabled={saving || centralBusy}>{t("safeManagement.action.retire")}</button>}
+              {selected && customerReceivablesActionVisible(kind, true, session.permissions) && onOpenCustomerReceivables && <button type="button" onClick={() => onOpenCustomerReceivables(isMember ? (selected as MemberDirectoryView).customerId : selected.id)}>{t("party.action.viewReceivables")}</button>}
+              {selected && canWrite && (!isMember || selected.active || selectedMember?.customerActive) && <button type="button" className={selected.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving || centralBusy}>{t(selected.active ? "party.action.deactivate" : "party.action.activate")}</button>}
+              {canWrite && <button type="submit" className="erp-dialog-action-confirm" disabled={saving || centralBusy}>{saving ? t("party.saving") : t("common.save")}</button>}
+            </div>
+          </footer>
         </form>;
   const memberLoyaltyContent = selectedMember ? <>
     <div className="party-member-directory-detail">
@@ -849,9 +859,9 @@ export function PartyDirectoryPanel({
       <MemberLoyaltyPanel app={app} memberId={selectedMember.id} session={session} t={t} />
     </div>
     {status && <p className="product-create-status" role="status">{status}</p>}
-    <footer className="filter-actions">
+    <footer className="filter-actions erp-dialog-actions-row">
+      <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={() => closeDialog()}>{t("common.cancel")}</DialogDismissButton>
       {canWrite && (selectedMember.active || selectedMember.customerActive) && <button type="button" className={selectedMember.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving}>{t(selectedMember.active ? "party.action.deactivate" : "party.action.activate")}</button>}
-      <button type="button" onClick={() => closeDialog()}>{t("common.cancel")}</button>
     </footer>
   </> : null;
   const memberDialogContent = selectedMember ? app !== "pda" && selectedMemberCustomer ? <>
@@ -896,9 +906,9 @@ export function PartyDirectoryPanel({
       </div>
     </div>
     {status && <p className="product-create-status" role="status">{status}</p>}
-    <footer className="filter-actions">
-      <button type="button" onClick={() => closeDialog()}>{t("common.cancel")}</button>
-      {canWrite && <button type="button" onClick={() => void activateSelectedCustomer()} disabled={!memberCandidate || saving}>{saving ? t("party.saving") : t(memberCandidate?.memberUuid ? "party.members.reactivate" : "party.members.convert")}</button>}
+    <footer className="filter-actions erp-dialog-actions-row">
+      <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={() => closeDialog()}>{t("common.cancel")}</DialogDismissButton>
+      {canWrite && <button type="button" className="erp-dialog-action-confirm" onClick={() => void activateSelectedCustomer()} disabled={!memberCandidate || saving}>{saving ? t("party.saving") : t(memberCandidate?.memberUuid ? "party.members.reactivate" : "party.members.convert")}</button>}
     </footer>
   </>;
 
@@ -1037,7 +1047,7 @@ export function PartyDirectoryPanel({
     />}
     {dialogOpen && <div className={`filter-overlay${classicWindow ? " erp-classic-overlay" : ""}`} role="dialog" aria-modal="true" aria-labelledby="party-form-title">
       <section className={`filter-dialog party-create-dialog${app !== "pda" ? ` party-desktop-dialog party-desktop-dialog--${kind}` : " product-create-dialog"}${classicWindow ? " erp-classic-window" : ""}`} inert={confirmation !== null || undefined}>
-        <header className="filter-header"><div><h2 id="party-form-title">{selectedId ? t(`party.${kind}.detail`) : t(`party.${kind}.new`)}</h2><span>{selected && app !== "pda" ? <>{selectedCode} <span className={`party-desktop-status ${selected.active ? "is-active" : "is-inactive"}`}>{t(selected.active ? "party.active" : "party.inactive")}</span></> : selected ? `${selectedCode} · ${selected.active ? t("party.active") : t("party.inactive")}` : isMember ? t("party.members.selectCustomerSubtitle") : t("party.form.subtitle")}</span></div><button type="button" onClick={() => closeDialog()}>{t("common.close")}</button></header>
+        <header className="filter-header"><div><h2 id="party-form-title">{selectedId ? t(`party.${kind}.detail`) : t(`party.${kind}.new`)}</h2><span>{selected && app !== "pda" ? <>{selectedCode} <span className={`party-desktop-status ${selected.active ? "is-active" : "is-inactive"}`}>{t(selected.active ? "party.active" : "party.inactive")}</span></> : selected ? `${selectedCode} · ${selected.active ? t("party.active") : t("party.inactive")}` : isMember ? t("party.members.selectCustomerSubtitle") : t("party.form.subtitle")}</span></div>{app === "pda" ? <button type="button" className="erp-dialog-action-cancel" onClick={() => closeDialog()}>{t("common.close")}</button> : <WindowCloseButton aria-label={t("common.close")} onClick={() => closeDialog()} >{t("common.close")}</WindowCloseButton>}</header>
         {isMember ? memberDialogContent : partyEditForm}
       </section>
     </div>}

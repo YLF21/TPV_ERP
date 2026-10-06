@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, apiProblemCode, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 
 export type RetirementEntityPath = "products" | "customers" | "suppliers" | "sales-representatives";
 export type RetirementOutcome = "HARD_DELETED" | "DEACTIVATED" | "ALREADY_INACTIVE";
@@ -211,9 +213,15 @@ export function SafeRetirementDialog({
             <h2 id={titleId}>{t("safeManagement.retirement.title")}</h2>
             <span>{entityLabel}</span>
           </div>
-          <button ref={closeButtonRef} type="button" onClick={onClose} disabled={submitting}>
+          <WindowCloseButton
+            ref={closeButtonRef}
+            aria-label={t("common.close")}
+            onLight={!classicWindow}
+            onClick={onClose}
+            disabled={submitting}
+          >
             {t("common.close")}
-          </button>
+          </WindowCloseButton>
         </header>
 
         <div className="safe-retirement-content" id={descriptionId}>
@@ -238,11 +246,11 @@ export function SafeRetirementDialog({
           )}
         </div>
 
-        <footer className="filter-actions">
-          <button type="button" onClick={onClose} disabled={submitting}>{t("common.cancel")}</button>
+        <footer className="filter-actions erp-dialog-actions-row">
+          <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose} disabled={submitting}>{t("common.cancel")}</DialogDismissButton>
           <button
             type="button"
-            className="safe-retirement-confirm"
+            className="safe-retirement-confirm erp-dialog-action-confirm"
             onClick={() => void confirmRetirement()}
             disabled={loading || submitting || (!retirementResult && (!impact || !impact.executable))}
           >

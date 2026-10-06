@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SaleTouchKeyboardScope } from "./SaleTouchKeyboardScope";
 import { TouchAlphaKeyboard } from "./TouchAlphaKeyboard";
@@ -36,6 +36,96 @@ function Form({ touch = true, portal = false, disabled = false, onSubmit = vi.fn
 }
 
 describe("SaleTouchKeyboardScope", () => {
+  it.each([false, true])("offers a collapsed launcher before focusing a field (portal=%s)", (portal) => {
+    const submit = vi.fn();
+    render(<Form portal={portal} onSubmit={submit} />);
+    expect(screen.getByRole("button", { name: "Mostrar teclado" })).toBeVisible();
+    expect(screen.queryByRole("group", { name: "Teclado alfanumérico" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar teclado" }));
+    fireEvent.click(screen.getByRole("button", { name: "Q" }));
+    expect(screen.getByLabelText("Nombre")).toHaveValue("ABCQ");
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("retains the launcher and switches safely when the active field is removed", async () => {
+    function ReplacedField() {
+      const [replace, setReplace] = useState(false);
+      const [value, setValue] = useState("");
+      return <SaleTouchKeyboardScope locale="es" interfaceMode="TOUCH"><section role="dialog">
+        {!replace && <input autoFocus aria-label="Anterior" />}
+        <input aria-label="Nuevo" value={value} onChange={(e) => setValue(e.target.value)} />
+        <button onClick={() => setReplace(true)}>Reemplazar campo</button>
+      </section></SaleTouchKeyboardScope>;
+    }
+    render(<ReplacedField />);
+    fireEvent.click(screen.getByRole("button", { name: "Reemplazar campo" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Mostrar teclado" })).toBeVisible());
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar teclado" }));
+    fireEvent.click(screen.getByRole("button", { name: "Q" }));
+    expect(screen.getByLabelText("Nuevo")).toHaveValue("Q");
+  });
+
+  it("keeps a launcher across nested windows without editing the inactive parent", async () => {
+    function NestedWindow() {
+      const [nested, setNested] = useState(false);
+      const [parent, setParent] = useState("");
+      const [child, setChild] = useState("");
+      return <SaleTouchKeyboardScope locale="es" interfaceMode="TOUCH">
+        <section role="dialog" aria-label="Principal" inert={nested || undefined}>
+          <input aria-label="Padre" value={parent} onChange={(e) => setParent(e.target.value)} />
+          <button onClick={() => setNested(true)}>Abrir otra ventana</button>
+        </section>
+        {nested && createPortal(<section role="dialog" aria-label="Secundaria">
+          <input aria-label="Hijo" value={child} onChange={(e) => setChild(e.target.value)} />
+          <button onClick={() => setNested(false)}>Cerrar otra ventana</button>
+        </section>, document.body)}
+      </SaleTouchKeyboardScope>;
+    }
+    render(<NestedWindow />);
+    fireEvent.click(screen.getByRole("button", { name: "Abrir otra ventana" }));
+    const childDialog = screen.getByRole("dialog", { name: "Secundaria" });
+    await waitFor(() => expect(within(childDialog).getByRole("button", { name: "Mostrar teclado" })).toBeVisible());
+    fireEvent.click(within(childDialog).getByRole("button", { name: "Mostrar teclado" }));
+    fireEvent.click(within(childDialog).getByRole("button", { name: "Q" }));
+    expect(screen.getByLabelText("Hijo")).toHaveValue("Q");
+    expect(screen.getByLabelText("Padre")).toHaveValue("");
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar otra ventana" }));
+    await waitFor(() => expect(within(screen.getByRole("dialog", { name: "Principal" }))
+      .getByRole("button", { name: "Mostrar teclado" })).toBeVisible());
+  });
+
+  it("keeps the toggle available while collapsed and restores the same field and cursor without submitting", () => {
+    const onSubmit = vi.fn();
+    render(<Form onSubmit={onSubmit} />);
+    const input = screen.getByLabelText<HTMLInputElement>("Nombre");
+    fireEvent.focus(input);
+    input.setSelectionRange(1, 2);
+    const close = screen.getByRole("button", { name: "Cerrar teclado" });
+    expect(close).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(close);
+    expect(screen.queryByRole("group", { name: "Teclado alfanumérico" })).not.toBeInTheDocument();
+    const open = screen.getByRole("button", { name: "Mostrar teclado" });
+    expect(open).toHaveAttribute("aria-expanded", "false");
+    expect(input).toHaveValue("ABC");
+    fireEvent.click(open);
+    expect(screen.getByRole("group", { name: "Teclado alfanumérico" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Z" }));
+    expect(input).toHaveValue("AZC");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("preserves an incomplete numeric draft across hiding and reopening", () => {
+    render(<Form />);
+    fireEvent.focus(screen.getByLabelText("Cantidad"));
+    fireEvent.click(screen.getByRole("button", { name: "2" }));
+    fireEvent.click(screen.getByRole("button", { name: "," }));
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar teclado" }));
+    expect(screen.queryByRole("group", { name: "Teclado numérico" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar teclado" }));
+    fireEvent.click(screen.getByRole("button", { name: "3" }));
+    expect(screen.getByLabelText("Cantidad")).toHaveValue(2.3);
+  });
+
   it("writes through React onChange, preserves selection and maxlength, and never submits", () => {
     const onSubmit = vi.fn();
     render(<Form onSubmit={onSubmit} />);
@@ -83,7 +173,7 @@ describe("SaleTouchKeyboardScope", () => {
     render(<Form onSubmit={onSubmit} />);
     const input = screen.getByLabelText<HTMLInputElement>("Correo");
     fireEvent.focus(input);
-    fireEvent.click(screen.getByRole("button", { name: "Limpiar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar todo" }));
     fireEvent.click(screen.getByRole("button", { name: "A" }));
     expect(input.validity.typeMismatch).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Más símbolos" }));

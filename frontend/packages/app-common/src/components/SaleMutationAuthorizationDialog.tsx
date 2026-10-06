@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   saleOperationAuthorizationComplete,
@@ -152,14 +154,14 @@ export function SaleMutationAuthorizationDialog({
             <h2 id="sale-mutation-authorization-title">{t.title}</h2>
             <p>{t.description}</p>
           </div>
-          <button
+          <WindowCloseButton
             type="button"
             aria-label={t.close}
             disabled={busy}
             onClick={clearAndCancel}
-          >
+           >
             ×
-          </button>
+          </WindowCloseButton>
         </header>
         <form
           onSubmit={(event) => {
@@ -249,11 +251,11 @@ export function SaleMutationAuthorizationDialog({
             />
           )}
           {error && <p className="sale-action-error" role="alert">{error}</p>}
-          <div className="sale-action-buttons">
-            <button type="button" disabled={busy} onClick={clearAndCancel}>
+          <div className="sale-action-buttons erp-dialog-actions-row">
+            <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={busy} onClick={clearAndCancel}>
               {t.cancel}
-            </button>
-            <button type="submit" className="primary" disabled={busy || !complete}>
+            </DialogDismissButton>
+            <button type="submit" className="primary erp-dialog-action-confirm" disabled={busy || !complete}>
               {t.confirm}
             </button>
           </div>

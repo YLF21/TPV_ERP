@@ -1,3 +1,4 @@
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type UIEvent } from "react";
 import { ErpSelect, type LocaleCode, type UserSession } from "@tpverp/app-common";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
@@ -202,7 +203,7 @@ export function CashOpeningAlertsScreen({ session, t, locale, refreshSignal, onR
     <footer className="gestion-cash-alerts-count">{t("gestion.cashOpeningAlerts.loaded").replace("{count}", String(rows.length))}</footer>
     </div>
     {showDetail && selected && <section className="gestion-cash-alert-detail" aria-label={t("gestion.cashOpeningAlerts.detail")} onKeyDown={event => { if (event.key === "Escape" && !saving) { event.preventDefault(); event.stopPropagation(); closeDetail(); } }}>
-      <header className="gestion-cash-alert-detail-header"><h3>{t("gestion.cashOpeningAlerts.detail")}</h3><button type="button" aria-label={t("common.close")} title={t("common.close")} onClick={closeDetail} disabled={saving}>×</button></header><strong>{selected.terminalName} · {selected.userName} · {date.format(new Date(selected.occurredAt))} {time.format(new Date(selected.occurredAt))}</strong>
+      <header className="gestion-cash-alert-detail-header"><h3>{t("gestion.cashOpeningAlerts.detail")}</h3><WindowCloseButton type="button" onLight aria-label={t("common.close")} title={t("common.close")} onClick={closeDetail} disabled={saving} >×</WindowCloseButton></header><strong>{selected.terminalName} · {selected.userName} · {date.format(new Date(selected.occurredAt))} {time.format(new Date(selected.occurredAt))}</strong>
       {selected.type === "CLOSING" && detailLoading && <p className="gestion-cash-alert-detail-state" role="status">{t("common.loading")}</p>}
       {selected.type === "CLOSING" && detailError && <p className="gestion-cash-alert-detail-state" role="status">{t("gestion.cashOpeningAlerts.detailError")}</p>}
       {selected.type === "CLOSING" && alertDetail?.alert.id === selected.id && alertDetail.alert.type === selected.type && alertDetail.attempts.length > 0 ?
@@ -216,7 +217,7 @@ export function CashOpeningAlertsScreen({ session, t, locale, refreshSignal, onR
           {selected.type === "CLOSING" && <div className="gestion-cash-alert-context"><span>{t("gestion.cashOpeningAlerts.attemptNumber")}: {selected.attemptNumber ?? "—"}</span><span>{t("gestion.cashOpeningAlerts.sessionStateAtAttempt")}: {selected.sessionClosed === null ? "—" : t(`gestion.cashOpeningAlerts.session.${selected.sessionClosed ? "closed" : "open"}`)}</span></div>}
           <div className="gestion-cash-alert-amounts"><div><span>{t("gestion.cashOpeningAlerts.expected")}</span><strong>{amount(selected.expectedFund)}</strong></div><div><span>{t("gestion.cashOpeningAlerts.counted")}</span><strong>{amount(selected.countedFund)}</strong></div><div><span>{t("gestion.cashOpeningAlerts.difference")}</span><strong className={selected.difference !== null && selected.difference < 0 ? "shortage" : ""}>{amount(selected.difference)}</strong></div></div>
         </>}
-      {selected.status === "PENDING" && canReview && <><label className="gestion-cash-alert-comment"><span>{t("gestion.cashOpeningAlerts.reviewComment")}</span><textarea value={comment} maxLength={1000} onChange={event => setComment(event.target.value)} /></label><button type="button" onClick={() => void review()} disabled={saving}>{t("gestion.cashOpeningAlerts.markReviewed")}</button></>}
+      {selected.status === "PENDING" && canReview && <><label className="gestion-cash-alert-comment"><span>{t("gestion.cashOpeningAlerts.reviewComment")}</span><textarea value={comment} maxLength={1000} onChange={event => setComment(event.target.value)} /></label><button className="erp-dialog-action-confirm" type="button" onClick={() => void review()} disabled={saving}>{t("gestion.cashOpeningAlerts.markReviewed")}</button></>}
       {selected.status === "REVIEWED" && <div className="gestion-cash-alert-reviewed"><span>{t("gestion.cashOpeningAlerts.reviewer")}: {selected.reviewerName ?? selected.reviewerUsername}</span><span>{t("gestion.cashOpeningAlerts.reviewedAt")}: {selected.reviewedAt ? `${date.format(new Date(selected.reviewedAt))} ${time.format(new Date(selected.reviewedAt))}` : ""}</span><p>{selected.comment}</p></div>}
       {notice && <p role="status">{notice}</p>}
     </section>}

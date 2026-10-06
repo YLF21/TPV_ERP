@@ -118,6 +118,7 @@ class TerminalLinkingPostgreSqlTest {
             return null;
         });
         when(organization.currentStore()).thenReturn(store);
+        when(organization.currentCompany()).thenReturn(store.getEmpresa());
         operational(OperationalMode.LICENSED);
         license = mock(License.class);
         when(license.getMaxWindows()).thenReturn(3);
@@ -299,6 +300,7 @@ class TerminalLinkingPostgreSqlTest {
     @Test void bootstrapSignsTheExactNonceAndRejectsDatabaseKeyMismatch() throws Exception {
         String nonce = Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32]);
         var bootstrap = service.bootstrap(nonce);
+        assertThat(bootstrap.companyName()).isEqualTo("Linking test");
         var verifier = Signature.getInstance("SHA256withRSA"); verifier.initVerify(KEYS.getPublic());
         verifier.update(("TPV-TERMINAL-LINKING-V1\n" + nonce + "\n" + installationId).getBytes(StandardCharsets.UTF_8));
         assertThat(verifier.verify(Base64.getDecoder().decode(bootstrap.signature()))).isTrue();

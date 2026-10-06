@@ -1,0 +1,27 @@
+@layer erp-dialog-actions {
+  button.touch-keyboard-toggle,
+  button.touch-keyboard-clear {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    gap: 8px;
+    min-width: 64px !important;
+    min-height: 44px !important;
+    padding: 8px 12px !important;
+    border: 1px solid #adb9c8 !important;
+    border-radius: 4px !important;
+    background: #fff !important;
+    color: #334155 !important;
+    cursor: pointer;
+  }
+  button.touch-keyboard-toggle:hover:not(:disabled),
+  button.touch-keyboard-clear:hover:not(:disabled) { background: #fff !important; }
+  button.touch-keyboard-toggle:disabled,
+  button.touch-keyboard-clear:disabled { cursor: default; opacity: 0.55; }
+  button.touch-keyboard-toggle:focus-visible,
+  button.touch-keyboard-clear:focus-visible { outline: 3px solid #0065fe; outline-offset: 2px; }
+  button.touch-keyboard-clear { font: inherit; font-weight: 700; }
+}
+.touch-keyboard-toggle-icon { width: 28px; height: 22px; }
+.touch-keyboard-toggle-arrow { width: 12px; height: 8px; }

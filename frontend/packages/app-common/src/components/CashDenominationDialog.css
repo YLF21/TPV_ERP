@@ -29,12 +29,13 @@
 .cash-denomination-dialog--touch .cash-denomination-row--active > td { background: #d8e9fb !important; }
 .cash-denomination-touch { min-width: 0; }
 .cash-denomination-touch h3 { margin: 0 0 9px; color: #12385f; font-size: 17px; line-height: 22px; font-weight: 700; }
+.cash-denomination-touch:has(.touch-keyboard-toggle[aria-expanded="false"]) > h3 { display: none; }
+.cash-denomination-touch .touch-keyboard-panel-heading strong { display: none; }
 .cash-denomination-keypad-navigation { display: grid; grid-template-columns: minmax(0, 1fr) 100px; gap: 10px; padding: 12px; border: 1px solid #c0cfdf; background: #f2f6fa; }
 .cash-denomination-keypad-loading { min-height: 256px; }
-.cash-denomination-navigation { display: grid; grid-template-rows: repeat(3, minmax(52px, 1fr)); gap: 8px; }
+.cash-denomination-navigation { display: grid; grid-template-rows: repeat(2, minmax(52px, 1fr)); gap: 8px; }
 .cash-denomination-navigation > button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 8px 4px; border: 1px solid #8ea6c1; background: #fff; color: #12385f; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; touch-action: manipulation; }
 .cash-denomination-navigation > button > span { font-size: 23px; line-height: 1; }
-.cash-denomination-navigation > button:last-child { background: #12385f; border-color: #12385f; color: #fff; }
 .cash-denomination-navigation > button:hover:not(:disabled) { background: #d8e9fb; color: #12385f; }
 .cash-denomination-navigation > button:disabled { opacity: .55; cursor: default; }
 @media (max-width: 1100px) {

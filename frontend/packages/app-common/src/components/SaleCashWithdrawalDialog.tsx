@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -261,6 +263,7 @@ export function SaleCashWithdrawalDialog({
       >
         <header>
           <h2 id="sale-cash-withdrawal-title">{t("sale.cashMovement.title")}</h2>
+          <WindowCloseButton type="button" aria-label={t("common.close")} disabled={busy} onClick={finishDialog} desktopOnly />
         </header>
         <form onSubmit={(event) => void submit(event)}>
           <p>{t("sale.cashMovement.description")}</p>
@@ -386,13 +389,13 @@ export function SaleCashWithdrawalDialog({
           )}
 
           {error && <p className="sale-cash-session-error" role="alert">{error}</p>}
-          <footer>
+          <footer className="erp-dialog-actions-row">
             {registeredMovement ? (
               <>
-                <button type="button" className="secondary" disabled={busy} onClick={finishDialog}>
+                <DialogDismissButton notice type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" disabled={busy} onClick={finishDialog}>
                   {t("sale.cashWithdrawal.close")}
-                </button>
-                <button type="button" disabled={busy} onClick={() => void retryPrint()}>
+                </DialogDismissButton>
+                <button className="erp-dialog-action-confirm" type="button" disabled={busy} onClick={() => void retryPrint()}>
                   {busy
                     ? t("sale.cashWithdrawal.printing")
                     : t("sale.cashWithdrawal.retryPrint")}
@@ -400,10 +403,10 @@ export function SaleCashWithdrawalDialog({
               </>
             ) : (
               <>
-                <button type="button" className="secondary" disabled={busy} onClick={onCancel}>
+                <DialogDismissButton type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" disabled={busy} onClick={onCancel}>
                   {t("sale.cashWithdrawal.cancel")}
-                </button>
-                <button type="submit" disabled={busy}>
+                </DialogDismissButton>
+                <button className="erp-dialog-action-confirm" type="submit" disabled={busy}>
                   {busy
                     ? t("sale.cashWithdrawal.submitting")
                     : t(movementType === "ENTRY"

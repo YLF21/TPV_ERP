@@ -54,7 +54,12 @@ describe("CustomerModel347Dialog", () => {
     const user = userEvent.setup();
     const view = mount();
     await user.tab({ shift: true });
+    const headerClose = screen.getByRole("dialog").querySelector("header button");
+    expect(headerClose).toHaveFocus();
+    await user.tab({ shift: true });
     expect(screen.getByRole("button", { name: "Generar PDF" })).toHaveFocus();
+    await user.tab();
+    expect(headerClose).toHaveFocus();
     await user.tab();
     expect(screen.getByRole("spinbutton")).toHaveFocus();
     view.unmount(); expect(opener).toHaveFocus(); opener.remove();

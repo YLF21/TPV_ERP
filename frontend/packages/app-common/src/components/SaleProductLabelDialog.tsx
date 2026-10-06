@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { sortProductsByCode } from "./productSearchOrdering";
 import { useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import "./SaleProductLabelDialog.css";
@@ -659,7 +661,7 @@ export function SaleProductLabelDialog({
 
   return <div className="sale-utility-backdrop" role="presentation">
     <section ref={dialogRef} className={`sale-utility-dialog sale-product-label-dialog ${view === "A4_COMPOSER" ? "composer" : ""}`} role="dialog" aria-modal="true" aria-labelledby="product-label-title">
-      <header><h2 id="product-label-title">{view === "A4_COMPOSER" ? t.composer : t.title}</h2></header>
+      <header><h2 id="product-label-title">{view === "A4_COMPOSER" ? t.composer : t.title}</h2><WindowCloseButton type="button" aria-label={t.close} disabled={busy} onClick={onClose} desktopOnly /></header>
       {view === "SELECTION" ? <div className="sale-product-label-body">
         <section className="sale-product-label-products">
           <div className="sale-product-label-section-heading"><h3>{t.products}</h3><strong>{t.selected}: {selected.length}</strong></div>
@@ -740,15 +742,15 @@ export function SaleProductLabelDialog({
         </> : <p>{t.noPlacement}</p>}</aside>
       </div>}
       {footerMessage && <p className={error || (!companyReady && profile.showStoreName) ? "sale-dialog-error sale-product-label-message" : "sale-dialog-success sale-product-label-message"} role={error ? "alert" : "status"}>{footerMessage}</p>}
-      <footer>{view === "A4_COMPOSER" ? <>
+      <footer className="erp-dialog-actions-row">{view === "A4_COMPOSER" ? <>
+        <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={busy} onClick={onClose}>{t.close}</DialogDismissButton>
         <button type="button" disabled={busy} onClick={() => { setView("SELECTION"); setError(""); setStatus(""); }}>{t.back}</button>
-        <button type="button" disabled={busy} onClick={onClose}>{t.close}</button>
-        <button type="button" disabled={busy || !compositionReady} onClick={() => void output(true)}>{t.pdf}</button>
-        <button type="button" disabled={busy || !compositionReady} onClick={() => void output(false)}>{t.print}</button>
+        <button className="erp-dialog-action-confirm" type="button" disabled={busy || !compositionReady} onClick={() => void output(true)}>{t.pdf}</button>
+        <button className="erp-dialog-action-confirm" type="button" disabled={busy || !compositionReady} onClick={() => void output(false)}>{t.print}</button>
       </> : <>
-        <button type="button" disabled={busy} onClick={onClose}>{t.close}</button>
-        <button type="button" disabled={busy} onClick={() => void persistProfile().catch((caught) => setError(errorMessage(caught, t)))}>{t.saveDefault}</button>
-        {profile.destination === "A4" ? <button type="button" disabled={busy || !selectionReady} onClick={() => void enterComposer()}>{t.designA4}</button> : <><button type="button" disabled={busy || !selectionReady} onClick={() => void output(true)}>{t.pdf}</button><button type="button" disabled={busy || !selectionReady} onClick={() => void output(false)}>{t.print}</button></>}
+        <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={busy} onClick={onClose}>{t.close}</DialogDismissButton>
+        <button className="erp-dialog-action-confirm" type="button" disabled={busy} onClick={() => void persistProfile().catch((caught) => setError(errorMessage(caught, t)))}>{t.saveDefault}</button>
+        {profile.destination === "A4" ? <button type="button" className="erp-dialog-action-confirm" disabled={busy || !selectionReady} onClick={() => void enterComposer()}>{t.designA4}</button> : <><button className="erp-dialog-action-confirm" type="button" disabled={busy || !selectionReady} onClick={() => void output(true)}>{t.pdf}</button><button className="erp-dialog-action-confirm" type="button" disabled={busy || !selectionReady} onClick={() => void output(false)}>{t.print}</button></>}
       </>}</footer>
     </section>
   </div>;

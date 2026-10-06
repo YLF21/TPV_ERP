@@ -1,3 +1,5 @@
+import { DialogDismissButton } from "./DialogDismissButton";
+import { WindowCloseButton } from "./WindowCloseButton";
 import { AppBrand } from "./AppBrand";
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
@@ -1913,7 +1915,7 @@ function DocumentOperationalTimelineDialog({ documentId, locale, token, t, onClo
             <span>{t("salesReport.activity.eyebrow")}</span>
             <h2 id="document-activity-title">{timeline?.documentNumber || t("salesReport.activity.title")}</h2>
           </div>
-          <button type="button" aria-label={t("common.close")} onClick={onClose}>×</button>
+          <WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose} >×</WindowCloseButton>
         </header>
 
         {loading && <div className="document-activity-state">{t("common.loading")}</div>}
@@ -1953,9 +1955,9 @@ function DocumentOperationalTimelineDialog({ documentId, locale, token, t, onClo
             </div>
           </>
         )}
-        <footer>
-          <span>{t("salesReport.activity.readOnly")}</span>
-          <button type="button" onClick={onClose}>{t("common.close")}</button>
+        <footer className="erp-dialog-actions-row">
+          <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.close")}</DialogDismissButton>
+          <span className="erp-dialog-actions-group">{t("salesReport.activity.readOnly")}</span>
         </footer>
       </section>
     </div>
@@ -3342,13 +3344,13 @@ export function SalesReportScreen({
             <footer className="date-range-footer">
               <span>{selectedStart ? selectedDaysText(dateRangeDayCount(selectedStart, selectedEnd), locale) : t("salesReport.filter.pickDateFrom")}</span>
               <div className="date-range-actions">
-                <button type="button" onClick={() => {
+                <button className="erp-dialog-action-cancel" type="button" onClick={() => {
                   setDateRangeStart(null);
                   setOpenFilterControl(null);
                 }}>
                   {t("common.cancel")}
                 </button>
-                <button type="button" className="primary" onClick={() => {
+                <button type="button" className="primary erp-dialog-action-confirm" onClick={() => {
                   setDateRangeStart(null);
                   setOpenFilterControl(null);
                 }}>
@@ -4239,7 +4241,7 @@ export function SalesReportScreen({
                     || documentPreviewRow.__documentId || documentPreviewRow.__warehouseDocumentId}
                 </h2>
               </div>
-              <button type="button" aria-label={t("common.close")} onClick={closeDocumentPreview}>×</button>
+              <WindowCloseButton type="button" aria-label={t("common.close")} onClick={closeDocumentPreview} >×</WindowCloseButton>
             </header>
             {documentPreview?.type === "TICKET" || (documentPreviewRow.__documentId && "ticket" in documentPreviewRow)
               ? <TicketPreviewSummary row={documentPreviewRow} detail={documentPreview} loading={documentPreviewLoading} locale={locale} t={t} />
@@ -4295,11 +4297,12 @@ export function SalesReportScreen({
                 </div>
               )}
             </section>
-            <footer>
+            <footer className="erp-dialog-actions-row">
+              <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={closeDocumentPreview}>{t("common.close")}</DialogDismissButton>
               {documentPreviewPrintMessage && (
-                <span className="report-document-print-message" role="status">{documentPreviewPrintMessage}</span>
+                <span className="report-document-print-message erp-dialog-actions-group" role="status">{documentPreviewPrintMessage}</span>
               )}
-              <div className="report-document-preview-actions">
+              <div className="report-document-preview-actions erp-dialog-actions-group">
                 {documentPreview?.originTicket && (
                   <button
                     type="button"
@@ -4314,7 +4317,7 @@ export function SalesReportScreen({
                   <>
                     <button
                       type="button"
-                      className="secondary"
+                      className="secondary erp-dialog-action-confirm"
                       disabled={documentPreviewLoading || Boolean(documentPreviewError) || !documentPreview || documentPreviewExporting}
                       onClick={() => void exportDocumentCopyExcel()}
                     >
@@ -4324,7 +4327,7 @@ export function SalesReportScreen({
                     </button>
                     <button
                       type="button"
-                      className="secondary"
+                      className="secondary erp-dialog-action-confirm"
                       disabled={documentPreviewLoading || Boolean(documentPreviewError) || !documentPreview || documentPreviewPrinting || reportDocumentPrinting}
                       onClick={() => void printDocumentCopy()}
                     >
@@ -4346,7 +4349,6 @@ export function SalesReportScreen({
                     )}
                   </>
                 )}
-                <button type="button" onClick={closeDocumentPreview}>{t("common.close")}</button>
               </div>
             </footer>
           </section>
@@ -4416,9 +4418,10 @@ export function SalesReportScreen({
           <section className={`filter-dialog${app !== "pda" ? " erp-filter-dialog" : ""}`}>
             <header className="filter-header">
               <h2 id="filter-title">{t("salesReport.filter")}</h2>
-              <button type="button" aria-label={app !== "pda" ? t("common.close") : undefined} onClick={() => setFilterOpen(false)}>
-                {app !== "pda" ? <span aria-hidden="true">×</span> : t("common.close")}
-              </button>
+              {app !== "pda" ? <WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setFilterOpen(false)} >
+                <span aria-hidden="true">×</span>
+              </WindowCloseButton> :
+                <button className="erp-dialog-action-cancel" type="button" aria-label={undefined} onClick={() => setFilterOpen(false)}>{t("common.close")}</button>}
             </header>
             <div className="filter-grid">
               {hasDateFilter && renderDateRangeFilter(t(isDailySalesReport ? "salesReport.filter.date" : "salesReport.filter.dateRange"))}
@@ -4454,7 +4457,7 @@ export function SalesReportScreen({
               <button type="button" onClick={clearFilters}>
                 {t("salesReport.filter.clear")}
               </button>
-              <button type="button" onClick={applyFilters}>
+              <button className="erp-dialog-action-confirm" type="button" onClick={applyFilters}>
                 {t("salesReport.filter.apply")}
               </button>
             </footer>
@@ -4465,13 +4468,13 @@ export function SalesReportScreen({
       {shutdownOpen && (
         <div className="shutdown-overlay" role="dialog" aria-modal="true" aria-labelledby="shutdown-title">
           <section className="shutdown-dialog">
-            <h2 id="shutdown-title">{t("login.shutdownConfirmTitle")}</h2>
+            <h2 id="shutdown-title" className="erp-window-header" aria-label={t("login.shutdownConfirmTitle")}>{t("login.shutdownConfirmTitle")}<WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setShutdownOpen(false)} desktopOnly /></h2>
             <p>{t("login.shutdownConfirmText")}</p>
-            <div className="shutdown-actions">
-              <button type="button" className="shutdown-no" autoFocus onClick={() => setShutdownOpen(false)}>
+            <div className="shutdown-actions erp-dialog-actions-row">
+              <button type="button" className="shutdown-no erp-dialog-action-cancel erp-dialog-dismiss" autoFocus onClick={() => setShutdownOpen(false)}>
                 {t("common.no")}
               </button>
-              <button type="button" className="shutdown-yes" onClick={closeApplication}>
+              <button type="button" className="shutdown-yes erp-dialog-action-confirm" onClick={closeApplication}>
                 {t("common.yes")}
               </button>
             </div>

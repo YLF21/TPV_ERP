@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
@@ -95,7 +97,7 @@ export function SalesDocumentCustomerDialog({
       >
         <header className="sales-document-customer-heading">
           <h2 id={`${id}-title`}>{t("salesDocument.selectCustomer")}</h2>
-          <button type="button" aria-label={t("common.close")} onClick={onClose}>{"\u00d7"}</button>
+          <WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose}>{"\u00d7"}</WindowCloseButton>
         </header>
 
         <label className="sales-document-customer-search" htmlFor={`${id}-query`}>
@@ -158,19 +160,18 @@ export function SalesDocumentCustomerDialog({
           </div>
         </div>
 
-        <footer className="sale-business-dialog-actions sales-document-customer-actions">
-          <div className="sales-document-customer-help">
+        <footer className="sale-business-dialog-actions sales-document-customer-actions erp-dialog-actions-row">
+          <DialogDismissButton type="button" className="sales-document-customer-cancel erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>
+            <span>{t("sale.dialog.cancel")}</span><kbd aria-hidden="true">Esc</kbd>
+          </DialogDismissButton>
+          <div className="sales-document-customer-help erp-dialog-actions-group">
             {!loading && <span className="sales-document-customer-count" role="status">
               {results.length} {t(results.length === 1 ? "sale.searchDialog.result" : "sale.searchDialog.results")}
             </span>}
-            <span className="sales-document-customer-navigation"><kbd>{"\u2191 \u2193"}</kbd> {t("sale.searchDialog.navigate")}</span>
           </div>
-          <button type="button" onClick={onClose}>
-            <span>{t("sale.dialog.cancel")}</span><kbd aria-hidden="true">Esc</kbd>
-          </button>
           <button
             type="button"
-            className="sales-document-customer-confirm"
+            className="sales-document-customer-confirm erp-dialog-action-confirm"
             disabled={!selected || loading}
             aria-keyshortcuts="Insert Enter"
             onClick={() => selected && onSelect(selected)}

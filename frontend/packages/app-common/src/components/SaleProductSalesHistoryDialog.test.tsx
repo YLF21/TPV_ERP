@@ -23,6 +23,20 @@ const product: SaleProduct = {
   taxRegime: "IVA",
   taxPercentage: 21,
 };
+const secondProduct: SaleProduct = {
+  ...product,
+  id: "product-2",
+  code: "2004462",
+  barcode: "8435606744035",
+  name: "Cargador de red cámara",
+};
+const thirdProduct: SaleProduct = {
+  ...product,
+  id: "product-3",
+  code: "2004463",
+  barcode: "8435606744036",
+  name: "Cargador de red compacto",
+};
 
 describe("SaleProductSalesHistoryDialog", () => {
   beforeEach(() => {
@@ -58,6 +72,92 @@ describe("SaleProductSalesHistoryDialog", () => {
     fireEvent.keyDown(search, { key: "Enter" });
 
     expect((await screen.findAllByText(product.name ?? "")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(apiRequestMock).toHaveBeenCalledWith(
+      expect.stringContaining("/stock/products/product-1/sales-history/saas?"),
+      { token: "access-token", signal: expect.any(AbortSignal) },
+    ));
+  });
+
+  it("moves to the second matching product with ArrowDown and loads only after Enter", async () => {
+    render(<SaleProductSalesHistoryDialog products={[thirdProduct, product, secondProduct]}
+      locale="es" accessToken="access-token" onClose={vi.fn()} />);
+
+    const search = screen.getByRole("textbox", { name: "Código, código de barras o nombre" });
+    fireEvent.change(search, { target: { value: "cargador de red" } });
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(3);
+    expect(options[0].textContent).toContain("2004461");
+    expect(document.activeElement).toBe(search);
+
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(search);
+    expect(apiRequestMock.mock.calls.some(([path]) => path.includes("/sales-history/"))).toBe(false);
+
+    fireEvent.keyDown(search, { key: "Enter" });
+    await waitFor(() => expect(apiRequestMock).toHaveBeenCalledWith(
+      expect.stringContaining("/stock/products/product-2/sales-history/saas?"),
+      { token: "access-token", signal: expect.any(AbortSignal) },
+    ));
+  });
+
+  it("clamps arrow navigation at both ends and supports keys from a focused result", async () => {
+    render(<SaleProductSalesHistoryDialog products={[product, secondProduct, thirdProduct]}
+      locale="es" accessToken="access-token" onClose={vi.fn()} />);
+
+    const search = screen.getByRole("textbox", { name: "Código, código de barras o nombre" });
+    fireEvent.change(search, { target: { value: "cargador de red" } });
+    fireEvent.keyDown(search, { key: "ArrowUp" });
+    fireEvent.keyDown(search, { key: "ArrowUp" });
+    fireEvent.keyDown(search, { key: "Enter" });
+    await waitFor(() => expect(apiRequestMock).toHaveBeenCalledWith(
+      expect.stringContaining("/stock/products/product-1/sales-history/saas?"),
+      { token: "access-token", signal: expect.any(AbortSignal) },
+    ));
+
+    cleanup();
+    apiRequestMock.mockClear();
+    render(<SaleProductSalesHistoryDialog products={[product, secondProduct, thirdProduct]}
+      locale="es" accessToken="access-token" onClose={vi.fn()} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Código, código de barras o nombre" }),
+      { target: { value: "cargador de red" } });
+    const options = screen.getAllByRole("option");
+    options[1].focus();
+    fireEvent.keyDown(options[1], { key: "ArrowDown" });
+    fireEvent.keyDown(options[1], { key: "ArrowDown" });
+    expect(apiRequestMock.mock.calls.some(([path]) => path.includes("/sales-history/"))).toBe(false);
+    fireEvent.keyDown(options[1], { key: "Enter" });
+    await waitFor(() => expect(apiRequestMock).toHaveBeenCalledWith(
+      expect.stringContaining("/stock/products/product-3/sales-history/saas?"),
+      { token: "access-token", signal: expect.any(AbortSignal) },
+    ));
+  });
+
+  it("resets the highlighted result when the query narrows or clears", async () => {
+    render(<SaleProductSalesHistoryDialog products={[thirdProduct, product, secondProduct]}
+      locale="es" accessToken="access-token" onClose={vi.fn()} />);
+
+    const search = screen.getByRole("textbox", { name: "Código, código de barras o nombre" });
+    fireEvent.change(search, { target: { value: "cargador de red" } });
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    fireEvent.change(search, { target: { value: "cargador de red c" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+    await waitFor(() => expect(apiRequestMock).toHaveBeenCalledWith(
+      expect.stringContaining("/stock/products/product-2/sales-history/saas?"),
+      { token: "access-token", signal: expect.any(AbortSignal) },
+    ));
+
+    cleanup();
+    apiRequestMock.mockClear();
+    render(<SaleProductSalesHistoryDialog products={[product, secondProduct, thirdProduct]}
+      locale="es" accessToken="access-token" onClose={vi.fn()} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Código, código de barras o nombre" }),
+      { target: { value: "cargador de red" } });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Código, código de barras o nombre" }),
+      { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar" }));
+    const clearedSearch = screen.getByRole("textbox", { name: "Código, código de barras o nombre" });
+    fireEvent.change(clearedSearch, { target: { value: "cargador de red" } });
+    fireEvent.keyDown(clearedSearch, { key: "Enter" });
     await waitFor(() => expect(apiRequestMock).toHaveBeenCalledWith(
       expect.stringContaining("/stock/products/product-1/sales-history/saas?"),
       { token: "access-token", signal: expect.any(AbortSignal) },

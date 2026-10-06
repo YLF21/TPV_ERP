@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -147,7 +149,7 @@ export function SaleCustomerReceivablesDialog({
           <h2 id="sale-customer-receivables-title">{t("sale.customer.receivables.title")}</h2>
           <span>{customer.clientId} · {customer.fiscalName}</span>
         </div>
-        <button type="button" aria-label={t("common.close")} disabled={printing} onClick={close}>×</button>
+        <WindowCloseButton type="button" aria-label={t("common.close")} disabled={printing} onClick={close} >×</WindowCloseButton>
       </header>
       <div className="sale-customer-receivables-summary">
         <div><span>{t("sale.customer.receivables.pending")}</span><strong className={totalPending > 0 ? "debt" : ""}>{amount(totalPending, locale)} €</strong></div>
@@ -187,14 +189,14 @@ export function SaleCustomerReceivablesDialog({
         </div>
       </div>
       {retryPrint && <p className="sale-action-error" role="alert">{t("receivables.print.pending")}</p>}
-      <footer className="sale-customer-receivables-footer">
+      <footer className="sale-customer-receivables-footer erp-dialog-actions-row">
+        <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={printing} onClick={close}>{t("common.close")}</DialogDismissButton>
         <p><kbd>↑</kbd><kbd>↓</kbd> {t("sale.customer.receivables.navigateHint")} · <kbd>Enter</kbd> {t("sale.customer.receivables.collectHint")}</p>
-        <div className="sale-action-buttons">
-          {retryPrint && <button type="button" disabled={printing}
+        <div className="sale-action-buttons erp-dialog-actions-group">
+          {retryPrint && <button type="button" className="erp-dialog-action-confirm" disabled={printing}
             onKeyDown={(event) => event.stopPropagation()}
             onClick={() => void retryFailedPrint()}>{printing ? t("receivables.history.printing") : t("payment.result.retryPrint")}</button>}
-          <button type="button" disabled={printing} onClick={close}>{t("common.close")}</button>
-          <button type="button" disabled={!selected || printing} onClick={() => selected && setPayment(selected)}>{t("receivables.action.collect")}</button>
+          <button type="button" className="erp-dialog-action-confirm" disabled={!selected || printing} onClick={() => selected && setPayment(selected)}>{t("receivables.action.collect")}</button>
         </div>
       </footer>
     </section>

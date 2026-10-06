@@ -3,6 +3,7 @@ import type { LocaleCode, UserSession } from "../../../packages/app-common/src/t
 import { apiRequest } from "../../../packages/app-common/src/api/client";
 import { ErpSelect } from "../../../packages/app-common/src/components/ErpSelect";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { StockCountDocumentWindow } from "./StockCountDocumentWindow";
 import { StockCountTable } from "./StockCountTable";
 import { countText } from "./stockCountMessages";
@@ -73,6 +74,6 @@ export function StockCountScreen({ session, locale = "es", t }: { session: UserS
           : key === "user" ? row.createdByName ?? "—" : key === "notes" ? row.notes || "—" : row.number} />
     </div>
     {editor && <StockCountDocumentWindow initial={editor.document} warehouses={warehouses} session={session} locale={locale} t={t} onSaved={() => void refresh()} onClose={() => { setEditor(null); void refresh(); }} />}
-    {cancelPrompt && <div className="inventory-confirm-overlay"><section role="alertdialog" aria-label={c("cancelDocument")}><h2>{c("cancelDocument")}</h2><p>{c("cancelText")}</p><footer><button autoFocus disabled={busy} onClick={() => setCancelPrompt(false)}>{c("cancel")}</button><button disabled={busy} onClick={() => void run(async () => { await cancelStockCount(selected, token); setCancelPrompt(false); await refresh(); })}>{c("cancelDocument")}</button></footer></section></div>}
+    {cancelPrompt && <div className="inventory-confirm-overlay"><section role="alertdialog" aria-label={c("cancelDocument")}><header className="inventory-confirm-header"><h2>{c("cancelDocument")}</h2><WindowCloseButton type="button" aria-label={t("common.close")} disabled={busy} onClick={() => setCancelPrompt(false)} /></header><p>{c("cancelText")}</p><footer className="erp-dialog-actions-row"><button className="erp-dialog-action-cancel erp-dialog-dismiss" autoFocus disabled={busy} onClick={() => setCancelPrompt(false)}>{c("cancel")}</button><button className="erp-dialog-action-cancel" disabled={busy} onClick={() => void run(async () => { await cancelStockCount(selected, token); setCancelPrompt(false); await refresh(); })}>{c("cancelDocument")}</button></footer></section></div>}
   </section>;
 }

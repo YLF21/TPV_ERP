@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
+import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import {
@@ -359,7 +361,7 @@ function UserActionDialog({ kind, user, roles, token, t, onClose, onSaved }: {
           <label><span>{t("gestion.users.field.maxDiscount")}</span><input autoFocus required type="number" min="0" max="100" step="0.01" value={maxDiscountPercent} onChange={(event) => setMaxDiscountPercent(event.target.value)} /></label>
         )}
         {error && <p className="gestion-inline-error" role="alert">{error}</p>}
-        <footer><button type="button" onClick={onClose}>{t("common.cancel")}</button><button type="submit" className="primary" disabled={saving || ((kind === "create" || kind === "role") && !roleId)}>{saving ? t("common.saving") : t("common.save")}</button></footer>
+        <footer className="erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.cancel")}</DialogDismissButton><button type="submit" className="primary erp-dialog-action-confirm" disabled={saving || ((kind === "create" || kind === "role") && !roleId)}>{saving ? t("common.saving") : t("common.save")}</button></footer>
       </form>
     </Modal>
   );
@@ -554,7 +556,7 @@ function CreateRoleDialog({ token, t, onClose, onCreated }: { token?: string; t:
     catch { setError(t("gestion.security.saveError")); }
     finally { setSaving(false); }
   }
-  return <Modal title={t("gestion.roles.dialog.create")} closeLabel={t("common.close")} onClose={onClose} className="gestion-roles-dialog"><form className="gestion-security-form" onSubmit={submit}><label><span>{t("gestion.roles.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>{error && <p className="gestion-inline-error" role="alert">{error}</p>}<footer><button type="button" onClick={onClose}>{t("common.cancel")}</button><button type="submit" className="primary" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</button></footer></form></Modal>;
+  return <Modal title={t("gestion.roles.dialog.create")} closeLabel={t("common.close")} onClose={onClose} className="gestion-roles-dialog"><form className="gestion-security-form" onSubmit={submit}><label><span>{t("gestion.roles.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>{error && <p className="gestion-inline-error" role="alert">{error}</p>}<footer className="erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.cancel")}</DialogDismissButton><button type="submit" className="primary erp-dialog-action-confirm" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</button></footer></form></Modal>;
 }
 
 function RenameRoleDialog({ role, token, t, onClose, onRenamed }: {
@@ -580,7 +582,7 @@ function RenameRoleDialog({ role, token, t, onClose, onRenamed }: {
       <form className="gestion-security-form" onSubmit={submit}>
         <label><span>{t("gestion.roles.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>
         {error && <p className="gestion-inline-error" role="alert">{error}</p>}
-        <footer><button type="button" onClick={onClose}>{t("common.cancel")}</button><button type="submit" className="primary" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</button></footer>
+        <footer className="erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.cancel")}</DialogDismissButton><button type="submit" className="primary erp-dialog-action-confirm" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</button></footer>
       </form>
     </Modal>
   );
@@ -613,9 +615,9 @@ function DeleteRoleDialog({ role, token, t, onClose, onDeleted }: {
         <p>{t("gestion.roles.deleteConfirm").replace("{name}", role.name)}</p>
         <p className="gestion-confirm-warning">{t("gestion.roles.deleteRequirement")}</p>
         {error && <p className="gestion-inline-error" role="alert">{error}</p>}
-        <footer>
-          <button type="button" onClick={onClose}>{t("common.cancel")}</button>
-          <button type="button" className="danger" disabled={deleting} onClick={() => void confirm()}>{deleting ? t("common.saving") : t("gestion.roles.delete")}</button>
+        <footer className="erp-dialog-actions-row">
+          <button className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.cancel")}</button>
+          <button type="button" className="danger erp-dialog-action-cancel" disabled={deleting} onClick={() => void confirm()}>{deleting ? t("common.saving") : t("gestion.roles.delete")}</button>
         </footer>
       </div>
     </Modal>
@@ -642,11 +644,11 @@ function roleDeletionError(reason: unknown, t: Translator) {
 }
 
 function Modal({ title, closeLabel, onClose, children, className = "" }: { title: string; closeLabel: string; onClose: () => void; children: ReactNode; className?: string }) {
-  return <div className="gestion-modal-backdrop"><section className={`gestion-security-dialog ${className}`} role="dialog" aria-modal="true" aria-label={title}><header><h2>{title}</h2><button type="button" aria-label={closeLabel} onClick={onClose}>×</button></header>{children}</section></div>;
+  return <div className="gestion-modal-backdrop"><section className={`gestion-security-dialog ${className}`} role="dialog" aria-modal="true" aria-label={title}><header><h2>{title}</h2><WindowCloseButton type="button" aria-label={closeLabel} onClick={onClose} >×</WindowCloseButton></header>{children}</section></div>;
 }
 
 function ConfirmDialog({ title, text, t, onCancel, onConfirm, className = "" }: { title: string; text: string; t: Translator; onCancel: () => void; onConfirm: () => void; className?: string }) {
-  return <Modal title={title} closeLabel={t("common.close")} onClose={onCancel} className={className}><div className="gestion-confirm-content"><p>{text}</p><footer><button type="button" onClick={onCancel}>{t("common.cancel")}</button><button type="button" className="primary" onClick={onConfirm}>{t("common.confirm")}</button></footer></div></Modal>;
+  return <Modal title={title} closeLabel={t("common.close")} onClose={onCancel} className={className}><div className="gestion-confirm-content"><p>{text}</p><footer className="erp-dialog-actions-row"><button className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onCancel}>{t("common.cancel")}</button><button type="button" className="primary erp-dialog-action-confirm" onClick={onConfirm}>{t("common.confirm")}</button></footer></div></Modal>;
 }
 
 function SecurityState({ error = false, children }: { error?: boolean; children: ReactNode }) {

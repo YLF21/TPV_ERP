@@ -94,7 +94,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    }
    expect(onFinalized).not.toHaveBeenCalled();
    expect(apiRequestMock.mock.calls.some(([path])=>String(path).endsWith("/allocations"))).toBe(false);
-   fireEvent.click(within(dialog.querySelector(".sale-checkout-footer") as HTMLElement).getByRole("button",{name:"CANCELAR"}));
+   fireEvent.click(within(dialog).getByRole("button",{name:"CANCELAR"}));
    await waitFor(()=>expect(screen.queryByRole("dialog",{name:"COBRO"})).not.toBeInTheDocument());
   }
  });
@@ -1749,9 +1749,12 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   const reference=within(dialog).getByRole("textbox");
   expect(reference).toHaveFocus();
   const cancel=within(dialog).getByRole("button",{name:"Cancelar"});
+   expect(cancel).toHaveClass("erp-window-close");
   cancel.focus();
-  fireEvent.keyDown(cancel,{key:"Tab"});
+  fireEvent.keyDown(cancel,{key:"Tab",shiftKey:true});
   expect(reference).toHaveFocus();
+  fireEvent.keyDown(reference,{key:"Tab"});
+  expect(cancel).toHaveFocus();
   fireEvent.keyDown(dialog,{key:"Escape"});
   expect(screen.queryByRole("dialog",{name:"Cobro con tarjeta manual"})).not.toBeInTheDocument();
  expect(card).toHaveFocus();
@@ -2291,7 +2294,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   fireEvent.click(screen.getByRole("button",{name:/20/}));
   fireEvent.click(screen.getByRole("button",{name:"Confirmar cobro"}));
   await waitFor(()=>expect(screen.getAllByText("cash rejected safely")).not.toHaveLength(0));
-  fireEvent.click(screen.getByRole("button",{name:"Cancelar"}));
+  fireEvent.click(screen.getByRole("button",{name:"Cerrar cobro en efectivo"}));
 
   fireEvent.click(screen.getByRole("button",{name:/Tarjeta.*F11/}));
   const manualDialog=screen.getByRole("dialog",{name:"Cobro con tarjeta manual"});
@@ -2508,7 +2511,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await waitFor(() => expect(within(dialog).getByRole("alert")).toHaveTextContent("No hay una sesión de caja abierta"));
   expect(activeCalls).toBe(1);
   expect(within(dialog).getByRole("button", { name: "Confirmar cobro" })).toBeEnabled();
-  expect(within(dialog).getByRole("button", { name: "Cancelar" })).toBeEnabled();
+  expect(within(dialog).getByRole("button", { name: "Cerrar cobro en efectivo" })).toBeEnabled();
   expect(apiRequestMock.mock.calls.filter(([path]) => path.includes("/allocations"))).toHaveLength(1);
  });
 
@@ -2567,8 +2570,8 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
 
   fireEvent.click(screen.getByRole("button",{name:/Efectivo/}));
   expect(screen.getByRole("button",{name:"Tecla 7"})).toBeVisible();
-  fireEvent.click(screen.getByRole("button",{name:"Usar teclado físico"}));
-  fireEvent.click(screen.getByRole("button",{name:"Cancelar"}));
+  fireEvent.click(screen.getByRole("button",{name:"Cerrar teclado"}));
+  fireEvent.click(screen.getByRole("button",{name:"Cerrar cobro en efectivo"}));
   fireEvent.click(screen.getByRole("button",{name:/Efectivo/}));
   expect(screen.getByRole("button",{name:"Tecla 7"})).toBeVisible();
   fireEvent.click(screen.getByRole("button",{name:/20/}));

@@ -1,6 +1,10 @@
 import { useLayoutEffect, useRef } from "react";
-import { Backspace } from "@phosphor-icons/react";
+import { ArrowElbowDownLeft, Backspace } from "@phosphor-icons/react";
 import { editTouchText } from "./TouchAlphaKeyboard";
+import { createTranslator } from "../i18n/LocalizedMessages";
+import type { LocaleCode } from "../types";
+import { TouchKeyboardPanel } from "./TouchKeyboardPanel";
+import { touchKeyboardEnter } from "./touchKeyboardEnter";
 import "./TouchNumericKeypad.css";
 
 export type TouchNumericKey = "CLEAR" | "BACKSPACE" | "DECIMAL" | "SIGN" | `${number}`;
@@ -63,6 +67,10 @@ export function TouchNumericKeypad({
   onChange,
   inputRef,
   replaceOnFirstKey = false,
+  locale = "es",
+  collapsible = true,
+  hideClearButton = false,
+  enterAction,
 }: {
   value: string;
   allowDecimal?: boolean;
@@ -78,12 +86,18 @@ export function TouchNumericKeypad({
   inputRef?: { readonly current: HTMLInputElement | HTMLTextAreaElement | null };
   /** Number inputs cannot expose a selection range. Opt in when the dialog selects its value on opening. */
   replaceOnFirstKey?: boolean;
+  locale?: LocaleCode;
+  collapsible?: boolean;
+  hideClearButton?: boolean;
+  /** A window with existing Enter navigation can retain that action independently of digit entry. */
+  enterAction?: { onClick: () => void; disabled: boolean };
 }) {
-  const keys: { key: TouchNumericKey; area: string }[] = [
+  const t = createTranslator(locale);
+  const keys: { key: TouchNumericKey | "ENTER"; area: string }[] = [
     { key: "7", area: "1 / 1" }, { key: "8", area: "1 / 2" }, { key: "9", area: "1 / 3" },
     { key: "BACKSPACE", area: allowNegative ? "1 / 4" : "1 / 4 / 3 / 5" },
     { key: "4", area: "2 / 1" }, { key: "5", area: "2 / 2" }, { key: "6", area: "2 / 3" },
-    { key: "CLEAR", area: allowNegative ? "2 / 4" : "3 / 4 / 5 / 5" },
+    { key: "ENTER", area: allowNegative ? "2 / 4" : "3 / 4 / 5 / 5" },
     { key: "1", area: "3 / 1" }, { key: "2", area: "3 / 2" }, { key: "3", area: "3 / 3" },
     { key: "0", area: "4 / 1 / 5 / 3" }, { key: "DECIMAL", area: "4 / 3" },
     ...(allowNegative ? [{ key: "SIGN" as const, area: "3 / 4 / 5 / 5" }] : []),
@@ -130,13 +144,14 @@ export function TouchNumericKeypad({
     onChange(edited.value);
   }
 
-  return (
+  return <TouchKeyboardPanel locale={locale} title={t("sale.touch.numericKeypad")}
+    disabled={disabled} collapsible={collapsible} hideClearButton={hideClearButton} onClear={() => press("CLEAR")}>{(expanded) => (
     <div className="touch-numeric-keypad touch-numeric-keypad-grid" role="group" aria-label={ariaLabel}>
       {keys.map(({ key, area }) => {
         const utility = key === "CLEAR" || key === "BACKSPACE" || key === "SIGN";
-        const accessibleLabel = key === "CLEAR" ? clearLabel : key === "BACKSPACE" ? backspaceLabel
+        const accessibleLabel = key === "ENTER" ? t("sale.touch.keyboard.enter") : key === "CLEAR" ? clearLabel : key === "BACKSPACE" ? backspaceLabel
           : key === "DECIMAL" ? decimalLabel : key === "SIGN" ? signLabel : key;
-        const label = key === "CLEAR" ? "C" : key === "SIGN" ? "±" : key === "DECIMAL" ? decimalLabel : key;
+        const label = key === "ENTER" ? t("sale.touch.keyboard.enter") : key === "CLEAR" ? "C" : key === "SIGN" ? "±" : key === "DECIMAL" ? decimalLabel : key;
         return (
           <button
             type="button"
@@ -145,14 +160,16 @@ export function TouchNumericKeypad({
             key={key}
             data-numeric-key={key}
             style={{ gridArea: area }}
-            disabled={disabled || (key === "DECIMAL" && (!allowDecimal || maximumFractionDigits === 0))}
+            disabled={!expanded || (key === "ENTER" ? enterAction?.disabled ?? disabled
+              : disabled || (key === "DECIMAL" && (!allowDecimal || maximumFractionDigits === 0)))}
             onPointerDown={(event) => event.preventDefault()}
-            onClick={() => press(key)}
+            onClick={() => key === "ENTER" ? enterAction ? enterAction.onClick() : touchKeyboardEnter(inputRef?.current) : press(key)}
           >
-            {key === "BACKSPACE" ? <Backspace aria-hidden="true" focusable="false" weight="bold" /> : label}
+            {key === "BACKSPACE" ? <Backspace aria-hidden="true" focusable="false" weight="bold" />
+              : key === "ENTER" ? <ArrowElbowDownLeft aria-hidden="true" focusable="false" weight="bold" /> : label}
           </button>
         );
       })}
     </div>
-  );
+  )}</TouchKeyboardPanel>;
 }

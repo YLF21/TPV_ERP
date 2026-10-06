@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import { getHardwareBridge } from "../hardware/hardware";
@@ -411,14 +413,14 @@ export function GiftReceiptDialog({ token, locale, terminalContext, initialTicke
       <section className="gift-receipt-dialog" role="dialog" aria-modal="true" aria-labelledby="gift-receipt-title" aria-busy={busy}>
         <header>
           <h2 id="gift-receipt-title">{t.title}</h2>
-          <button type="button" className="sale-dialog-close" aria-label={t.close} disabled={busy} onClick={onClose}>×</button>
+          <WindowCloseButton type="button" className="sale-dialog-close" aria-label={t.close} disabled={busy} onClick={onClose} >×</WindowCloseButton>
         </header>
         <form className="gift-receipt-search" onSubmit={(event) => { event.preventDefault(); void search(); }}>
           <label><span>{t.ticket}</span><input ref={inputRef} disabled={busy} value={ticketNumber} onChange={(event) => {
             ticketEditedRef.current = true;
             setTicketNumber(event.currentTarget.value);
           }} /></label>
-          <button type="submit" className="gift-receipt-action gift-receipt-action-primary" disabled={busy || !ticketNumber.trim()}>{busy ? t.loading : t.search}</button>
+          <button type="submit" className="gift-receipt-action gift-receipt-action-primary erp-dialog-action-confirm" disabled={busy || !ticketNumber.trim()}>{busy ? t.loading : t.search}</button>
         </form>
         {preview && <>
           <div className="gift-receipt-summary">
@@ -457,11 +459,11 @@ export function GiftReceiptDialog({ token, locale, terminalContext, initialTicke
           {error && <p className="sale-action-error" role="alert">{error}</p>}
           {message && <p className="sale-action-success" role="status">{message}</p>}
         </div>}
-        <footer>
-          {issuedCode && <div className="gift-receipt-issued"><span>{t.receiptCode}</span><strong>{issuedCode}</strong></div>}
-          {issuedCode && error && <button type="button" className="gift-receipt-action gift-receipt-action-secondary" disabled={busy} onClick={() => void retryPrint()}>{t.retry}</button>}
-          <button type="button" className="gift-receipt-action gift-receipt-action-secondary" disabled={busy} onClick={onClose}>{t.close}</button>
-          <button type="button" className="gift-receipt-action gift-receipt-action-primary gift-receipt-action-issue" disabled={busy || !selectionIsValid} onClick={() => void issueAndPrint()}>{t.issue}</button>
+        <footer className="erp-dialog-actions-row">
+          <DialogDismissButton type="button" className="gift-receipt-action gift-receipt-action-secondary erp-dialog-action-cancel erp-dialog-dismiss" disabled={busy} onClick={onClose}>{t.close}</DialogDismissButton>
+          {issuedCode && <div className="gift-receipt-issued erp-dialog-actions-group"><span>{t.receiptCode}</span><strong>{issuedCode}</strong></div>}
+          {issuedCode && error && <button type="button" className="gift-receipt-action gift-receipt-action-secondary erp-dialog-action-confirm" disabled={busy} onClick={() => void retryPrint()}>{t.retry}</button>}
+          <button type="button" className="gift-receipt-action gift-receipt-action-primary gift-receipt-action-issue erp-dialog-action-confirm" disabled={busy || !selectionIsValid} onClick={() => void issueAndPrint()}>{t.issue}</button>
         </footer>
       </section>
     </div>

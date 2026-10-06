@@ -29,6 +29,7 @@ import {
   stockBulkRuleSetComparators,
   validateStockBulkPriceRuleDraft
 } from "./stockBulkPriceRules";
+import { WindowCloseButton } from "./WindowCloseButton";
 import type {
   StockBulkPriceRuleAction,
   StockBulkPriceRuleCondition,
@@ -619,7 +620,7 @@ export function StockBulkPriceRulesDialog({
             <h2 id="stock-bulk-rules-title">{t("stock.bulkEdit.rules.title")}</h2>
             <p>{t("stock.bulkEdit.rules.subtitle")}</p>
           </div>
-          <button type="button" disabled={busy} onClick={onClose}>{t("common.close")}</button>
+          {app === "pda" ? <button type="button" className="erp-dialog-action-cancel" disabled={busy} onClick={onClose}>{t("common.close")}</button> : <WindowCloseButton aria-label={t("common.close")} onLight disabled={busy} onClick={onClose} >{t("common.close")}</WindowCloseButton>}
         </header>
         <div className="stock-bulk-rules-layout">
           <aside className="stock-bulk-rules-list">
@@ -645,7 +646,7 @@ export function StockBulkPriceRulesDialog({
                 <input autoFocus maxLength={160} value={draft.name} onChange={(event) => { setDraft((current) => ({ ...current, name: event.target.value })); setPreview(null); }} />
               </label>
               <div className="stock-bulk-rule-commands">
-                <button type="button" disabled={busy || !dirty} onClick={() => void persistDraft()}>{t("common.save")}</button>
+                <button type="button" className="erp-dialog-action-confirm" disabled={busy || !dirty} onClick={() => void persistDraft()}>{t("common.save")}</button>
                 <button type="button" className="secondary" disabled={busy} onClick={startNewRule}>{t("stock.bulkEdit.rules.clear")}</button>
                 <button type="button" disabled={busy} onClick={() => void runRule(false)}>{t("stock.bulkEdit.rules.preview")}</button>
                 <button type="button" disabled={busy} onClick={() => setConfirmAction("apply")}>{t("stock.bulkEdit.rules.apply")}</button>
@@ -661,8 +662,8 @@ export function StockBulkPriceRulesDialog({
             {confirmAction && (
               <div className="stock-bulk-rule-confirm" role="alertdialog">
                 <span>{t(`stock.bulkEdit.rules.confirm.${confirmAction}`)}</span>
-                <button type="button" className="secondary" onClick={() => setConfirmAction(null)}>{t("common.cancel")}</button>
-                <button autoFocus type="button" disabled={busy} onClick={() => confirmAction === "apply" ? void runRule(true) : void deleteRule()}>{t("common.confirm")}</button>
+                <button type="button" className="secondary erp-dialog-action-cancel" onClick={() => setConfirmAction(null)}>{t("common.cancel")}</button>
+                <button autoFocus type="button" className={confirmAction === "delete" ? "erp-dialog-action-cancel" : "erp-dialog-action-confirm"} disabled={busy} onClick={() => confirmAction === "apply" ? void runRule(true) : void deleteRule()}>{t("common.confirm")}</button>
               </div>
             )}
             <div className="stock-bulk-rule-forms">

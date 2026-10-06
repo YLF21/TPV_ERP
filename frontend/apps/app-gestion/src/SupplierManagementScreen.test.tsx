@@ -152,7 +152,7 @@ it("selects a representative and opens the editor with F7 while F8 creates a new
  expect(await screen.findByDisplayValue("Ana")).toBeInTheDocument();
  fireEvent.keyDown(window,{key:"F8"});
  expect(screen.getByDisplayValue("Ana")).toBeInTheDocument();
- fireEvent.click(screen.getByRole("button",{name:"Cancelar"}));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button",{name:"Cerrar"}));
  fireEvent.keyDown(window,{key:"F8"});
  expect(screen.queryByDisplayValue("Ana")).not.toBeInTheDocument();
  expect(screen.getByRole("dialog",{name:"Nuevo comercial"})).toBeInTheDocument();

@@ -1,6 +1,10 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
+import "./SaleCalculatorDialog.css";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { LocaleCode } from "../types";
 import { editTouchText } from "./TouchAlphaKeyboard";
+import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 
 export type CalculatorOperator = "ADD" | "SUBTRACT" | "MULTIPLY" | "DIVIDE";
 
@@ -50,7 +54,6 @@ const copy = {
     close: "Cerrar",
     clear: "Borrar todo",
     clearEntry: "Borrar entrada",
-    backspace: "Retroceso",
     equals: "Resultado",
     taxTools: "Cálculo de impuestos",
     taxRate: "Porcentaje",
@@ -65,7 +68,6 @@ const copy = {
     close: "Close",
     clear: "Clear all",
     clearEntry: "Clear entry",
-    backspace: "Backspace",
     equals: "Result",
     taxTools: "Tax calculations",
     taxRate: "Percentage",
@@ -80,7 +82,6 @@ const copy = {
     close: "关闭",
     clear: "全部清除",
     clearEntry: "清除当前输入",
-    backspace: "退格",
     equals: "结果",
     taxTools: "税费计算",
     taxRate: "税率",
@@ -259,6 +260,7 @@ export function calculatorReducer(
 
 type Props = {
   locale: LocaleCode;
+  interfaceMode?: SaleInterfaceMode;
   defaultTaxPercent?: number | string | null;
   terminalKey?: string;
   onClose: () => void;
@@ -424,7 +426,7 @@ export function SaleCalculatorDialog({ locale, defaultTaxPercent, terminalKey, o
   const keypad: Array<{ label: string; action: CalculatorAction; className?: string; ariaLabel?: string }> = [
     { label: "C", action: { type: "CLEAR_ALL" }, className: "utility", ariaLabel: t.clear },
     { label: "CE", action: { type: "CLEAR_ENTRY" }, className: "utility", ariaLabel: t.clearEntry },
-    { label: "⌫", action: { type: "BACKSPACE" }, className: "utility", ariaLabel: t.backspace },
+    { label: "%", action: { type: "PERCENT" }, className: "percent" },
     { label: "÷", action: { type: "OPERATOR", operator: "DIVIDE" }, className: "operator" },
     ...["7", "8", "9"].map((digit) => ({ label: digit, action: { type: "DIGIT", digit } as CalculatorAction })),
     { label: "×", action: { type: "OPERATOR", operator: "MULTIPLY" }, className: "operator" },
@@ -432,8 +434,7 @@ export function SaleCalculatorDialog({ locale, defaultTaxPercent, terminalKey, o
     { label: "−", action: { type: "OPERATOR", operator: "SUBTRACT" }, className: "operator" },
     ...["1", "2", "3"].map((digit) => ({ label: digit, action: { type: "DIGIT", digit } as CalculatorAction })),
     { label: "+", action: { type: "OPERATOR", operator: "ADD" }, className: "operator" },
-    { label: "%", action: { type: "PERCENT" }, className: "percent" },
-    { label: "0", action: { type: "DIGIT", digit: "0" } },
+    { label: "0", action: { type: "DIGIT", digit: "0" }, className: "zero" },
     { label: locale === "en" ? "." : ",", action: { type: "DECIMAL" } },
     { label: "=", action: { type: "EQUALS" }, className: "equals", ariaLabel: t.equals },
   ];
@@ -451,7 +452,7 @@ export function SaleCalculatorDialog({ locale, defaultTaxPercent, terminalKey, o
       >
         <header>
           <h2 id="sale-calculator-title">{t.title}</h2>
-          <button type="button" aria-label={t.close} onClick={closeDialog}>×</button>
+          <WindowCloseButton type="button" aria-label={t.close} onClick={closeDialog} >×</WindowCloseButton>
         </header>
 
         <div className="sale-calculator-layout">
@@ -506,8 +507,8 @@ export function SaleCalculatorDialog({ locale, defaultTaxPercent, terminalKey, o
           </aside>
         </div>
 
-        <footer>
-          <button type="button" onClick={closeDialog}>{t.close}</button>
+        <footer className="erp-dialog-actions-row">
+          <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={closeDialog}>{t.close}</DialogDismissButton>
         </footer>
       </section>
     </div>

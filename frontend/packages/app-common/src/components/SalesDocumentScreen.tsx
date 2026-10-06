@@ -1,3 +1,6 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
+import esposWordmark from "../../../../branding/espos-wordmark.png";
 import {
   useEffect,
   useLayoutEffect,
@@ -86,6 +89,7 @@ import {
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { userCanManageStockProducts } from "./stockAccess";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
+import "./SalesDocumentScreen.css";
 
 type DocumentType = "FACTURA_VENTA" | "ALBARAN_VENTA";
 type CheckoutMode = "CONFIRM_PENDING" | "CONFIRM_AND_PAY";
@@ -1298,7 +1302,9 @@ export function SalesDocumentScreen({
     <main className="sales-document-screen">
       <header className="sales-document-topbar">
         <div className="sales-document-heading">
-          <span className="sales-document-app-badge">{t("venta.title")}</span>
+          <span className="sales-document-app-badge">
+            <img src={esposWordmark} alt="esPOS" />
+          </span>
           <h1>{t("salesDocument.title")}</h1>
         </div>
         <div className="sales-document-type-switch" role="group" aria-label={t("salesDocument.type")}>
@@ -1315,16 +1321,24 @@ export function SalesDocumentScreen({
             onClick={() => { setDocumentType("ALBARAN_VENTA"); invalidate(); }}
           >{t("receivables.type.deliveryNote")}</button>
         </div>
-        <button type="button" className="sales-document-close" onClick={() => window.close()}>
+        <WindowCloseButton type="button" className="sales-document-close" aria-label={t("common.close")} onClick={() => window.close()}>
           {t("common.close")}
-        </button>
+        </WindowCloseButton>
       </header>
 
       <section className="sales-document-context">
-        <button type="button" disabled={documentLocked} onClick={() => setCustomerOpen(true)}>
+        <div className="sales-document-customer-context">
           <span>{t("salesDocument.customer")}</span>
-          <strong>{customer?.fiscalName ?? customer?.clientId ?? t("salesDocument.selectCustomer")}</strong>
-        </button>
+          <div className="sales-document-customer-control">
+            <strong>{customer?.fiscalName ?? customer?.clientId ?? "—"}</strong>
+            <button
+              type="button"
+              disabled={documentLocked}
+              aria-label={[t("salesDocument.selectCustomer"), customer?.fiscalName ?? customer?.clientId].filter(Boolean).join(": ")}
+              onClick={() => setCustomerOpen(true)}
+            >{t("salesDocument.selectCustomer")}</button>
+          </div>
+        </div>
         <div><span>{t("salesDocument.issueDate")}</span><strong>{issueDate}</strong></div>
         <div><span>{t("pendingSale.dueDate")}</span><strong>{dueDate}</strong></div>
         <div><span>{t("salesDocument.terminal")}</span><strong>{terminalContext.terminalCode}</strong></div>
@@ -1374,11 +1388,6 @@ export function SalesDocumentScreen({
                 </tr>
               </thead>
               <tbody>
-                {sortedLines.length === 0 && (
-                  <tr className="sales-document-lines-empty">
-                    <td colSpan={visibleLineColumns.length}>{t("salesDocument.empty")}</td>
-                  </tr>
-                )}
                 {sortedLines.map((line) => {
                   const lineId = saleCartLineIdentity(line);
                   return (
@@ -1596,7 +1605,7 @@ export function SalesDocumentScreen({
                   ? "sale.temporaryName.title" : "sale.temporaryPrice.title")}</h2>
                 <p>{selectedLine.product.code ?? selectedLine.product.barcode ?? ""}</p>
               </div>
-              <button
+              <WindowCloseButton
                 type="button"
                 aria-label={t("common.close")}
                 disabled={temporaryPriceAuthorizationBusy}
@@ -1604,7 +1613,7 @@ export function SalesDocumentScreen({
                   setLineEditAction(null);
                   queueMicrotask(() => inputRef.current?.focus());
                 }}
-              >{"\u00d7"}</button>
+              >{"\u00d7"}</WindowCloseButton>
             </header>
             <form onSubmit={(event) => {
               event.preventDefault();
@@ -1634,16 +1643,16 @@ export function SalesDocumentScreen({
               <small>{t(lineEditAction === "temporaryName"
                 ? "sale.temporaryName.hint" : "sale.temporaryPrice.hint")}</small>
               {lineEditError && <p className="sale-action-error" role="alert">{lineEditError}</p>}
-              <footer className="sale-action-buttons">
-                <button
+              <footer className="sale-action-buttons erp-dialog-actions-row">
+                <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss"
                   type="button"
                   disabled={temporaryPriceAuthorizationBusy}
                   onClick={() => {
                     setLineEditAction(null);
                     queueMicrotask(() => inputRef.current?.focus());
                   }}
-                >{t("sale.dialog.cancel")}</button>
-                <button type="submit" className="primary" disabled={temporaryPriceAuthorizationBusy}>
+                >{t("sale.dialog.cancel")}</DialogDismissButton>
+                <button type="submit" className="primary erp-dialog-action-confirm" disabled={temporaryPriceAuthorizationBusy}>
                   {t("sale.dialog.save")}
                 </button>
               </footer>

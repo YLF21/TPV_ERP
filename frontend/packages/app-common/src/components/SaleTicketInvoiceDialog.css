@@ -1,0 +1,145 @@
+.sale-action-dialog.sale-ticket-invoice-dialog {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(1000px, calc(100dvw - 32px));
+  height: min(900px, calc(100dvh - 32px));
+}
+.sale-ticket-invoice-dialog > .sale-ticket-operation-header,
+.sale-ticket-invoice-dialog > .sale-ticket-operation-footer,
+.sale-ticket-invoice-dialog > .sale-error,
+.sale-ticket-invoice-dialog > .sale-status { flex-shrink: 0; }
+.sale-action-dialog.sale-ticket-invoice-dialog > .sale-ticket-operation-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+.sale-ticket-invoice-dialog .sale-ticket-invoice-ticket-card { flex-shrink: 0; }
+.sale-ticket-invoice-customer-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 1px solid #9fb0c4;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #fff;
+}
+.sale-ticket-invoice-customer-content {
+  display: grid;
+  align-content: start;
+  grid-auto-rows: max-content;
+  gap: 14px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.sale-ticket-invoice-customer-panel > .sale-ticket-operation-footer {
+  flex-shrink: 0;
+  padding: 12px;
+  background: #fff;
+}
+.sale-ticket-invoice-customer-selection { min-height: 82px; }
+.sale-ticket-invoice-dialog > .sale-ticket-invoice-customer-dropdown {
+  position: absolute;
+  z-index: 4;
+  min-height: 0;
+  margin: 0;
+  box-sizing: border-box;
+  overflow: auto;
+  box-shadow: 0 6px 16px rgb(7 37 79 / 18%);
+}
+
+.sale-ticket-invoice-dialog,
+.sale-ticket-invoice-dialog .sale-ticket-operation-body {
+  background: #e7edf3;
+}
+
+.sale-ticket-invoice-dialog .sale-ticket-operation-search,
+.sale-ticket-invoice-dialog .sale-ticket-operation-footer {
+  border: 0;
+}
+
+.sale-ticket-invoice-ticket-card,
+.sale-ticket-invoice-dialog .sale-ticket-customer-search,
+.sale-ticket-invoice-dialog .sale-ticket-customer-search__heading,
+.sale-ticket-invoice-dialog .sale-ticket-operation-search,
+.sale-ticket-invoice-dialog .sale-ticket-operation-summary,
+.sale-ticket-invoice-dialog .sale-ticket-operation-summary-total {
+  background: #fff;
+}
+
+.sale-ticket-invoice-ticket-card {
+  border: 1px solid #9fb0c4;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.sale-ticket-invoice-dialog .sale-ticket-operation-search { padding: 12px; }
+.sale-ticket-invoice-dialog .sale-ticket-operation-summary { border: 0; }
+.sale-ticket-invoice-dialog .sale-ticket-operation-summary > div { border: 0; }
+.sale-ticket-invoice-dialog .sale-ticket-customer-search {
+  border: 0;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-radius: 3px;
+}
+.sale-ticket-invoice-dialog .sale-ticket-selected-customer:not(.is-inactive) { background: #fff; }
+.sale-ticket-invoice-dialog .sale-ticket-customer-search__heading {
+  border: 0;
+  padding: 10px 12px 4px;
+}
+.sale-ticket-invoice-customer-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 0 12px;
+}
+.sale-ticket-invoice-customer-search-row > .sale-ticket-customer-search__field {
+  min-width: 0;
+  padding: 0;
+}
+.sale-ticket-customer-search__actions {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.sale-ticket-customer-search__actions > button {
+  height: 34px;
+  border: 1px solid #9fb0c4;
+  border-radius: 3px;
+  padding: 5px 12px;
+  background: #e7edf3;
+  color: #102b4d;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.sale-ticket-customer-search__actions > button:disabled { opacity: .48; cursor: not-allowed; }
+.sale-action-dialog.sale-customer-selection-dialog.sale-invoice-customer-list-dialog {
+  grid-template-rows: 54px auto minmax(0, 1fr) 54px;
+}
+.sale-invoice-customer-list-dialog.sale-touch-keyboard-host > .sale-customer-table {
+  flex: 1 1 auto;
+}
+.sale-invoice-customer-list-dialog.sale-touch-keyboard-host > .sale-customer-toolbar {
+  flex-shrink: 0;
+}
+
+@layer erp-dialog-actions {
+  .sale-ticket-invoice-dialog button.touch-keyboard-toggle,
+  .sale-ticket-invoice-dialog button.touch-keyboard-toggle:hover:not(:disabled) {
+    background: #fff !important;
+  }
+  .sale-ticket-invoice-dialog .sale-ticket-operation-footer > button.sale-ticket-invoice-create.erp-dialog-action-confirm {
+    background: #07254F !important;
+    border-color: #07254F !important;
+    color: #fff !important;
+  }
+}

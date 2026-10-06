@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { sortProductsByCode } from "./productSearchOrdering";
 import { useEffect, useMemo, useState } from "react";
 import type { LocaleCode } from "../types";
@@ -223,7 +225,7 @@ export function SaleInternalEanDialog({
   return (
     <div className="sale-utility-backdrop" role="presentation">
       <section className="sale-utility-dialog sale-internal-ean-dialog" role="dialog" aria-modal="true" aria-labelledby="internal-ean-title">
-        <header><h2 id="internal-ean-title">{t.title}</h2></header>
+        <header><h2 id="internal-ean-title">{t.title}</h2><WindowCloseButton type="button" aria-label={t.close} disabled={busy} onClick={onClose} desktopOnly /></header>
         <div className="sale-internal-ean-tabs" role="tablist">
           <button type="button" className={tab === "GENERATE" ? "active" : ""} onClick={() => { setTab("GENERATE"); setReservation(null); setValidation(null); setCode(""); }}>{t.generate}</button>
           <button type="button" className={tab === "CHECK" ? "active" : ""} onClick={() => { setTab("CHECK"); setReservation(null); setValidation(null); setCode(""); }}>{t.check}</button>
@@ -256,7 +258,7 @@ export function SaleInternalEanDialog({
           )}
           {error && <p className="sale-dialog-error" role="alert">{error}</p>}
         </div>
-        <footer><button type="button" disabled={busy} onClick={onClose}>{t.close}</button></footer>
+        <footer className="erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={busy} onClick={onClose}>{t.close}</DialogDismissButton></footer>
       </section>
     </div>
   );

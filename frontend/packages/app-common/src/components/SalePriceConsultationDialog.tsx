@@ -1,6 +1,8 @@
+import { WindowCloseButton } from "./WindowCloseButton";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import { apiBaseUrl } from "../api/runtime";
+import { defaultScannerTimingConfig, idleScannerTimingCapture, scannerTimingKeyDecision } from "../hardware/scannerTimingDetection";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
 import type { SaleInterfaceMode } from "./saleInterfacePreferences";
@@ -55,6 +57,9 @@ function date(value: string, locale: LocaleCode) {
 export function SalePriceConsultationDialog({ locale, token, onClose, interfaceMode = "KEYBOARD" }: Props) {
   const t = createTranslator(locale);
   const requestGeneration = useRef(0);
+  const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestController = useRef<AbortController | null>(null);
+  const scannerCapture = useRef(idleScannerTimingCapture);
   const inputRef = useRef<HTMLInputElement>(null);
   const [identifier, setIdentifier] = useState("");
   const [submittedIdentifier, setSubmittedIdentifier] = useState("");
@@ -63,6 +68,12 @@ export function SalePriceConsultationDialog({ locale, token, onClose, interfaceM
   const [error, setError] = useState("");
   const [imageSource, setImageSource] = useState("");
   const [imageState, setImageState] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
+
+  useEffect(() => () => {
+    requestGeneration.current += 1;
+    if (lookupTimer.current) clearTimeout(lookupTimer.current);
+    requestController.current?.abort();
+  }, []);
 
   useEffect(() => {
     if (!result) {
@@ -102,23 +113,47 @@ export function SalePriceConsultationDialog({ locale, token, onClose, interfaceM
     };
   }, [result, token]);
 
-  async function consult(event: FormEvent) {
-    event.preventDefault();
-    const value = identifier.trim();
-    if (!value || loading) return;
+  function cancelLookup() {
+    if (lookupTimer.current) clearTimeout(lookupTimer.current);
+    lookupTimer.current = null;
+    requestGeneration.current += 1;
+    requestController.current?.abort();
+    requestController.current = null;
+  }
+
+  function changeIdentifier(value: string) {
+    cancelLookup();
+    setIdentifier(value);
+    setSubmittedIdentifier("");
+    setResult(null);
+    setError("");
+    setLoading(false);
+    if (value.trim()) {
+      lookupTimer.current = setTimeout(() => void consult(value.trim()), 1000);
+    }
+  }
+
+  async function consult(value: string, scanCompleted = false) {
+    cancelLookup();
+    if (!value) return;
     const generation = ++requestGeneration.current;
+    const controller = new AbortController();
+    requestController.current = controller;
     setSubmittedIdentifier(value);
-    setIdentifier("");
+    // Scanner Enter completes the capture immediately, ready for another scan while loading.
+    if (scanCompleted) setIdentifier("");
     setLoading(true);
     setError("");
     setResult(null);
     try {
       const product = await apiRequest<SalePriceConsultation>(
         `/products/sale/price-consultation?identifier=${encodeURIComponent(value)}`,
-        { token },
+        { token, signal: controller.signal },
       );
       if (generation !== requestGeneration.current) return;
       setResult(product);
+      // Preserve unfinished manual input on 404; a matched code is ready to be replaced.
+      if (!scanCompleted && document.activeElement === inputRef.current) inputRef.current?.select();
     } catch (requestError) {
       if (generation !== requestGeneration.current) return;
       setError(requestError instanceof ApiError && requestError.status === 404
@@ -126,10 +161,16 @@ export function SalePriceConsultationDialog({ locale, token, onClose, interfaceM
         : t("sale.priceConsultation.error"));
     } finally {
       if (generation === requestGeneration.current) {
+        requestController.current = null;
         setLoading(false);
-        queueMicrotask(() => inputRef.current?.focus());
       }
     }
+  }
+
+  function submitScan(event: FormEvent) {
+    event.preventDefault();
+    const value = identifier.trim();
+    if (value) void consult(value, true);
   }
 
   const visibleIdentifier = identifier || submittedIdentifier;
@@ -137,7 +178,7 @@ export function SalePriceConsultationDialog({ locale, token, onClose, interfaceM
   return (
     <div className="sale-action-overlay" role="presentation">
       <section
-        className="sale-action-dialog wide sale-price-consultation"
+        className={`sale-action-dialog wide sale-price-consultation${interfaceMode === "TOUCH" ? " sale-price-consultation-touch" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="sale-price-consultation-title"
@@ -150,34 +191,40 @@ export function SalePriceConsultationDialog({ locale, token, onClose, interfaceM
       >
         <header>
           <h2 id="sale-price-consultation-title">{t("sale.priceConsultation.title")}</h2>
-          <button type="button" aria-label={t("common.close")} onClick={onClose}>×</button>
+          <WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose} >×</WindowCloseButton>
         </header>
 
         <form
           className={`sale-price-consultation-form${result ? " has-result" : ""}`}
-          onSubmit={(event) => void consult(event)}
+          onSubmit={submitScan}
           onPointerDown={() => queueMicrotask(() => inputRef.current?.focus())}
         >
           <input
             ref={inputRef}
-            className={interfaceMode === "TOUCH" ? "sale-price-consultation-touch-input" : "sale-price-consultation-capture"}
+            className="sale-price-consultation-capture"
             autoFocus
             autoComplete="off"
             spellCheck={false}
             value={identifier}
-            onChange={(event) => {
-              if (submittedIdentifier || result || error) {
-                setSubmittedIdentifier("");
-                setResult(null);
-                setError("");
+            onChange={(event) => changeIdentifier(event.target.value)}
+            onBlur={() => { scannerCapture.current = idleScannerTimingCapture; }}
+            onKeyDown={(event) => {
+              if (event.ctrlKey || event.altKey || event.metaKey || event.nativeEvent.isComposing) {
+                scannerCapture.current = idleScannerTimingCapture;
+                return;
               }
-              setIdentifier(event.target.value);
+              const decision = scannerTimingKeyDecision(
+                scannerCapture.current, event.key, defaultScannerTimingConfig,
+                event.timeStamp, event.currentTarget.value,
+              );
+              scannerCapture.current = decision.next;
+              if (decision.completedCode) {
+                event.preventDefault();
+                void consult(decision.completedCode.trim(), true);
+              }
             }}
             aria-label={t("sale.priceConsultation.identifier")}
           />
-          {interfaceMode === "TOUCH" && <button type="submit" disabled={loading || !identifier.trim()}>
-            {t("sale.main.search")}
-          </button>}
           <div className={result ? "sale-price-consultation-product" : undefined}>
             {!loading && !error && result && (
               <div

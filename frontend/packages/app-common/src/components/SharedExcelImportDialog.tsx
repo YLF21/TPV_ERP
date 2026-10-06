@@ -1,3 +1,4 @@
+import { WindowCloseButton } from "./WindowCloseButton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import "../styles/shared-excel-import.css";
 import type { PointerEvent } from "react";
@@ -302,6 +303,7 @@ export function SharedExcelImportDialog({
   const confirmationDialogRef = useRef<HTMLDivElement | null>(null);
   const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
   const closeConfirmationRef = useRef<HTMLElement | null>(null);
+  const closeCancelButtonRef = useRef<HTMLButtonElement | null>(null);
   const closeReturnFocusRef = useRef<HTMLElement | null>(null);
   const selectedFile = localFile ?? file ?? null;
   const supplierAvailable = context === "WAREHOUSE_INPUT" && Boolean(supplier && supplier.active !== false);
@@ -605,7 +607,9 @@ export function SharedExcelImportDialog({
 
   useEffect(() => {
     if (!closeConfirmationOpen || !closeConfirmationRef.current) return;
-    return activateModalFocusTrap(closeConfirmationRef.current as unknown as ModalFocusRoot, document, { restoreFocus: false });
+    const release = activateModalFocusTrap(closeConfirmationRef.current as unknown as ModalFocusRoot, document, { restoreFocus: false });
+    closeCancelButtonRef.current?.focus();
+    return release;
   }, [closeConfirmationOpen]);
 
   useEffect(() => {
@@ -1195,8 +1199,9 @@ export function SharedExcelImportDialog({
             </button>
             <button type="button" disabled={isApplying} onClick={clearFile}>{t("sharedExcel.clearFile")}</button>
             {activePanel === "mapping" && <button type="button" disabled={isApplying || !serverRead || !selectedFile} onClick={() => void exportReview("mapping")}>{t("sharedExcel.export")}</button>}
-            <button type="button" disabled={isApplying} onClick={handleClose}>{t("sharedExcel.back")}</button>
+            <button type="button" className="erp-dialog-action-cancel" disabled={isApplying} onClick={handleClose}>{t("sharedExcel.back")}</button>
           </div>
+          <WindowCloseButton type="button" aria-label={t("common.close")} disabled={isApplying} onClick={handleClose} onLight desktopOnly />
         </header>
 
         <div className="shared-excel-top-pane">
@@ -1450,7 +1455,7 @@ export function SharedExcelImportDialog({
               </div>
               <div className="shared-excel-config-actions">
                 <button type="button" disabled={isApplying} onClick={clearMapping}>{t("sharedExcel.clearConfiguration")}</button>
-                <button type="button" disabled={isApplying} onClick={() => void applyMapping()}>{t("common.apply")}</button>
+                <button type="button" className="erp-dialog-action-confirm" disabled={isApplying} onClick={() => void applyMapping()}>{t("common.apply")}</button>
               </div>
             </div>
           ) : (
@@ -1474,12 +1479,12 @@ export function SharedExcelImportDialog({
                   } } : {}),
                   resize: (column) => interpolateMessage(t("sharedExcel.resizeColumn"), { column }) }}
                 actions={activePanel === "missing" && !transferContext
-                  ? <button type="button" disabled={isApplying || !serverPreviewIsCurrent || !missingRows.length} onClick={addProducts}>{t("sharedExcel.addProducts")}</button>
+                  ? <button type="button" className="erp-dialog-action-confirm" disabled={isApplying || !serverPreviewIsCurrent || !missingRows.length} onClick={addProducts}>{t("sharedExcel.addProducts")}</button>
                   : activePanel === "priceChanged" && !transferContext
-                    ? <button type="button" disabled={isApplying || !serverPreviewIsCurrent || !updateFields.purchasePrice || !priceChangedRows.length} onClick={() => void runOperation("UPDATE_PURCHASE_PRICE")}>{t("sharedExcel.updatePurchase")}</button>
+                    ? <button type="button" className="erp-dialog-action-confirm" disabled={isApplying || !serverPreviewIsCurrent || !updateFields.purchasePrice || !priceChangedRows.length} onClick={() => void runOperation("UPDATE_PURCHASE_PRICE")}>{t("sharedExcel.updatePurchase")}</button>
                     : activePanel === "accepted" ? <>
-                      {!transferContext && <button type="button" disabled={isApplying || !serverPreviewIsCurrent || !existingRows.length || !Object.values(updateFields).some(Boolean)} onClick={() => void runOperation("UPDATE_SELECTED_FIELDS")}>{t("sharedExcel.updateProducts")}</button>}
-                      <button type="button" disabled={isApplying || !serverPreviewIsCurrent || !existingRows.length} onClick={() => void runOperation("PREPARE_DESTINATION")}>{operationLabel("PREPARE_DESTINATION")}</button>
+                      {!transferContext && <button type="button" className="erp-dialog-action-confirm" disabled={isApplying || !serverPreviewIsCurrent || !existingRows.length || !Object.values(updateFields).some(Boolean)} onClick={() => void runOperation("UPDATE_SELECTED_FIELDS")}>{t("sharedExcel.updateProducts")}</button>}
+                      <button type="button" className="erp-dialog-action-confirm" disabled={isApplying || !serverPreviewIsCurrent || !existingRows.length} onClick={() => void runOperation("PREPARE_DESTINATION")}>{operationLabel("PREPARE_DESTINATION")}</button>
                     </> : null}
               />
             </div>
@@ -1499,11 +1504,11 @@ export function SharedExcelImportDialog({
         {masterConfirmationCount !== null && (
           <div className="shared-excel-confirm-overlay" role="presentation" onPointerDown={(event) => event.stopPropagation()}>
             <div ref={confirmationDialogRef} className="shared-excel-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="shared-excel-confirm-title">
-              <h2 id="shared-excel-confirm-title">{pendingOperation ? operationLabel(pendingOperation) : t("sharedExcel.updateProducts")}</h2>
+              <h2 id="shared-excel-confirm-title" className="erp-window-header" aria-label={pendingOperation ? operationLabel(pendingOperation) : t("sharedExcel.updateProducts")}>{pendingOperation ? operationLabel(pendingOperation) : t("sharedExcel.updateProducts")}<WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setMasterConfirmationCount(null)} onLight desktopOnly /></h2>
               <p>{interpolateMessage(t("sharedExcel.confirmMasterChanges"), { count: masterConfirmationCount })}</p>
-              <div className="shared-excel-confirm-actions">
-                <button type="button" autoFocus onClick={() => setMasterConfirmationCount(null)}>{t("common.cancel")}</button>
-                <button type="button" onClick={() => {
+              <div className="shared-excel-confirm-actions erp-dialog-actions-row">
+                <button type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" autoFocus onClick={() => setMasterConfirmationCount(null)}>{t("common.cancel")}</button>
+                <button type="button" className="erp-dialog-action-confirm" onClick={() => {
                   setMasterConfirmationCount(null);
                   if (pendingOperation) void runOperation(pendingOperation, true);
                 }}>{pendingOperation ? operationLabel(pendingOperation) : t("sharedExcel.updateProducts")}</button>
@@ -1527,11 +1532,11 @@ export function SharedExcelImportDialog({
       <section ref={closeConfirmationRef} className="app-venta-home-confirm-dialog" role="alertdialog" aria-modal="true"
         aria-labelledby="shared-excel-close-title" aria-describedby="shared-excel-close-message"
         onKeyDown={(event) => event.stopPropagation()}>
-        <header><h2 id="shared-excel-close-title">{t("sharedExcel.close.title")}</h2></header>
+        <header><h2 id="shared-excel-close-title">{t("sharedExcel.close.title")}</h2><WindowCloseButton type="button" aria-label={t("common.close")} onClick={cancelClose} desktopOnly /></header>
         <p id="shared-excel-close-message">{t("sharedExcel.close.message")}</p>
-        <footer>
-          <button type="button" onClick={cancelClose}>{t("common.cancel")}</button>
-          <button type="button" className="primary" onClick={confirmClose}>{t("sharedExcel.close.confirm")}</button>
+        <footer className="erp-dialog-actions-row">
+          <button ref={closeCancelButtonRef} type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={cancelClose}>{t("common.cancel")}</button>
+          <button type="button" className="primary erp-dialog-action-cancel" onClick={confirmClose}>{t("sharedExcel.close.confirm")}</button>
         </footer>
       </section>
     </div>}

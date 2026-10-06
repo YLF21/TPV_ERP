@@ -1,3 +1,4 @@
+import { WindowCloseButton } from "./WindowCloseButton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getVerifactuPosQueue,
@@ -254,15 +255,15 @@ export function VerifactuPosIndicator({
               <h2 id="verifactu-pos-title">VERI*FACTU</h2>
               <p id="verifactu-pos-description">{t("verifactu.pos.readOnlyDescription")}</p>
             </div>
-            <button
+            <WindowCloseButton
               ref={closeRef}
               type="button"
               className="verifactu-pos__close"
               aria-label={t("verifactu.pos.close")}
               onClick={() => setOpen(false)}
-            >
+             >
               ×
-            </button>
+            </WindowCloseButton>
           </header>
 
           <div className={`verifactu-pos__summary verifactu-pos__summary--${presentationStatus.toLowerCase()}`}>

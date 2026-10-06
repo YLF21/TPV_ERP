@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
+import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError, userCanManageWarehouses, type UserSession } from "@tpverp/app-common";
 import { ArrowDown, ArrowUp, ArrowsLeftRight, Cube, Gear, MapPin, Note, Package, WarningCircle } from "@phosphor-icons/react";
@@ -208,7 +210,7 @@ export function WarehouseManagementScreen({ session, t, locale = "es", onCreateD
       role="dialog" aria-modal="true" aria-labelledby="warehouse-dialog-title"><header>
       <h2 id="warehouse-dialog-title">{t(dialog === "create" ? "warehouse.management.dialog.create"
         : dialog === "general" ? "warehouse.management.generalSettings" : "warehouse.management.settingsTitle")}</h2>
-      <button type="button" aria-label={t("common.close")} onClick={close}>×</button></header>
+      <WindowCloseButton type="button" aria-label={t("common.close")} onClick={close} >×</WindowCloseButton></header>
       {dialog === "general" ? <div className="gestion-warehouse-dialog-content">
         <form className="gestion-security-form gestion-warehouse-bulk-form" onSubmit={(event) => void applyGeneral(event)}>
           <h3>{t("warehouse.management.bulkSection")}</h3>
@@ -219,14 +221,14 @@ export function WarehouseManagementScreen({ session, t, locale = "es", onCreateD
             value={bulk.defaultMinimumStock} onChange={(event) => setBulk({ ...bulk, defaultMinimumStock: Number(event.target.value) })} /></label>
           <label><input type="checkbox" checked={bulk.alertsEnabled} onChange={(event) => setBulk({ ...bulk,
             alertsEnabled: event.target.checked })} />{t("warehouse.management.alerts")}</label>
-          <footer><button type="button" onClick={close}>{t("common.cancel")}</button>
-            <button type="submit" disabled={saving}>{t("warehouse.management.applyAll")}</button></footer></form>
+          <footer className="erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={close}>{t("common.cancel")}</DialogDismissButton>
+            <button className="erp-dialog-action-confirm" type="submit" disabled={saving}>{t("warehouse.management.applyAll")}</button></footer></form>
         {general && <div className="gestion-warehouse-store-settings"><h3>{t("warehouse.management.storeSection")}</h3>
           <div className="gestion-warehouse-default-row"><label>{t("warehouse.management.defaultStockWarehouse")}
             <select value={general.defaultWarehouseId} onChange={(event) => setGeneral({ ...general,
               defaultWarehouseId: event.target.value })}>{warehouses.filter((item) => item.active).map((item) =>
               <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-            <button type="button" disabled={saving} onClick={() => void saveDefaultWarehouse()}>{t("warehouse.management.saveSettings")}</button></div>
+            <button className="erp-dialog-action-confirm" type="button" disabled={saving} onClick={() => void saveDefaultWarehouse()}>{t("warehouse.management.saveSettings")}</button></div>
           {canManageInactive && <label><input type="checkbox" checked={general.allowInactiveProductSales}
             onChange={(event) => void toggleInactive(event.target.checked)} />{t("warehouse.management.inactiveSales")}</label>}</div>}
       </div> : <div className="gestion-warehouse-dialog-content">
@@ -244,8 +246,8 @@ export function WarehouseManagementScreen({ session, t, locale = "es", onCreateD
             onChange={(event) => setDetails({ ...details, notes: event.target.value })} /></label>
           {dialog === "warehouse" && selected?.defaultWarehouse &&
             <p className="gestion-warehouse-dialog-hint">{t("warehouse.management.generalSalesNote")}</p>}
-          <footer><button type="button" onClick={close}>{t("common.cancel")}</button>
-            <button type="submit" disabled={saving}>{t("common.save")}</button></footer></form>
+          <footer className="erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={close}>{t("common.cancel")}</DialogDismissButton>
+            <button className="erp-dialog-action-confirm" type="submit" disabled={saving}>{t("common.save")}</button></footer></form>
         {dialog === "warehouse" && selected && <>
           {configuration && <form className="gestion-security-form gestion-warehouse-config-form"
             onSubmit={(event) => void saveConfiguration(event)}><h3>{t("warehouse.management.stockSection")}</h3>
@@ -256,9 +258,9 @@ export function WarehouseManagementScreen({ session, t, locale = "es", onCreateD
                 setConfiguration({ ...configuration, defaultMinimumStock: Number(event.target.value) })} /></label>
             <label><input type="checkbox" checked={configuration.alertsEnabled} onChange={(event) =>
               setConfiguration({ ...configuration, alertsEnabled: event.target.checked })} />{t("warehouse.management.alerts")}</label>
-            <footer>{!configuration.inheritsStoreSettings && <button type="button" disabled={saving}
+            <footer className="erp-dialog-actions-row">{!configuration.inheritsStoreSettings && <button type="button" disabled={saving}
                 onClick={() => void resetConfiguration()}>{t("warehouse.management.resetSettings")}</button>}
-              <button type="submit" disabled={saving || !selected.active}>{t("warehouse.management.saveSettings")}</button></footer></form>}
+              <button className="erp-dialog-action-confirm" type="submit" disabled={saving || !selected.active}>{t("warehouse.management.saveSettings")}</button></footer></form>}
           {!selected.defaultWarehouse && <div className="gestion-warehouse-danger-actions">
             <button type="button" onClick={() => { close(); setPending({ warehouse: selected,
               action: selected.active ? "deactivate" : "activate" }); }}>{t(selected.active
@@ -275,7 +277,7 @@ export function WarehouseManagementScreen({ session, t, locale = "es", onCreateD
       role="dialog" aria-modal="true" aria-labelledby="warehouse-action-title"><header>
       <h2 id="warehouse-action-title">{t(pending.action === "delete" ? "warehouse.management.delete"
         : pending.action === "activate" ? "warehouse.management.dialog.activate" : "warehouse.management.dialog.deactivate")}</h2>
-      <button type="button" aria-label={t("common.close")} onClick={() => setPending(null)}>×</button></header>
+      <WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setPending(null)} >×</WindowCloseButton></header>
       <div className="gestion-confirm-content"><div className="gestion-warehouse-confirm-message">
         {pending.action === "delete" && <WarningCircle size={24} weight="regular" aria-hidden="true" />}
         <p>{t(pending.action === "delete" ? "warehouse.management.confirmDelete"
@@ -283,8 +285,8 @@ export function WarehouseManagementScreen({ session, t, locale = "es", onCreateD
         .replace("{name}", pending.warehouse.name)}</p></div>
         {pending.action === "deactivate" && <p>{t("warehouse.management.zeroStockWarning")}</p>}
         {error && <p className="gestion-inline-error" role="alert">{error}</p>}
-        <footer><button type="button" onClick={() => setPending(null)}>{t("common.cancel")}</button>
-          <button type="button" className={pending.action === "delete" ? "danger" : undefined}
+        <footer className="erp-dialog-actions-row"><button className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={() => setPending(null)}>{t("common.cancel")}</button>
+          <button type="button" className={pending.action === "delete" ? "danger erp-dialog-action-cancel" : "erp-dialog-action-confirm"}
             disabled={saving} onClick={() => void confirmAction()}>{t(pending.action === "delete"
             ? "warehouse.management.delete" : pending.action === "activate"
               ? "warehouse.management.activate" : "warehouse.management.deactivate")}</button></footer></div>

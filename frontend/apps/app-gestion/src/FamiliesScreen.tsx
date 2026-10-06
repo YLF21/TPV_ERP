@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
+import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import {
   useCallback,
   useEffect,
@@ -246,7 +248,7 @@ function FamilyModal({
       >
         <header>
           <h2 id={titleId}>{title}</h2>
-          <button
+          <WindowCloseButton
             type="button"
             aria-label={closeLabel}
             title={closeLabel}
@@ -254,7 +256,7 @@ function FamilyModal({
             onClick={onClose}
           >
             <span aria-hidden="true">×</span>
-          </button>
+          </WindowCloseButton>
         </header>
         {children}
       </section>
@@ -2071,15 +2073,15 @@ export function FamiliesScreen({
                 </label>
               </>
             )}
-            <footer className="gestion-family-actions">
-              <button
+            <footer className="gestion-family-actions erp-dialog-actions-row">
+              <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss"
                 type="button"
                 disabled={busy}
                 onClick={() => setEditor(null)}
               >
                 {t("common.cancel")}
-              </button>
-              <button type="submit" className="primary" disabled={busy}>
+              </DialogDismissButton>
+              <button type="submit" className="primary erp-dialog-action-confirm" disabled={busy}>
                 {t("common.save")}
               </button>
             </footer>
@@ -2297,17 +2299,17 @@ export function FamiliesScreen({
               </p>
             )}
           </div>
-          <footer className="gestion-family-actions">
-            <button
+          <footer className="gestion-family-actions erp-dialog-actions-row">
+            <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss"
               type="button"
               disabled={busy}
               onClick={closeMove}
             >
               {t("common.cancel")}
-            </button>
+            </DialogDismissButton>
             <button
               type="button"
-              className="primary"
+              className="primary erp-dialog-action-confirm"
               disabled={busy || !moveTargetDetails}
               onClick={() => {
                 if (moveTargetDetails) void performMove(moveTarget);
@@ -2339,8 +2341,8 @@ export function FamiliesScreen({
               </p>
             )}
           </div>
-          <footer className="gestion-family-actions">
-            <button
+          <footer className="gestion-family-actions erp-dialog-actions-row">
+            <button className="erp-dialog-action-cancel erp-dialog-dismiss"
               type="button"
               disabled={busy}
               onClick={() => setGeneralConfirm(false)}
@@ -2349,7 +2351,7 @@ export function FamiliesScreen({
             </button>
             <button
               type="button"
-              className="danger"
+              className="danger erp-dialog-action-cancel"
               disabled={busy}
               onClick={() => void performMove(null, true)}
             >
@@ -2418,8 +2420,8 @@ export function FamiliesScreen({
               )
             )}
           </div>
-          <footer className="gestion-family-actions">
-            <button
+          <footer className="gestion-family-actions erp-dialog-actions-row">
+            <button className="erp-dialog-action-cancel erp-dialog-dismiss"
               type="button"
               disabled={busy}
               onClick={() => setImpact(null)}
@@ -2428,7 +2430,7 @@ export function FamiliesScreen({
             </button>
             <button
               type="button"
-              className="danger"
+              className="danger erp-dialog-action-cancel"
               disabled={
                 busy ||
                 impact.data.blocked ||

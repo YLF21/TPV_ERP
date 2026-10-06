@@ -1,4 +1,6 @@
 import { useEffect, useId, useRef } from "react";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import {
   ArrowDown, ArrowUp, ArrowUUpLeft, Barcode, Calculator, DotsThree,
   FileArrowUp, FileText, FileX, Gift, Minus, Note, Pause, PencilSimple,
@@ -158,9 +160,9 @@ export function TouchSaleMoreOptionsDialog({ locale, actions, onClose }: {
       >
         <header className="sale-touch-more-header">
           <h2 id={titleId}>{t("sale.touch.moreOptions")}</h2>
-          <button type="button" className="sale-touch-more-close" aria-label={t("common.close")} onClick={onClose}>
+          <WindowCloseButton type="button" className="sale-touch-more-close" aria-label={t("common.close")} onClick={onClose}>
             <X size={28} weight="bold" aria-hidden="true" focusable="false" />
-          </button>
+          </WindowCloseButton>
         </header>
         <div className="sale-touch-more-groups">
           {optionGroups.map((group, index) => {
@@ -179,9 +181,9 @@ export function TouchSaleMoreOptionsDialog({ locale, actions, onClose }: {
             );
           })}
         </div>
-        <footer className="sale-touch-more-footer">
-          <span className="sale-touch-more-help">{t("sale.touch.optionsHint")}</span>
-          <button type="button" className="sale-touch-button" onClick={onClose}>{t("common.close")}</button>
+        <footer className="sale-touch-more-footer erp-dialog-actions-row">
+          <DialogDismissButton type="button" className="sale-touch-button erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>{t("common.close")}</DialogDismissButton>
+          <span className="sale-touch-more-help erp-dialog-actions-group">{t("sale.touch.optionsHint")}</span>
         </footer>
       </section>
     </div>

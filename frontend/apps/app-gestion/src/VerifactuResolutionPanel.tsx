@@ -1,3 +1,4 @@
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError, type LocaleCode } from "@tpverp/app-common";
 import {
@@ -185,7 +186,7 @@ export function VerifactuResolutionPanel({
           <span>{t("verifactu.resolution.eyebrow")}</span>
           <h3>{target.documentNumber}</h3>
         </div>
-        <button type="button" disabled={submitting} onClick={onClose}>{t("verifactu.management.close")}</button>
+        <WindowCloseButton type="button" aria-label={t("verifactu.management.close")} disabled={submitting} onClick={onClose} >{t("verifactu.management.close")}</WindowCloseButton>
       </header>
 
       <div className="gestion-verifactu-resolution-body">
@@ -249,10 +250,10 @@ export function VerifactuResolutionPanel({
                   />
                 </label>
                 <div>
-                  <button type="submit" className="primary" disabled={!retryReason.trim() || submitting}>
+                  <button type="submit" className="primary erp-dialog-action-confirm" disabled={!retryReason.trim() || submitting}>
                     {submitting ? t("verifactu.resolution.processing") : t("verifactu.resolution.confirmRetry")}
                   </button>
-                  <button type="button" disabled={submitting} onClick={() => setForm(null)}>{t("verifactu.resolution.cancel")}</button>
+                  <button className="erp-dialog-action-cancel" type="button" disabled={submitting} onClick={() => setForm(null)}>{t("verifactu.resolution.cancel")}</button>
                 </div>
               </form>
             )}
@@ -287,10 +288,10 @@ export function VerifactuResolutionPanel({
                   <p className="field-error">{t("verifactu.resolution.correctionValidation")}</p>
                 )}
                 <div>
-                  <button type="submit" className="primary" disabled={!validCorrection(correction) || submitting || recoveryBlocked}>
+                  <button type="submit" className="primary erp-dialog-action-confirm" disabled={!validCorrection(correction) || submitting || recoveryBlocked}>
                     {submitting ? t("verifactu.resolution.processing") : t("verifactu.resolution.confirmCorrection")}
                   </button>
-                  <button type="button" disabled={submitting} onClick={() => setForm(null)}>{t("verifactu.resolution.cancel")}</button>
+                  <button className="erp-dialog-action-cancel" type="button" disabled={submitting} onClick={() => setForm(null)}>{t("verifactu.resolution.cancel")}</button>
                 </div>
               </form>
             )}

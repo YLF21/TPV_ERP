@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { getHardwareBridge } from "../hardware/hardware";
@@ -433,12 +435,12 @@ export function SaleTicketCancellationDialog({
           <h2 id="sale-ticket-cancel-title">{t(mode === "BY_NUMBER"
             ? "sale.documentCancel.title"
             : "sale.ticketCancel.title")}</h2>
-          <button
+          <WindowCloseButton
             type="button"
             aria-label={t("common.close")}
             onClick={onClose}
             disabled={busy}
-          >×</button>
+           >×</WindowCloseButton>
         </header>
 
         {mode === "BY_NUMBER" && (
@@ -458,7 +460,7 @@ export function SaleTicketCancellationDialog({
                 autoComplete="off"
               />
             </label>
-            <button type="submit" disabled={busy || !ticketNumber.trim()}>
+            <button type="submit" className="erp-dialog-action-confirm" disabled={busy || !ticketNumber.trim()}>
               {t("sale.documentCancel.search")}
             </button>
           </form>
@@ -561,15 +563,15 @@ export function SaleTicketCancellationDialog({
         )}
         {error && <p className="sale-error" role="alert">{error}</p>}
         {message && <p className="sale-status" role="status">{message}</p>}
-        <footer className="sale-ticket-operation-footer">
-          <button type="button" onClick={onClose} disabled={busy}>
+        <footer className="sale-ticket-operation-footer erp-dialog-actions-row">
+          <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose} disabled={busy}>
             {t("sale.dialog.cancel")}
-          </button>
+          </DialogDismissButton>
           {preview && (
             <button
               ref={confirmButtonRef}
               type="button"
-              className="danger"
+              className="danger erp-dialog-action-cancel"
               disabled={busy || !confirmationReady}
               onClick={() => void cancelTicket()}
             >
@@ -579,6 +581,7 @@ export function SaleTicketCancellationDialog({
           {!preview && receiptToRetry && (
             <button
               type="button"
+              className="erp-dialog-action-confirm"
               disabled={busy}
               onClick={() => void retryCancellationReceipt()}
             >

@@ -11,6 +11,8 @@ import { ErpSelect } from "./ErpSelect";
 import { ErpFilterChips } from "./ErpFilterChips";
 import { CustomerModel347Dialog } from "./CustomerModel347Dialog";
 import { customerDocumentAmount } from "./customerDocumentAmount";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import "./CustomerDocumentsDialog.css";
 
 const tabs = [
@@ -317,7 +319,7 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
     <section className={`filter-dialog customer-documents-dialog${app === "gestion" ? " erp-classic-window" : ""}`} ref={dialogRef} inert={model347Open || undefined}>
       <header className="filter-header">
         <div><h2 id="customer-documents-title">{t("customerDocuments.title")}</h2><span>{customer.clientId} · {customer.fiscalName}</span></div>
-        <button type="button" onClick={onClose}>{t("common.close")}</button>
+        {app === "pda" ? <button type="button" className="erp-dialog-action-cancel" onClick={onClose}>{t("common.close")}</button> : <WindowCloseButton aria-label={t("common.close")} onClick={onClose} >{t("common.close")}</WindowCloseButton>}
       </header>
       <div className="customer-documents-navigation">
         <div role="tablist" aria-label={t("customerDocuments.title")} onKeyDown={(event) => {
@@ -351,7 +353,7 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
           onChange={(event) => setDraftFilters((current) => ({ ...current, dateFrom: event.target.value }))} /></label>
         <label><span>{t("salesReport.filter.dateTo")}</span><input type="date" value={draftFilters.dateTo}
           onChange={(event) => setDraftFilters((current) => ({ ...current, dateTo: event.target.value }))} /></label>
-        <button type="submit" disabled={!allowed}>{t("salesReport.filter.apply")}</button>
+        <button type="submit" className="erp-dialog-action-confirm" disabled={!allowed}>{t("salesReport.filter.apply")}</button>
         {(app === "pda" || !hasFilters) && <button type="button" onClick={() => applyFilters(true)}>{t("party.filter.clear")}</button>}
       </form>
       {app !== "pda" && <ErpFilterChips locale={locale} chips={filterChips} focusRef={searchRef} onClear={() => applyFilters(true)} />}
@@ -405,16 +407,16 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
           </div>
         </div>
       </div>
-      <footer className="customer-documents-footer">
+      <footer className="customer-documents-footer erp-dialog-actions-row">
+        <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>{t("customerDocuments.close")}</DialogDismissButton>
         <span role="status">{t("customerDocuments.loaded").replace("{count}", String(page?.items.length ?? 0))}
           {page?.hasMore ? ` · ${t("customerDocuments.scrollMore")}` : ""}</span>
-        <div>
+        <div className="erp-dialog-actions-group">
           {tab === "invoices" && <button type="button" disabled={!allowed}
             onClick={() => setModel347CustomerId(customer.id)}>{t("customerModel347.button")}</button>}
           <button type="button" disabled={exportBusy || loading || filtersDirty || !allowed || !rows.length || Boolean(errorKey)}
             title={t(hasFilters ? "customerDocuments.exportFiltered" : "customerDocuments.exportLoaded")}
             onClick={() => void exportExcel()}>{t(exportBusy ? "stock.history.exporting" : "stock.history.exportExcel")}</button>
-          <button type="button" onClick={onClose}>{t("customerDocuments.close")}</button>
         </div>
       </footer>
     </section>

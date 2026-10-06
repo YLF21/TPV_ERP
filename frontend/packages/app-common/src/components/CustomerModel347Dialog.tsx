@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { apiProblemCode, apiRequest, classifyApiFailure } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -94,7 +96,7 @@ export function CustomerModel347Dialog({ customer, session, locale, onClose }: P
   return <div className="filter-overlay customer-model347-overlay">
     <section className="customer-model347-dialog" ref={dialogRef} role="dialog" aria-modal="true"
       aria-labelledby="customer-model347-title" aria-describedby="customer-model347-scope customer-model347-notice">
-      <header><h2 id="customer-model347-title">{t("customerModel347.title")}</h2></header>
+      <header><h2 id="customer-model347-title">{t("customerModel347.title")}</h2><WindowCloseButton type="button" aria-label={t("customerDocuments.close")} onClick={close} desktopOnly /></header>
       <form noValidate onSubmit={(event) => { event.preventDefault(); void generate(); }}>
         <p className="customer-model347-customer">{customer.clientId} · {customer.fiscalName}</p>
         <label className="customer-model347-year"><span>{t("customerModel347.year")}</span>
@@ -107,9 +109,9 @@ export function CustomerModel347Dialog({ customer, session, locale, onClose }: P
         <p id="customer-model347-notice" className="customer-model347-notice">{t("customerModel347.notice")}</p>
         {errorKey && <p id="customer-model347-error" className="customer-model347-error" role="alert">{t(errorKey)}</p>}
         {(busy || saved) && <p role="status">{t(busy ? "customerModel347.generating" : "customerModel347.saved")}</p>}
-        <footer>
-          <button type="button" onClick={close}>{t("customerDocuments.close")}</button>
-          <button type="submit" className="customer-model347-generate" disabled={busy}>
+        <footer className="erp-dialog-actions-row">
+          <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={close}>{t("customerDocuments.close")}</DialogDismissButton>
+          <button type="submit" className="customer-model347-generate erp-dialog-action-confirm" disabled={busy}>
             {t(busy ? "customerModel347.generating" : "customerModel347.generate")}
           </button>
         </footer>

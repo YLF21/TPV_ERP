@@ -1,3 +1,4 @@
+import { WindowCloseButton } from "./WindowCloseButton";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { apiBaseUrl } from "../api/runtime";
 import { formatProductQuantity } from "../sale/productQuantity";
@@ -240,7 +241,7 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
               {results.length === 1 ? labels.result : labels.results}
             </span>
           </div>
-          <button type="button" aria-label={labels.close} onClick={onClose}>×</button>
+          <WindowCloseButton type="button" aria-label={labels.close} onClick={onClose} >×</WindowCloseButton>
         </header>
 
         <div className="sale-product-search-field">
@@ -358,7 +359,7 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
             <button type="button" disabled={!activeProduct || !onInspect} onClick={() => activeProduct && onInspect?.(activeProduct)}>
               {labels.details}
             </button>
-            <button type="button" className="primary" disabled={!activeProduct} onClick={() => activeProduct && onSelect(activeProduct)}>
+            <button type="button" className="primary erp-dialog-action-confirm" disabled={!activeProduct} onClick={() => activeProduct && onSelect(activeProduct)}>
               {labels.add}
             </button>
           </footer>

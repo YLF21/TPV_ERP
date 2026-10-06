@@ -13,6 +13,8 @@ import {
 import { PartyFormFields } from "./PartyFormFields";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { ErpFilterChips } from "./ErpFilterChips";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import "./WarehouseDocumentClassicTables.css";
 
 type Props = {
@@ -183,7 +185,7 @@ export function WarehouseSupplierDialog({
             <h2 id="warehouse-supplier-title">{editingId !== null ? (editingId ? t("warehouseDocument.supplierEdit") : t("party.suppliers.new")) : t("warehouseDocument.supplierListTitle")}</h2>
             <span>{editingId !== null ? t("party.form.subtitle") : t("warehouseDocument.supplierListHelp")}</span>
           </div>
-          <button type="button" disabled={saving} onClick={editingId !== null ? closeForm : onClose}>{t("common.close")}</button>
+          <WindowCloseButton aria-label={t("common.close")} disabled={saving} onClick={editingId !== null ? closeForm : onClose} >{t("common.close")}</WindowCloseButton>
         </header>
         {editingId === null ? (
           <div
@@ -250,9 +252,9 @@ export function WarehouseSupplierDialog({
             {status && <p className="product-create-status" role="alert">{status}</p>}
             <footer className="warehouse-supplier-selection-footer">
               <p><kbd>Insert</kbd> {t("warehouseDocument.supplierSelectHint")}</p>
-              <div className="filter-actions">
-                <button type="button" disabled={!canSelectSupplier} className="primary" onClick={selectActive}>{t("common.select")}</button>
-                <button type="button" onClick={onClose}>{t("common.cancel")}</button>
+              <div className="filter-actions erp-dialog-actions-row">
+                <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>{t("common.cancel")}</DialogDismissButton>
+                <button type="button" disabled={!canSelectSupplier} className="primary erp-dialog-action-confirm" onClick={selectActive}>{t("common.select")}</button>
               </div>
             </footer>
           </div>
@@ -262,9 +264,9 @@ export function WarehouseSupplierDialog({
               <PartyFormFields form={form} errors={errors} channels={[]} supplier autoFocusName t={t} onChange={update} />
             </fieldset>
             {status && <p className="product-create-status" role="alert">{status}</p>}
-            <footer className="filter-actions">
-              <button type="button" disabled={saving} onClick={closeForm}>{t("common.cancel")}</button>
-              <button type="submit" disabled={saving || loading}>{saving ? t("party.saving") : t("common.save")}</button>
+            <footer className="filter-actions erp-dialog-actions-row">
+              <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" disabled={saving} onClick={closeForm}>{t("common.cancel")}</DialogDismissButton>
+              <button type="submit" className="erp-dialog-action-confirm" disabled={saving || loading}>{saving ? t("party.saving") : t("common.save")}</button>
             </footer>
           </form>
         )}

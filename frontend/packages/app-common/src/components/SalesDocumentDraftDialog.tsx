@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -184,7 +186,7 @@ export function SalesDocumentDraftDialog({
             <span>{t("salesDocument.drafts.eyebrow")}</span>
             <h2 id="sales-document-draft-title">{t("salesDocument.drafts.title")}</h2>
           </div>
-          <button type="button" aria-label={t("common.close")} onClick={onClose}>×</button>
+          <WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose} >×</WindowCloseButton>
         </header>
         <label className="sales-document-draft-search">
           <span>{t("salesDocument.drafts.search")}</span>
@@ -238,16 +240,16 @@ export function SalesDocumentDraftDialog({
           </p>
         )}
         {error && <p className="sale-action-error" role="alert">{error}</p>}
-        <footer>
-          <div>
+        <footer className="erp-dialog-actions-row">
+          <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.cancel")}</DialogDismissButton>
+          <div className="erp-dialog-actions-group">
             <span><kbd>↑</kbd><kbd>↓</kbd>{t("sale.searchDialog.navigate")}</span>
             <span><kbd>Enter</kbd>{t("salesDocument.drafts.import")}</span>
             <span><kbd>Esc</kbd>{t("common.close")}</span>
           </div>
-          <button type="button" onClick={onClose}>{t("common.cancel")}</button>
           <button
             type="button"
-            className="primary"
+            className="primary erp-dialog-action-confirm"
             disabled={!selectedId || importing}
             onClick={() => void importSelected()}
           >

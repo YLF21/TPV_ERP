@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { sortProductsByCode } from "./productSearchOrdering";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
@@ -103,7 +105,7 @@ export function SaleProductConsultationDialog({
         aria-label="Consulta de stock">
         <header>
           <h2>Consulta de stock</h2>
-          <button type="button" aria-label="Cerrar" onClick={onClose}>×</button>
+          <WindowCloseButton type="button" aria-label="Cerrar" onClick={onClose} >×</WindowCloseButton>
         </header>
         <div className="sale-consultation-search">
           <label>
@@ -165,7 +167,7 @@ export function SaleProductConsultationDialog({
           {stockError && <p className="sale-action-error" role="alert">{stockError}</p>}
         </div>
 
-        <footer className="sale-action-buttons"><button type="button" onClick={onClose}>Cerrar</button></footer>
+        <footer className="sale-action-buttons erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>Cerrar</DialogDismissButton></footer>
       </section>
     </div>
   );

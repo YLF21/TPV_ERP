@@ -15,7 +15,7 @@ test("keeps login blocked while the backend is offline and recovers after retry"
   await page.goto("/");
 
   const submit = page.getByRole("button", { name: "Entrar" });
-  await expect(page.getByRole("alert")).toContainText("Sin conexion con backend");
+  await expect(page.getByRole("alert")).toContainText("Sin conexión con el servidor local");
   await expect(submit).toBeDisabled();
   const retry = page.getByRole("button", { name: /Reintentar conexi[oó]n/ });
   await expect(retry).toBeVisible();

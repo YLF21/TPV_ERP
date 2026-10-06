@@ -186,7 +186,8 @@ describe("Stock bulk editing save and apply", () => {
 
     let dialog = openSelected();
     expect(within(dialog).getByText(/selección \(1\)/)).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    expect(within(dialog).queryByRole("button", { name: "Cancelar" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }));
     expect(firstRow().textContent).toContain("2004461");
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Editar seleccionado/ })));
     expect(backend.saves).toHaveLength(0);
@@ -209,7 +210,7 @@ describe("Stock bulk editing save and apply", () => {
     expect(screen.getByRole("dialog", { name: "Intercambiar código y código de barras" })).toBe(dialog);
     expect(firstRow().querySelector(".bulk-code-value")?.textContent).toBe("8435606744034");
     expect(backend.saves).toHaveLength(0);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }));
 
     fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
     expect(firstRow().querySelector(".bulk-code-value")?.textContent).toBe("2004461");

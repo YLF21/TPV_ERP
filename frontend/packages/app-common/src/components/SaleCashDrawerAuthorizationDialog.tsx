@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { useEffect, useRef, useState } from "react";
 import {
   saleOperationAuthorizationComplete,
@@ -66,7 +68,7 @@ export function SaleCashDrawerAuthorizationDialog({
           <div>
             <h2>{message("authorizationTitle")}</h2>
           </div>
-          <button type="button" aria-label={t("common.close")} disabled={busy} onClick={onCancel}>×</button>
+          <WindowCloseButton type="button" aria-label={t("common.close")} disabled={busy} onClick={onCancel} onLight >×</WindowCloseButton>
         </header>
         <form
           onSubmit={(event) => {
@@ -94,9 +96,9 @@ export function SaleCashDrawerAuthorizationDialog({
             onPasswordChange={setPassword}
           />
           {error && <p className="sale-dialog-error" role="alert">{error}</p>}
-          <div className="sale-action-buttons">
-            <button type="button" disabled={busy} onClick={onCancel}>{t("common.cancel")}</button>
-            <button
+          <div className="sale-action-buttons erp-dialog-actions-row">
+            <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={busy} onClick={onCancel}>{t("common.cancel")}</DialogDismissButton>
+            <button className="erp-dialog-action-confirm"
               type="submit"
               disabled={busy || !saleOperationAuthorizationComplete(
                 authorization,

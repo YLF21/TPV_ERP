@@ -45,28 +45,19 @@
   flex: 0 0 auto;
   min-height: 0;
   padding: 6px;
-  border-top: 1px solid #9aadc2;
-  background: #e7edf4;
+  border: 0;
+  background: transparent;
   color: #102e51;
+  font-family: Helvetica, Arial, sans-serif;
 }
 .sale-touch-field-keyboard-heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
   padding: 0 4px 4px;
 }
-.sale-touch-field-keyboard-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sale-touch-field-keyboard-heading > button {
-  min-width: 80px;
-  min-height: 44px;
-  border: 1px solid #7a90ab;
-  border-radius: 0;
-  background: #12365e;
-  color: #fff;
-  font: inherit;
-  font-weight: 700;
-}
+.sale-touch-field-keyboard-heading strong { margin-inline-end: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sale-touch-field-keyboard .touch-alpha-keyboard { --touch-alpha-key-height: clamp(44px, 6dvh, 56px); }
 .sale-touch-field-keyboard .touch-numeric-keypad {
   max-width: 440px;

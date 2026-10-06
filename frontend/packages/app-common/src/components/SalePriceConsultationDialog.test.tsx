@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SalePriceConsultationDialog } from "./SalePriceConsultationDialog";
@@ -9,6 +9,7 @@ import { SaleTouchKeyboardScope } from "./SaleTouchKeyboardScope";
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -20,7 +21,7 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 describe("SalePriceConsultationDialog", () => {
-  it("provides a visible touch input, keyboard and explicit search without physical Enter", async () => {
+  it("uses hidden capture to show touch entry instead of the prompt and automatically replaces matched codes", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
       productId: "product-1", code: "Q1", name: "Consulta táctil", salePrice: 10, activePriceType: "NORMAL",
     }));
@@ -29,17 +30,147 @@ describe("SalePriceConsultationDialog", () => {
       <SalePriceConsultationDialog locale="es" token="token" interfaceMode="TOUCH" onClose={vi.fn()} />
     </SaleTouchKeyboardScope>);
     const input = screen.getByRole("textbox", { name: "Código del producto" });
-    expect(input).toHaveClass("sale-price-consultation-touch-input");
+    expect(input).toHaveClass("sale-price-consultation-capture");
     fireEvent.focus(input);
     fireEvent.click(screen.getByRole("button", { name: "Q" }));
     fireEvent.click(screen.getByRole("button", { name: "1" }));
     expect(input).toHaveValue("Q1");
+    expect(screen.getByText("Q1")).toBeVisible();
+    expect(screen.queryByText("ESCANEA PARA CONSULTAR PRECIO")).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Buscar" }));
-    expect(await screen.findByText("Consulta táctil")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Buscar" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Consulta táctil", {}, { timeout: 2000 })).toBeVisible();
     expect(fetchMock).toHaveBeenCalledOnce();
     const request = new URL(String(fetchMock.mock.calls[0][0]), "http://localhost");
     expect(request.searchParams.get("identifier")).toBe("Q1");
+    fireEvent.click(screen.getByRole("button", { name: "2" }));
+    expect(input).toHaveValue("2");
+    expect(screen.queryByText("Consulta táctil")).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2), { timeout: 2000 });
+    expect(new URL(String(fetchMock.mock.calls[1][0]), "http://localhost").searchParams.get("identifier")).toBe("2");
+  });
+
+  it("waits one second after the last edit before searching without Enter or a button", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      productId: "manual", name: "Producto manual", salePrice: 10, activePriceType: "NORMAL",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SalePriceConsultationDialog locale="es" token="token" onClose={vi.fn()} />);
+    const input = screen.getByRole("textbox", { name: "Código del producto" });
+    fireEvent.change(input, { target: { value: "MAN" } });
+    await act(() => vi.advanceTimersByTimeAsync(250));
+    fireEvent.change(input, { target: { value: "MANUAL-001" } });
+    await act(() => vi.advanceTimersByTimeAsync(999));
+    expect(fetchMock).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(new URL(String(fetchMock.mock.calls[0][0]), "http://localhost").searchParams.get("identifier")).toBe("MANUAL-001");
+    expect(screen.getByText("Producto manual")).toBeVisible();
+    expect(input).toHaveFocus();
+    expect(input).toHaveValue("MANUAL-001");
+    expect((input as HTMLInputElement).selectionStart).toBe(0);
+    expect((input as HTMLInputElement).selectionEnd).toBe(10);
+  });
+
+  it("replaces the previous match with another scan without Enter", async () => {
+    const fetchMock = vi.fn(async (url: string) => jsonResponse({
+      productId: "product", name: new URL(url, "http://localhost").searchParams.get("identifier"),
+      salePrice: 10, activePriceType: "NORMAL",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    render(<SalePriceConsultationDialog locale="es" token="token" onClose={vi.fn()} />);
+    const input = screen.getByRole("textbox", { name: "Código del producto" });
+    await user.keyboard("8410000000011");
+    await waitFor(() => expect(screen.getByText("Precio de venta")).toBeVisible(), { timeout: 2000 });
+    await user.keyboard("8410000000028");
+    expect(input).toHaveValue("8410000000028");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2), { timeout: 2000 });
+    expect(new URL(String(fetchMock.mock.calls[1][0]), "http://localhost").searchParams.get("identifier")).toBe("8410000000028");
+  });
+
+  it("keeps an incomplete unknown identifier editable as manual typing continues", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ detail: "not found" }, 404)));
+    const user = userEvent.setup();
+    render(<SalePriceConsultationDialog locale="es" token="token" onClose={vi.fn()} />);
+    const input = screen.getByRole("textbox", { name: "Código del producto" });
+    await user.keyboard("MANUAL");
+    expect(await screen.findByRole("alert", {}, { timeout: 2000 })).toHaveTextContent("PRODUCTO NO ENCONTRADO");
+    await user.keyboard("-001");
+    expect(input).toHaveValue("MANUAL-001");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await user.clear(input);
+    expect(screen.getByText("ESCANEA PARA CONSULTAR PRECIO")).toBeVisible();
+  });
+
+  it("uses a fresh scanner burst instead of appending it to an unknown previous identifier", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ detail: "not found" }, 404));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    render(<SalePriceConsultationDialog locale="es" token="token" onClose={vi.fn()} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Código del producto" }), { target: { value: "UNKNOWN" } });
+    expect(await screen.findByRole("alert", {}, { timeout: 2000 })).toBeVisible();
+    await user.keyboard("8410000000011{Enter}");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(new URL(String(fetchMock.mock.calls[1][0]), "http://localhost").searchParams.get("identifier")).toBe("8410000000011");
+    expect(screen.getByRole("textbox", { name: "Código del producto" })).toHaveValue("");
+  });
+
+  it.each([200, 404])("ignores a stale %i response as soon as another code is entered", async (status) => {
+    vi.useFakeTimers();
+    let finishFirst!: (response: Response) => void;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { finishFirst = resolve; }))
+      .mockResolvedValue(jsonResponse({ productId: "new", name: "Producto nuevo", salePrice: 20, activePriceType: "NORMAL" }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SalePriceConsultationDialog locale="es" token="token" onClose={vi.fn()} />);
+    const input = screen.getByRole("textbox", { name: "Código del producto" });
+    fireEvent.change(input, { target: { value: "OLD" } });
+    fireEvent.submit(input.closest("form")!);
+    fireEvent.change(input, { target: { value: "NEW" } });
+    expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true);
+    await act(async () => finishFirst(jsonResponse({ productId: "old", name: "Producto antiguo", salePrice: 1, activePriceType: "NORMAL" }, status)));
+    expect(screen.queryByText("Producto antiguo")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(screen.getByText("Producto nuevo")).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("accepts successive Enter scans while the previous request is pending", async () => {
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>(() => {}))
+      .mockResolvedValue(jsonResponse({ productId: "new", name: "Segundo escaneo", salePrice: 20, activePriceType: "NORMAL" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    render(<SalePriceConsultationDialog locale="es" token="token" onClose={vi.fn()} />);
+    const input = screen.getByRole("textbox", { name: "Código del producto" });
+    await user.keyboard("8410000000011{Enter}");
+    expect(input).toHaveValue("");
+    await user.keyboard("8410000000028{Enter}");
+    expect(await screen.findByText("Segundo escaneo")).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true);
+    expect(input).toHaveValue("");
+    expect(input).toHaveFocus();
+  });
+
+  it("cancels pending debounce and active requests when closed", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn((_url: string, _options: RequestInit) => new Promise<Response>(() => {}));
+    vi.stubGlobal("fetch", fetchMock);
+    const pending = render(<SalePriceConsultationDialog locale="es" token="token" onClose={vi.fn()} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Código del producto" }), { target: { value: "PENDING" } });
+    pending.unmount();
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(fetchMock).not.toHaveBeenCalled();
+    const active = render(<SalePriceConsultationDialog locale="es" token="token" onClose={vi.fn()} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Código del producto" }), { target: { value: "ACTIVE" } });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    active.unmount();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][1].signal?.aborted).toBe(true);
   });
 
   it("opens empty and waits for a scan or a manually entered code", () => {

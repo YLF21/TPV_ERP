@@ -1,3 +1,5 @@
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import {
   useEffect,
   useLayoutEffect,
@@ -330,7 +332,7 @@ export function SaleProductInformationDialog({
     >
       <header>
         <h2 id="sale-product-information-title">{product.name ?? t("sale.main.unnamedProduct")}</h2>
-        <button type="button" aria-label={t("common.close")} onClick={onClose}>×</button>
+        <WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose} onLight >×</WindowCloseButton>
       </header>
       <div ref={contentRef} className="sale-product-information-content">
         {loading && <p className="sale-product-information-state" role="status">{t("sale.productInformation.loading")}</p>}
@@ -345,9 +347,9 @@ export function SaleProductInformationDialog({
           />
         )}
       </div>
-      <footer>
-        <button type="button" onClick={onClose}>{t("common.close")}</button>
-        <button className="primary" type="button" onClick={addProduct}>
+      <footer className="erp-dialog-actions-row">
+        <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.close")}</DialogDismissButton>
+        <button className="primary erp-dialog-action-confirm" type="button" onClick={addProduct}>
           {interfaceMode === "KEYBOARD" && <kbd>Insert</kbd>}
           {t("sale.productInformation.addToCart")}
         </button>

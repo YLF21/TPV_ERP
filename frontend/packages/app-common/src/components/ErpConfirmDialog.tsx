@@ -1,3 +1,4 @@
+import { WindowCloseButton } from "./WindowCloseButton";
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
@@ -8,18 +9,20 @@ export function ErpConfirmDialog({ title, message, confirmLabel, cancelLabel, on
   initialFocus?: "confirm" | "cancel";
 }) {
   const root = useRef<HTMLElement>(null); const id = useId();
+  const cancelButton = useRef<HTMLButtonElement>(null);
   const confirmButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const releaseFocus = root.current
       ? activateModalFocusTrap(root.current as unknown as ModalFocusRoot, document)
       : undefined;
     if (initialFocus === "confirm") confirmButton.current?.focus();
+    else cancelButton.current?.focus();
     return releaseFocus;
   }, [initialFocus]);
   return createPortal(<div className="erp-confirm-overlay" onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); if (!busy) onCancel(); } }}>
     <section ref={root} role="alertdialog" aria-modal="true" aria-labelledby={id} aria-describedby={`${id}-message`} className="filter-dialog erp-classic-window erp-confirm-dialog">
-      <header><h2 id={id}>{title}</h2></header><p id={`${id}-message`} className="erp-confirm-message">{message}</p>
+      <header><h2 id={id}>{title}</h2><WindowCloseButton type="button" aria-label={`${cancelLabel}: ${title}`} disabled={busy} onClick={onCancel} desktopOnly /></header><p id={`${id}-message`} className="erp-confirm-message">{message}</p>
       {errorMessage && <p role="alert" className="erp-confirm-error">{errorMessage}</p>}
-      <footer className="filter-actions"><button type="button" disabled={busy} onClick={onCancel}>{cancelLabel}</button><button ref={confirmButton} type="button" disabled={busy} onClick={onConfirm}>{confirmLabel}</button></footer>
+      <footer className="filter-actions erp-dialog-actions-row"><button ref={cancelButton} type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" disabled={busy} onClick={onCancel}>{cancelLabel}</button><button ref={confirmButton} type="button" className="erp-dialog-action-confirm" disabled={busy} onClick={onConfirm}>{confirmLabel}</button></footer>
     </section></div>, document.body);
 }

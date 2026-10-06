@@ -6,8 +6,11 @@
   gap: 10px;
   min-width: 0;
   padding: 10px;
-  border: 1px solid #afbed0;
-  background: #e7edf4;
+  border: 0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 3px 10px rgb(7 37 79 / 12%);
+  font-family: Helvetica, Arial, sans-serif;
 }
 
 .touch-alpha-keyboard-text-pad,
@@ -21,7 +24,6 @@
 .touch-alpha-keyboard-number-pad {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   padding-left: 10px;
-  border-left: 1px solid #9aadc2;
 }
 
 .touch-alpha-keyboard-zero { grid-column: span 2; }
@@ -50,8 +52,8 @@
   min-width: 0;
   min-height: 44px;
   padding: 3px;
-  border: 1px solid #7a90ab;
-  border-radius: 0;
+  border: 1px solid #d4dbe3;
+  border-radius: 4px;
   background: #fff;
   color: #102e51;
   font: inherit;
@@ -76,6 +78,13 @@
   color: #fff;
 }
 
+.touch-alpha-keyboard .touch-alpha-keyboard-utilities > button.touch-alpha-keyboard-enter,
+.touch-alpha-keyboard button.touch-alpha-keyboard-case[aria-pressed="true"] {
+  border-color: #0065fe;
+  background: #0065fe;
+  color: #fff;
+}
+
 .touch-alpha-keyboard button:focus-visible {
   outline: 3px solid #236eaa;
   outline-offset: 1px;
@@ -94,7 +103,7 @@
   flex: 0.7 1 0;
 }
 
-.touch-alpha-keyboard-extra-symbols .touch-alpha-keyboard-utilities > .touch-alpha-keyboard-clear {
+.touch-alpha-keyboard-utilities > .touch-alpha-keyboard-enter {
   flex: 1.8 1 0;
 }
 

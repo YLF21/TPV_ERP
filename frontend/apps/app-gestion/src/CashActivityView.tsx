@@ -1,3 +1,4 @@
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type UIEvent } from "react";
 import {
   ErpSelect, TableLayoutHeaderCell, useTableLayoutPreference,
@@ -230,7 +231,7 @@ export function CashActivityView({ session, t, locale, refreshSignal }: Props) {
     <ReportDateRangeFilter locale={locale} today={options?.businessDate || ""} earliestDate={options?.earliestDate || ""} value={range}
       disabled={!options} onChange={value => { setRange(value); setFilters(current => current ? { ...current, from: value.from, to: value.to } : current); }} />
     {detail && <section className="gestion-cash-closure-detail" aria-label={t("gestion.cashClosures.detail")}>
-      <header><h3>{t("gestion.cashClosures.detail")}</h3><button type="button" onClick={() => setSelectedId(null)}>{t("gestion.cashClosures.closeDetail")}</button></header>
+      <header><h3>{t("gestion.cashClosures.detail")}</h3><WindowCloseButton type="button" onLight aria-label={t("gestion.cashClosures.closeDetail")} onClick={() => setSelectedId(null)} >{t("gestion.cashClosures.closeDetail")}</WindowCloseButton></header>
       <div className="gestion-cash-closure-detail-summary"><span>{detail.terminalName}</span><span>{date.format(new Date(detail.closedAt))} {hour.format(new Date(detail.closedAt))}</span><span>{t("gestion.cashClosures.user")}: <strong>{detail.closingUserName}{detail.closingUsername.toLocaleLowerCase() !== detail.closingUserName.toLocaleLowerCase() ? ` · ${detail.closingUsername}` : ""}</strong></span>
         {canSeeAmounts && <><span>{t("gestion.cashClosures.finalWithdrawal")}: <strong>{money.format(detail.finalWithdrawalAmount)}</strong></span><span>{t("gestion.cashClosures.column.retainedFund")}: <strong>{money.format(detail.retainedFund)}</strong></span></>}</div>
       {canSeeAmounts && <div className="gestion-cash-closure-breakdowns">

@@ -1,0 +1,46 @@
+/* Semantic dialog actions take precedence over the older window-specific colors. */
+@layer erp-dialog-actions {
+  .erp-dialog-actions-row {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 12px !important;
+    grid-column: 1 / -1;
+    box-sizing: border-box;
+    min-width: 0;
+  }
+
+  .erp-dialog-actions-row > .erp-dialog-actions-group:has(> button) {
+    display: contents !important;
+  }
+
+  .erp-dialog-actions-row button.erp-dialog-dismiss {
+    flex: 0 0 auto !important;
+    order: -1 !important;
+    margin-inline: 0 auto !important;
+  }
+
+  .erp-dialog-actions-row > button,
+  .erp-dialog-actions-row > .erp-dialog-actions-group > button {
+    flex: 0 0 auto !important;
+    align-self: center !important;
+    margin-block: 0 !important;
+  }
+
+  button.erp-dialog-action-confirm,
+  button.erp-dialog-action-cancel {
+    border: 1px solid transparent !important;
+    border-radius: var(--tpv-v3-radius, 3px) !important;
+    color: #fff !important;
+  }
+
+  button.erp-dialog-action-confirm {
+    border-color: #07254f !important;
+    background: #07254f !important;
+  }
+
+  button.erp-dialog-action-cancel {
+    border-color: #b42318 !important;
+    background: #b42318 !important;
+  }
+}

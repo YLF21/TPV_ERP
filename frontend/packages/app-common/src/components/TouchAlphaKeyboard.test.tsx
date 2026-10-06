@@ -2,15 +2,16 @@
 import "@testing-library/jest-dom/vitest";
 import { useRef, useState } from "react";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { editTouchText, TouchAlphaKeyboard } from "./TouchAlphaKeyboard";
 
 afterEach(cleanup);
 
-function Editor({ type = "text" }: { type?: "text" | "password" | "email" }) {
+function Editor({ type = "text", onSubmit }: { type?: "text" | "password" | "email"; onSubmit?: () => void }) {
   const [value, setValue] = useState("ABCD");
   const ref = useRef<HTMLInputElement>(null);
-  return <form>
+  return <form onSubmit={(event) => { event.preventDefault(); onSubmit?.(); }}>
     <input aria-label="Entrada" type={type} ref={ref} value={value} onChange={(event) => setValue(event.target.value)} />
     <TouchAlphaKeyboard locale="es" value={value} onChange={setValue} inputRef={ref} maxLength={6} />
   </form>;
@@ -26,6 +27,67 @@ function TextAreaEditor({ readOnly = false }: { readOnly?: boolean }) {
 }
 
 describe("TouchAlphaKeyboard", () => {
+  it("routes Enter through a field handler before the normal form action", () => {
+    const submit = vi.fn();
+    const select = vi.fn();
+    const activateSubmit = vi.fn();
+    function Form({ handled = true }: { handled?: boolean }) {
+      const ref = useRef<HTMLInputElement>(null);
+      return <form onSubmit={(event) => { event.preventDefault(); submit(); }}>
+        <input ref={ref} aria-label="Selección" defaultValue="ABC" onKeyDown={(event) => {
+          if (handled && event.key === "Enter") { event.preventDefault(); select(); }
+        }} />
+        <TouchAlphaKeyboard locale="es" value="ABC" inputRef={ref} onChange={vi.fn()} />
+        <button type="submit" onClick={activateSubmit}>Aceptar</button>
+      </form>;
+    }
+    const { rerender } = render(<Form />);
+    fireEvent.click(screen.getByRole("button", { name: "Enter" }));
+    expect(select).toHaveBeenCalledOnce();
+    expect(submit).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Selección")).toHaveFocus();
+    rerender(<Form handled={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Enter" }));
+    expect(activateSubmit).toHaveBeenCalledOnce();
+    expect(submit).toHaveBeenCalledOnce();
+  });
+
+  it("uses the existing implicit submission for a single input without a submit button", () => {
+    const submit = vi.fn();
+    render(<Editor onSubmit={submit} />);
+    fireEvent.click(screen.getByRole("button", { name: "Enter" }));
+    expect(submit).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText("Entrada")).toHaveValue("ABCD");
+  });
+
+  it("inserts a newline at the textarea selection instead of submitting", () => {
+    render(<TextAreaEditor />);
+    const field = screen.getByLabelText<HTMLTextAreaElement>("Comentario");
+    field.focus();
+    field.setSelectionRange(1, 3);
+    fireEvent.click(screen.getByRole("button", { name: "Enter" }));
+    expect(field).toHaveValue("A\nCD");
+    expect(field.selectionStart).toBe(2);
+    expect(field).toHaveFocus();
+  });
+
+  it("does not bypass a disabled form action or protected field with Enter", () => {
+    const submit = vi.fn();
+    function Form({ readOnly = false }: { readOnly?: boolean }) {
+      const ref = useRef<HTMLInputElement>(null);
+      return <form onSubmit={(event) => { event.preventDefault(); submit(); }}>
+        <input ref={ref} readOnly={readOnly} aria-label="Entrada" defaultValue="ABC" />
+        <TouchAlphaKeyboard locale="es" value="ABC" inputRef={ref} onChange={vi.fn()} />
+        <button type="submit" disabled={!readOnly}>Aceptar</button>
+      </form>;
+    }
+    const { rerender } = render(<Form />);
+    fireEvent.click(screen.getByRole("button", { name: "Enter" }));
+    rerender(<Form readOnly />);
+    fireEvent.click(screen.getByRole("button", { name: "Enter" }));
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it("replaces selection, inserts at the caret and limits text without discarding its suffix", () => {
     expect(editTouchText("ABCD", "X", 1, 3)).toEqual({ value: "AXD", cursor: 2 });
     expect(editTouchText("ABCD", "X", 2, 2)).toEqual({ value: "ABXCD", cursor: 3 });
@@ -56,7 +118,7 @@ describe("TouchAlphaKeyboard", () => {
   it("supports lower case, space, symbols and password masking without rendering the entered text", () => {
     render(<Editor type="password" />);
     const input = screen.getByLabelText<HTMLInputElement>("Entrada");
-    fireEvent.click(screen.getByRole("button", { name: "Limpiar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar todo" }));
     fireEvent.click(screen.getByRole("button", { name: "Mayúsculas" }));
     fireEvent.click(screen.getByRole("button", { name: "a" }));
     fireEvent.click(screen.getByRole("button", { name: "Espacio" }));
@@ -80,6 +142,53 @@ describe("TouchAlphaKeyboard", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("keeps the draft, caret and symbol layer while folded without submitting the form", () => {
+    const submit = vi.fn();
+    render(<Editor onSubmit={submit} />);
+    const input = screen.getByLabelText<HTMLInputElement>("Entrada");
+    input.focus();
+    input.setSelectionRange(2, 2);
+    fireEvent.click(screen.getByRole("button", { name: "Más símbolos" }));
+    const close = screen.getByRole<HTMLButtonElement>("button", { name: "Cerrar teclado" });
+    expect(close).toHaveAttribute("type", "button");
+    fireEvent.pointerDown(close);
+    fireEvent.keyDown(close, { key: "Enter" });
+    fireEvent.keyDown(close, { key: " " });
+    fireEvent.click(close);
+    expect(screen.getByRole("button", { name: "Mostrar teclado" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "@" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "@", hidden: true })).toBeDisabled();
+    expect(input).toHaveValue("ABCD");
+    expect(input.selectionStart).toBe(2);
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar teclado" }));
+    fireEvent.click(screen.getByRole("button", { name: "@" }));
+    expect(input).toHaveValue("AB@CD");
+    expect(input.selectionStart).toBe(3);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("uses localized headings and allows the scope to omit its duplicate toggle", () => {
+    const { rerender } = render(<TouchAlphaKeyboard locale="en" value="" onChange={vi.fn()} />);
+    expect(screen.getByText("Alphanumeric keyboard")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Close keyboard" })).toBeVisible();
+    rerender(<TouchAlphaKeyboard locale="zh" value="" onChange={vi.fn()} collapsible={false} />);
+    expect(screen.queryByRole("button", { name: "关闭键盘" })).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "字母数字键盘" })).toBeVisible();
+  });
+
+  it("toggles with Enter and Space without submitting its form", async () => {
+    const submit = vi.fn();
+    const user = userEvent.setup();
+    render(<Editor onSubmit={submit} />);
+    const close = screen.getByRole("button", { name: "Cerrar teclado" });
+    close.focus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("button", { name: "Mostrar teclado" })).toHaveAttribute("aria-expanded", "false");
+    await user.keyboard(" ");
+    expect(screen.getByRole("button", { name: "Cerrar teclado" })).toHaveAttribute("aria-expanded", "true");
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it("edits native email inputs without using the unsupported selection API", () => {
     render(<Editor type="email" />);
     const input = screen.getByLabelText<HTMLInputElement>("Entrada");
@@ -100,8 +209,8 @@ describe("TouchAlphaKeyboard", () => {
     fireEvent.change(input, { target: { value: "ABCDEF" } });
     fireEvent.click(screen.getByRole("button", { name: "7" }));
     expect(input).toHaveValue("ABCDEF");
-    fireEvent.click(screen.getByRole("button", { name: "Limpiar" }));
-    fireEvent.click(screen.getByRole("button", { name: "Limpiar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar todo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar todo" }));
     fireEvent.click(screen.getByRole("button", { name: "Borrar carácter" }));
     expect(input).toHaveValue("");
     expect(input).toHaveFocus();
@@ -131,7 +240,7 @@ describe("TouchAlphaKeyboard", () => {
   it("reveals @ only in symbols mode and returns to letters without losing numeric editing or focus", () => {
     render(<Editor />);
     const input = screen.getByLabelText<HTMLInputElement>("Entrada");
-    fireEvent.click(screen.getByRole("button", { name: "Limpiar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar todo" }));
     expect(screen.queryByRole("button", { name: "@" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Más símbolos" }));
     fireEvent.click(screen.getByRole("button", { name: "@" }));
@@ -183,7 +292,7 @@ describe("TouchAlphaKeyboard", () => {
     fireEvent.click(screen.getByRole("button", { name: "9" }));
     fireEvent.click(screen.getByRole("button", { name: "," }));
     fireEvent.click(screen.getByRole("button", { name: "Borrar carácter" }));
-    fireEvent.click(screen.getByRole("button", { name: "Limpiar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar todo" }));
     fireEvent.click(screen.getByRole("button", { name: "Más símbolos" }));
     fireEvent.click(screen.getByRole("button", { name: "@" }));
     expect(screen.getByLabelText("Comentario")).toHaveValue("AB\nCD");

@@ -85,9 +85,9 @@ describe("SalesDocumentCustomerDialog", () => {
 
     fireEvent.keyDown(search, { key: "Enter", isComposing: true });
     fireEvent.keyDown(search, { key: "Enter", repeat: true });
-    fireEvent.keyDown(screen.getByRole("button", { name: "Cancelar" }), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Cerrar" }), { key: "Enter" });
     expect(onSelect).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 

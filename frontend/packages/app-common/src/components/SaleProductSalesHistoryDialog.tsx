@@ -1,6 +1,8 @@
-import { sortProductsByCode } from "./productSearchOrdering";
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { X } from "@phosphor-icons/react";
+import { sortProductsByCode } from "./productSearchOrdering";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { AppKind, LocaleCode } from "../types";
 import { useProductInformationResources } from "./productInformationResources";
@@ -47,7 +49,10 @@ export function SaleProductSalesHistoryDialog({
   const t = createTranslator(locale);
   const [selectedProduct, setSelectedProduct] = useState<SaleProduct | null>(initialProduct);
   const [query, setQuery] = useState(initialProduct?.code ?? "");
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const resultRefs = useRef(new Map<string, HTMLButtonElement>());
+  const resultsId = useId();
   const { imageSource } = useProductInformationResources({
     productId: selectedProduct?.id ?? "",
     imageId: selectedProduct?.imageId,
@@ -60,11 +65,40 @@ export function SaleProductSalesHistoryDialog({
       : [],
     [products, query, selectedProduct, locale],
   );
+  const exactMatch = exactProduct(products, query);
+  const highlightedIndex = results.length
+    ? Math.min(activeIndex ?? Math.max(0, results.findIndex((product) => product.id === exactMatch?.id)), results.length - 1)
+    : -1;
+  const highlightedProduct = results[highlightedIndex];
+
+  useEffect(() => {
+    if (highlightedProduct) resultRefs.current.get(highlightedProduct.id)?.scrollIntoView?.({ block: "nearest" });
+  }, [highlightedProduct?.id]);
 
   function selectProduct(product: SaleProduct | undefined) {
     if (!product) return;
     setSelectedProduct(product);
     setQuery(product.code ?? product.barcode ?? product.barcode2 ?? product.name ?? "");
+  }
+
+  function handleResultKeyDown(event: KeyboardEvent, focusResult = false) {
+    if (!results.length) return false;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      const nextIndex = Math.max(0, Math.min(results.length - 1,
+        highlightedIndex + (event.key === "ArrowDown" ? 1 : -1)));
+      setActiveIndex(nextIndex);
+      if (focusResult) resultRefs.current.get(results[nextIndex].id)?.focus();
+      return true;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      selectProduct(highlightedProduct);
+      return true;
+    }
+    return false;
   }
 
   function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -74,6 +108,7 @@ export function SaleProductSalesHistoryDialog({
       onClose();
       return;
     }
+    if (handleResultKeyDown(event)) return;
     if (event.key !== "Enter") return;
     event.preventDefault();
     selectProduct(exactProduct(products, query) ?? results[0]);
@@ -96,7 +131,7 @@ export function SaleProductSalesHistoryDialog({
       >
         <header>
           <h2>{t("stock.history.title")} <kbd aria-hidden="true">F6</kbd></h2>
-          <button type="button" aria-label={t("common.close")} onClick={onClose}>×</button>
+          <WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose} >×</WindowCloseButton>
         </header>
 
         <div className="sale-sales-history-search">
@@ -107,11 +142,15 @@ export function SaleProductSalesHistoryDialog({
                 ref={inputRef}
                 autoFocus={!initialProduct}
                 aria-label={t("sale.searchDialog.query")}
+                aria-controls={results.length ? resultsId : undefined}
+                aria-activedescendant={highlightedProduct ? `${resultsId}-${highlightedProduct.id}` : undefined}
+                aria-autocomplete="list"
                 placeholder={t("sale.searchDialog.query")}
                 value={query}
                 onChange={(event) => {
                   setQuery(event.currentTarget.value);
                   setSelectedProduct(null);
+                  setActiveIndex(null);
                 }}
                 onKeyDown={handleSearchKeyDown}
               />
@@ -120,6 +159,7 @@ export function SaleProductSalesHistoryDialog({
                   onClick={() => {
                     setQuery("");
                     setSelectedProduct(null);
+                    setActiveIndex(null);
                     inputRef.current?.focus();
                   }}>
                   <X size={18} aria-hidden="true" />
@@ -138,13 +178,22 @@ export function SaleProductSalesHistoryDialog({
         </div>
 
         {!selectedProduct && results.length > 0 && (
-          <div className="sale-sales-history-results" role="listbox" aria-label={t("sale.searchDialog.title")}>
-            {results.map((product) => (
+          <div className="sale-sales-history-results" id={resultsId} role="listbox" aria-label={t("sale.searchDialog.title")}
+            onKeyDown={(event) => handleResultKeyDown(event, true)}>
+            {results.map((product, index) => (
               <button
                 type="button"
                 role="option"
-                aria-selected="false"
+                id={`${resultsId}-${product.id}`}
+                aria-selected={index === highlightedIndex}
+                tabIndex={index === highlightedIndex ? 0 : -1}
                 key={product.id}
+                ref={(node) => {
+                  if (node) resultRefs.current.set(product.id, node);
+                  else resultRefs.current.delete(product.id);
+                }}
+                onFocus={() => setActiveIndex(index)}
+                onMouseEnter={() => setActiveIndex(index)}
                 onClick={() => selectProduct(product)}
               >
                 <span>{product.code ?? product.barcode ?? product.barcode2 ?? "—"}</span>
@@ -179,8 +228,8 @@ export function SaleProductSalesHistoryDialog({
           </div>
         )}
 
-        <footer className="sale-action-buttons">
-          <button type="button" onClick={onClose}>{t("common.close")}</button>
+        <footer className="sale-action-buttons erp-dialog-actions-row">
+          <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.close")}</DialogDismissButton>
         </footer>
       </section>
     </div>

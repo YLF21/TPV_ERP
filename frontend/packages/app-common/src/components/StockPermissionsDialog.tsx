@@ -8,6 +8,8 @@ import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import type { TableColumnDefinition } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 
 export type StockSecurityRole = {
   id: string;
@@ -244,7 +246,7 @@ export function StockPermissionsDialog({
             <h2 id="stock-permissions-title">{t("stock.settings.permissions")}</h2>
             <span>{t("stock.permissions.subtitle")}</span>
           </div>
-          <button type="button" disabled={saving} onClick={onClose}>{t("common.close")}</button>
+          {app === "pda" ? <button type="button" className="erp-dialog-action-cancel" disabled={saving} onClick={onClose}>{t("common.close")}</button> : <WindowCloseButton aria-label={t("common.close")} onLight disabled={saving} onClick={onClose} >{t("common.close")}</WindowCloseButton>}
         </header>
 
         <div className="stock-permissions-table-scroll">
@@ -312,10 +314,11 @@ export function StockPermissionsDialog({
             {loading || saving ? t("common.loading") : status?.message}
           </p>
         )}
-        <footer className="filter-actions">
-          <button type="button" disabled={saving} onClick={onClose}>{t("common.close")}</button>
+        <footer className="filter-actions erp-dialog-actions-row">
+          <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" disabled={saving} onClick={onClose}>{t("common.close")}</DialogDismissButton>
           <button
             type="button"
+            className="erp-dialog-action-confirm"
             disabled={loading || saving || !token || dirtyRoles.length === 0}
             onClick={() => void savePermissions()}
           >

@@ -1,8 +1,10 @@
+import { X } from "@phosphor-icons/react";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 import { ErpConfirmDialog } from "./ErpConfirmDialog";
 import "./ErpClassicWindow.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { X } from "@phosphor-icons/react";
 import "./ProductCreateDialog.css";
 import { ApiConnectionError, ApiError, apiRequest } from "../api/client";
 import { roundUnitPrice } from "../money";
@@ -2143,7 +2145,7 @@ export function ProductCreateDialog({
             <h2 id="product-create-title">{t(editingProduct ? "product.edit.title" : "product.create.title")}</h2>
             <span>{editingProduct ? editProduct?.form.code : t("product.create.subtitle")}</span>
           </div>
-          <button type="button" aria-label={t("common.close")} onClick={closeProductDialog}><X size={20} weight="bold" aria-hidden="true" /></button>
+          <WindowCloseButton type="button" aria-label={t("common.close")} onClick={closeProductDialog} ><X size={20} weight="bold" aria-hidden="true" /></WindowCloseButton>
         </header>
 
         <div className="product-create-body" ref={formRef} onKeyDown={focusProductField}>
@@ -2406,7 +2408,7 @@ export function ProductCreateDialog({
                     <footer className="date-range-footer">
                       <span>{form.offerFrom ? selectedDaysText(dateRangeDayCount(form.offerFrom, form.offerUntil), locale) : t("salesReport.filter.pickDateFrom")}</span>
                       <div className="date-range-actions">
-                        <button type="button" onClick={() => {
+                        <button type="button" className="erp-dialog-action-cancel" onClick={() => {
                           setOfferRangeStart(null);
                           setOfferPickerOpen(false);
                         }}>
@@ -2415,7 +2417,7 @@ export function ProductCreateDialog({
                         <button type="button" onClick={() => clearOfferEndDate()}>
                           {t("product.field.noEnd")}
                         </button>
-                        <button type="button" className="primary" onClick={() => {
+                        <button type="button" className="primary erp-dialog-action-confirm" onClick={() => {
                           setOfferRangeStart(null);
                           setOfferPickerOpen(false);
                           focusAdjacentProductFieldAfterRender("offerRange");
@@ -2563,9 +2565,9 @@ export function ProductCreateDialog({
             {status}
           </p>
         )}
-        <footer className="product-editor-footer">
-          <button type="button" onClick={closeProductDialog}>{t("common.close")}</button>
-          <button type="button" disabled={saving} onClick={() => void submitProduct(true)}>
+        <footer className="product-editor-footer erp-dialog-actions-row">
+          <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={closeProductDialog}>{t("common.close")}</DialogDismissButton>
+          <button type="button" className="erp-dialog-action-confirm" disabled={saving} onClick={() => void submitProduct(true)}>
             {saving ? t("product.create.saving") : t("product.create.save")}
           </button>
         </footer>
@@ -2575,11 +2577,11 @@ export function ProductCreateDialog({
           <section className={`filter-dialog stock-family-dialog${classicWindow ? " erp-classic-window" : ""}`}>
             <header className="filter-header">
               <h2 id="product-family-title">{t("stock.column.family")}</h2>
-              <button type="button" onClick={() => {
+              <WindowCloseButton type="button" aria-label={t("common.close")} onLight={!classicWindow} onClick={() => {
                 ++familyResolveRequestRef.current;
                 ++familySearchRequestRef.current;
                 setFamilyPickerOpen(false);
-              }}>{t("common.close")}</button>
+              }} >{t("common.close")}</WindowCloseButton>
             </header>
             <div className="stock-family-filters" style={filterChips ? undefined : { display: "contents" }}>
               <label className="stock-family-search">
@@ -2744,7 +2746,7 @@ export function ProductCreateDialog({
               })}
             </div>
             <footer className="filter-actions">
-              <button type="button" onClick={applyProductFamilySelection}>{t("stock.filter.apply")}</button>
+              <button type="button" className="erp-dialog-action-confirm" onClick={applyProductFamilySelection}>{t("stock.filter.apply")}</button>
             </footer>
           </section>
         </div>
@@ -2757,7 +2759,7 @@ export function ProductCreateDialog({
                 <h2 id="product-principal-supplier-title">{t("product.supplier.selectPrincipal")}</h2>
                 <span>{editProduct?.form.name ?? ""}</span>
               </div>
-              <button type="button" onClick={() => setSupplierPickerOpen(false)}>{t("common.close")}</button>
+              <WindowCloseButton type="button" aria-label={t("common.close")} onLight={!classicWindow} onClick={() => setSupplierPickerOpen(false)} >{t("common.close")}</WindowCloseButton>
             </header>
             <div className="bulk-supplier-list" role="listbox" aria-label={t("product.supplier.selectPrincipal")}>
               {productSuppliers.length === 0 && <p>{t("product.supplier.noLinks")}</p>}
@@ -2801,6 +2803,7 @@ export function ProductCreateDialog({
               </button>
               <button
                 type="button"
+                className="erp-dialog-action-confirm"
                 disabled={supplierSaving}
                 onClick={() => void applyPrincipalSupplier()}
               >

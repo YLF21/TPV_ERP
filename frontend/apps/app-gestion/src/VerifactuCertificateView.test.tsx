@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@tpverp/app-common";
 import { VerifactuCertificateView } from "./VerifactuCertificateView";
@@ -46,6 +46,23 @@ afterEach(() => {
 });
 
 describe("VerifactuCertificateView", () => {
+  it("closes the import form from its header and keeps Cancel in deletion confirmation", async () => {
+    const view = render(<VerifactuCertificateView locale="es" token="admin-token" revision={0} t={t} onChanged={vi.fn()} />);
+    await screen.findByText("CN=Empresa de prueba");
+    fireEvent.click(screen.getByRole("button", { name: "verifactu.certificate.replace" }));
+    const importDialog = screen.getByRole("dialog");
+    expect(within(importDialog).queryByRole("button", { name: "verifactu.resolution.cancel" })).not.toBeInTheDocument();
+    fireEvent.click(within(importDialog).getByRole("button", { name: "verifactu.management.close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    view.unmount();
+    vi.mocked(api.loadVerifactuCertificates).mockResolvedValue([{ ...certificate, canDelete: true, deleteBlockReason: null }]);
+    render(<VerifactuCertificateView locale="es" token="admin-token" revision={0} t={t} onChanged={vi.fn()} />);
+    await screen.findByText("CN=Empresa de prueba");
+    fireEvent.click(screen.getByRole("button", { name: "verifactu.certificate.delete" }));
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "verifactu.resolution.cancel" })).toBeInTheDocument();
+  });
+
   it("renders only public certificate metadata and obeys backend deletion policy", async () => {
     render(<VerifactuCertificateView locale="es" token="admin-token" revision={0} t={t} onChanged={vi.fn()} />);
 

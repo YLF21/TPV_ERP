@@ -1,0 +1,388 @@
+.login-screen.login-sale {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 24px 110px !important;
+  overflow: auto;
+  background: #e8edf6 !important;
+  font-family: Arial, "Microsoft YaHei UI", sans-serif !important;
+}
+
+.login-sale .entry-topbar {
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.login-sale .language-picker button.selected {
+  background: #0065fe !important;
+}
+
+.login-context-heading {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  max-width: calc(50vw - 130px);
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.login-context-heading > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.login-context-heading span {
+  color: #244e86;
+  font-weight: 700;
+}
+
+.login-entry {
+  width: 570px;
+  max-width: 100%;
+  display: grid;
+  gap: 24px;
+}
+
+.login-content {
+  display: contents;
+}
+
+.login-sale-brand {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  min-height: 76px;
+  color: #000;
+  font-size: 64px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.login-sale-brand .app-brand-wordmark {
+  width: 200px;
+  height: 64px;
+  transform: translateY(7px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.login-sale .login-panel {
+  position: static !important;
+  width: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  padding: 28px 50px 50px !important;
+  transform: none !important;
+  gap: 24px !important;
+  overflow: visible !important;
+  border: 0 !important;
+  border-radius: 50px !important;
+  background: #fff !important;
+  box-shadow: -14px -4px 20px rgba(0, 0, 0, .3) !important;
+}
+
+.login-sale .login-panel-heading {
+  margin: 0 0 20px !important;
+  padding: 0 !important;
+  background: transparent;
+  color: #000;
+  text-align: center;
+}
+
+.login-sale .login-panel-heading span {
+  overflow-wrap: anywhere;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.login-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.login-sale .login-panel label {
+  padding-left: 10px;
+  color: #222 !important;
+  font-size: 26px !important;
+  font-weight: 400 !important;
+  line-height: 30px;
+}
+
+.login-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 64px;
+  padding: 0 12px;
+  border: 2px solid #efefef;
+  border-radius: 14px;
+  color: #808080;
+  background: #fff;
+}
+
+.login-input-wrap > svg {
+  flex: 0 0 auto;
+}
+
+.login-input-wrap:focus-within {
+  border-color: #0065fe;
+}
+
+.login-sale .login-panel .login-input-wrap input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  height: 100% !important;
+  min-height: 0 !important;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  color: #222 !important;
+  font-family: inherit;
+  font-size: 26px !important;
+  font-weight: 400 !important;
+}
+
+.login-input-wrap input::placeholder {
+  color: #d8d8d8;
+  opacity: 1;
+}
+
+.login-sale .login-panel .login-password-toggle {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 44px !important;
+  min-height: 44px !important;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: #808080 !important;
+  box-shadow: none !important;
+}
+
+.login-sale .login-panel .login-password-toggle:hover {
+  background: #f3f6fb !important;
+}
+
+.login-sale .login-panel .login-submit {
+  height: 96px !important;
+  min-height: 96px !important;
+  margin-top: 0;
+  border: 0 !important;
+  border-radius: 12px !important;
+  background: #0065fe !important;
+  color: #fff !important;
+  font-size: 26px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+}
+
+.login-sale .login-panel .login-submit:hover:not(:disabled) {
+  background: #0058df !important;
+}
+
+.login-sale .login-panel .login-secondary-action,
+.login-sale .login-panel .login-retry-button {
+  height: 44px !important;
+  min-height: 44px !important;
+  border: 1px solid #0065fe !important;
+  border-radius: 10px !important;
+  background: #fff !important;
+  color: #0065fe !important;
+}
+
+.login-sale .login-panel .login-secondary-action:hover,
+.login-sale .login-panel .login-retry-button:hover {
+  background: #edf4ff !important;
+}
+
+.login-sale .login-server-status {
+  justify-content: center;
+  text-align: center;
+}
+
+.login-sale .login-status-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.login-sale .login-panel:has(.login-server-status.offline) .login-submit,
+.login-sale .login-panel:has(.login-error) .login-submit {
+  margin-top: 0;
+}
+
+@media (max-width: 1000px) {
+  .login-context-heading {
+    gap: 12px;
+    max-width: calc(100vw - 150px);
+  }
+  .login-sale > .top-date-time {
+    top: 42px !important;
+  }
+  .login-screen.login-sale {
+    padding-top: 88px !important;
+  }
+}
+
+@media (max-height: 850px), (max-width: 600px) {
+  .login-screen.login-sale {
+    padding: 88px 20px 46px !important;
+  }
+  .login-entry {
+    width: 460px;
+    gap: 16px;
+  }
+  .login-sale-brand {
+    min-height: 54px;
+    font-size: 44px;
+  }
+  .login-sale-brand .app-brand-wordmark {
+    width: 146px;
+    height: 47px;
+    transform: translateY(5px);
+  }
+  .login-sale .login-panel {
+    padding: 24px 32px 32px !important;
+    gap: 20px !important;
+    border-radius: 34px !important;
+  }
+  .login-sale .login-panel-heading {
+    margin-bottom: 8px !important;
+  }
+  .login-sale .login-panel-heading span {
+    font-size: 17px;
+  }
+  .login-sale .login-panel label,
+  .login-sale .login-panel .login-input-wrap input {
+    font-size: 22px !important;
+  }
+  .login-input-wrap {
+    height: 58px;
+  }
+  .login-sale .login-panel .login-submit {
+    height: 70px !important;
+    min-height: 70px !important;
+    margin-top: 0;
+    font-size: 22px !important;
+  }
+}
+
+@media (max-height: 650px) {
+  .login-screen.login-sale {
+    align-items: flex-start;
+  }
+  .login-sale .login-panel {
+    padding: 20px 30px !important;
+    gap: 14px !important;
+  }
+  .login-sale .login-panel .login-submit {
+    margin-top: 0;
+  }
+}
+
+.login-touch-keyboard {
+  position: absolute;
+  left: 50%;
+  bottom: 38px;
+  width: min(1000px, calc(100% - 40px));
+  transform: translateX(-50%);
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+.login-keyboard-button-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: -12px;
+}
+
+.login-sale .login-panel .touch-keyboard-toggle {
+  height: 44px !important;
+}
+
+.login-touch-keyboard [hidden] {
+  display: none;
+}
+
+.login-touch-keyboard .touch-alpha-keyboard {
+  --touch-alpha-key-height: clamp(44px, 6dvh, 56px);
+}
+
+.login-screen.login-sale.login-keyboard-open {
+  padding-bottom: calc(clamp(44px, 6dvh, 56px) * 4 + 90px) !important;
+}
+
+.login-keyboard-open .login-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0 24px;
+  overflow: auto;
+}
+
+.login-keyboard-open .login-entry {
+  flex: 0 0 auto;
+}
+
+@media (max-height: 1060px) {
+  .login-screen.login-sale.login-keyboard-open {
+    padding-top: 54px !important;
+  }
+  .login-keyboard-open .login-entry {
+    gap: 10px;
+  }
+  .login-keyboard-open .login-sale-brand {
+    min-height: 48px;
+    font-size: 40px;
+  }
+  .login-keyboard-open .login-sale-brand .app-brand-wordmark {
+    width: 134px;
+    height: 43px;
+  }
+  .login-sale.login-keyboard-open .login-panel {
+    padding: 16px 30px !important;
+    gap: 10px !important;
+  }
+  .login-sale.login-keyboard-open .login-panel-heading {
+    margin-bottom: 0 !important;
+  }
+  .login-sale.login-keyboard-open .login-panel label {
+    font-size: 20px !important;
+    line-height: 24px;
+  }
+  .login-keyboard-open .login-field {
+    gap: 4px;
+  }
+  .login-keyboard-open .login-input-wrap {
+    height: 44px;
+  }
+  .login-keyboard-open .login-keyboard-button-row {
+    margin-bottom: 0;
+  }
+  .login-sale.login-keyboard-open .login-panel .login-submit {
+    height: 48px !important;
+    min-height: 48px !important;
+    margin-top: 0;
+  }
+}

@@ -1,0 +1,63 @@
+/* Cash received keypad. Keep the existing three-column grid and button sizing. */
+section.cash-payment-entry-dialog .cash-keypad {
+  padding: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 3px 10px rgb(7 37 79 / 12%);
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+section.cash-payment-entry-dialog .cash-keypad > button {
+  border: 1px solid #d4dbe3;
+  border-radius: 4px;
+  background: #fff;
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+/* Payment allocation numeric keypad. Keep its grid areas and spacing. */
+.sale-checkout-keypad .sale-checkout-number-pad {
+  padding: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 3px 10px rgb(7 37 79 / 12%);
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+.sale-checkout-keypad .sale-checkout-number-pad > button {
+  border: 1px solid #d4dbe3;
+  border-radius: 4px;
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+/* Calculator keypad. Preserve operator, utility, and equals colors. */
+.sale-calculator-dialog .sale-calculator-keypad {
+  padding: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 3px 10px rgb(7 37 79 / 12%);
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+.sale-calculator-dialog .sale-calculator-keypad button {
+  border: 1px solid #d4dbe3;
+  border-radius: 4px;
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+/* Touch cash-denomination entry contains a numeric keypad and navigation keys. */
+.cash-denomination-dialog--touch .cash-denomination-keypad-navigation {
+  border: 0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 3px 10px rgb(7 37 79 / 12%);
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+.cash-denomination-dialog--touch .cash-denomination-keypad-navigation .cash-denomination-navigation > button {
+  border: 1px solid #d4dbe3;
+  border-radius: 4px;
+  font-family: Helvetica, Arial, sans-serif;
+}

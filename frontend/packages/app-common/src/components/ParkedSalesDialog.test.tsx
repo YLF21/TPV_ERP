@@ -51,8 +51,8 @@ describe("ParkedSalesDialog", () => {
       .toHaveClass("parked-sales-delete-button");
     expect(screen.getByRole("button", { name: "Eliminar todo" }))
       .toHaveClass("parked-sales-delete-all-button");
-    expect(screen.getByRole("button", { name: "Cerrar" }))
-      .toHaveClass("parked-sales-close-button");
+    expect(screen.getByRole("button", { name: "Cerrar Ventas guardadas" }))
+      .toHaveClass("erp-window-close");
     fireEvent.keyDown(list, { key: "Enter" });
 
     await waitFor(() => expect(recovered).toHaveBeenCalledWith(opened));

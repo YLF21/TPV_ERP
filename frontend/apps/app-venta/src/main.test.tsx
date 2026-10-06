@@ -3,7 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
+import type { LocaleCode, TerminalContext, UserSession } from "../../../packages/app-common/src/types";
 import type { SaleControlContext, SaleControlEvent } from "../../../packages/app-common/src/sale/saleControlOutboxStorage";
 import { saleUserLocaleStorageKey } from "./saleUserLocale";
 
@@ -24,17 +24,34 @@ vi.mock("../../../packages/app-common/src/components/LoginScreen", () => ({
     locale,
     onLocaleChange,
     onLogin,
+    terminalContext,
+    connectionUnavailable,
+    onConfigureConnection,
+    onReconnect,
   }: {
     locale: LocaleCode;
     onLocaleChange: (locale: LocaleCode) => void;
     onLogin: (session: UserSession) => void;
+    terminalContext: TerminalContext;
+    connectionUnavailable?: boolean;
+    onConfigureConnection?: () => void;
+    onReconnect?: () => Promise<boolean>;
   }) => (
     <section aria-label="login">
       <output aria-label="login locale">{locale}</output>
       <button type="button" onClick={() => onLocaleChange("zh")}>Change login locale</button>
-      <button type="button" onClick={() => onLogin(loginSession)}>Log in</button>
+      <output aria-label="login company">{terminalContext.companyName}</output>
+      <button type="button" disabled={connectionUnavailable} onClick={() => onLogin(loginSession)}>Log in</button>
+      {connectionUnavailable && <button onClick={onConfigureConnection}>Configure offline connection</button>}
+      {connectionUnavailable && <button onClick={() => void onReconnect?.()}>Verify terminal again</button>}
     </section>
   ),
+}));
+
+vi.mock("../../../packages/app-common/src/components/TerminalConnectionScreen", () => ({
+  TerminalConnectionScreen: ({ onBack }: { onBack?: () => void }) => <section aria-label="connection configuration">
+    {onBack && <button onClick={onBack}>Back to offline login</button>}
+  </section>
 }));
 
 vi.mock("../../../packages/app-common/src/components/SessionHomeScreen", () => ({
@@ -325,7 +342,30 @@ describe("APP VENTA locale wiring", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent("正在加载 esPOS VENTA");
     expect(screen.getByRole("progressbar", { name: "正在加载 esPOS VENTA" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "esPOS VENTAS" })).toBeInTheDocument();
     expect(screen.getByText("TPV ERP")).toBeInTheDocument();
+  });
+
+  it("advances estimated loading progress without completing and clears its timer on unmount", () => {
+    vi.useFakeTimers();
+    const { unmount } = render(<AppLoadingFallback locale="es" />);
+    try {
+      const bar = screen.getByRole("progressbar", { name: "Cargando esPOS VENTA" });
+      expect(bar).toHaveAttribute("aria-valuenow", "0");
+      act(() => vi.advanceTimersByTime(4000));
+      const firstProgress = Number(bar.getAttribute("aria-valuenow"));
+      expect(firstProgress).toBeGreaterThan(0);
+      act(() => vi.advanceTimersByTime(4000));
+      expect(Number(bar.getAttribute("aria-valuenow"))).toBeGreaterThan(firstProgress);
+      act(() => vi.advanceTimersByTime(120000));
+      expect(bar).toHaveAttribute("aria-valuenow", "95");
+      expect(bar).toHaveAttribute("aria-valuetext", "95 % estimado");
+      unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
   });
 
   it("loads the user's preference on login, persists changes, and resets to Spanish on logout", async () => {
@@ -557,6 +597,32 @@ describe("APP VENTA locale wiring", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Terminal no configurado");
     expect(screen.queryByRole("button", { name: "Log in" })).not.toBeInTheDocument();
+  });
+
+  it("shows offline names, opens configuration, returns, and enables login only after verifying the terminal", async () => {
+    const load = vi.fn().mockResolvedValue({ ok: true, identity: null, connectionUnavailable: true,
+      displayContext: { companyName: "Empresa Real", storeName: "Tienda Real", terminalCode: "001" } });
+    vi.stubGlobal("tpvDesktop", { terminalIdentity: { load }, backendConnection: {} });
+    render(<App />);
+    const login = await screen.findByRole("button", { name: "Log in" });
+    expect(login).toBeDisabled();
+    expect(screen.getByLabelText("login company")).toHaveTextContent("Empresa Real");
+    fireEvent.click(screen.getByRole("button", { name: "Configure offline connection" }));
+    expect(await screen.findByLabelText("connection configuration")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Back to offline login" }));
+    expect(await screen.findByRole("button", { name: "Log in" })).toBeDisabled();
+    load.mockResolvedValue({ ok: true, identity: { companyName: "Empresa Real", storeName: "Tienda Real",
+      terminalCode: "001", terminalId: "verified-terminal", terminalCredential: "verified-proof" } });
+    fireEvent.click(screen.getByRole("button", { name: "Verify terminal again" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Log in" })).toBeEnabled());
+  });
+
+  it("requires configuration after revocation instead of showing cached names as an offline login", async () => {
+    vi.stubGlobal("tpvDesktop", { terminalIdentity: { load: vi.fn().mockResolvedValue({ ok: true, identity: null,
+      connectionUnavailable: false, displayContext: { storeName: "Tienda", terminalCode: "001" } }) }, backendConnection: {} });
+    render(<App />);
+    expect(await screen.findByLabelText("connection configuration")).toBeVisible();
+    expect(screen.queryByLabelText("login")).not.toBeInTheDocument();
   });
 
   it("inherits the touch keyboard and keeps the Ctrl+I label window open after printing until manual close", async () => {

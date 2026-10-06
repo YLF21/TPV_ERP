@@ -82,7 +82,7 @@
   grid-template-rows: auto auto auto minmax(80px, 1fr) auto auto;
 }
 
-.sale-screen.touch-mode .sale-customer-selection-dialog > .touch-alpha-keyboard { margin: 6px 12px; }
+.sale-screen.touch-mode .sale-customer-selection-dialog > .touch-keyboard-panel { margin: 6px 12px; }
 .sale-screen.touch-mode .sale-comment-dialog textarea { min-height: 70px; max-height: 100px; }
 .sale-screen.touch-mode .sale-action-dialog.sale-touch-entry-dialog { width: min(500px, calc(100dvw - 32px)); }
 .sale-screen.touch-mode .sale-touch-entry-dialog > header {

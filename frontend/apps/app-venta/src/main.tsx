@@ -1,10 +1,9 @@
-import { Component, lazy, StrictMode, Suspense, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
+import { Component, lazy, StrictMode, Suspense, useCallback, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { devTerminalContext } from "../../../packages/app-common/src/api/runtime";
 import { useSaleControlDelivery } from "../../../packages/app-common/src/sale/useSaleControlDelivery";
 import { hasPermission } from "../../../packages/app-common/src/auth/auth";
-import { LoginScreen } from "../../../packages/app-common/src/components/LoginScreen";
-import { AppLogo } from "../../../packages/app-common/src/components/AppLogo";
+import loadingLogo from "./assets/espos-ventas-loading.png";
 import { SessionHomeScreen } from "../../../packages/app-common/src/components/SessionHomeScreen";
 import { SaleTouchKeyboardScope } from "../../../packages/app-common/src/components/SaleTouchKeyboardScope";
 import {
@@ -17,7 +16,7 @@ import type { LocaleCode, TerminalContext, UserSession } from "../../../packages
 import { useSaleUserLocalePreference } from "./saleUserLocale";
 import { evaluateCompatibility, InvalidCompatibilityContractError, loadBackendCompatibility } from "../../../packages/app-common/src/api/compatibility";
 import { apiRequest, ApiConnectionError, ApiError } from "../../../packages/app-common/src/api/client";
-import { loadTerminalIdentity } from "../../../packages/app-common/src/terminalIdentity";
+import { loadTerminalLoginContext } from "../../../packages/app-common/src/terminalIdentity";
 import type { SaleOperationAuthorization } from "../../../packages/app-common/src/sale/operationSecurity";
 import {
   createProductFromInternalEan,
@@ -54,16 +53,41 @@ function appLoadingCopy(language: string, phase: AppLoadingPhase) {
 export function AppLoadingFallback({ phase = "application", locale }: { phase?: AppLoadingPhase; locale?: LocaleCode }) {
   const language = locale ?? document.documentElement.lang;
   const copy = appLoadingCopy(language, phase);
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const startedAt = Date.now();
+    // Bootstrap has no measured progress. Keep the estimate below completion
+    // until the pending operation resolves and this fallback unmounts.
+    const timer = window.setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      setProgress(Math.min(95, Math.round(95 * (1 - Math.exp(-elapsed / 5000)))));
+    }, 100);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const progressDescription = language.startsWith("en")
+    ? `${progress}% estimated`
+    : language.startsWith("zh") ? `预计 ${progress}%` : `${progress} % estimado`;
+
   return (
     <main className="app-loading-screen">
-      <section className="app-loading-card" role="status" aria-live="polite" aria-busy="true">
-        <span className="app-loading-brand"><AppLogo app="venta" />esPOS VENTA</span>
-        <div className="app-loading-copy">
-          <h1>{copy.title}</h1>
-          <p>{copy.detail}</p>
-        </div>
-        <progress aria-label={copy.title} />
-      </section>
+      <div className="app-loading-content">
+        <img className="app-loading-brand" src={loadingLogo} alt="esPOS VENTAS" width="504" height="84" />
+        <section className="app-loading-card" role="status" aria-live="polite" aria-busy="true">
+          <div className="app-loading-copy">
+            <h1>{copy.title}</h1>
+            <p>{copy.detail}</p>
+          </div>
+          <div className="app-loading-progress" role="progressbar" aria-label={copy.title}
+            aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} aria-valuetext={progressDescription}>
+            <div className="app-loading-progress-fill" style={{ width: `${progress}%` }} />
+            <span className="app-loading-progress-label" aria-hidden="true">{progress}%</span>
+            <span className="app-loading-progress-label app-loading-progress-label-filled" aria-hidden="true"
+              style={{ clipPath: `inset(0 ${100 - progress}% 0 0)` }}>{progress}%</span>
+          </div>
+        </section>
+      </div>
       <footer>TPV ERP</footer>
     </main>
   );
@@ -86,6 +110,7 @@ class LazyModuleErrorBoundary extends Component<{ children: ReactNode }, { faile
   }
 }
 
+const LoginScreen = lazy(() => import("./VentaLoginScreen"));
 const TerminalConnectionScreen = lazy(() =>
   import("../../../packages/app-common/src/components/TerminalConnectionScreen").then(({ TerminalConnectionScreen }) => ({ default: TerminalConnectionScreen }))
 );
@@ -163,7 +188,7 @@ function SalesDocumentWindowApp() {
         <section className="settings-card" role="alert">
           <h1>No se pudo abrir la venta documental</h1>
           <p>La sesión de la ventana no está disponible. Ciérrala y vuelve a usar Ctrl+F.</p>
-          <button type="button" onClick={() => window.close()}>Cerrar</button>
+          <footer className="erp-dialog-actions-row"><button className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={() => window.close()}>Cerrar</button></footer>
         </section>
       </main>
     );
@@ -255,7 +280,7 @@ export function SalesUtilityWindowApp() {
     return <main className="settings-screen"><section className="settings-card" role="alert">
       <h1>No se pudo abrir la herramienta de venta</h1>
       <p>{error || "La sesión de la ventana no está disponible."}</p>
-      <button type="button" onClick={close}>Cerrar</button>
+      <footer className="erp-dialog-actions-row"><button className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={close}>Cerrar</button></footer>
     </section></main>;
   }
 
@@ -290,7 +315,7 @@ export function SalesUtilityWindowApp() {
     return <main className="settings-screen"><section className="settings-card" role="alert">
       <h1>No se pudo abrir el generador EAN</h1>
       <p>No se recibió una política de autorización válida.</p>
-      <button type="button" onClick={close}>Cerrar</button>
+      <footer className="erp-dialog-actions-row"><button className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={close}>Cerrar</button></footer>
     </section></main>;
   }
 
@@ -339,6 +364,7 @@ export function SalesUtilityWindowApp() {
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [terminalContext, setTerminalContext] = useState<TerminalContext | null | undefined>(undefined);
+  const [offlineTerminalContext, setOfflineTerminalContext] = useState<TerminalContext | null>(null);
   const [screen, setScreen] = useState<"home" | "sale" | "stock" | "warehouse" | "salesReport" | "settings" | "hardwareSettings" | "documentPrintingSettings" | "diagnosticsSettings" | "connection">("home");
   const [settingsDestination, setSettingsDestination] = useState<SaleSettingsDestination>("visualization");
   const [saleExitBlocked, setSaleExitBlocked] = useState(false);
@@ -356,14 +382,24 @@ export function App() {
   useEffect(() => {
     let cancelled = false;
     async function loadIdentity() {
-      const identity = await loadTerminalIdentity(
+      const result = await loadTerminalLoginContext(
         window.tpvDesktop?.terminalIdentity,
         import.meta.env.DEV ? devTerminalContext : null
       );
-      if (!cancelled) setTerminalContext(identity);
+      if (!cancelled) {
+        setTerminalContext(result.identity);
+        setOfflineTerminalContext(result.offlineContext);
+      }
     }
     void loadIdentity();
     return () => { cancelled = true; };
+  }, []);
+
+  const reconnectLoginTerminal = useCallback(async () => {
+    const result = await loadTerminalLoginContext(window.tpvDesktop?.terminalIdentity, null);
+    setTerminalContext(result.identity);
+    setOfflineTerminalContext(result.offlineContext);
+    return result.identity !== null;
   }, []);
 
   useEffect(() => {
@@ -498,7 +534,15 @@ export function App() {
 
   if (terminalContext === null) {
     if (window.tpvDesktop?.backendConnection) {
-      return <TerminalConnectionScreen locale={locale} identity={null} onReady={setTerminalContext} />;
+      if (offlineTerminalContext && screen !== "connection") {
+        return <LoginScreen app="venta" locale={locale} terminalContext={offlineTerminalContext}
+          connectionUnavailable onReconnect={reconnectLoginTerminal}
+          onLocaleChange={handleLocaleChange} onLogin={handleLogin}
+          onConfigureConnection={() => setScreen("connection")} />;
+      }
+      return <TerminalConnectionScreen locale={locale} identity={null}
+        onReady={(identity) => { setTerminalContext(identity); setOfflineTerminalContext(null); setScreen("home"); }}
+        onBack={offlineTerminalContext ? () => setScreen("home") : undefined} />;
     }
     const copy = locale === "en"
       ? {

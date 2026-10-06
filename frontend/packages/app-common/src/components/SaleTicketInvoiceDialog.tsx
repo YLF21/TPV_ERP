@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { formatEuroAmount } from "../money";
@@ -15,6 +16,8 @@ import {
 } from "../sale/operationSecurity";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { SaleOperationAuthorizationFields } from "./SaleOperationAuthorizationFields";
+import { SaleInvoiceCustomerListDialog } from "./SaleInvoiceCustomerListDialog";
+import "./SaleTicketInvoiceDialog.css";
 
 type Ticket = {
   id: string;
@@ -78,6 +81,8 @@ export function SaleTicketInvoiceDialog({
   const dialogRef = useRef<HTMLElement>(null);
   const ticketNumberRef = useRef<HTMLInputElement>(null);
   const customerSearchRef = useRef<HTMLInputElement>(null);
+  const customerResultsRef = useRef<HTMLDivElement>(null);
+  const createInvoiceRef = useRef<HTMLButtonElement>(null);
   const focusAfterTicketLoadRef = useRef<"ticket" | "customer" | null>(null);
   const customerSearchSequenceRef = useRef(0);
   const [ticket, setTicket] = useState<Ticket | null>(null);
@@ -89,6 +94,11 @@ export function SaleTicketInvoiceDialog({
   const [customerResultIndex, setCustomerResultIndex] = useState(-1);
   const [customerSearchBusy, setCustomerSearchBusy] = useState(false);
   const [customerSearchError, setCustomerSearchError] = useState("");
+  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
+  const [customerDropdownLayout, setCustomerDropdownLayout] = useState({
+    top: 0, left: 0, width: 0, maxHeight: 0,
+  });
+  const [customerListOpen, setCustomerListOpen] = useState(false);
   const [authorizerUsername, setAuthorizerUsername] = useState("");
   const [authorizerPassword, setAuthorizerPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -97,6 +107,61 @@ export function SaleTicketInvoiceDialog({
   const [pendingPrintDocument, setPendingPrintDocument] =
     useState<PendingCommercialDocumentPrintSnapshot | null>(null);
   const [pendingPrintInvoiceId, setPendingPrintInvoiceId] = useState<string | null>(null);
+  const showCustomerDropdown = Boolean(ticket && customerQuery.trim()
+    && customerDropdownOpen && !customerListOpen);
+
+  useLayoutEffect(() => {
+    if (!showCustomerDropdown) return;
+    const dialog = dialogRef.current;
+    const input = customerSearchRef.current;
+    const confirm = createInvoiceRef.current;
+    if (!dialog || !input || !confirm) return;
+    const bodyElement = input.closest(".sale-ticket-invoice-customer-content");
+    const updateLayout = () => {
+      const root = dialog.getBoundingClientRect();
+      const field = input.getBoundingClientRect();
+      const button = confirm.getBoundingClientRect();
+      const body = bodyElement?.getBoundingClientRect();
+      const top = field.bottom + 3;
+      const layout = {
+        top: top - root.top - dialog.clientTop,
+        left: field.left - root.left - dialog.clientLeft,
+        width: field.width,
+        maxHeight: body && (field.bottom > body.bottom || field.bottom < body.top)
+          ? 0 : Math.max(0, button.bottom - top),
+      };
+      setCustomerDropdownLayout((previous) => Object.keys(layout).every(
+        (key) => previous[key as keyof typeof layout] === layout[key as keyof typeof layout],
+      ) ? previous : layout);
+    };
+    updateLayout();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateLayout);
+    for (const element of [dialog, input, confirm, bodyElement]) {
+      if (element) observer?.observe(element);
+    }
+    globalThis.addEventListener("resize", updateLayout);
+    document.addEventListener("scroll", updateLayout, true);
+    return () => {
+      observer?.disconnect();
+      globalThis.removeEventListener("resize", updateLayout);
+      document.removeEventListener("scroll", updateLayout, true);
+    };
+  }, [showCustomerDropdown]);
+
+  useEffect(() => {
+    if (!showCustomerDropdown) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !customerSearchRef.current?.contains(event.target)
+        && !customerResultsRef.current?.contains(event.target)) setCustomerDropdownOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside, true);
+    return () => document.removeEventListener("pointerdown", closeOutside, true);
+  }, [showCustomerDropdown]);
+
+  useEffect(() => {
+    if (showCustomerDropdown) customerResultsRef.current?.querySelector("tr.is-current")
+      ?.scrollIntoView?.({ block: "nearest" });
+  }, [showCustomerDropdown, customerResultIndex]);
 
   async function loadTicket(path: string, focusAfterLoad: "ticket" | "customer") {
     focusAfterTicketLoadRef.current = focusAfterLoad;
@@ -189,11 +254,15 @@ export function SaleTicketInvoiceDialog({
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) onClose();
+      if (event.key !== "Escape" || busy || customerListOpen) return;
+      if (showCustomerDropdown) {
+        event.preventDefault();
+        setCustomerDropdownOpen(false);
+      } else onClose();
     };
     globalThis.addEventListener("keydown", handler);
     return () => globalThis.removeEventListener("keydown", handler);
-  }, [busy, onClose]);
+  }, [busy, customerListOpen, showCustomerDropdown, onClose]);
 
   function selectCustomer(customer: Customer) {
     if (!customer.active) return;
@@ -202,6 +271,7 @@ export function SaleTicketInvoiceDialog({
     setCustomerQuery("");
     setCustomerResults([]);
     setCustomerSearchError("");
+    setCustomerDropdownOpen(false);
   }
 
   function moveCustomerResult(direction: 1 | -1) {
@@ -309,48 +379,52 @@ export function SaleTicketInvoiceDialog({
   }
 
   return (
-    <div className="sale-action-overlay" role="presentation">
+    <><div className="sale-action-overlay" role="presentation">
       <section
         ref={dialogRef}
         className="sale-action-dialog sale-ticket-operation-dialog sale-ticket-invoice-dialog"
         role="dialog"
-        aria-modal="true"
+        aria-modal={customerListOpen ? undefined : true}
+        aria-hidden={customerListOpen || undefined}
+        inert={customerListOpen || undefined}
         aria-busy={busy}
         aria-labelledby="sale-ticket-invoice-title"
       >
         <header className="sale-ticket-operation-header">
           <h2 id="sale-ticket-invoice-title">{t("sale.ticketInvoice.title")}</h2>
-          <button
+          <WindowCloseButton
             type="button"
+            className="sale-ticket-invoice-close"
             aria-label={t("common.close")}
             onClick={onClose}
             disabled={busy}
-          >×</button>
+           >×</WindowCloseButton>
         </header>
-        <form
-          className="sale-ticket-operation-search"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!busy && ticketNumber.trim()) {
-              void loadTicket(
-                `/tickets/by-number?number=${encodeURIComponent(ticketNumber.trim())}`,
-                "customer",
-              );
-            }
-          }}
-        >
-          <label>
-            {t("sale.ticketInvoice.ticketCode")}
-            <input
-              ref={ticketNumberRef}
-              value={ticketNumber}
-              onChange={(event) => setTicketNumber(event.currentTarget.value)}
-              autoComplete="off"
-            />
-          </label>
-        </form>
-        {ticket && (
-          <div className="sale-ticket-operation-body">
+        <div className="sale-ticket-operation-body">
+          <div className="sale-ticket-invoice-ticket-card">
+            <form
+              className="sale-ticket-operation-search"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!busy && ticketNumber.trim()) {
+                  void loadTicket(
+                    `/tickets/by-number?number=${encodeURIComponent(ticketNumber.trim())}`,
+                    "customer",
+                  );
+                }
+              }}
+            >
+              <label>
+                {t("sale.ticketInvoice.ticketCode")}
+                <input
+                  ref={ticketNumberRef}
+                  value={ticketNumber}
+                  onChange={(event) => setTicketNumber(event.currentTarget.value)}
+                  autoComplete="off"
+                />
+              </label>
+            </form>
+            {ticket && (
             <div className="sale-ticket-operation-summary">
               <div>
                 <span>{t("sale.ticketInvoice.ticketCode")}</span>
@@ -369,32 +443,40 @@ export function SaleTicketInvoiceDialog({
                 <b>{formatEuroAmount(ticket.total, locale)}</b>
               </div>
             </div>
-
+            )}
+          </div>
+          <div className="sale-ticket-invoice-customer-panel">
+          <div className="sale-ticket-invoice-customer-content">
+          {ticket && <>
             <section className="sale-ticket-customer-search" aria-labelledby="sale-ticket-customer-title">
               <div className="sale-ticket-customer-search__heading">
                 <div>
                   <h3 id="sale-ticket-customer-title">{t("sale.ticketInvoice.customer")}</h3>
                   <p>{t("sale.ticketInvoice.customerSearchHint")}</p>
                 </div>
-                <span>{t("sale.ticketInvoice.customerSearchLimit")}</span>
               </div>
+              <div className="sale-ticket-invoice-customer-search-row">
               <label className="sale-ticket-customer-search__field">
                 <span>{t("sale.ticketInvoice.customerSearchLabel")}</span>
                 <input
                   ref={customerSearchRef}
                   value={customerQuery}
+                  onFocus={() => setCustomerDropdownOpen(true)}
+                  onPointerDown={() => setCustomerDropdownOpen(true)}
                   onChange={(event) => {
                     setCustomerQuery(event.currentTarget.value);
+                    setCustomerDropdownOpen(true);
                     setSelectedCustomer(null);
                     setCustomerId("");
                   }}
                   onKeyDown={(event) => {
                     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                       event.preventDefault();
+                      setCustomerDropdownOpen(true);
                       moveCustomerResult(event.key === "ArrowDown" ? 1 : -1);
                     } else if (event.key === "Enter" || event.key === "Insert") {
                       const selected = customerResults[customerResultIndex];
-                      if (selected?.active) {
+                      if (showCustomerDropdown && selected?.active) {
                         event.preventDefault();
                         selectCustomer(selected);
                       } else if (event.key === "Enter" && canConvert && !busy) {
@@ -406,12 +488,84 @@ export function SaleTicketInvoiceDialog({
                   placeholder={t("sale.ticketInvoice.customerSearchPlaceholder")}
                   autoComplete="off"
                   aria-controls="sale-ticket-customer-results"
+                  aria-expanded={showCustomerDropdown}
                   aria-busy={customerSearchBusy}
                 />
               </label>
+                <div className="sale-ticket-customer-search__actions">
+                  <button type="button" disabled={busy} onClick={() => {
+                    setCustomerDropdownOpen(false);
+                    setCustomerListOpen(true);
+                  }}>
+                    {t("sale.ticketInvoice.customerList")}
+                  </button>
+                </div>
+              </div>
 
-              {customerQuery.trim() && (
-                <div className="sale-ticket-customer-results" id="sale-ticket-customer-results">
+              <div className="sale-ticket-invoice-customer-selection">
+              {selectedCustomer && (
+                <div className={`sale-ticket-selected-customer ${selectedCustomer.active ? "" : "is-inactive"}`.trim()}>
+                  <div>
+                    <span>{t("sale.ticketInvoice.selectedCustomer")}</span>
+                    <strong>{selectedCustomer.fiscalName || "—"}</strong>
+                    <small>
+                      {[selectedCustomer.clientId, selectedCustomer.documentNumber]
+                        .filter(Boolean).join(" · ")}
+                    </small>
+                  </div>
+                  <span className={`sale-ticket-customer-status ${selectedCustomer.active ? "is-active" : "is-inactive"}`}>
+                    {t(selectedCustomer.active
+                      ? "sale.ticketInvoice.customerActive"
+                      : "sale.ticketInvoice.customerInactiveUnavailable")}
+                  </span>
+                </div>
+              )}
+              </div>
+            </section>
+
+            <SaleOperationAuthorizationFields
+              locale={locale}
+              currentUsername={currentUsername}
+              authorization={authorization}
+              username={authorizerUsername}
+              password={authorizerPassword}
+              disabled={busy}
+              onUsernameChange={setAuthorizerUsername}
+              onPasswordChange={setAuthorizerPassword}
+            />
+          </>}
+        {error && <p className="sale-error" role="alert">{error}</p>}
+        {message && <p className="sale-status" role="status">{message}</p>}
+          </div>
+        <footer className="sale-ticket-operation-footer erp-dialog-actions-row">
+          {ticket && (
+            <button
+              ref={createInvoiceRef}
+              type="button"
+              className="primary sale-ticket-invoice-create erp-dialog-action-confirm"
+              disabled={busy
+                || !canConvert}
+              onClick={() => void convert()}
+            >
+              {t(busy ? "sale.ticketInvoice.processing" : "sale.ticketInvoice.confirm")}
+            </button>
+          )}
+          {pendingPrintInvoiceId && (
+            <button
+              type="button"
+              className="primary erp-dialog-action-confirm"
+              disabled={busy}
+              onClick={() => void retryPrint()}
+            >
+              {t("sale.ticketInvoice.retryPrint")}
+            </button>
+          )}
+        </footer>
+          </div>
+        </div>
+        {showCustomerDropdown && (
+                <div ref={customerResultsRef} className="sale-ticket-customer-results sale-ticket-invoice-customer-dropdown"
+                  id="sale-ticket-customer-results" style={customerDropdownLayout}>
                   <table aria-label={t("sale.ticketInvoice.customerResults")}>
                     <thead>
                       <tr>
@@ -454,70 +608,18 @@ export function SaleTicketInvoiceDialog({
                       {t("sale.ticketInvoice.customerSearching")}
                     </p>
                   )}
+                  {customerSearchError && <p className="sale-error" role="alert">{customerSearchError}</p>}
                 </div>
               )}
-              {customerSearchError && <p className="sale-error" role="alert">{customerSearchError}</p>}
-
-              {selectedCustomer && (
-                <div className={`sale-ticket-selected-customer ${selectedCustomer.active ? "" : "is-inactive"}`.trim()}>
-                  <div>
-                    <span>{t("sale.ticketInvoice.selectedCustomer")}</span>
-                    <strong>{selectedCustomer.fiscalName || "—"}</strong>
-                    <small>
-                      {[selectedCustomer.clientId, selectedCustomer.documentNumber]
-                        .filter(Boolean).join(" · ")}
-                    </small>
-                  </div>
-                  <span className={`sale-ticket-customer-status ${selectedCustomer.active ? "is-active" : "is-inactive"}`}>
-                    {t(selectedCustomer.active
-                      ? "sale.ticketInvoice.customerActive"
-                      : "sale.ticketInvoice.customerInactiveUnavailable")}
-                  </span>
-                </div>
-              )}
-            </section>
-
-            <SaleOperationAuthorizationFields
-              locale={locale}
-              currentUsername={currentUsername}
-              authorization={authorization}
-              username={authorizerUsername}
-              password={authorizerPassword}
-              disabled={busy}
-              onUsernameChange={setAuthorizerUsername}
-              onPasswordChange={setAuthorizerPassword}
-            />
-          </div>
-        )}
-        {error && <p className="sale-error" role="alert">{error}</p>}
-        {message && <p className="sale-status" role="status">{message}</p>}
-        <footer className="sale-ticket-operation-footer">
-          <button type="button" onClick={onClose} disabled={busy}>
-            {t("sale.dialog.cancel")}
-          </button>
-          {ticket && (
-            <button
-              type="button"
-              className="primary"
-              disabled={busy
-                || !canConvert}
-              onClick={() => void convert()}
-            >
-              {t(busy ? "sale.ticketInvoice.processing" : "sale.ticketInvoice.confirm")}
-            </button>
-          )}
-          {pendingPrintInvoiceId && (
-            <button
-              type="button"
-              className="primary"
-              disabled={busy}
-              onClick={() => void retryPrint()}
-            >
-              {t("sale.ticketInvoice.retryPrint")}
-            </button>
-          )}
-        </footer>
       </section>
     </div>
+    {customerListOpen && <SaleInvoiceCustomerListDialog token={token} locale={locale} selectedCustomerId={customerId}
+      onClose={() => setCustomerListOpen(false)} onSelect={(customer) => {
+        if (customer.active !== true) return;
+        selectCustomer({ ...customer, active: true });
+        setCustomerListOpen(false);
+        queueMicrotask(() => customerSearchRef.current?.focus());
+      }} />}
+    </>
   );
 }

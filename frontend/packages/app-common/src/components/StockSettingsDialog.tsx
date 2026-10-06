@@ -12,6 +12,8 @@ import {
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
+import { WindowCloseButton } from "./WindowCloseButton";
+import { DialogDismissButton } from "./DialogDismissButton";
 
 export { roleHasStockPermission, stockPermissionMatrixColumns } from "./StockPermissionsDialog";
 
@@ -361,7 +363,7 @@ export function StockSettingsDialog({
             </h2>
             <span>{t(mode === "configuration" ? "stock.settings.subtitle" : "stock.permissions.subtitle")}</span>
           </div>
-          <button type="button" onClick={onClose}>{t("common.close")}</button>
+          {app === "pda" ? <button type="button" className="erp-dialog-action-cancel" onClick={onClose}>{t("common.close")}</button> : <WindowCloseButton aria-label={t("common.close")} onLight onClick={onClose} >{t("common.close")}</WindowCloseButton>}
         </header>
 
         {mode === "configuration" ? (
@@ -573,10 +575,10 @@ export function StockSettingsDialog({
           </p>
         )}
 
-        <footer className="filter-actions">
-          <button type="button" onClick={onClose}>{t("common.close")}</button>
+        <footer className="filter-actions erp-dialog-actions-row">
+          <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>{t("common.close")}</DialogDismissButton>
           {mode === "configuration" && (
-            <button ref={settingsSaveRef} type="button" disabled={!canEdit || saving} onClick={() => void saveSettings()}>
+            <button ref={settingsSaveRef} type="button" className="erp-dialog-action-confirm" disabled={!canEdit || saving} onClick={() => void saveSettings()}>
               {saving ? t("stock.settings.saving") : t("common.save")}
             </button>
           )}
