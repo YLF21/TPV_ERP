@@ -482,6 +482,7 @@ const stockDiscountTypeOptions = ["NORMAL", "MEMBER_PRICE", "OFFER_PRICE", "OFFE
 const bulkPriceUseModes: BulkPriceUseMode[] = ["NORMAL", "MEMBER_PRICE", "OFFER_PRICE", "OFFER_DISCOUNT"];
 const STOCK_PAGE_LIMIT = 500;
 const STOCK_EXPORT_SHORTCUT = "F6" as const;
+const STOCK_CREATE_PRODUCT_SHORTCUT = "F5" as const;
 export const stockBulkSelectedActionsByTab: Record<StockBulkEditTab, BulkSelectedAction[]> = {
   main: [
     "purchasePrice", "salePrice", "memberPrice", "wholesalePrice", "offerPrice", "offerDiscountPercent",
@@ -3054,7 +3055,7 @@ export function StockScreen({
   useEffect(() => {
     if (app !== "venta" || !canManageProducts || partyDirectory || selectedView === "stock.bulkEdit" || productCreateOpen) return;
     function handleAddProductShortcut(event: globalThis.KeyboardEvent) {
-      if (event.defaultPrevented || event.key !== "F5" || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+      if (event.defaultPrevented || event.key !== STOCK_CREATE_PRODUCT_SHORTCUT || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
       if (document.querySelector('[aria-modal="true"]')) return;
       event.preventDefault();
       event.stopPropagation();
@@ -7630,8 +7631,8 @@ export function StockScreen({
                 <button
                   type="button"
                   className="stock-add-product-button"
-                  aria-keyshortcuts={app === "venta" ? "F5" : undefined}
-                  title={app === "venta" ? `${t("product.create.button")} (F5)` : undefined}
+                  aria-keyshortcuts={app === "venta" ? STOCK_CREATE_PRODUCT_SHORTCUT : undefined}
+                  title={app === "venta" ? `${t("product.create.button")} (${STOCK_CREATE_PRODUCT_SHORTCUT})` : undefined}
                   onClick={() => {
                     setEditingProduct(null);
                     setProductCreateOpen(true);
@@ -7640,7 +7641,7 @@ export function StockScreen({
                   {app === "venta" ? <>
                     <Plus size={18} weight="bold" aria-hidden="true" />
                     {t("product.create.button")}
-                    <kbd aria-hidden="true">F5</kbd>
+                    <kbd aria-hidden="true">{STOCK_CREATE_PRODUCT_SHORTCUT}</kbd>
                   </> : t("product.create.button")}
                 </button>
               )}

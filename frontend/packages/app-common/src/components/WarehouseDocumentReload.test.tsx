@@ -52,13 +52,13 @@ describe("saved warehouse document product resolution", () => {
     }
     const view = render(<StrictMode><Parent /></StrictMode>);
     await act(async () => importer.accept([importRow], { formulas: [], updateSupplier: true, documentPriceSource: "purchasePrice" }));
-    fireEvent.click(view.getByRole("button", { name: "Guardar (F9)" }));
+    fireEvent.click(view.getByRole("button", { name: "Guardar F9" }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/warehouse-inputs", expect.objectContaining({ method: "POST" })));
-    await waitFor(() => expect(view.getByRole("button", { name: "Guardar (F9)" })).not.toBeDisabled());
+    await waitFor(() => expect(view.getByRole("button", { name: "Guardar F9" })).not.toBeDisabled());
     expect(view.container.querySelectorAll(".warehouse-document-line-error")).toHaveLength(0);
     expect(view.getByText(created.code)).toBeInTheDocument();
     expect(view.getByText(created.barcode)).toBeInTheDocument();
-    fireEvent.click(view.getByRole("button", { name: "Guardar (F9)" }));
+    fireEvent.click(view.getByRole("button", { name: "Guardar F9" }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/warehouse-inputs/input-saved", expect.objectContaining({
       method: "PUT", body: expect.objectContaining({ expectedExcelImportSnapshotToken: "WXP1.D.saved",
         lines: [expect.objectContaining({ productId: created.id, quantity: 6, unitPrice: 2.15, discount: 5, productName: "Nombre del documento" })] })
@@ -77,10 +77,10 @@ describe("saved warehouse document product resolution", () => {
     vi.mocked(apiRequest).mockImplementation((path) => path === "/products/warehouse-options"
       ? new Promise(resolve => { resolveCatalog = resolve; }) as never : Promise.resolve({ items: [] }) as never);
     const view = render(<WarehouseDocumentDialog {...base} document={saved} />);
-    expect(view.getByRole("button", { name: "Guardar (F9)" })).toBeDisabled();
+    expect(view.getByRole("button", { name: "Guardar F9" })).toBeDisabled();
     fireEvent.change(view.getByRole("textbox", { name: "Comentarios" }), { target: { value: "Trabajo sin guardar" } });
     await act(async () => resolveCatalog([created]));
-    await waitFor(() => expect(view.getByRole("button", { name: "Guardar (F9)" })).not.toBeDisabled());
+    await waitFor(() => expect(view.getByRole("button", { name: "Guardar F9" })).not.toBeDisabled());
     expect(view.getByText(created.barcode)).toBeInTheDocument();
     expect(view.getByText("Nombre del documento")).toBeInTheDocument();
     expect(view.getByRole("textbox", { name: "Comentarios" })).toHaveValue("Trabajo sin guardar");
@@ -96,7 +96,7 @@ describe("saved warehouse document product resolution", () => {
     });
     const view = render(<WarehouseDocumentDialog {...base} document={saved} />);
     await waitFor(() => expect(view.container.querySelector(".warehouse-document-status")?.textContent).not.toBe(""));
-    expect(view.getByRole("button", { name: "Guardar (F9)" })).toBeDisabled();
+    expect(view.getByRole("button", { name: "Guardar F9" })).toBeDisabled();
     expect(view.getByRole("button", { name: "Confirmar" })).toBeDisabled();
     expect(view.getByText("NEW-001")).toBeInTheDocument();
     expect(vi.mocked(apiRequest).mock.calls.filter(([path]) => path === "/products/warehouse-options")).toHaveLength(1);
@@ -110,7 +110,7 @@ describe("saved warehouse document product resolution", () => {
     view.rerender(<WarehouseDocumentDialog {...base} document={{ ...saved, id: "another", lines: [] }} />);
     await act(async () => resolveCatalog([created]));
     expect(view.queryByText(created.barcode)).not.toBeInTheDocument();
-    expect(view.getByRole("button", { name: "Guardar (F9)" })).toBeDisabled();
+    expect(view.getByRole("button", { name: "Guardar F9" })).toBeDisabled();
   });
 
   it("resolves a late parent catalog without losing line identity", async () => {

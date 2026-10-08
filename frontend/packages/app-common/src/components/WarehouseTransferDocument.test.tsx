@@ -82,7 +82,7 @@ describe("Warehouse transfer document shared workspace", () => {
     expect(screen.getByLabelText("Descuento total del documento %")).toHaveValue(0);
     fireEvent.click(view.menu().getByRole("button", { name: "Eliminar todos los artículos" }));
     expect(screen.queryByText("Cafe")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Guardar (F9)" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Guardar F9" })).toBeDisabled();
     expect(view.persistence.save).not.toHaveBeenCalled();
   });
 

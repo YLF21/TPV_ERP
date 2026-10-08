@@ -2174,6 +2174,10 @@ export function SalesReportScreen({
   const hasPaymentFilter = !isDailySalesReport && sample.availableAttributes.includes("payment");
   const hasStatusFilter = !isDailySalesReport && sample.availableAttributes.includes("status");
   const hasWarehouseFilter = !isDailySalesReport && sample.availableAttributes.includes("warehouse");
+  // Match WarehouseController.list; accounts-only readers filter by report rows.
+  const canLoadWarehouseCatalogue = hasWarehouseFilter && session.permissions.some((permission) =>
+    ["ADMIN", "STOCK_READ", "STOCK_TRANSFER", "GESTION_PRODUCTO", "GESTION_ALMACEN", "WAREHOUSES_MANAGE", "GESTION_VENTAS", "VENTA"].includes(permission)
+  );
   const selectedReportPage = reportPages[reportPageKey(selectedReport)];
   const selectedReportLoadError = reportLoadErrors[selectedReport] ?? "";
 
@@ -2319,7 +2323,7 @@ export function SalesReportScreen({
           loadPage<DocumentView>("deliveryNotes"),
           loadPage<WarehouseOutputView>("warehouseOutputs"),
           loadPage<WarehouseInputReportView>("warehouseInputs"),
-          hasWarehouseFilter
+          canLoadWarehouseCatalogue
             ? loadReportResource<ReportWarehouseOption[]>(request, "/warehouses", token, [])
             : Promise.resolve({ value: [] as ReportWarehouseOption[], failed: false })
         ]);
@@ -2375,7 +2379,7 @@ export function SalesReportScreen({
       cancelled = true;
       reportQueryGeneration.current += 1;
     };
-  }, [request, session, terminalContext, reportReloadKey, isSalesActivityReport, selectedReport, filters.dateFrom, filters.dateTo, hasWarehouseFilter]);
+  }, [request, session, terminalContext, reportReloadKey, isSalesActivityReport, selectedReport, filters.dateFrom, filters.dateTo, canLoadWarehouseCatalogue]);
 
   useEffect(() => {
     if (!filterOpen) return;
