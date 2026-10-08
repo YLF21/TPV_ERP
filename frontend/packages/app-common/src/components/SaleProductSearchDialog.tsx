@@ -268,8 +268,8 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
               aria-keyshortcuts="F5"
               onClick={onCreateProduct}
             >
-              <kbd aria-hidden="true">F5</kbd>
               <span>{createProductLabel}</span>
+              <kbd aria-hidden="true">F5</kbd>
             </button>
           )}
           {tableTheme && <ErpFilterChips locale={locale} focusRef={inputRef} chips={query.trim() ? [{

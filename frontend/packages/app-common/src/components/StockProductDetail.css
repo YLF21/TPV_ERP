@@ -206,3 +206,15 @@
   display:grid;
   grid-template-rows:auto auto minmax(0,1fr) auto !important;
 }
+
+.stock-screen.stock-screen--venta .stock-detail-row.total {
+  --erp-table-row-bg: #0065fe;
+  --erp-table-text: #fff;
+  border-color: #0065fe !important;
+  background: #0065fe !important;
+  color: #fff !important;
+}
+
+.stock-screen--venta .stock-detail-row.total > :is(span, strong) {
+  color: #fff !important;
+}

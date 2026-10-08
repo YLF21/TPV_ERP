@@ -29,12 +29,12 @@
 .sale-touch-button-danger:hover:not(:disabled) { background: #ffe2e0; border-color: #a52a29; }
 
 .sale-touch-top-actions { display: flex; align-items: stretch; gap: 0; }
-.sale-touch-top-actions .sale-touch-button { min-height: 42px; padding: 6px 12px; white-space: nowrap; }
+.sale-touch-top-actions .sale-touch-button { min-height: 42px; padding: 6px 12px; border-radius: 6px; white-space: nowrap; }
 .sale-touch-top-actions .sale-touch-button + .sale-touch-button { border-left: 0; }
 .sale-touch-top-actions .sale-touch-button svg { width: 24px; height: 24px; }
 
 .sale-touch-side-actions { display: grid; grid-template-rows: repeat(4, minmax(48px, 1fr)); gap: 7px; }
-.sale-touch-side-actions .sale-touch-button { width: 100%; }
+.sale-touch-side-actions .sale-touch-button { width: 100%; border-radius: 6px; }
 
 .sale-touch-bottom-actions {
   display: grid;
@@ -53,7 +53,7 @@
 .sale-touch-bottom-actions [data-touch-slot="price"] { grid-area: 1 / 4; }
 .sale-touch-bottom-actions [data-touch-slot="remove"] { grid-area: 2 / 4; }
 .sale-touch-bottom-actions [data-touch-slot="checkout"] { grid-area: 1 / 5 / 3 / 6; }
-.sale-touch-bottom-actions .sale-touch-button { justify-content: center; padding: 8px; }
+.sale-touch-bottom-actions .sale-touch-button { justify-content: center; padding: 8px; border-radius: 6px; }
 .sale-touch-bottom-actions .sale-touch-button-checkout { background: #0065fe; color: #fff; border-color: #0065fe; font-size: 1.5rem; }
 .sale-touch-button-checkout svg { width: 36px; height: 36px; }
 .sale-touch-bottom-actions .sale-touch-button-checkout:is(:hover, :active):not(:disabled) { background: #0065fe; }

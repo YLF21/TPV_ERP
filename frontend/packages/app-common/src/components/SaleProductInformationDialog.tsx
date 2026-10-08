@@ -350,8 +350,8 @@ export function SaleProductInformationDialog({
       <footer className="erp-dialog-actions-row">
         <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.close")}</DialogDismissButton>
         <button className="primary erp-dialog-action-confirm" type="button" onClick={addProduct}>
+          <span>{t("sale.productInformation.addToCart")}</span>
           {interfaceMode === "KEYBOARD" && <kbd>Insert</kbd>}
-          {t("sale.productInformation.addToCart")}
         </button>
       </footer>
     </dialog>

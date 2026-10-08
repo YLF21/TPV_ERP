@@ -1410,6 +1410,7 @@ export class MessagesEn {
     "settings.group.personal": "My preferences",
     "settings.group.workstation": "This workstation",
     "settings.group.support": "Support",
+    "settings.group.connection": "Connection",
     "settings.account": "My account",
     "settings.account.subtitle": "Information about the signed-in user",
     "settings.accountSecurity": "My account and security",

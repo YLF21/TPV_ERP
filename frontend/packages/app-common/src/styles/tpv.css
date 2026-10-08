@@ -11554,6 +11554,16 @@ body,
   right: 138px !important;
 }
 
+.sale-screen .language-picker button.selected,
+.sale-screen .language-picker button:hover,
+.sale-screen .language-picker button:focus-visible,
+.sale-screen .report-user-menu button:hover,
+.sale-screen .report-user-menu button:focus-visible {
+  border-color: #0065fe;
+  background: #0065fe;
+  color: #fff;
+}
+
 .login-panel {
   position: absolute !important;
   top: 50% !important;
@@ -11954,7 +11964,7 @@ body,
   gap: 0 !important;
   padding: 0 !important;
   border: 0 !important;
-  border-radius: 14px !important;
+  border-radius: 8px !important;
   background: #ffffff !important;
   box-shadow: none !important;
   color: #000000 !important;
@@ -11980,7 +11990,7 @@ body,
   height: 100% !important;
   min-height: 0 !important;
   padding: 0 !important;
-  border-radius: 36px !important;
+  border-radius: 16px !important;
   background: #0065FE !important;
   color: #ffffff !important;
   text-align: center !important;
@@ -12576,7 +12586,7 @@ body,
   overflow: hidden;
   border: 1px solid var(--tpv-v3-line, #b9c6d6);
   border-radius: var(--tpv-v3-radius, 4px);
-  background: #ffffff;
+  background: #edf2f7;
   color: var(--tpv-v3-text, #1d2c3f);
   box-shadow: 0 12px 32px rgb(20 42 67 / 18%);
 }
@@ -12584,7 +12594,8 @@ body,
 .sale-open-price-dialog > header {
   padding: 13px 16px;
   border-bottom: 1px solid var(--tpv-v3-line, #b9c6d6);
-  background: var(--tpv-v3-surface-alt, #edf2f7);
+  background: #0b2e59;
+  color: #ffffff;
 }
 
 .sale-open-price-dialog h2 {
@@ -16278,7 +16289,8 @@ textarea:focus,
   white-space: nowrap !important;
 }
 
-.stock-screen .stock-export-button kbd {
+.stock-screen .stock-export-button kbd,
+.stock-screen--venta .stock-add-product-button kbd {
   align-self: stretch;
   min-width: 31px;
   display: inline-flex;
@@ -19305,9 +19317,6 @@ textarea:focus,
 }
 
 /* Keep navigation exits visually separate from the selected workspace option. */
-.stock-nav .report-back,
-.report-screen .report-nav .report-back,
-.settings-nav .report-back,
 .hardware-nav .report-back {
   border-color: #d39a2c !important;
   background: #fff1cf !important;
@@ -19316,21 +19325,6 @@ textarea:focus,
   font-weight: 900 !important;
 }
 
-.report-screen .report-nav .report-back {
-  min-height: 27px !important;
-  margin-top: auto !important;
-  padding: 3px 6px !important;
-  gap: 6px !important;
-  font-size: 11px !important;
-  line-height: 1.1 !important;
-}
-
-.stock-nav .report-back:hover,
-.stock-nav .report-back:focus-visible,
-.report-screen .report-nav .report-back:hover,
-.report-screen .report-nav .report-back:focus-visible,
-.settings-nav .report-back:hover,
-.settings-nav .report-back:focus-visible,
 .hardware-nav .report-back:hover,
 .hardware-nav .report-back:focus-visible {
   border-color: #b66f00 !important;
@@ -19457,7 +19451,7 @@ textarea:focus,
   min-height: 72px;
   padding: 12px 14px 12px 18px;
   border-bottom: 1px solid #7289a2;
-  background: #0065fe;
+  background: #0b2e59;
   color: #fff;
 }
 
@@ -22254,7 +22248,59 @@ textarea:focus,
   font-weight: 950;
 }
 
+/* APP VENTA Management uses the same compact corners as Sales. */
+.stock-screen.stock-screen--venta :is(
+  .work-shell,
+  .work-shell > .stock-nav,
+  .work-shell > .work-panel,
+  .stock-nav > button,
+  .stock-filter-button,
+  .stock-columns-button,
+  .stock-add-product-button,
+  .stock-export-button,
+  .management-record-actions > button,
+  .report-search,
+  .stock-search-stack input,
+  .stock-table,
+  .stock-bulk-workspace-table-wrap,
+  .bulk-edit-table-frame,
+  .bulk-edit-tabs > button,
+  .bulk-edit-actions > button,
+  .stock-bulk-workspace-toolbar button,
+  .bulk-edit-menu,
+  .bulk-edit-menu > button,
+  .promotion-table,
+  .promotion-toolbar > button,
+  .promotion-toolbar input,
+  .promotion-row-actions > button,
+  .party-directory-heading > button,
+  .party-directory-toolbar > button,
+  .party-directory-toolbar > input,
+  .party-directory-table,
+  .party-directory-pagination button
+) {
+  border-radius: 6px !important;
+}
+
+.stock-screen.stock-screen--venta .stock-add-product-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px !important;
+  border-color: #0065fe !important;
+  background: #0065fe !important;
+  color: #fff !important;
+}
+
 /* Sales command bar: dense desktop ERP menus with real command bindings. */
+.sale-screen .work-shell > .work-panel,
+.sale-screen .sale-total,
+.sale-screen .work-search,
+.sale-screen .work-search input,
+.sale-screen .sale-customer-summary {
+  border-radius: 6px !important;
+}
+
 .sale-screen .work-shell {
   grid-template-rows: 36px minmax(0, 1fr) !important;
 }
@@ -22273,6 +22319,7 @@ textarea:focus,
   padding: 0 !important;
   overflow: visible;
   border: 1px solid #9eacbb;
+  border-radius: 6px;
   background: #f8fafc;
 }
 
@@ -22307,7 +22354,7 @@ textarea:focus,
   padding: 0 11px;
   border: 0;
   border-right: 1px solid #aeb9c5;
-  border-radius: 0;
+  border-radius: 6px;
   background: #f8fafc;
   color: #102d50;
   font: inherit;
@@ -22332,12 +22379,14 @@ textarea:focus,
   max-width: min(430px, calc(100vw - 24px));
   position: absolute;
   z-index: 1500;
-  top: calc(100% + 1px);
+  top: 100%;
   left: -1px;
   display: grid;
-  padding: 4px 0;
+  padding: 0;
   border: 1px solid #75899f;
-  border-top: 3px solid #12365e;
+  border-top: 0;
+  border-radius: 6px;
+  overflow: hidden;
   background: #fff;
   box-shadow: 0 12px 30px rgba(13, 36, 63, 0.24);
 }
@@ -22355,7 +22404,7 @@ textarea:focus,
   gap: 26px;
   padding: 5px 10px 5px 12px;
   border: 0;
-  border-radius: 0;
+  border-radius: 6px;
   background: #fff;
   color: #152c47;
   font: inherit;
@@ -22415,7 +22464,7 @@ textarea:focus,
   min-height: 34px;
   height: 34px;
   border-width: 0 0 2px 1px;
-  border-radius: 0;
+  border-radius: 6px;
   box-shadow: none;
 }
 

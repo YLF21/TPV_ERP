@@ -193,14 +193,15 @@ public class DevSampleDataSeeder {
                     'Atlantic/Canary', 'EUR', 'es-ES', '001')
                 on conflict (id) do nothing
                 """, STORE, COMPANY);
+        jdbc.queryForObject("select id from tienda where id = ? for update", UUID.class, STORE);
         jdbc.update("""
                 insert into almacen (id, tienda_id, nombre, predeterminado, activo)
                 values (?, ?, 'GENERAL', true, true)
                 on conflict do nothing
                 """, WAREHOUSE, STORE);
+        seedWarehouse(WAREHOUSE_QUARANTINE, "DEVOLUCIONES Y CUARENTENA");
         seedWarehouse(WAREHOUSE_RESERVE, "RESERVA Y REPOSICION");
         seedWarehouse(WAREHOUSE_SHOWROOM, "TIENDA Y EXPOSICION");
-        seedWarehouse(WAREHOUSE_QUARANTINE, "DEVOLUCIONES Y CUARENTENA");
         jdbc.update("""
                 insert into familia (id, tienda_id, family_id, family_code, nombre, predeterminada)
                 select ?, ?, 'GENERAL', '000', 'GENERAL', true
@@ -220,12 +221,13 @@ public class DevSampleDataSeeder {
 
     private void seedWarehouse(UUID warehouseId, String name) {
         jdbc.update("""
-                insert into almacen (id, tienda_id, nombre, predeterminado, activo)
-                values (?, ?, ?, false, true)
+                insert into almacen (id, tienda_id, nombre, predeterminado, activo, display_order)
+                select ?, ?, ?, false, true, coalesce(max(display_order), -1) + 1
+                from almacen where tienda_id = ?
                 on conflict (id) do update
                 set nombre = excluded.nombre,
                     activo = true
-                """, warehouseId, STORE, name);
+                """, warehouseId, STORE, name, STORE);
     }
 
     private void seedSecurity() {

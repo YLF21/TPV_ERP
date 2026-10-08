@@ -1,4 +1,34 @@
-.module-nav-back {
-  display: flex;
-  align-items: center;
+@layer erp-module-back {
+  .module-nav-back {
+    display: flex;
+    align-items: center;
+    justify-content: center !important;
+    min-height: 38px !important;
+    padding: 0 12px !important;
+    gap: 10px !important;
+    border: 1px solid #0065fe !important;
+    border-radius: 6px !important;
+    background: #e5e7eb !important;
+    color: #0065fe !important;
+    overflow: hidden;
+    box-shadow: none !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    line-height: 1.2 !important;
+  }
+
+  .module-nav-back-icon {
+    flex-shrink: 0;
+  }
+
+  .module-nav-back:hover,
+  .module-nav-back:focus-visible {
+    border-color: #0065fe !important;
+    background: #dce0e5 !important;
+  }
+
+  .module-nav-back:focus-visible {
+    outline: 2px solid #0065fe !important;
+    outline-offset: 2px;
+  }
 }

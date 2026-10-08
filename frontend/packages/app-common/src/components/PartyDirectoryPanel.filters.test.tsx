@@ -86,7 +86,7 @@ describe("Party directory applied filter chips", () => {
     render(<PartyDirectoryPanel app="venta" kind="members" locale="es" session={session} />);
     await screen.findByText("Zoe");
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Ana" } });
-    fireEvent.click(screen.getByRole("button", { name: "F8 Nuevo miembro" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo miembro F8" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByRole("searchbox"), { target: { value: "Ana" } });
     fireEvent.click(within(dialog).getByRole("option", { name: /Ana activa/ }));

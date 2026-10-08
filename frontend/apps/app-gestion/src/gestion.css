@@ -1745,6 +1745,18 @@ button.gestion-security-row.selected { background: #dceaf6; box-shadow: inset 4p
 .gestion-warehouse-card > button { min-height: 32px; border: 1px solid #12385f; border-radius: 2px; background: #fff; color: #12385f; font-weight: 800; }
 .gestion-warehouse-dialog { display: flex; flex-direction: column; width: min(680px, calc(100vw - 32px)); max-height: 92vh; overflow: hidden; }
 .gestion-warehouse-dialog.is-create { width: min(560px, calc(100vw - 32px)); }
+.gestion-warehouse-dialog.is-order { width: min(540px, calc(100vw - 32px)); }
+.gestion-warehouse-order-content { gap: 12px; }
+.gestion-warehouse-order-list { display: grid; gap: 6px; max-height: min(50vh, 440px); overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.gestion-warehouse-order-list li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 44px; padding: 5px 8px; border: 1px solid #c6d3df; border-radius: 2px; background: #fff; }
+.gestion-warehouse-order-position { color: #52667c; font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; }
+.gestion-warehouse-order-name { min-width: 0; color: #12385f; font-size: 13px; font-weight: 750; overflow-wrap: anywhere; }
+.gestion-warehouse-order-name small { display: inline-block; margin-left: 8px; color: #566573; font-size: 11px; font-weight: 600; }
+.gestion-warehouse-order-controls { display: flex; gap: 4px; }
+.gestion-warehouse-order-content .gestion-warehouse-order-controls button { display: grid; place-items: center; width: 32px; min-height: 32px; padding: 0; }
+.gestion-warehouse-order-content .erp-dialog-actions-row { gap: 8px; margin: 0; padding-top: 12px; border-top: 1px solid #d9e2eb; }
+.gestion-warehouse-order-content .erp-dialog-action-confirm { border-color: #07254f; background: #07254f; color: #fff; }
+.gestion-warehouse-order-content button:focus-visible { outline: 2px solid #1f5a94; outline-offset: 2px; }
 .gestion-warehouse-dialog > header { flex: 0 0 auto; }
 .gestion-warehouse-dialog-content { min-height: 0; display: grid; gap: 14px; overflow-y: auto; padding: 18px; }
 .gestion-warehouse-dialog-content .gestion-security-form, .gestion-warehouse-store-settings { display: grid; gap: 12px; margin: 0; padding: 16px; border: 1px solid #c6d3df; border-radius: 2px; background: #fff; }

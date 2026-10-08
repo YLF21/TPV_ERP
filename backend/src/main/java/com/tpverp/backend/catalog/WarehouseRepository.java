@@ -12,6 +12,15 @@ public interface WarehouseRepository extends JpaRepository<Warehouse, UUID> {
 
     List<Warehouse> findByStoreIdOrderByNombre(UUID storeId);
 
+    List<Warehouse> findByStoreIdOrderByDisplayOrderAscIdAsc(UUID storeId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select warehouse from Warehouse warehouse where warehouse.storeId = :storeId order by warehouse.id")
+    List<Warehouse> findByStoreIdForUpdate(UUID storeId);
+
+    @Query("select coalesce(max(warehouse.displayOrder), -1) from Warehouse warehouse where warehouse.storeId = :storeId")
+    int findMaxDisplayOrder(UUID storeId);
+
     List<Warehouse> findByStoreIdAndIdIn(UUID storeId, List<UUID> ids);
 
     Optional<Warehouse> findByStoreIdAndPredeterminadoTrue(UUID storeId);

@@ -175,8 +175,8 @@ it("uses F9 for safe retirement in product management instead of exporting Excel
     session={{ username:"demo", displayName:"DEMO", permissions:["ADMIN"], accessToken:"test-token" }}
     terminalContext={{storeName:"Test",terminalCode:"TEST"}} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
   await screen.findByText("Cafe de prueba");
-  expect(screen.getByRole("button",{name:"F8 Añadir producto"})).toBeTruthy();
-  expect(screen.getByRole("button",{name:"F7 Modificar producto"})).toBeTruthy();
+  expect(screen.getByRole("button",{name:"Añadir producto F8"})).toBeTruthy();
+  expect(screen.getByRole("button",{name:"Modificar producto F7"})).toBeTruthy();
   fireEvent.keyDown(window,{key:"F9"});
   await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/products/management/product-1/retirement-impact",expect.anything()));
   expect(vi.mocked(apiRequest).mock.calls.some(([path]) => path.includes("exports") || path.endsWith("/retire"))).toBe(false);
@@ -185,8 +185,8 @@ it("uses F9 for safe retirement in product management instead of exporting Excel
 it("opens a new product with F8 from product information", async () => {
   mockProductEditing();
   const information = await openProduct("gestion", true);
-  expect(within(information).getByRole("button", {name:"F7 Modificar producto"})).toBeTruthy();
-  expect(within(information).getByRole("button", {name:"F8 Añadir producto"})).toBeTruthy();
+  expect(within(information).getByRole("button", {name:"Modificar producto F7"})).toBeTruthy();
+  expect(within(information).getByRole("button", {name:"Añadir producto F8"})).toBeTruthy();
   fireEvent.keyDown(information, {key:"F8"});
   expect(await screen.findByRole("dialog", {name:"Añadir producto"})).toBeTruthy();
 });

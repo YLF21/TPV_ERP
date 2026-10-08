@@ -5,6 +5,7 @@ import { apiRequest } from "../../../packages/app-common/src/api/client";
 import { ErpSelect } from "../../../packages/app-common/src/components/ErpSelect";
 import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
+import { ShortcutButtonLabel } from "../../../packages/app-common/src/components/ShortcutButtonLabel";
 import { sortProductsByCode } from "../../../packages/app-common/src/components/productSearchOrdering";
 import { activateModalFocusTrap, type ModalFocusRoot } from "../../../packages/app-common/src/components/modalFocusTrap";
 import { StockCountTable } from "./StockCountTable";
@@ -128,11 +129,11 @@ export function StockCountDocumentWindow({ initial, warehouses, session, locale,
     }}>
     <div className="inventory-document-bar erp-window-header">
       <strong>{c("editor")} {document?.number ?? ""}</strong>
-      <button disabled={busy || loading || readOnly} onClick={() => void run(async () => { await save(); })}>{c("save")}</button>
+      <button disabled={busy || loading || readOnly} onClick={() => void run(async () => { await save(); })}><ShortcutButtonLabel label={c("save")} shortcut="F9" /></button>
       <button disabled={busy || loading || readOnly || !lines.length} onClick={() => void run(openReview)}>{c("review")}</button>
       <button disabled={busy || (!document && !lines.length)} onClick={() => void run(() => exportFile("pdf", true))}>{c("print")}</button>
       <WindowCloseButton type="button" onLight aria-label={t("common.close")} title={c("exit")} onClick={exit} disabled={busy} />
-      <button onClick={exit} disabled={busy}>{c("exit")}</button>
+      <button onClick={exit} disabled={busy}><ShortcutButtonLabel label={c("exit")} shortcut="Esc" /></button>
     </div>
     {error && <p className="inventory-error" role="alert">{error}</p>}{notice && <p className="inventory-notice" role="status">{notice}</p>}
     <div className="inventory-document-body">

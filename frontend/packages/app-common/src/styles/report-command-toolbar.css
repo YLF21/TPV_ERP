@@ -79,8 +79,8 @@
 }
 
 .report-screen .report-output-cluster {
-  width: 260px;
-  min-width: 260px;
+  width: 330px;
+  min-width: 330px;
   display: grid;
   align-self: stretch;
   align-content: center;
@@ -127,7 +127,12 @@
 .report-screen .report-output-actions > button > span {
   min-width: 0;
   flex: 1 1 auto;
+  gap: 5px;
   white-space: nowrap;
+}
+
+.report-screen .report-output-actions > button > span > svg {
+  flex-shrink: 0;
 }
 
 .report-screen .report-output-actions > button > kbd {
@@ -330,8 +335,8 @@
   }
 
   .report-screen .report-output-cluster {
-    width: 220px;
-    min-width: 220px;
+    width: 290px;
+    min-width: 290px;
   }
 
   .report-screen .report-output-actions > button {

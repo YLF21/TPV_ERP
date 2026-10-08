@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { FilePdf, FileXls, Printer } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import { apiBaseUrl } from "../api/runtime";
 import { getHardwareBridge, type HardwareConfig } from "../hardware/hardware";
@@ -655,13 +656,13 @@ export function SalesActivityPanel({
       </>}
       <div className="sales-activity-output-actions">
         <button type="button" aria-keyshortcuts="F5" title="F5" onClick={() => void executePrint()} disabled={busy || !outputReady}>
-          <span>{t("print")}</span><kbd aria-hidden="true">F5</kbd>
+          <span><Printer size={16} weight="bold" aria-hidden="true" focusable="false" />{t("print")}</span><kbd aria-hidden="true">F5</kbd>
         </button>
         <button type="button" aria-keyshortcuts="F6" title="F6" onClick={() => void exportExcel()} disabled={busy || !outputReady}>
-          <span>{t("excel")}</span><kbd aria-hidden="true">F6</kbd>
+          <span><FileXls size={16} weight="bold" aria-hidden="true" focusable="false" />{t("excel")}</span><kbd aria-hidden="true">F6</kbd>
         </button>
         <button type="button" aria-keyshortcuts="F7" title="F7" onClick={() => void exportPdf()} disabled={busy || !outputReady}>
-          <span>{t("pdf")}</span><kbd aria-hidden="true">F7</kbd>
+          <span><FilePdf size={16} weight="bold" aria-hidden="true" focusable="false" />{t("pdf")}</span><kbd aria-hidden="true">F7</kbd>
         </button>
       </div>
     </div>;

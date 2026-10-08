@@ -4,6 +4,21 @@ import type { ErpSelectOption } from "./ErpSelect";
 export type ReportMultiFilterKey = "user" | "customer" | "supplier" | "payment" | "terminal" | "status" | "warehouse";
 export type ReportMultiFilters = Partial<Record<ReportMultiFilterKey, readonly string[]>>;
 type Row = Record<string, string>;
+type WarehouseCatalogueEntry = { id: string; name?: string | null; nombre?: string | null };
+
+export function orderReportWarehouseOptions(options: readonly ErpSelectOption[],
+  catalogue: readonly WarehouseCatalogueEntry[]): ErpSelectOption[] {
+  const rankByValue = new Map<string, number>();
+  catalogue.forEach((warehouse, rank) => {
+    for (const value of [warehouse.id, warehouse.name, warehouse.nombre]) {
+      const key = value?.trim().toLocaleLowerCase();
+      if (key && !rankByValue.has(key)) rankByValue.set(key, rank);
+    }
+  });
+  return options.map((option, index) => ({ option, index,
+    rank: rankByValue.get(option.value.trim().toLocaleLowerCase()) ?? catalogue.length
+  })).sort((a, b) => a.rank - b.rank || a.index - b.index).map(({ option }) => option);
+}
 
 const paymentOrder = ["EFECTIVO", "TARJETA", "VALE", "salesReport.payment.pending", "TRANSFERENCIA", "DESCUENTO",
   "salesReport.payment.memberBalance", "salesReport.payment.returnCredit"];

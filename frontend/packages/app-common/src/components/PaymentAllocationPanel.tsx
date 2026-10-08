@@ -1098,7 +1098,7 @@ export function PaymentAllocationPanel({
             {clearVisible && <button type="button" className="clear"
               disabled={busy || voucherResolving || integratedPaymentLocked
                 || (session.allocations.length === 0 && memberBalanceCents === 0 && checkoutDiscountCents === 0)}
-              onClick={onClear}><kbd>F12</kbd>{copy.clear}</button>}
+              onClick={onClear}><span>{copy.clear}</span><kbd>F12</kbd></button>}
             {acceptVisible && <button type="button" className="primary erp-dialog-action-confirm"
               disabled={busy || voucherResolving || integratedPaymentBlocksAccept || (acceptAddsCurrentPayment
                 ? !allowAdd || compensationRequired || remaining <= 0

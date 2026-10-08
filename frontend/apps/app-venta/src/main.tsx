@@ -11,6 +11,8 @@ import {
   loadSaleInterfaceConfiguration,
   type SaleInterfaceMode
 } from "../../../packages/app-common/src/components/saleInterfacePreferences";
+import "../../../packages/app-common/src/styles/ShortcutButtons.css";
+import "../../../packages/app-common/src/styles/DesktopWindowCorners.css";
 import "../../../packages/app-common/src/styles/tpv.css";
 import type { LocaleCode, TerminalContext, UserSession } from "../../../packages/app-common/src/types";
 import { useSaleUserLocalePreference } from "./saleUserLocale";
@@ -575,7 +577,14 @@ export function App() {
   if (screen === "connection" && window.tpvDesktop?.backendConnection && terminalContext
       && (!session || hasPermission(session, "CONFIGURACION_TERMINAL"))) {
     return <TerminalConnectionScreen locale={locale} identity={terminalContext} onReady={setTerminalContext}
-      onBack={() => setScreen(session ? "settings" : "home")} />;
+      onBack={() => setScreen("home")}
+      settingsShell={session ? {
+        app: "venta", session, terminalContext,
+        onNavigate: openSettingsDestination,
+        onBack: () => setScreen("home"),
+        onLocaleChange: handleLocaleChange,
+        onLogout: handleLogout,
+      } : undefined} />;
   }
 
   if (!session) {

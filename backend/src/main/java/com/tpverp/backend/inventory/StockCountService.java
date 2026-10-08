@@ -66,7 +66,7 @@ public class StockCountService {
     public StockCountResources resources() {
         var storeId = organization.currentStore().getId();
         return new StockCountResources(
-                warehouses.findByStoreIdOrderByNombre(storeId).stream()
+                warehouses.findByStoreIdOrderByDisplayOrderAscIdAsc(storeId).stream()
                         .map(value -> new StockCountResources.Warehouse(value.getId(), value.getName(), value.isActive())).toList(),
                 products.findByStoreIdOrderByNombre(storeId).stream()
                         .map(value -> new StockCountResources.Product(value.getId(), value.getCode(), value.getBarcode(),

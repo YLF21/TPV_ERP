@@ -108,7 +108,7 @@ describe("WarehouseDocumentDialog", () => {
 
     expect(html).toContain("Salida almacén");
     expect(html).toContain("Archivo");
-    expect(html).toContain("Guardar (F9)");
+    expect(html).toMatch(/<span>Guardar<\/span>\s*<kbd>F9<\/kbd>/);
     expect(html).toContain("Salir (Esc)");
     expect(html).toContain("Cliente/destino");
     expect(html).toContain("Descuento total del documento %");
@@ -232,7 +232,7 @@ describe("WarehouseDocumentDialog", () => {
       />
     );
 
-    expect(html).toContain("Guardar (F9)");
+    expect(html).toMatch(/<span>Guardar<\/span>\s*<kbd>F9<\/kbd>/);
     expect(html).toContain("Confirmar");
     expect(html).toContain('disabled=""');
   });
@@ -270,7 +270,7 @@ describe("WarehouseDocumentDialog", () => {
     expect(apiRequest).not.toHaveBeenCalled();
   });
 
-  it.each(["Guardar (F9)", "Confirmar"])("retains the draft and identifies a save conflict from %s without confirming", async (action) => {
+  it.each(["Guardar F9", "Confirmar"])("retains the draft and identifies a save conflict from %s without confirming", async (action) => {
     vi.mocked(apiRequest).mockRejectedValue(new ApiError("internal SQL detail", 409, { code: "DATA_INTEGRITY_CONFLICT" }));
     const onConfirmed = vi.fn();
     const { getByRole, findByText } = render(
@@ -315,12 +315,12 @@ describe("WarehouseDocumentDialog", () => {
       onClose={vi.fn()} onConfirmed={vi.fn()} /></StrictMode>);
     fireEvent.change(view.getByRole("textbox", { name: "Comentarios" }), { target: { value: "Revisado" } });
     fireEvent.change(view.getByRole("textbox", { name: "Número externo" }), { target: { value: "EXT-123" } });
-    fireEvent.click(view.getByRole("button", { name: "Guardar (F9)" }));
+    fireEvent.click(view.getByRole("button", { name: "Guardar F9" }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/warehouse-inputs/input-1", expect.objectContaining({
       body: expect.objectContaining({ expectedExcelImportSnapshotToken: "WXP1.D.original", concept: "Revisado", externalNumber: "EXT-123" })
     })));
-    await waitFor(() => expect((view.getByRole("button", { name: "Guardar (F9)" }) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(view.getByRole("button", { name: "Guardar (F9)" }));
+    await waitFor(() => expect((view.getByRole("button", { name: "Guardar F9" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(view.getByRole("button", { name: "Guardar F9" }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/warehouse-inputs/input-1", expect.objectContaining({
       body: expect.objectContaining({ expectedExcelImportSnapshotToken: "WXP1.D.saved" })
     })));
@@ -892,8 +892,8 @@ describe("WarehouseDocumentDialog", () => {
     const inputs = lineDialog.querySelectorAll<HTMLInputElement>("input");
     fireEvent.change(inputs[0], { target: { value: "2" } });
     fireEvent.click(getAllByRole("button", { name: "Guardar" }).at(-1)!);
-    await waitFor(() => expect((getByRole("button", { name: "Guardar (F9)" }) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(getByRole("button", { name: "Guardar (F9)" }));
+    await waitFor(() => expect((getByRole("button", { name: "Guardar F9" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(getByRole("button", { name: "Guardar F9" }));
     await waitFor(() => expect(container.textContent).toContain("No se ha eliminado la actualización pendiente del proveedor"));
     expect(calls.some((call) => call.path === "/warehouse-inputs/input-1")).toBe(false);
   });
@@ -1275,7 +1275,7 @@ describe("WarehouseDocumentDialog", () => {
       />
     );
 
-    fireEvent.click(await waitFor(() => getByRole("button", { name: "Save (F9)" })));
+    fireEvent.click(await waitFor(() => getByRole("button", { name: "Save F9" })));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledOnce());
     fireEvent.click(getByRole("button", { name: "Print" }));
 

@@ -1,5 +1,9 @@
 /* Tabla ERP Azul Clásica, limited to APP VENTA's live cart.
    Keep its row height, thumbnails, wrapping, column layout and operational cues. */
+.sale-ticket-lines.sale-cart-table-scroll:has(> .sale-cart-table--classic) {
+  scrollbar-gutter: auto;
+}
+
 .sale-cart-table.sale-cart-table--classic {
   color: #172e4c;
   font-family: Inter, "Segoe UI", Arial, sans-serif;
@@ -8,7 +12,7 @@
 
 .sale-cart-table--classic thead th {
   box-sizing: border-box;
-  height: 36px;
+  height: 48px;
   padding: 0 8px;
   border-right-color: #d9e1e9;
   border-bottom: 1px solid #aebfd2;

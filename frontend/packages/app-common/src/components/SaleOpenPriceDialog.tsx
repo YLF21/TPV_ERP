@@ -76,7 +76,7 @@ export function SaleOpenPriceDialog({
       >
         <header>
           <h2 id="sale-open-price-title">{labels.title}</h2>
-          <WindowCloseButton type="button" aria-label={labels.cancel} onClick={onCancel} onLight desktopOnly />
+          <WindowCloseButton type="button" aria-label={labels.cancel} onClick={onCancel} desktopOnly />
         </header>
         <form onSubmit={submit}>
           <p><span>{labels.product}</span><strong>{productName}</strong></p>

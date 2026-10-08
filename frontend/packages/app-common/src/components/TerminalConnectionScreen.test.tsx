@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { connectionUrl, TerminalConnectionScreen } from "./TerminalConnectionScreen";
@@ -36,6 +37,60 @@ describe("terminal connection address", () => {
 });
 
 describe("terminal linking restart", () => {
+  it("embeds connection after support in the shared settings navigation", async () => {
+    const load = vi.fn().mockResolvedValue(unlinkedLoad);
+    setBridge(load);
+    const onNavigate = vi.fn();
+    render(<TerminalConnectionScreen locale="es" identity={sharedIdentity} onReady={vi.fn()}
+      settingsShell={{app: "venta", session: {username: "admin", displayName: "ADMIN", permissions: ["ADMIN"]},
+        terminalContext: sharedIdentity, onNavigate, onBack: vi.fn(), onLocaleChange: vi.fn()}} />);
+    expect(await screen.findByDisplayValue("store.example")).toBeVisible();
+    const navigation = screen.getByRole("complementary", {name: "Secciones"});
+    const buttons = Array.from(navigation.querySelectorAll("button"));
+    expect(buttons.at(-2)).toHaveTextContent("CONFIGURAR CONEXIÓN");
+    expect(screen.getByText("Conexión", {selector: ".sale-settings-nav-heading"})).toBeVisible();
+    expect(screen.getByRole("button", {name: "CONFIGURAR CONEXIÓN"})).toHaveAttribute("aria-current", "page");
+    expect(document.querySelector(".terminal-link-screen")).toBeNull();
+    expect(screen.getAllByRole("button", {name: "Volver"})).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", {name: "Impresoras"}));
+    expect(onNavigate).toHaveBeenCalledWith("printers");
+  });
+
+  it("blocks shared navigation while a connection operation is running", async () => {
+    let resolveDiscovery!: (result: unknown) => void;
+    setBridge(vi.fn().mockResolvedValue(unlinkedLoad), {
+      discover: vi.fn().mockReturnValue(new Promise(resolve => {resolveDiscovery = resolve;}))
+    });
+    const onBack = vi.fn();
+    const onNavigate = vi.fn();
+    render(<TerminalConnectionScreen locale="es" identity={sharedIdentity} onReady={vi.fn()}
+      settingsShell={{app: "venta", session: {username: "admin", displayName: "ADMIN", permissions: ["ADMIN"]},
+        terminalContext: sharedIdentity, onNavigate, onBack, onLocaleChange: vi.fn()}} />);
+    await screen.findByDisplayValue("store.example");
+    fireEvent.click(screen.getByRole("button", {name: "Buscar servidores"}));
+    expect(screen.getByRole("button", {name: "Volver"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Visualización"})).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", {name: "Volver"}));
+    window.dispatchEvent(new Event("tpv-sale-settings-back", {cancelable: true}));
+    expect(onBack).not.toHaveBeenCalled();
+    expect(onNavigate).not.toHaveBeenCalled();
+    await act(async () => {resolveDiscovery({ok: true, servers: []});});
+    expect(screen.getByRole("button", {name: "Volver"})).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", {name: "Volver"}));
+    expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  it("keeps shared navigation blocked when a restart is required", async () => {
+    setBridge(vi.fn().mockResolvedValue({...unlinkedLoad, restartRequired: true}));
+    render(<TerminalConnectionScreen locale="es" identity={sharedIdentity} onReady={vi.fn()}
+      settingsShell={{app: "venta", session: {username: "admin", displayName: "ADMIN", permissions: ["ADMIN"]},
+        terminalContext: sharedIdentity, onNavigate: vi.fn(), onBack: vi.fn(), onLocaleChange: vi.fn()}} />);
+    await screen.findByDisplayValue("store.example");
+    expect(screen.getByRole("button", {name: "Volver"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Impresoras"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Reiniciar aplicación"})).toBeEnabled();
+  });
+
   it("explains how to migrate a link created by the other desktop app", async () => {
     window.tpvDesktop = { closeApplication: vi.fn(), backendConnection: {
       load: vi.fn().mockResolvedValue({ ok: false, code: "LINKING_STORAGE_MIGRATION_REQUIRED", message: "internal" }),

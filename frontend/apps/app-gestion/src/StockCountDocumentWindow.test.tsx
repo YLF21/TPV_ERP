@@ -65,8 +65,8 @@ describe("StockCountDocumentWindow", () => {
     expect(coffee).toHaveAttribute("placeholder", "Pendiente");
     expect(tea).toHaveValue("0");
     expect(screen.getByText("1 / 2")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Guardar borrador (F9)" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Guardar borrador (F9)" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Guardar borrador F9" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Guardar borrador F9" }));
     await waitFor(() => expect(api.saveStockCountDraft).toHaveBeenCalledWith("inventory-1", {
       expectedVersion: 2, documentDate: "2026-09-24", notes: "Recuento",
       lines: [
@@ -124,21 +124,21 @@ describe("StockCountDocumentWindow", () => {
   it("makes confirmed documents read-only and asks before discarding draft edits", async () => {
     const confirmed = { ...draft, status: "CONFIRMED" as const };
     const { onClose } = mount(confirmed);
-    expect(screen.getByRole("button", { name: "Guardar borrador (F9)" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Guardar borrador F9" })).toBeDisabled();
     expect(screen.getByRole("textbox", { name: "Cantidad contada CAF" })).toBeDisabled();
     expect(screen.queryByRole("combobox", { name: "Buscar producto" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Salir (Esc)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salir Esc" }));
     expect(onClose).toHaveBeenCalledOnce();
     cleanup();
 
     const draftWindow = mount();
     fireEvent.change(screen.getByRole("textbox", { name: "Notas" }), { target: { value: "Nuevo recuento" } });
-    fireEvent.click(screen.getByRole("button", { name: "Salir (Esc)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salir Esc" }));
     const prompt = screen.getByRole("alertdialog", { name: "Cambios sin guardar" });
     expect(draftWindow.onClose).not.toHaveBeenCalled();
     fireEvent.click(within(prompt).getByRole("button", { name: "Seguir editando" }));
     expect(screen.queryByRole("alertdialog", { name: "Cambios sin guardar" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Salir (Esc)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salir Esc" }));
     fireEvent.click(within(screen.getByRole("alertdialog", { name: "Cambios sin guardar" })).getByRole("button", { name: "Descartar y salir" }));
     expect(draftWindow.onClose).toHaveBeenCalledOnce();
   });

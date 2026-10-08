@@ -1415,6 +1415,7 @@ export class MessagesEs {
     "settings.group.personal": "Mis preferencias",
     "settings.group.workstation": "Este puesto",
     "settings.group.support": "Soporte",
+    "settings.group.connection": "Conexión",
     "settings.account": "Mi cuenta",
     "settings.account.subtitle": "Información del usuario que ha iniciado sesión",
     "settings.accountSecurity": "Mi cuenta y seguridad",

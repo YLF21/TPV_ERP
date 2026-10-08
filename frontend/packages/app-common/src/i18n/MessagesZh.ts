@@ -1406,6 +1406,7 @@ export class MessagesZh {
     "settings.group.personal": "我的偏好",
     "settings.group.workstation": "此工作站",
     "settings.group.support": "支持",
+    "settings.group.connection": "连接",
     "settings.account": "我的账户",
     "settings.account.subtitle": "当前登录用户的信息",
     "settings.accountSecurity": "我的账户与安全",

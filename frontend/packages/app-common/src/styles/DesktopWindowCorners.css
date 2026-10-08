@@ -1,0 +1,55 @@
+/* Imported only by the two desktop apps, including dialogs portalled to body.
+   The layer keeps window-specific !important rules from restoring square corners. */
+@layer erp-desktop-window-corners {
+  :is(
+    dialog, .filter-dialog, .shutdown-dialog, .document-activity-dialog,
+    .warehouse-document-dialog, .bulk-apply-dialog, .cash-payment-dialog,
+    [role="dialog"]:not([class*="overlay"]):not([class*="backdrop"]),
+    [role="alertdialog"]:not([class*="overlay"]):not([class*="backdrop"])
+  ) {
+    --erp-window-radius: 6px;
+    --tpv-v3-radius: 6px;
+    border-radius: var(--erp-window-radius) !important;
+  }
+
+  :is(
+    dialog, .filter-dialog, .shutdown-dialog, .document-activity-dialog,
+    .warehouse-document-dialog, .bulk-apply-dialog, .cash-payment-dialog,
+    [role="dialog"]:not([class*="overlay"]):not([class*="backdrop"]),
+    [role="alertdialog"]:not([class*="overlay"]):not([class*="backdrop"])
+  ) > :is(header, .filter-header, .erp-window-header) {
+    border-radius: 5px 5px 0 0 !important;
+  }
+
+  :is(
+    dialog, .filter-dialog, .shutdown-dialog, .document-activity-dialog,
+    .warehouse-document-dialog, .bulk-apply-dialog, .cash-payment-dialog,
+    [role="dialog"]:not([class*="overlay"]):not([class*="backdrop"]),
+    [role="alertdialog"]:not([class*="overlay"]):not([class*="backdrop"])
+  ) :is(
+    button:not(.table-layout-sort-button):not(.table-layout-drag-handle):not(.table-layout-column-resizer),
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    textarea, select, fieldset,
+    [class$="-panel"], [class*="-panel "],
+    [class$="-card"], [class*="-card "],
+    [class$="-section"], [class*="-section "],
+    .gestion-security-form, .gestion-warehouse-store-settings,
+    .gestion-warehouse-balance,
+    .stock-product-information-identity, .stock-product-information-image,
+    .stock-product-supplier
+  ) {
+    border-radius: var(--erp-window-radius) !important;
+  }
+
+  .stock-product-information-section > h3 {
+    border-radius: 5px 5px 0 0 !important;
+  }
+
+  :is(
+    dialog, [role="dialog"], [role="alertdialog"], .filter-dialog,
+    .shutdown-dialog, .document-activity-dialog, .warehouse-document-dialog,
+    .cash-payment-dialog
+  ) > :is(footer, .filter-actions) {
+    border-radius: 0 0 5px 5px !important;
+  }
+}

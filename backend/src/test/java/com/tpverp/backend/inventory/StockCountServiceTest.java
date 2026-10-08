@@ -84,7 +84,7 @@ class StockCountServiceTest {
         var product = mockProduct();
         var family = Family.general(storeId);
         when(product.getFamilyId()).thenReturn(family.getId());
-        when(warehouses.findByStoreIdOrderByNombre(storeId)).thenReturn(List.of(warehouse));
+        when(warehouses.findByStoreIdOrderByDisplayOrderAscIdAsc(storeId)).thenReturn(List.of(warehouse));
         when(products.findByStoreIdOrderByNombre(storeId)).thenReturn(List.of(product));
         when(families.findByStoreIdOrderByFamilyCodeAscIdAsc(storeId)).thenReturn(List.of(family));
 

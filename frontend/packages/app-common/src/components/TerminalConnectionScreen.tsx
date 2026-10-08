@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode, TerminalContext } from "../types";
+import { SaleSettingsShell, type SaleSettingsShellProps } from "./SaleSettingsShell";
 import "./TerminalConnectionScreen.css";
 
 type Bridge = NonNullable<NonNullable<Window["tpvDesktop"]>["backendConnection"]>;
@@ -27,9 +28,10 @@ function splitAddress(value?: string) {
   } catch { return { host: "", port: "" }; }
 }
 
-export function TerminalConnectionScreen({ locale, identity, onReady, onBack }: {
+export function TerminalConnectionScreen({ locale, identity, onReady, onBack, settingsShell }: {
   locale: LocaleCode; identity: TerminalContext | null;
   onReady: (identity: TerminalContext) => void; onBack?: () => void;
+  settingsShell?: Omit<SaleSettingsShellProps, "locale" | "active" | "heading" | "subtitle" | "children" | "navigationDisabled">;
 }) {
   const t = createTranslator(locale);
   const bridge = window.tpvDesktop?.backendConnection;
@@ -261,10 +263,10 @@ export function TerminalConnectionScreen({ locale, identity, onReady, onBack }: 
   const legacySlot = legacyIdentity && legacyIdentity.terminalCode !== "SERVIDOR"
     ? probe?.server.slots.find(slot => slot.terminalId === legacyIdentity.terminalId && !slot.outOfQuota) : undefined;
   const linkedNeedsRestart = !identity && !!linkedTerminal && restartRequired && link?.status !== "RELEASED";
-  return <main className="settings-screen terminal-link-screen"><section className="settings-card terminal-link-panel">
-    <header><h1>{t("terminalLink.title")}</h1><p>{identity || linkedInstallation ? t("terminalLink.addressHelp") : t("terminalLink.setup")}</p></header>
+  const panel = <section className={`settings-card terminal-link-panel${settingsShell ? " terminal-link-panel--embedded" : ""}`}>
+    {!settingsShell && <header><h1>{t("terminalLink.title")}</h1><p>{identity || linkedInstallation ? t("terminalLink.addressHelp") : t("terminalLink.setup")}</p></header>}
     <div className="terminal-link-toolbar"><button type="button" disabled={busy} onClick={() => void discover()}>{t("terminalLink.search")}</button>
-      {onBack && <button type="button" disabled={busy || restartRequired} onClick={onBack}>{t("common.back")}</button>}</div>
+      {onBack && !settingsShell && <button type="button" disabled={busy || restartRequired} onClick={onBack}>{t("common.back")}</button>}</div>
     {servers.length > 0 && <label>{t("terminalLink.backend")}<select value="" onChange={event => {
       const address = splitAddress(event.target.value); edited.current.host = true; edited.current.port = true;
       setHost(address.host); setPort(address.port); setProbe(null);
@@ -309,5 +311,11 @@ export function TerminalConnectionScreen({ locale, identity, onReady, onBack }: 
     {identity && restartRequired && <button type="button" disabled={busy} onClick={() => void restart()}>{t("terminalLink.restart")}</button>}
     {!identity && restartRequired && <button type="button" disabled={busy} onClick={() => void restart()}>{t("terminalLink.restart")}</button>}
     {error && <p role="alert" className="terminal-link-error">{error}</p>}
-  </section></main>;
+  </section>;
+  return settingsShell ? <SaleSettingsShell {...settingsShell} locale={locale} active="connection"
+    heading={t("terminalLink.title")}
+    subtitle={t(identity || linkedInstallation ? "terminalLink.addressHelp" : "terminalLink.setup")}
+    navigationDisabled={busy || restartRequired}>
+    {panel}
+  </SaleSettingsShell> : <main className="settings-screen terminal-link-screen">{panel}</main>;
 }

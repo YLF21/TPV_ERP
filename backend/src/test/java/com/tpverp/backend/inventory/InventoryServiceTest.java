@@ -127,13 +127,13 @@ class InventoryServiceTest {
         when(organization.currentStore()).thenReturn(authenticatedStore);
         var firstStoreWarehouse = new Warehouse(firstStoreId, "PRIMERA");
         var authenticatedWarehouse = new Warehouse(authenticatedStoreId, "AUTENTICADO");
-        when(warehouseRepository.findByStoreIdOrderByNombre(any()))
+        when(warehouseRepository.findByStoreIdOrderByDisplayOrderAscIdAsc(any()))
                 .thenAnswer(invocation -> firstStoreId.equals(invocation.getArgument(0))
                         ? List.of(firstStoreWarehouse)
                         : List.of(authenticatedWarehouse));
 
         assertThat(service.stock(null, null)).isEmpty();
-        verify(warehouseRepository).findByStoreIdOrderByNombre(authenticatedStoreId);
+        verify(warehouseRepository).findByStoreIdOrderByDisplayOrderAscIdAsc(authenticatedStoreId);
     }
 
     @Test

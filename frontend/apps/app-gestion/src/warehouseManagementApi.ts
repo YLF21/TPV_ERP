@@ -8,11 +8,20 @@ export type WarehouseManagementRecord = {
   notes: string | null;
   defaultWarehouse: boolean;
   active: boolean;
+  displayOrder: number;
   version: number;
 };
 
 export function loadManagedWarehouses(token: string) {
   return apiRequest<WarehouseManagementRecord[]>("/warehouses", { token });
+}
+
+export type WarehouseOrderInput = { warehouses: Array<Pick<WarehouseManagementRecord, "id" | "version">> };
+
+export function saveManagedWarehouseOrder(input: WarehouseOrderInput, token: string) {
+  return apiRequest<WarehouseManagementRecord[]>("/warehouses/order", {
+    token, method: "PUT", body: input
+  });
 }
 
 export type WarehouseDetailsInput = { name: string; address: string | null; notes: string };

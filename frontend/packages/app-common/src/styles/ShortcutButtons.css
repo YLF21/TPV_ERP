@@ -1,0 +1,30 @@
+/* Desktop-only: preserve button layouts and reserve the separator for shortcuts. */
+@layer erp-shortcut-buttons {
+  button:has(> kbd):not(.home-action, .warehouse-document-partner-card) {
+    padding-inline-end: 0 !important;
+  }
+
+  button:not(.home-action) > kbd {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    align-self: stretch !important;
+    flex-shrink: 0;
+    min-width: 31px;
+    padding: 0 6px !important;
+    margin-inline: 0 !important;
+    border: 0 !important;
+    border-inline-start: 1px solid color-mix(in srgb, currentColor 35%, transparent) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    color: inherit !important;
+    box-shadow: none !important;
+    white-space: nowrap;
+  }
+
+  :is(.management-record-actions, .stock-detail-tabs, .stock-detail-toolbar) > button:has(> kbd) {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 8px;
+  }
+}

@@ -10,6 +10,9 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.WA
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
@@ -36,9 +39,18 @@ public class WarehouseController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + STOCK_TRANSFER + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + STOCK_TRANSFER + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + WAREHOUSES_MANAGE + "','" + GESTION_VENTAS + "','" + VENTA + "')")
     public List<WarehouseView> list() {
-        var warehouses = service.warehouses();
+        return views(service.warehouses());
+    }
+
+    @PutMapping("/order")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSES_MANAGE + "','" + GESTION_ALMACEN + "')")
+    public List<WarehouseView> reorder(@Valid @RequestBody OrderRequest request) {
+        return views(service.reorderWarehouses(request.warehouses()));
+    }
+
+    private List<WarehouseView> views(List<Warehouse> warehouses) {
         if (warehouses.stream().noneMatch(Warehouse::isDefaultWarehouse)) {
             return warehouses.stream().map(warehouse -> WarehouseView.from(warehouse, null)).toList();
         }
@@ -78,12 +90,17 @@ public class WarehouseController {
         public NameRequest(String name) { this(name, null, null); }
     }
 
+    public record OrderRequest(@NotEmpty List<@NotNull @Valid OrderItem> warehouses) { }
+
+    public record OrderItem(@NotNull UUID id, @NotNull @PositiveOrZero Long version) { }
+
     public record WarehouseView(UUID id, UUID storeId, String name, String address, String notes,
-                                boolean defaultWarehouse, boolean active) {
+                                boolean defaultWarehouse, boolean active, int displayOrder, long version) {
         static WarehouseView from(Warehouse warehouse, String storeAddress) {
             return new WarehouseView(warehouse.getId(), warehouse.getStoreId(), warehouse.getName(),
                     warehouse.isDefaultWarehouse() ? storeAddress : warehouse.getAddress(),
-                    warehouse.getNotes(), warehouse.isDefaultWarehouse(), warehouse.isActive());
+                    warehouse.getNotes(), warehouse.isDefaultWarehouse(), warehouse.isActive(),
+                    warehouse.getDisplayOrder(), warehouse.getVersion());
         }
     }
 }

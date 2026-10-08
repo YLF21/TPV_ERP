@@ -1010,7 +1010,7 @@ describe("SalesReportScreen", () => {
       />
     );
 
-    expect(html).toContain('class="report-screen gestion-embedded-module report-density-comfortable"');
+    expect(html).toContain('class="report-screen gestion-embedded-module report-screen--desktop report-density-comfortable"');
     expect(html).toContain("Tickets");
     expect(html).not.toContain('class="report-nav"');
     expect(html).not.toContain('class="report-brand-back"');
@@ -1994,6 +1994,29 @@ describe("SalesReportScreen", () => {
     await waitFor(() => {
       expect(request.mock.calls.filter(([path]) => String(path).startsWith("/warehouse-outputs"))).toHaveLength(2);
     });
+  });
+
+  it("loads warehouse order for purchase reports without blocking them when catalogue access fails", async () => {
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/warehouses") return Promise.reject(new Error("sin permiso de almacenes"));
+      if (path.startsWith("/document-reports/date-options")) {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-10-08" });
+      }
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+    render(<SalesReportScreen
+      app="venta"
+      locale="es"
+      session={{ ...session, permissions: ["ADMIN"], accessToken: "token" }}
+      terminalContext={terminalContext}
+      request={request}
+      initialReport="salesReport.inputInvoices"
+      onBack={vi.fn()}
+      onLocaleChange={vi.fn()}
+    />);
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/warehouses", { token: "token" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
   });
 
   it("exposes direct F5/F6/F7 actions and disables F5 without a selected document", async () => {

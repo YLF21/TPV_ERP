@@ -1,5 +1,6 @@
 import { WindowCloseButton } from "./WindowCloseButton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowClockwise } from "@phosphor-icons/react";
 import {
   getVerifactuPosQueue,
   getVerifactuPosStatus,
@@ -251,9 +252,8 @@ export function VerifactuPosIndicator({
         >
           <header className="verifactu-pos__header">
             <div>
-              <p className="verifactu-pos__eyebrow">{t("verifactu.pos.terminalQueue")}</p>
               <h2 id="verifactu-pos-title">VERI*FACTU</h2>
-              <p id="verifactu-pos-description">{t("verifactu.pos.readOnlyDescription")}</p>
+              <p className="verifactu-pos__eyebrow">{t("verifactu.pos.terminalQueue")}</p>
             </div>
             <WindowCloseButton
               ref={closeRef}
@@ -265,6 +265,10 @@ export function VerifactuPosIndicator({
               ×
             </WindowCloseButton>
           </header>
+
+          <p id="verifactu-pos-description" className="verifactu-pos__description">
+            {t("verifactu.pos.readOnlyDescription")}
+          </p>
 
           <div className={`verifactu-pos__summary verifactu-pos__summary--${presentationStatus.toLowerCase()}`}>
             <span className="verifactu-pos__summary-mark" aria-hidden="true" />
@@ -283,9 +287,27 @@ export function VerifactuPosIndicator({
               disabled={statusLoading || queueLoading}
               onClick={() => void load(true)}
             >
+              <ArrowClockwise size={18} aria-hidden="true" />
               {t("verifactu.pos.refresh")}
             </button>
           </div>
+
+          {status && (
+            <dl className="verifactu-pos__counts">
+              <div>
+                <dt>{t(statusKeys.PENDIENTES)}</dt>
+                <dd>{status.pendingCount}</dd>
+              </div>
+              <div>
+                <dt>{t(statusKeys.ENVIANDO)}</dt>
+                <dd>{status.sendingCount}</dd>
+              </div>
+              <div>
+                <dt>{t(statusKeys.REQUIERE_REVISION)}</dt>
+                <dd>{status.reviewRequiredCount}</dd>
+              </div>
+            </dl>
+          )}
 
           {queueError && (
             <p className="verifactu-pos__notice verifactu-pos__notice--error" role="alert">
@@ -313,17 +335,21 @@ export function VerifactuPosIndicator({
                   {sortedQueue.map((item) => (
                     <tr key={`${item.documentType}:${item.documentNumber}:${item.updatedAt}`}>
                       <td>
-                        <strong>{item.documentNumber}</strong>
-                        <span>{item.documentType}</span>
+                        <div className="verifactu-pos__document">
+                          <strong>{item.documentNumber}</strong>
+                          <span>{item.documentType}</span>
+                        </div>
                       </td>
                       <td>{dateFormatter.format(new Date(item.updatedAt))}</td>
                       <td>
-                        <span className={`verifactu-pos__state verifactu-pos__state--${item.submissionStatus.toLowerCase()}`}>
-                          {t(queueStatusKeys[item.submissionStatus])}
-                        </span>
-                        {item.operationalMessageCode && (
-                          <small>{t("verifactu.pos.reviewInManagement")}</small>
-                        )}
+                        <div className="verifactu-pos__submission">
+                          <span className={`verifactu-pos__state verifactu-pos__state--${item.submissionStatus.toLowerCase()}`}>
+                            {t(queueStatusKeys[item.submissionStatus])}
+                          </span>
+                          {item.operationalMessageCode && (
+                            <small>{t("verifactu.pos.reviewInManagement")}</small>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

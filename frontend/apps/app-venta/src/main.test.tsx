@@ -49,8 +49,14 @@ vi.mock("../../../packages/app-common/src/components/LoginScreen", () => ({
 }));
 
 vi.mock("../../../packages/app-common/src/components/TerminalConnectionScreen", () => ({
-  TerminalConnectionScreen: ({ onBack }: { onBack?: () => void }) => <section aria-label="connection configuration">
-    {onBack && <button onClick={onBack}>Back to offline login</button>}
+  TerminalConnectionScreen: ({ onBack, settingsShell }: { onBack?: () => void; settingsShell?: {
+    onNavigate: (destination: "account") => void; onBack: () => void;
+  } }) => <section aria-label="connection configuration">
+    <output aria-label="connection layout">{settingsShell ? "settings" : "standalone"}</output>
+    {settingsShell ? <>
+      <button onClick={() => settingsShell.onNavigate("account")}>Open connection account</button>
+      <button onClick={settingsShell.onBack}>Back from connection</button>
+    </> : onBack && <button onClick={onBack}>Back to offline login</button>}
   </section>
 }));
 
@@ -115,17 +121,20 @@ vi.mock("../../../packages/app-common/src/components/SettingsScreen", () => ({
     onOpenHardware,
     onOpenDocumentPrinting,
     onOpenDiagnostics,
+    onOpenConnection,
   }: {
     initialDestination?: string;
     onOpenHardware?: () => void;
     onOpenDocumentPrinting?: () => void;
     onOpenDiagnostics?: () => void;
+    onOpenConnection?: () => void;
   }) => (
     <section aria-label="settings">
       <output aria-label="settings destination">{initialDestination}</output>
       <button type="button" onClick={onOpenHardware}>Open devices</button>
       <button type="button" onClick={onOpenDocumentPrinting}>Open printing</button>
       <button type="button" onClick={onOpenDiagnostics}>Open diagnostics</button>
+      <button type="button" onClick={onOpenConnection}>Open connection</button>
     </section>
   ),
 }));
@@ -447,6 +456,25 @@ describe("APP VENTA locale wiring", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Etiqueta enviada a la impresora");
   });
 
+  it("keeps authenticated connection configuration in the shared settings layout", async () => {
+    loginSession = {...session, permissions: ["CONFIGURACION_TERMINAL"]};
+    vi.stubGlobal("tpvDesktop", {
+      terminalIdentity: {load: vi.fn().mockResolvedValue({ok: true, identity: {
+        storeName: "TIENDA DEMO", terminalCode: "001", terminalId: "terminal-real", terminalCredential: "protected-secret"
+      }})}, backendConnection: {}
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", {name: "Log in"}));
+    fireEvent.click(screen.getByRole("button", {name: "Open settings"}));
+    fireEvent.click(await screen.findByRole("button", {name: "Open connection"}));
+    expect(await screen.findByLabelText("connection layout")).toHaveTextContent("settings");
+    fireEvent.click(screen.getByRole("button", {name: "Open connection account"}));
+    expect(await screen.findByLabelText("settings destination")).toHaveTextContent("account");
+    fireEvent.click(screen.getByRole("button", {name: "Open connection"}));
+    fireEvent.click(await screen.findByRole("button", {name: "Back from connection"}));
+    expect(await screen.findByLabelText("home")).toBeVisible();
+  });
+
   it("does not mount protected terminal screens without CONFIGURACION_TERMINAL", async () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
@@ -456,6 +484,8 @@ describe("APP VENTA locale wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open devices" }));
     expect(await screen.findByLabelText("settings")).toBeVisible();
     expect(screen.queryByLabelText("hardware settings")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", {name: "Open connection"}));
+    expect(screen.queryByLabelText("connection configuration")).not.toBeInTheDocument();
   });
 
   it("does not expose the product-label CTA when the desktop bridge is unavailable", async () => {
@@ -609,6 +639,7 @@ describe("APP VENTA locale wiring", () => {
     expect(screen.getByLabelText("login company")).toHaveTextContent("Empresa Real");
     fireEvent.click(screen.getByRole("button", { name: "Configure offline connection" }));
     expect(await screen.findByLabelText("connection configuration")).toBeVisible();
+    expect(screen.getByLabelText("connection layout")).toHaveTextContent("standalone");
     fireEvent.click(screen.getByRole("button", { name: "Back to offline login" }));
     expect(await screen.findByRole("button", { name: "Log in" })).toBeDisabled();
     load.mockResolvedValue({ ok: true, identity: { companyName: "Empresa Real", storeName: "Tienda Real",

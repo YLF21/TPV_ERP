@@ -55,7 +55,7 @@
   z-index: 40 !important;
   height: 30px !important;
   min-height: 30px !important;
-  border-radius: 3px !important;
+  border-radius: 6px !important;
   box-shadow: none !important;
 }
 
@@ -123,7 +123,7 @@
 .sale-settings-screen .sale-settings-nav-item {
   width: 100%;
   border: 1px solid var(--tpv-v3-line) !important;
-  border-radius: 3px !important;
+  border-radius: 6px !important;
   background: var(--tpv-v3-surface-alt) !important;
   color: var(--tpv-v3-text);
   font: inherit;
@@ -138,20 +138,6 @@
   inset: auto !important;
   width: 100% !important;
   margin: auto 0 0 !important;
-  border: 1px solid #d39a2c !important;
-  background: #fff1cf !important;
-  color: #674000 !important;
-  box-shadow: inset 4px 0 0 #c57c00 !important;
-}
-
-.sale-settings-screen .sale-settings-nav .report-back.sale-settings-nav-item:hover,
-.sale-settings-screen .sale-settings-nav .report-back.sale-settings-nav-item:focus-visible {
-  border-color: #b66f00 !important;
-  background: #ffe2a1 !important;
-  color: #4f3000 !important;
-  box-shadow:
-    inset 4px 0 0 #a96000,
-    0 0 0 2px rgba(197, 124, 0, 0.18) !important;
 }
 
 .sale-settings-screen .sale-settings-nav-item:hover,
@@ -218,7 +204,7 @@
 .sale-settings-screen .sale-settings-scope {
   justify-self: start;
   margin-top: 4px;
-  border-radius: 4px;
+  border-radius: 6px;
   background: #e6f1fb;
   color: #0765b5;
   padding: 5px 9px;
@@ -268,7 +254,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   border: 1px solid var(--sale-settings-line);
-  border-radius: 5px;
+  border-radius: 6px;
   background: #fff;
 }
 
@@ -319,7 +305,7 @@
 .sale-settings-screen .sale-settings-language-options button {
   min-height: 34px;
   border: 1px solid #93a8bd;
-  border-radius: 5px;
+  border-radius: 6px;
   background: #fff;
   color: var(--sale-settings-text);
   font: inherit;
@@ -347,7 +333,7 @@
   justify-self: start;
   gap: 9px;
   border: 1px solid #0d3c70;
-  border-radius: 3px;
+  border-radius: 6px;
   background: #0d3c70;
   color: #fff;
   padding: 0 18px;
@@ -392,7 +378,7 @@
 .sale-settings-screen .erp-select__trigger {
   min-height: 34px !important;
   border: 1px solid #8fa5bc !important;
-  border-radius: 3px !important;
+  border-radius: 6px !important;
   background: #fff !important;
   color: var(--sale-settings-text) !important;
   box-shadow: none !important;
@@ -436,7 +422,7 @@
 }
 
 .sale-settings-screen .settings-sale-interface-options label {
-  border-radius: 5px;
+  border-radius: 6px;
   background: #fff;
 }
 
@@ -447,7 +433,7 @@
 .sale-settings-screen .hardware-diagnostic-row button {
   min-height: 34px;
   border: 1px solid #8fa5bc;
-  border-radius: 3px;
+  border-radius: 6px;
   background: #fff;
   color: #103761;
   padding: 0 18px;
@@ -462,7 +448,7 @@
 .sale-settings-screen .hardware-save-button,
 .sale-settings-screen .settings-sale-interface-card > button {
   border-color: #0d3c70 !important;
-  border-radius: 5px !important;
+  border-radius: 6px !important;
   background: #0d3c70 !important;
   color: #fff !important;
   box-shadow: none !important;
@@ -517,7 +503,7 @@
 .sale-settings-screen .hardware-device-tabs button {
   align-self: stretch;
   border: 1px solid var(--sale-settings-line);
-  border-radius: 3px 3px 0 0;
+  border-radius: 6px;
   background: var(--sale-settings-soft);
   color: var(--sale-settings-muted);
   padding: 0 14px;
@@ -561,7 +547,7 @@
   box-sizing: border-box;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 4px 12px;
-  border-radius: 3px;
+  border-radius: 6px;
   padding: 10px 12px;
 }
 
@@ -624,7 +610,7 @@
 
 .sale-settings-screen .hardware-permission-denied {
   border: 1px solid #e3c67a;
-  border-radius: 5px;
+  border-radius: 6px;
   background: #fff8e8;
   color: #714e09;
   padding: 16px;
@@ -637,7 +623,7 @@
   max-height: min(64vh, 720px);
   overflow: auto;
   border: 1px solid var(--erp-table-border);
-  border-radius: 0;
+  border-radius: 6px;
   background: #fff;
   color: var(--erp-table-text);
   font-family: Inter, "Segoe UI", Arial, sans-serif;
@@ -814,7 +800,7 @@
 .sale-settings-screen .cash-operation-panel,
 .sale-settings-screen .cash-close-panel {
   border: 1px solid var(--sale-settings-line) !important;
-  border-radius: 3px !important;
+  border-radius: 6px !important;
   background: #fff !important;
   padding: 12px !important;
 }
@@ -901,7 +887,7 @@
 .sale-settings-screen .settings-sale-interface-options label {
   min-height: 64px;
   border: 1px solid var(--sale-settings-line);
-  border-radius: 3px;
+  border-radius: 6px;
   padding: 8px;
 }
 
@@ -913,6 +899,7 @@
 .sale-settings-screen .erp-select__trigger {
   grid-template-columns: minmax(0, 1fr) 30px !important;
   padding: 0 !important;
+  overflow: hidden;
   text-align: left;
 }
 
@@ -949,7 +936,7 @@
 .sale-settings-screen .cash-report-grid {
   gap: 0;
   border: 1px solid var(--sale-settings-line);
-  border-radius: 3px;
+  border-radius: 6px;
 }
 
 .sale-settings-screen .cash-session-summary > div,
@@ -963,7 +950,7 @@
 .sale-settings-screen .cash-authorization-row,
 .sale-settings-screen .settings-inline-message,
 .sale-settings-screen .settings-empty-state {
-  border-radius: 3px;
+  border-radius: 6px;
   padding: 10px 12px;
 }
 
@@ -1004,7 +991,7 @@
 .sale-settings-screen .hardware-label-tools fieldset {
   min-width: 0;
   border: 1px solid var(--sale-settings-line);
-  border-radius: 3px;
+  border-radius: 6px;
   padding: 10px;
 }
 
@@ -1015,7 +1002,7 @@
 .sale-settings-screen p.hardware-device-summary {
   display: block;
   min-height: 0;
-  border-radius: 3px;
+  border-radius: 6px;
   padding: 9px 12px;
   font-size: 13px;
   line-height: 1.45;
@@ -1027,7 +1014,7 @@
 .sale-settings-screen .operational-incident-group,
 .sale-settings-screen .operational-incident-empty,
 .sale-settings-screen .operational-retry-editor {
-  border-radius: 3px;
+  border-radius: 6px;
   box-shadow: none;
 }
 
@@ -1036,7 +1023,7 @@
 }
 
 .sale-settings-screen .status-pill {
-  border-radius: 3px;
+  border-radius: 6px;
 }
 
 .sale-settings-screen .cash-operation-panel input {
@@ -1046,7 +1033,7 @@
 
 .sale-settings-screen .payment-terminal-actions button {
   min-height: 34px;
-  border-radius: 3px;
+  border-radius: 6px;
 }
 
 .sale-settings-screen .payment-terminal-form select {
@@ -1109,7 +1096,7 @@
   margin-top:8px;
   border-bottom:1px solid #aebfd2;
 }
-.sale-settings-screen .sale-settings-cash-tabs { display:flex; align-items:end; gap:3px; }
+.sale-settings-screen .sale-settings-cash-tabs { display:flex; align-items:stretch; gap:6px; }
 .sale-settings-screen .sale-settings-cash-refresh { flex-shrink:0; display:flex; }
 .sale-settings-screen .sale-settings-cash-refresh button {
   box-sizing:border-box;
@@ -1126,23 +1113,21 @@
   cursor:pointer;
 }
 .sale-settings-screen .sale-settings-cash-tabs button {
-  min-height:39px;
-  min-width:118px;
-  padding:0 18px;
-  border:1px solid #aebfd2;
-  border-bottom:0;
-  border-radius:0;
-  background:#f2f6fa;
-  color:#12385f;
+  min-height:35px;
+  padding:0 14px;
+  border:1px solid var(--sale-settings-line);
+  border-radius:6px;
+  background:var(--sale-settings-soft);
+  color:var(--sale-settings-muted);
   font:inherit;
   font-size:13px;
-  font-weight:700;
+  font-weight:800;
   cursor:pointer;
 }
 .sale-settings-screen .sale-settings-cash-tabs button[aria-selected="true"] {
-  background:#2878b9;
+  background:#0065fe;
   color:#fff;
-  border-color:#1c6298;
+  border-color:#0065fe;
 }
 .sale-settings-screen .sale-settings-cash-tabs button:focus-visible,
 .sale-settings-screen .sale-settings-cash-refresh button:focus-visible {
@@ -1171,7 +1156,7 @@
   min-width: 0;
   min-height: 48px;
   padding: 8px 12px;
-  border-radius: 3px;
+  border-radius: 6px;
   background: #f5f8fb;
   color: #12385f;
   font-size: 14px;
@@ -1221,14 +1206,24 @@
 
 .sale-settings-screen .cash-operation-submit button {
   min-width: 170px;
-  border-radius: 3px !important;
+  border-radius: 6px !important;
 }
 
 .sale-settings-screen .cash-report-table-wrap {
   min-width: 0;
   overflow-x: auto;
   border: 1px solid #aebfd2;
-  border-radius: 0;
+  border-radius: 6px;
+}
+
+@layer erp-settings-corners {
+  .sale-settings-screen :is(.sale-settings-shell, .erp-select:not(.hardware-route-table *), .erp-select:not(.hardware-route-table *) > .erp-select__trigger) {
+    border-radius: 6px !important;
+  }
+
+  .sale-settings-screen .sale-settings-shell {
+    overflow: hidden;
+  }
 }
 
 .sale-settings-screen .cash-report-table {
