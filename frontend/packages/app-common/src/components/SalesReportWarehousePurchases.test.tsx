@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SalesReportScreen, formatReportDisplayValue } from "./SalesReportScreen";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { printWarehouseA4Document } from "../warehouse/warehouseDocumentPrinting";
+import type { Permission } from "../types";
 
 vi.mock("./useScreenConnectionStatus", () => ({
   useScreenConnectionStatus: () => ({ backendLabel: "LOCAL", saasConnected: false }),
@@ -40,9 +41,9 @@ function fixture() {
     return empty;
   });
 }
-function mount(request = fixture(), report = "inputInvoices") {
+function mount(request = fixture(), report = "inputInvoices", permissions: Permission[] = ["GESTION_CUENTAS"]) {
   return render(<SalesReportScreen app="venta" locale="es" request={request} initialReport={`salesReport.${report}`}
-    session={{ username: "accounts", displayName: "Cuentas", accessToken: "token", permissions: ["GESTION_CUENTAS"] }}
+    session={{ username: "accounts", displayName: "Cuentas", accessToken: "token", permissions }}
     terminalContext={{ storeName: "Tienda", terminalCode: "01" }} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
 }
 async function openInvoice() {
@@ -72,6 +73,54 @@ describe("current warehouse purchase reports", () => {
         expect(within(container.querySelector(".report-table thead") as HTMLElement).queryByText(label)).toBeNull();
       }
       expect(screen.queryByText("supplier-uuid")).toBeNull();
+    });
+
+  it.each(["inputInvoices", "inputDeliveryNotes"])("filters %s by warehouse for accounts-only readers", async report => {
+    const request = fixture();
+    const base = request.getMockImplementation()!;
+    request.mockImplementation(async path => {
+      if (path.startsWith("/document-reports/warehouse-inputs?")) {
+        const document = path.includes("type=FACTURA_ENTRADA") ? invoice : note;
+        return { ...empty, items: [document, { ...document, warehouseName: "SECUNDARIO",
+          document: { ...document.document, id: "other-input", number: "OTHER-001", warehouseId: "other-warehouse" } }] };
+      }
+      return base(path);
+    });
+    mount(request, report);
+    await screen.findByText("OTHER-001");
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
+    const dialog = screen.getByRole("dialog", { name: "Filtrar" });
+    const trigger = within(dialog).getByRole("button", { name: "Almacén" });
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole("option", { name: "GENERAL" }));
+    fireEvent.click(trigger);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar filtro" }));
+    expect(screen.getByText(report === "inputInvoices" ? "FE-001" : "AE-001")).toBeVisible();
+    expect(screen.queryByText("OTHER-001")).toBeNull();
+    expect(request).not.toHaveBeenCalledWith("/warehouses", expect.anything());
+  });
+
+  it.each<Permission>(["ADMIN", "STOCK_READ", "STOCK_TRANSFER", "GESTION_PRODUCTO", "GESTION_ALMACEN", "WAREHOUSES_MANAGE", "GESTION_VENTAS", "VENTA"])(
+    "preserves configured warehouse order when the reader also has %s", async permission => {
+      const request = fixture();
+      const base = request.getMockImplementation()!;
+      request.mockImplementation(async path => {
+        if (path === "/warehouses") return [
+          { id: "other-warehouse", name: "ZETA", displayOrder: 0 },
+          { id: "warehouse-uuid", name: "GENERAL", displayOrder: 1 }
+        ];
+        if (path.startsWith("/document-reports/warehouse-inputs?")) return { ...empty, items: [invoice,
+          { ...invoice, warehouseName: "ZETA", document: { ...invoice.document,
+            id: "other-input", number: "FE-002", warehouseId: "other-warehouse" } }] };
+        return base(path);
+      });
+      mount(request, "inputInvoices", ["GESTION_CUENTAS", permission]);
+      await screen.findByText("FE-002");
+      expect(request).toHaveBeenCalledWith("/warehouses", { token: "token" });
+      fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
+      fireEvent.click(within(screen.getByRole("dialog", { name: "Filtrar" })).getByRole("button", { name: "Almacén" }));
+      await waitFor(() => expect(within(screen.getByRole("listbox", { name: "Almacén" })).getAllByRole("option")
+        .map(option => option.textContent?.replace("✓", "").trim())).toEqual(["Todos", "ZETA", "GENERAL"]));
     });
 
   it("opens real number and line discounts, without a fabricated tax or commercial detail call", async () => {

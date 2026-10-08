@@ -248,13 +248,53 @@ describe("Product warehouse order", () => {
     { warehouseName: "ALMACEN 2", quantity: 0 },
     { warehouseName: "ALMACEN 1", quantity: -2 }
   ];
-  it("pins GENERAL first and uses natural warehouse name order by default", () => {
+  it("preserves the warehouse catalogue order by default", () => {
     expect(sortProductWarehouseRows(rows, null, "es").map(row => row.warehouseName))
-      .toEqual(["GENERAL", "ALMACEN 1", "ALMACEN 2", "ALMACEN 10"]);
+      .toEqual(["ALMACEN 10", "GENERAL", "ALMACEN 2", "ALMACEN 1"]);
     expect(rows[0].warehouseName).toBe("ALMACEN 10");
   });
-  it("keeps GENERAL first even when the user sorts by stock", () => {
+  it("allows an explicit stock sort without forcing GENERAL to the first position", () => {
     expect(sortProductWarehouseRows(rows, {column:"quantity",direction:"asc"}, "es").map(row => row.quantity))
-      .toEqual([24, -2, 0, 5]);
+      .toEqual([-2, 0, 5, 24]);
+  });
+
+  it.each(["venta", "gestion"] as const)("uses the same warehouse order in product information (%s)", async (app) => {
+    const warehouses = rows.map((row, index) => ({
+      id: `warehouse-${index}`, name: row.warehouseName, active: true,
+      defaultWarehouse: row.warehouseName === "GENERAL"
+    }));
+    const orderedWarehouses = [warehouses[2], warehouses[0], warehouses[3], warehouses[1]]
+      .map((warehouse, index) => ({ ...warehouse, displayOrder: index + 1 }));
+    localStorage.setItem(tableSortStorageKey(app, session.username, "stock.productWarehouses"),
+      JSON.stringify({ column: "warehouse", direction: "asc" }));
+    vi.mocked(apiRequest).mockImplementation(async (path) => {
+      if (path === "/warehouses") return orderedWarehouses;
+      if (path.startsWith("/stock/page")) return {
+        items: [{
+          product: {
+            id: "product-1", code: "CAFE-1", name: "Café de prueba", salePrice: "4.50",
+            purchasePrice: "2.00", productType: "UNIT", priceUseMode: "NORMAL",
+            discountType: "NORMAL", active: true, taxesIncluded: true, packageQuantity: "1"
+          },
+          stock: rows.map((row, index) => ({
+            productId: "product-1", warehouseId: warehouses[index].id, quantity: row.quantity
+          }))
+        }],
+        hasMore: false
+      };
+      return [];
+    });
+
+    const { container } = render(<StockScreen {...stockProps} app={app} />);
+    await screen.findByText("Café de prueba");
+    fireEvent.doubleClick(container.querySelector("article.stock-row")!);
+    await screen.findByRole("dialog", { name: "Información del producto" });
+
+    const warehouseRows = Array.from(container.querySelectorAll(".stock-detail-row:not(.header):not(.total)"));
+    expect(warehouseRows.map(row => row.querySelector("span")?.textContent))
+      .toEqual(["ALMACEN 2", "ALMACEN 10", "ALMACEN 1", "GENERAL"]);
+    expect(warehouseRows.map(row => row.querySelector("strong")?.textContent))
+      .toEqual(["0", "5", "-2", "24"]);
+    expect(container.querySelector(".stock-detail-row.total strong")?.textContent).toBe("27");
   });
 });

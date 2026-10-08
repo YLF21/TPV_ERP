@@ -2,6 +2,7 @@ import { DialogDismissButton } from "./DialogDismissButton";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { AppBrand } from "./AppBrand";
 import { useEffect, useRef, useState } from "react";
+import { FilePdf, FileXls, Printer } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import { lazy, Suspense } from "react";
 import type { UIEvent } from "react";
@@ -34,7 +35,7 @@ import {
 import { ErpSelect } from "./ErpSelect";
 import { ErpMultiSelect } from "./ErpMultiSelect";
 import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
-import { reportMultiFilterExport, reportMultiFilterOptions, reportMultiFilterValueLabel, rowMatchesReportMultiFilters,
+import { orderReportWarehouseOptions, reportMultiFilterExport, reportMultiFilterOptions, reportMultiFilterValueLabel, rowMatchesReportMultiFilters,
   type ReportMultiFilterKey, type ReportMultiFilters } from "./salesReportMultiFilters";
 import { ModuleNavBackButton } from "./ModuleNavBackButton";
 import { ModuleNavItem } from "./ModuleNavItem";
@@ -2173,6 +2174,10 @@ export function SalesReportScreen({
   const hasPaymentFilter = !isDailySalesReport && sample.availableAttributes.includes("payment");
   const hasStatusFilter = !isDailySalesReport && sample.availableAttributes.includes("status");
   const hasWarehouseFilter = !isDailySalesReport && sample.availableAttributes.includes("warehouse");
+  // Match WarehouseController.list; accounts-only readers filter by report rows.
+  const canLoadWarehouseCatalogue = hasWarehouseFilter && session.permissions.some((permission) =>
+    ["ADMIN", "STOCK_READ", "STOCK_TRANSFER", "GESTION_PRODUCTO", "GESTION_ALMACEN", "WAREHOUSES_MANAGE", "GESTION_VENTAS", "VENTA"].includes(permission)
+  );
   const selectedReportPage = reportPages[reportPageKey(selectedReport)];
   const selectedReportLoadError = reportLoadErrors[selectedReport] ?? "";
 
@@ -2236,9 +2241,18 @@ export function SalesReportScreen({
   const paymentOptions = filterOptionsFromRows(sample.rows, "payment", t);
   const terminalOptions = filterOptionsFromRows(sample.rows, "terminal", t);
   const statusOptions = filterOptionsFromRows(sample.rows, "status", t);
-  const warehouseOptions = filterOptionsFromRows(sample.rows, "warehouse", t);
+  const warehouseRowOptions = filterOptionsFromRows(sample.rows, "warehouse", t);
+  const retainedWarehouseOptions = [...new Set([filters.warehouse, draftFilters.warehouse])]
+    .filter(value => value && !warehouseRowOptions.some(option => option.value === value))
+    .map(value => ({ value, label: translateCompositeReportValue(value, t) }));
+  const warehouseOptions = [warehouseRowOptions[0], ...orderReportWarehouseOptions(
+    [...warehouseRowOptions.slice(1), ...retainedWarehouseOptions], reportWarehouses
+  )];
   const multiFilterOptions = Object.fromEntries((["user", "customer", "supplier", "payment", "terminal", "status", "warehouse"] as const)
-    .map(field => [field, reportMultiFilterOptions(sample.rows, field, locale, t, draftMultiFilters[field])])) as Record<ReportMultiFilterKey, FilterOption[]>;
+    .map(field => {
+      const options = reportMultiFilterOptions(sample.rows, field, locale, t, draftMultiFilters[field]);
+      return [field, field === "warehouse" ? orderReportWarehouseOptions(options, reportWarehouses) : options];
+    })) as Record<ReportMultiFilterKey, FilterOption[]>;
   const availableMultiFields = ([
     ["user", hasUserFilter], ["terminal", hasTerminalFilter], ["customer", hasCustomerFilter], ["supplier", hasSupplierFilter],
     ["payment", hasPaymentFilter], ["warehouse", hasWarehouseFilter], ["status", hasStatusFilter]
@@ -2309,7 +2323,7 @@ export function SalesReportScreen({
           loadPage<DocumentView>("deliveryNotes"),
           loadPage<WarehouseOutputView>("warehouseOutputs"),
           loadPage<WarehouseInputReportView>("warehouseInputs"),
-          pageKey === "warehouseOutputs"
+          canLoadWarehouseCatalogue
             ? loadReportResource<ReportWarehouseOption[]>(request, "/warehouses", token, [])
             : Promise.resolve({ value: [] as ReportWarehouseOption[], failed: false })
         ]);
@@ -2365,7 +2379,7 @@ export function SalesReportScreen({
       cancelled = true;
       reportQueryGeneration.current += 1;
     };
-  }, [request, session, terminalContext, reportReloadKey, isSalesActivityReport, selectedReport, filters.dateFrom, filters.dateTo]);
+  }, [request, session, terminalContext, reportReloadKey, isSalesActivityReport, selectedReport, filters.dateFrom, filters.dateTo, canLoadWarehouseCatalogue]);
 
   useEffect(() => {
     if (!filterOpen) return;
@@ -3690,7 +3704,7 @@ export function SalesReportScreen({
               disabled={!selectedDocumentCanPrint}
               onClick={() => void printSelectedDocument()}
             >
-              <span>{t("salesReport.print")}</span><kbd aria-hidden="true">{REPORT_OUTPUT_SHORTCUTS.print}</kbd>
+              <span><Printer size={16} weight="bold" aria-hidden="true" focusable="false" />{t("salesReport.print")}</span><kbd aria-hidden="true">{REPORT_OUTPUT_SHORTCUTS.print}</kbd>
             </button>
             <button
               type="button"
@@ -3699,7 +3713,7 @@ export function SalesReportScreen({
               disabled={reportExportBusy}
               onClick={() => void exportExcelReport()}
             >
-              <span>{t("salesReport.excel")}</span><kbd aria-hidden="true">{REPORT_OUTPUT_SHORTCUTS.excel}</kbd>
+              <span><FileXls size={16} weight="bold" aria-hidden="true" focusable="false" />{t("salesReport.excel")}</span><kbd aria-hidden="true">{REPORT_OUTPUT_SHORTCUTS.excel}</kbd>
             </button>
             <button
               type="button"
@@ -3708,7 +3722,7 @@ export function SalesReportScreen({
               disabled={reportExportBusy}
               onClick={() => void exportPdfReport()}
             >
-              <span>{t("salesReport.pdf")}</span><kbd aria-hidden="true">{REPORT_OUTPUT_SHORTCUTS.pdf}</kbd>
+              <span><FilePdf size={16} weight="bold" aria-hidden="true" focusable="false" />{t("salesReport.pdf")}</span><kbd aria-hidden="true">{REPORT_OUTPUT_SHORTCUTS.pdf}</kbd>
             </button>
           </div>
         </div>
@@ -3844,7 +3858,7 @@ export function SalesReportScreen({
   }
 
   return (
-    <main className={`${embedded ? "report-screen gestion-embedded-module" : "report-screen"} report-density-${reportOutputPreferences.density}`}>
+    <main className={`${embedded ? "report-screen gestion-embedded-module" : "report-screen"}${app !== "pda" ? " report-screen--desktop" : ""} report-density-${reportOutputPreferences.density}`}>
       {reportNotice && (
         <div
           className={`report-feedback ${reportNotice.kind}`}

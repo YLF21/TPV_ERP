@@ -97,10 +97,10 @@ export function TouchNumericKeypad({
     { key: "7", area: "1 / 1" }, { key: "8", area: "1 / 2" }, { key: "9", area: "1 / 3" },
     { key: "BACKSPACE", area: allowNegative ? "1 / 4" : "1 / 4 / 3 / 5" },
     { key: "4", area: "2 / 1" }, { key: "5", area: "2 / 2" }, { key: "6", area: "2 / 3" },
-    { key: "ENTER", area: allowNegative ? "2 / 4" : "3 / 4 / 5 / 5" },
+    { key: "ENTER", area: "3 / 4 / 5 / 5" },
     { key: "1", area: "3 / 1" }, { key: "2", area: "3 / 2" }, { key: "3", area: "3 / 3" },
     { key: "0", area: "4 / 1 / 5 / 3" }, { key: "DECIMAL", area: "4 / 3" },
-    ...(allowNegative ? [{ key: "SIGN" as const, area: "3 / 4 / 5 / 5" }] : []),
+    ...(allowNegative ? [{ key: "SIGN" as const, area: "2 / 4" }] : []),
   ];
   const firstKey = useRef(true);
   const lastField = useRef(inputRef?.current);

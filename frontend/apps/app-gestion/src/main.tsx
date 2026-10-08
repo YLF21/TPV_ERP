@@ -22,6 +22,8 @@ import {
   type UserSession,
   type WarehouseSection
 } from "@tpverp/app-common";
+import "../../../packages/app-common/src/styles/ShortcutButtons.css";
+import "../../../packages/app-common/src/styles/DesktopWindowCorners.css";
 import "../../../packages/app-common/src/styles/tpv.css";
 import "./gestion.css";
 import { canManageFamilies, canManageTaxes, visibleGestionModules } from "./gestionAccess";

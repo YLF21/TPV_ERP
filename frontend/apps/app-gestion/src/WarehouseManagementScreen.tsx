@@ -9,17 +9,15 @@ import {
   loadGeneralStockConfiguration, loadManagedWarehouses, loadWarehouseOverview,
   loadWarehouseStockConfiguration, renameManagedWarehouse, resetWarehouseStockConfiguration,
   saveGeneralStockConfiguration, saveInactiveProductSales, saveWarehouseStockConfiguration,
-  setManagedWarehouseActive, type GeneralStockConfiguration, type WarehouseDetailsInput,
+  saveManagedWarehouseOrder, setManagedWarehouseActive, type GeneralStockConfiguration, type WarehouseDetailsInput,
   type WarehouseManagementRecord, type WarehouseOverview, type WarehouseStockConfiguration
 } from "./warehouseManagementApi";
 
 type Props = { session: UserSession; t: (key: string) => string;
   locale?: "es" | "en" | "zh";
   onCreateDocument?: (kind: "input" | "output" | "transfer") => void };
-type Dialog = "create" | "general" | "warehouse" | null;
+type Dialog = "create" | "general" | "warehouse" | "order" | null;
 const blank: WarehouseDetailsInput = { name: "", address: "", notes: "" };
-const sortWarehouses = (items: WarehouseManagementRecord[]) => [...items].sort((a, b) =>
-  Number(b.defaultWarehouse) - Number(a.defaultWarehouse) || a.name.localeCompare(b.name, "es"));
 
 export function WarehouseManagementScreen({ session, t, locale = "es", onCreateDocument }: Props) {
   const quantity = (value: number) => new Intl.NumberFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
@@ -31,6 +29,8 @@ export function WarehouseManagementScreen({ session, t, locale = "es", onCreateD
   const canDelete = session.permissions.includes("ADMIN") || session.permissions.includes("WAREHOUSES_MANAGE");
   const canManageInactive = session.permissions.includes("ADMIN") || session.permissions.includes("GESTION_PRODUCTO");
   const [warehouses, setWarehouses] = useState<WarehouseManagementRecord[]>([]);
+  const [orderDraft, setOrderDraft] = useState<WarehouseManagementRecord[]>([]);
+  const [orderConflict, setOrderConflict] = useState(false);
   const [overview, setOverview] = useState<Map<string, WarehouseOverview>>(new Map());
   const [general, setGeneral] = useState<GeneralStockConfiguration | null>(null);
   const [bulk, setBulk] = useState({ allowNegativeStock: false, defaultMinimumStock: 0, alertsEnabled: false });
@@ -55,7 +55,7 @@ export function WarehouseManagementScreen({ session, t, locale = "es", onCreateD
     void Promise.all([loadManagedWarehouses(token), loadWarehouseOverview(token), loadGeneralStockConfiguration(token)])
       .then(([items, totals, settings]) => {
         if (cancelled) return;
-        setWarehouses(sortWarehouses(items));
+        setWarehouses(items);
         setOverview(new Map(totals.map((item) => [item.warehouseId, item])));
         setGeneral(settings);
       }).catch(() => { if (!cancelled) setLoadError(t("warehouse.management.loadError")); })
@@ -69,7 +69,41 @@ export function WarehouseManagementScreen({ session, t, locale = "es", onCreateD
   }, [dialog, pending]);
 
   const refresh = () => setReloadKey((value) => value + 1);
-  const close = () => { setDialog(null); setError(""); };
+  const close = () => { setDialog(null); setOrderDraft([]); setOrderConflict(false); setError(""); };
+
+  function openOrder() {
+    setOrderDraft([...warehouses]); setOrderConflict(false); setError(""); setStatus(""); setDialog("order");
+  }
+  function moveWarehouse(index: number, direction: -1 | 1) {
+    setOrderDraft((current) => {
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current;
+      const next = [...current];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
+  }
+  async function saveOrder() {
+    if (saving || orderConflict) return;
+    setSaving(true); setError("");
+    try {
+      const updated = await saveManagedWarehouseOrder({ warehouses: orderDraft.map(({ id, version }) => ({ id, version })) }, token);
+      setWarehouses(updated); close(); setStatus(t("warehouse.management.orderSaved"));
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 409) {
+        setOrderConflict(true); setError(t("warehouse.management.orderConflict"));
+      } else setError(t("warehouse.management.orderSaveError"));
+    } finally { setSaving(false); }
+  }
+  async function reloadOrder() {
+    if (saving) return;
+    setSaving(true); setError("");
+    try {
+      const current = await loadManagedWarehouses(token);
+      setWarehouses(current); setOrderDraft([...current]); setOrderConflict(false);
+    } catch { setError(t("warehouse.management.loadError")); }
+    finally { setSaving(false); }
+  }
 
   function openCreate() { setDetails(blank); setStatus(""); setError(""); setDialog("create"); }
   function openGeneral() {
@@ -94,12 +128,12 @@ export function WarehouseManagementScreen({ session, t, locale = "es", onCreateD
     try {
       if (dialog === "create") {
         const created = await createManagedWarehouse(input, token);
-        setWarehouses((current) => sortWarehouses([...current, created]));
+        setWarehouses((current) => [...current, created]);
         setStatus(t("warehouse.management.created"));
       } else if (selected) {
         const updated = await renameManagedWarehouse(selected.id,
           selected.defaultWarehouse ? { ...input, address: null } : input, token);
-        setWarehouses((current) => sortWarehouses(current.map((item) => item.id === updated.id ? updated : item)));
+        setWarehouses((current) => current.map((item) => item.id === updated.id ? updated : item));
         setStatus(t("warehouse.management.renamed"));
       }
       if (dialog === "create") close();
@@ -170,6 +204,7 @@ export function WarehouseManagementScreen({ session, t, locale = "es", onCreateD
     <header className="gestion-warehouse-header"><div><h2 id="warehouse-management-title">{t("warehouse.management.title")}</h2>
       <p>{t("warehouse.management.subtitle")}</p></div><div className="gestion-warehouse-header-actions">
       <button type="button" onClick={openCreate}>{t("warehouse.management.create")}</button>
+      <button type="button" disabled={loading || !!loadError || warehouses.length < 2} onClick={openOrder}>{t("warehouse.management.order")}</button>
       <button type="button" disabled={!general} onClick={openGeneral}>{t("warehouse.management.generalSettings")}</button></div></header>
     <div className="gestion-warehouse-document-actions">
       {canCreateDocuments && <button type="button" onClick={() => onCreateDocument?.("input")}><ArrowDown size={18} aria-hidden="true" />{t("warehouse.management.createInput")}</button>}
@@ -209,9 +244,31 @@ export function WarehouseManagementScreen({ session, t, locale = "es", onCreateD
     {dialog && <div className="gestion-modal-backdrop"><section ref={dialogRef} className={`gestion-security-dialog gestion-warehouse-dialog is-${dialog}`}
       role="dialog" aria-modal="true" aria-labelledby="warehouse-dialog-title"><header>
       <h2 id="warehouse-dialog-title">{t(dialog === "create" ? "warehouse.management.dialog.create"
-        : dialog === "general" ? "warehouse.management.generalSettings" : "warehouse.management.settingsTitle")}</h2>
-      <WindowCloseButton type="button" aria-label={t("common.close")} onClick={close} >×</WindowCloseButton></header>
-      {dialog === "general" ? <div className="gestion-warehouse-dialog-content">
+        : dialog === "general" ? "warehouse.management.generalSettings"
+          : dialog === "order" ? "warehouse.management.order" : "warehouse.management.settingsTitle")}</h2>
+      <WindowCloseButton type="button" aria-label={t("common.close")} disabled={saving} onClick={close} >×</WindowCloseButton></header>
+      {dialog === "order" ? <div className="gestion-warehouse-dialog-content gestion-warehouse-order-content">
+        <p className="gestion-warehouse-dialog-hint">{t("warehouse.management.orderHint")}</p>
+        <ol className="gestion-warehouse-order-list">{orderDraft.map((warehouse, index) => <li key={warehouse.id}>
+          <span className="gestion-warehouse-order-position">{index + 1}</span>
+          <span className="gestion-warehouse-order-name">{warehouse.name}
+            {!warehouse.active && <small>{t("warehouse.management.inactive")}</small>}</span>
+          <div className="gestion-warehouse-order-controls">
+            <button type="button" aria-label={`${t("warehouse.management.moveUp")} ${warehouse.name}`}
+              title={t("warehouse.management.moveUp")} disabled={saving || orderConflict || index === 0}
+              onClick={() => moveWarehouse(index, -1)}><ArrowUp size={18} aria-hidden="true" /></button>
+            <button type="button" aria-label={`${t("warehouse.management.moveDown")} ${warehouse.name}`}
+              title={t("warehouse.management.moveDown")} disabled={saving || orderConflict || index === orderDraft.length - 1}
+              onClick={() => moveWarehouse(index, 1)}><ArrowDown size={18} aria-hidden="true" /></button>
+          </div></li>)}</ol>
+        {error && <p className="gestion-inline-error" role="alert">{error}</p>}
+        <footer className="erp-dialog-actions-row">
+          {orderConflict && <button type="button" onClick={() => void reloadOrder()} disabled={saving}>{t("warehouse.management.reloadOrder")}</button>}
+          <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={close}>{t("common.cancel")}</DialogDismissButton>
+          <button className="erp-dialog-action-confirm" type="button" disabled={saving || orderConflict}
+            onClick={() => void saveOrder()}>{t("common.save")}</button>
+        </footer>
+      </div> : dialog === "general" ? <div className="gestion-warehouse-dialog-content">
         <form className="gestion-security-form gestion-warehouse-bulk-form" onSubmit={(event) => void applyGeneral(event)}>
           <h3>{t("warehouse.management.bulkSection")}</h3>
           <p className="gestion-warehouse-dialog-hint">{t("warehouse.management.bulkWarning").replace("{count}", String(warehouses.length))}</p>
@@ -269,7 +326,7 @@ export function WarehouseManagementScreen({ session, t, locale = "es", onCreateD
               setPending({ warehouse: selected, action: "delete" }); }}>{t("warehouse.management.delete")}</button>}</div>}
         </>}
       </div>}
-      {error && <p className="gestion-inline-error" role="alert">{error}</p>}
+      {error && dialog !== "order" && <p className="gestion-inline-error" role="alert">{error}</p>}
       {status && <p className="gestion-warehouse-dialog-status" role="status">{status}</p>}
     </section></div>}
     {pending && <div className="gestion-modal-backdrop"><section ref={dialogRef}

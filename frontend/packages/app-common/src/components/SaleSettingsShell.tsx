@@ -40,6 +40,7 @@ export type SaleSettingsShellProps = {
   subtitle: string;
   scopeLabel?: string;
   headerNavigation?: ReactNode;
+  navigationDisabled?: boolean;
   children: ReactNode;
 };
 
@@ -55,7 +56,6 @@ const personalDestinations: SaleSettingsNavigationItem[] = [
 ];
 
 const workstationDestinations: SaleSettingsNavigationItem[] = [
-  { destination: "connection", labelKey: "terminalLink.title", icon: Desktop },
   { destination: "printers", labelKey: "settings.printers", icon: Printer },
   { destination: "devices", labelKey: "settings.devices", icon: Desktop },
   { destination: "cash", labelKey: "settings.cash", icon: CashRegister }
@@ -75,6 +75,7 @@ export function SaleSettingsShell({
   subtitle,
   scopeLabel,
   headerNavigation,
+  navigationDisabled = false,
   children
 }: SaleSettingsShellProps) {
   const t = createTranslator(locale);
@@ -83,11 +84,11 @@ export function SaleSettingsShell({
   useEffect(() => {
     const handleBackRequest = (event: Event) => {
       event.preventDefault();
-      onBack();
+      if (!navigationDisabled) onBack();
     };
     window.addEventListener("tpv-sale-settings-back", handleBackRequest);
     return () => window.removeEventListener("tpv-sale-settings-back", handleBackRequest);
-  }, [onBack]);
+  }, [onBack, navigationDisabled]);
 
   function navigationButton({
     destination,
@@ -98,6 +99,7 @@ export function SaleSettingsShell({
     return (
       <ModuleNavItem
         className="sale-settings-nav-item"
+        disabled={navigationDisabled}
         icon={<Icon size={22} weight={selected ? "fill" : "regular"} />}
         label={t(labelKey)}
         selected={selected}
@@ -120,14 +122,15 @@ export function SaleSettingsShell({
         shutdownConfirmText={t("login.shutdownConfirmText")}
         noLabel={t("common.no")}
         yesLabel={t("common.yes")}
-        onLocaleChange={onLocaleChange}
-        onChangePassword={() => onNavigate("security")}
-        onLogout={onLogout}
+        exitBlocked={navigationDisabled}
+        onLocaleChange={(nextLocale) => { if (!navigationDisabled) onLocaleChange(nextLocale); }}
+        onChangePassword={() => { if (!navigationDisabled) onNavigate("security"); }}
+        onLogout={onLogout ? () => { if (!navigationDisabled) onLogout(); } : undefined}
       />
 
       <section className="settings-shell sale-settings-shell" aria-label={t("settings.title")}>
         <header className="settings-topbar sale-settings-topbar">
-          <button type="button" className="report-brand-back" onClick={onBack}>
+          <button type="button" className="report-brand-back" disabled={navigationDisabled} onClick={onBack}>
             <AppBrand app={app} label={t(app === "venta" ? "venta.title" : "gestion.title")} />
           </button>
           <h1 className="report-title">{t("settings.title")}</h1>
@@ -152,6 +155,10 @@ export function SaleSettingsShell({
                 <strong className="sale-settings-nav-heading">{t("settings.group.support")}</strong>
                 {navigationButton({ destination: "diagnostics", labelKey: "settings.diagnosticsMaintenance", icon: Wrench })}
               </div>
+              <div className="sale-settings-nav-group">
+                <strong className="sale-settings-nav-heading">{t("settings.group.connection")}</strong>
+                {navigationButton({ destination: "connection", labelKey: "terminalLink.title", icon: Desktop })}
+              </div>
             </>
           ) : null}
 
@@ -159,6 +166,7 @@ export function SaleSettingsShell({
             className="sale-settings-nav-item"
             label={t("common.back")}
             onBack={onBack}
+            disabled={navigationDisabled}
           />
         </aside>
 

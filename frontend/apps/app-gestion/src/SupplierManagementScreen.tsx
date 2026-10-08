@@ -24,6 +24,7 @@ import "./safe-management.css";
 import "./supplier-management-classic.css";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { ErpConfirmDialog } from "../../../packages/app-common/src/components/ErpConfirmDialog";
+import { ShortcutButtonLabel } from "../../../packages/app-common/src/components/ShortcutButtonLabel";
 
 type SupplierManagementScreenProps = {
   locale: LocaleCode;
@@ -423,9 +424,9 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
           <span>{t("safeManagement.representatives.subtitle")}</span>
         </div>
         <div className="management-record-actions">
-          <button type="button" aria-keyshortcuts="F7" disabled={!toolbarRepresentative || loading} onClick={() => toolbarRepresentative && openRepresentative(toolbarRepresentative)}>{t("safeManagement.shortcut.modify")} {t("safeManagement.representatives.edit")}</button>
-          <button type="button" aria-keyshortcuts="F8" onClick={openNew}>{t("safeManagement.shortcut.add")} {t("safeManagement.representatives.new")}</button>
-          <button type="button" aria-keyshortcuts="F9" className="safe-retirement-open" disabled={!toolbarRepresentative || loading} onClick={retireToolbarRepresentative}>{t("safeManagement.shortcut.retire")} {t("safeManagement.action.retire")}</button>
+          <button type="button" aria-keyshortcuts="F7" disabled={!toolbarRepresentative || loading} onClick={() => toolbarRepresentative && openRepresentative(toolbarRepresentative)}><ShortcutButtonLabel label={t("safeManagement.representatives.edit")} shortcut={t("safeManagement.shortcut.modify")} /></button>
+          <button type="button" aria-keyshortcuts="F8" onClick={openNew}><ShortcutButtonLabel label={t("safeManagement.representatives.new")} shortcut={t("safeManagement.shortcut.add")} /></button>
+          <button type="button" aria-keyshortcuts="F9" className="safe-retirement-open" disabled={!toolbarRepresentative || loading} onClick={retireToolbarRepresentative}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut={t("safeManagement.shortcut.retire")} /></button>
         </div>
       </header>
       {headerExtra}

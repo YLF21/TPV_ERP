@@ -76,7 +76,7 @@ describe("StockCountScreen", () => {
     expect(within(editor).getByRole("textbox", { name: "Número" })).toHaveValue("—");
     expect(api.createStockCount).not.toHaveBeenCalled();
     expect(screen.getByRole("row", { name: /INV-2026-000001/ })).toBeInTheDocument();
-    fireEvent.click(within(editor).getByRole("button", { name: "Salir (Esc)" }));
+    fireEvent.click(within(editor).getByRole("button", { name: "Salir Esc" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Documento de inventario" })).not.toBeInTheDocument());
     expect(api.createStockCount).not.toHaveBeenCalled();
 

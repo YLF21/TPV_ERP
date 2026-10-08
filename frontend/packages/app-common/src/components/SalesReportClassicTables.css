@@ -5,6 +5,34 @@
    Colours use the same tokens as the management tables; fallbacks also allow
    this lazy report component to be rendered independently. */
 @media screen {
+  @layer erp-report-corners {
+    .report-screen--desktop :is(
+      .report-shell, .report-data, .report-data-toolbar, .report-search,
+      .report-table-scroll, .report-total-row, .report-date-range-filter,
+      .sales-activity-toolbar, .sales-documents-controls, .sales-documents-table-scroll,
+      .sales-daily-block, .sales-daily-users, .sales-daily-authoritative,
+      .warehouse-reconciliation, .erp-select, .erp-multi-select,
+      button:not(.table-layout-sort-button):not(.table-layout-column-resizer):not(.table-layout-column-menu-button),
+      input:not([type="checkbox"]):not([type="radio"]), select, textarea
+    ) {
+      border-radius: 6px !important;
+    }
+
+    .report-screen--desktop :is(.report-table-scroll, .sales-documents-table-scroll) {
+      padding-inline: 0 !important;
+    }
+
+    .report-screen--desktop :is(.report-table, .sales-documents-table) thead th:first-child,
+    .report-screen--desktop :is(.sales-daily-block, .sales-daily-users) > header {
+      border-top-left-radius: 5px !important;
+    }
+
+    .report-screen--desktop :is(.report-table, .sales-documents-table) thead th:last-child,
+    .report-screen--desktop :is(.sales-daily-block, .sales-daily-users) > header {
+      border-top-right-radius: 5px !important;
+    }
+  }
+
   .report-classic-document-table.erp-classic-tables {
     border: 1px solid var(--erp-table-border, #aebfd2) !important;
     border-radius: 0 !important;

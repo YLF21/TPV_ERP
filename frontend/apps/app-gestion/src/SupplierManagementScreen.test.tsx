@@ -143,11 +143,11 @@ it("selects a representative and opens the editor with F7 while F8 creates a new
  request.mockImplementation(async (path: string) => path.startsWith("/sales-representatives/management/page") ? {items:[{id:"rep-1",version:1,commercialId:"COM-001",name:"Ana",active:true,suppliers:[]}],hasMore:false} : []);
  render(<SupplierManagementScreen locale="es" session={adminSession}/>);
  fireEvent.click(screen.getByRole("tab",{name:"Comerciales de proveedor"}));
- expect(screen.getByRole("button",{name:"F7 Modificar comercial"})).toBeDisabled();
- expect(screen.getByRole("button",{name:"F9 Retirar de forma segura"})).toBeDisabled();
+ expect(screen.getByRole("button",{name:"Modificar comercial F7"})).toBeDisabled();
+ expect(screen.getByRole("button",{name:"Retirar de forma segura F9"})).toBeDisabled();
  fireEvent.click(await screen.findByText("COM-001"),{detail:1});
  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
- expect(screen.getByRole("button",{name:"F9 Retirar de forma segura"})).toBeEnabled();
+ expect(screen.getByRole("button",{name:"Retirar de forma segura F9"})).toBeEnabled();
  fireEvent.keyDown(window,{key:"F7"});
  expect(await screen.findByDisplayValue("Ana")).toBeInTheDocument();
  fireEvent.keyDown(window,{key:"F8"});

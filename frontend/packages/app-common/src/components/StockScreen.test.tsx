@@ -1324,7 +1324,7 @@ describe("StockScreen", () => {
       />
     );
 
-    expect(html).toContain('class="stock-screen work-screen erp-classic-tables"');
+    expect(html).toContain('class="stock-screen work-screen stock-screen--venta erp-classic-tables"');
     expect(html).toContain('class="stock-nav"');
     expect(html).toContain('class="module-nav-back-icon"');
     expect(html.match(/class="module-nav-item-icon"/g)).toHaveLength(10);

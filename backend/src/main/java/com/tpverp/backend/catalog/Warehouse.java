@@ -37,6 +37,9 @@ public class Warehouse {
     @Version
     private long version;
 
+    @Column(name = "display_order", nullable = false)
+    private int displayOrder;
+
     protected Warehouse() {
     }
 
@@ -82,6 +85,15 @@ public class Warehouse {
 
     public boolean isActive() {
         return activo;
+    }
+
+    public long getVersion() { return version; }
+
+    public int getDisplayOrder() { return displayOrder; }
+
+    public void setDisplayOrder(int displayOrder) {
+        if (displayOrder < 0) throw new IllegalArgumentException("displayOrder debe ser positivo o cero");
+        this.displayOrder = displayOrder;
     }
 
     public void rename(String name) {

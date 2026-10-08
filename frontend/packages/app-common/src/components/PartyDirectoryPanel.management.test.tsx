@@ -25,7 +25,7 @@ it("requires explicit application confirmation before deactivating a customer", 
 it("keeps unsaved data when dismissing the discard confirmation", async () => {
  render(<PartyDirectoryPanel app="gestion" kind="customers" locale="es" session={session} allowSafeRetirement/>);
  await screen.findByText("CLIENTE");
- fireEvent.click(screen.getByRole("button",{name:"F8 Nuevo cliente"}));
+ fireEvent.click(screen.getByRole("button",{name:"Nuevo cliente F8"}));
  const input=screen.getByRole("textbox",{name:"Nombre o razón social"});
  fireEvent.change(input,{target:{value:"Pendiente"}});
  fireEvent.click(screen.getByRole("button",{name:"Cerrar"}));
@@ -37,9 +37,9 @@ it("keeps unsaved data when dismissing the discard confirmation", async () => {
 it("selects suppliers and routes F9 to review without retiring immediately", async () => {
  vi.mocked(apiRequest).mockImplementation(async path => path.includes("/management/page") ? {items:[{id:"s1",supplierId:"S-1",legalName:"SUPPLIER",active:true}],hasMore:false} : path.includes("retirement-impact") ? {id:"s1",version:1,currentState:"ACTIVE",outcomeIfConfirmed:"HARD_DELETED",reasonCodes:[],executable:true} : []);
  render(<PartyDirectoryPanel app="gestion" kind="suppliers" locale="es" session={session} allowSafeRetirement/>);
- expect(screen.getByRole("button",{name:"F7 Modificar proveedor"})).toBeDisabled();
+ expect(screen.getByRole("button",{name:"Modificar proveedor F7"})).toBeDisabled();
  fireEvent.click(await screen.findByText("SUPPLIER"),{detail:1});
- expect(screen.getByRole("button",{name:"F7 Modificar proveedor"})).toBeEnabled();
+ expect(screen.getByRole("button",{name:"Modificar proveedor F7"})).toBeEnabled();
  fireEvent.keyDown(window,{key:"F9"});
  await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/suppliers/management/s1/retirement-impact",expect.anything()));
  expect(vi.mocked(apiRequest).mock.calls.some(([path]) => path.endsWith("/retire"))).toBe(false);

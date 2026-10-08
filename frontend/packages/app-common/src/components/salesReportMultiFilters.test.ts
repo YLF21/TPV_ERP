@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeReportPayment, reportMultiFilterExport, reportMultiFilterOptions, reportPaymentValues,
+import { normalizeReportPayment, orderReportWarehouseOptions, reportMultiFilterExport, reportMultiFilterOptions, reportPaymentValues,
   rowMatchesReportMultiFilters } from "./salesReportMultiFilters";
 
 const t = (key: string) => key;
@@ -52,5 +52,26 @@ describe("report multi-value criteria", () => {
     expect(rowMatchesReportMultiFilters({ warehouse: "RESERVA", terminal: "CAJA2" }, filters)).toBe(true);
     expect(rowMatchesReportMultiFilters({ warehouse: "GENERAL", terminal: "CAJA3" }, filters)).toBe(false);
     expect(reportMultiFilterExport(filters)).toEqual({ warehouses: ["GENERAL", "RESERVA"], terminals: ["CAJA1", "CAJA2"] });
+  });
+
+  it("orders only present and retained warehouses by the catalogue, leaving unknown history at the end", () => {
+    const catalogue = [
+      { id: "id-custom", name: "SUR" },
+      { id: "id-other", nombre: "NORTE" },
+      { id: "id-general", name: "GENERAL" }
+    ];
+    const options = reportMultiFilterOptions([
+      { warehouse: "GENERAL" }, { warehouse: "DESCONOCIDO" }, { warehouse: "NORTE" }, { warehouse: "SUR" }
+    ], "warehouse", "es", t, ["ANTIGUO"]);
+    expect(orderReportWarehouseOptions(options, catalogue).map(option => option.value)).toEqual([
+      "SUR", "NORTE", "GENERAL", "ANTIGUO", "DESCONOCIDO"
+    ]);
+    expect(orderReportWarehouseOptions([
+      { value: "GENERAL", label: "General" }, { value: "id-custom", label: "Por ID" },
+      { value: "FUERA", label: "Histórico" }
+    ], catalogue)).toEqual([
+      { value: "id-custom", label: "Por ID" }, { value: "GENERAL", label: "General" },
+      { value: "FUERA", label: "Histórico" }
+    ]);
   });
 });

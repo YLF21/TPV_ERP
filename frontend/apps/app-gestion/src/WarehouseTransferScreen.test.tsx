@@ -53,7 +53,7 @@ it("opens a new transfer document from the warehouse screen", async () => {
   await waitFor(() => expect(api.loadWarehouseOptions).toHaveBeenCalled());
   expect(dialog).toBeInTheDocument();
   expect(within(dialog).getByRole("button", { name: "Archivo" })).toBeInTheDocument();
-  expect(within(dialog).getByRole("button", { name: "Guardar (F9)" })).toBeDisabled();
+  expect(within(dialog).getByRole("button", { name: "Guardar F9" })).toBeDisabled();
   // The request can start before the catalog and warehouse state finish rendering.
   await waitFor(() => {
     expect(within(dialog).getByRole("button", { name: "Almacén de origen" })).toHaveTextContent("ORIGEN");

@@ -90,8 +90,8 @@ describe("TouchNumericKeypad", () => {
       .map((button) => [button.dataset.numericKey, button.style.gridArea]));
     expect(positions).toEqual({
       "7": "1 / 1", "8": "1 / 2", "9": "1 / 3", BACKSPACE: "1 / 4",
-      "4": "2 / 1", "5": "2 / 2", "6": "2 / 3", ENTER: "2 / 4",
-      "1": "3 / 1", "2": "3 / 2", "3": "3 / 3", SIGN: "3 / 4 / 5 / 5",
+      "4": "2 / 1", "5": "2 / 2", "6": "2 / 3", ENTER: "3 / 4 / 5 / 5",
+      "1": "3 / 1", "2": "3 / 2", "3": "3 / 3", SIGN: "2 / 4",
       "0": "4 / 1 / 5 / 3", DECIMAL: "4 / 3",
     });
     expect(screen.getByRole("button", { name: "Retroceso" }).querySelector('svg[aria-hidden="true"]')).not.toBeNull();

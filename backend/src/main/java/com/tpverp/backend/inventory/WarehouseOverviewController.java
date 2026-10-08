@@ -38,7 +38,7 @@ public class WarehouseOverviewController {
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_ALMACEN','WAREHOUSES_MANAGE')")
     public List<WarehouseOverview> list() {
         UUID storeId = organization.currentStore().getId();
-        var all = warehouses.findByStoreIdOrderByNombre(storeId);
+        var all = warehouses.findByStoreIdOrderByDisplayOrderAscIdAsc(storeId);
         if (all.isEmpty()) return List.of();
         var ids = all.stream().map(value -> value.getId()).toList();
         Map<UUID, StockLevelRepository.WarehouseStockTotal> totals = stocks.totalsByWarehouseIds(ids)

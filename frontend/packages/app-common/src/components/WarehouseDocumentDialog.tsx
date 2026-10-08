@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { ShortcutButtonLabel } from "./ShortcutButtonLabel";
 import { ApiError, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { applyMoneyDiscount, roundMoneyProduct } from "../money";
@@ -1776,7 +1777,7 @@ export function WarehouseDocumentDialog({
                 <button type="button" onClick={openPartnerList}>{partnerLabel}</button>
                 <button type="button" disabled={!canSaveDraft} onClick={() => { setFileMenuOpen(false); void saveDraft(); }}>{t("common.save")}</button>
                 <button type="button" disabled={!canSubmitConfirmation} onClick={() => { setFileMenuOpen(false); void confirmDocument(); }}>{t("common.confirm")}</button>
-                <button type="button" disabled={printing} onClick={previewDocument}>{t("warehouseDocument.menu.previewShortcut")}</button>
+                <button type="button" disabled={printing} onClick={previewDocument}>{app === "pda" ? t("warehouseDocument.menu.previewShortcut") : <ShortcutButtonLabel label={t("warehouseDocument.menu.previewShortcut")} shortcut="Ctrl+P" />}</button>
                 <button type="button" disabled={printing} onClick={printDocument}>{t("salesReport.print")}</button>
                 <button type="button" disabled={readOnly} onClick={clearAllLines}>{t("warehouseDocument.menu.clearLines")}</button>
                 <button type="button" disabled={readOnly} onClick={clearAllDiscounts}>{t("warehouseDocument.menu.clearDiscounts")}</button>
@@ -1799,7 +1800,7 @@ export function WarehouseDocumentDialog({
             )}
           </div>
           <button type="button" disabled={printing} onClick={printDocument}>{t("salesReport.print")}</button>
-          <button type="button" className="erp-dialog-action-confirm" disabled={!canSaveDraft} onClick={() => void saveDraft()}>{t("warehouseDocument.menu.saveShortcut")}</button>
+          <button type="button" className="erp-dialog-action-confirm" disabled={!canSaveDraft} onClick={() => void saveDraft()}>{app === "pda" ? t("warehouseDocument.menu.saveShortcut") : <ShortcutButtonLabel label={t("warehouseDocument.menu.saveShortcut")} shortcut="F9" />}</button>
           <button type="button" className="erp-dialog-action-confirm" disabled={!canSubmitConfirmation} onClick={() => void confirmDocument()}>{t("common.confirm")}</button>
           {app === "pda" ? <button type="button" className="erp-dialog-action-cancel" onClick={onClose}>{t("warehouseDocument.menu.exitShortcut")}</button> : <WindowCloseButton aria-label={t("common.close")} title={t("warehouseDocument.menu.exitShortcut")} onLight onClick={onClose} >{t("warehouseDocument.menu.exit")}</WindowCloseButton>}
         </header>

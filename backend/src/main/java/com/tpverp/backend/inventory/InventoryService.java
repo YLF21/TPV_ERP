@@ -102,7 +102,7 @@ public class InventoryService {
             warehouse(warehouseId, storeId);
             return stockRepository.findByWarehouseId(warehouseId).stream().map(StockItem::from).toList();
         }
-        return warehouseRepository.findByStoreIdOrderByNombre(storeId).stream()
+        return warehouseRepository.findByStoreIdOrderByDisplayOrderAscIdAsc(storeId).stream()
                 .flatMap(warehouse -> stockRepository.findByWarehouseId(warehouse.getId()).stream())
                 .map(StockItem::from)
                 .toList();

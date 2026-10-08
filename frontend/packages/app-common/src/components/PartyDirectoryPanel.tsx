@@ -16,6 +16,7 @@ import { CustomerDocumentsDialog } from "./CustomerDocumentsDialog";
 import { CentralCustomerReuse } from "./CentralCustomerReuse";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
+import { ShortcutButtonLabel } from "./ShortcutButtonLabel";
 import { customerDocumentType, customerIdentityFailure } from "./customerDocumentIdentity";
 import stockFilterIcon from "../assets/stock/filter.png";
 import "./PartyDirectoryFilters.css";
@@ -923,9 +924,9 @@ export function PartyDirectoryPanel({
     <header className="work-panel-heading stock-panel-heading party-directory-heading">
       <div><h2>{title}</h2><span>{t(`party.${kind}.subtitle`)}</span></div>
       {classicWindow ? <div className="management-record-actions">
-        {canWrite && <button type="button" aria-keyshortcuts="F7" disabled={!toolbarEntry} onClick={() => toolbarEntry && openEntry(toolbarEntry)}>F7 {t(`party.${kind}.edit`)}</button>}
-        {canWrite && <button type="button" aria-keyshortcuts="F8" onClick={openNew}>F8 {t(`party.${kind}.new`)}</button>}
-        {allowSafeRetirement && !isMember && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!toolbarEntry} onClick={retireToolbarEntry}>{t("safeManagement.shortcut.retire")} {t("safeManagement.action.retire")}</button>}
+        {canWrite && <button type="button" aria-keyshortcuts="F7" disabled={!toolbarEntry} onClick={() => toolbarEntry && openEntry(toolbarEntry)}><ShortcutButtonLabel label={t(`party.${kind}.edit`)} shortcut="F7" /></button>}
+        {canWrite && <button type="button" aria-keyshortcuts="F8" onClick={openNew}><ShortcutButtonLabel label={t(`party.${kind}.new`)} shortcut="F8" /></button>}
+        {allowSafeRetirement && !isMember && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!toolbarEntry} onClick={retireToolbarEntry}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut={t("safeManagement.shortcut.retire")} /></button>}
       </div> : canWrite && <button type="button" className="stock-add-product-button" onClick={openNew}>{t(`party.${kind}.new`)}</button>}
     </header>
     {headerExtra}
