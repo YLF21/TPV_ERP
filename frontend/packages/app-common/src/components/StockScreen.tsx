@@ -2,6 +2,7 @@ import { DialogDismissButton } from "./DialogDismissButton";
 import { ShortcutButtonLabel } from "./ShortcutButtonLabel";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { AppBrand } from "./AppBrand";
+import { DesktopHeaderContext } from "./DesktopHeaderContext";
 import { ReportDateRangeFilter, isValidReportDate, type ReportDateRange } from "./ReportDateRangeFilter";
 import "./ErpClassicWindow.css";
 import "./StockTopSales.css";
@@ -7567,6 +7568,7 @@ export function StockScreen({
           {!embedded && <button type="button" className="report-brand-back" onClick={onBack}>
             <AppBrand app={app} label={t(app === "venta" ? "venta.title" : "gestion.title")} />
           </button>}
+          {!embedded && <DesktopHeaderContext terminalContext={terminalContext} />}
           {selectedView !== "stock.bulkEdit" && (
             <h1 className="report-title">{stockTitle}</h1>
           )}

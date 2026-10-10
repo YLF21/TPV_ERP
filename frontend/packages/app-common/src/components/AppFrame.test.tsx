@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
-import type { LocaleCode } from "../types";
+import type { LocaleCode, TerminalContext } from "../types";
 import { AppFrame } from "./AppFrame";
 import { CONNECTION_REFRESH_MS } from "./useScreenConnectionStatus";
 
@@ -18,12 +18,13 @@ const session = {
   permissions: ["ADMIN" as const]
 };
 
-function frame(locale: LocaleCode = "es", content = "Contenido", onLocaleChange = vi.fn()) {
+function frame(locale: LocaleCode = "es", content = "Contenido", onLocaleChange = vi.fn(), terminalContext?: TerminalContext) {
   return (
     <AppFrame
       titleKey="gestion.title"
       locale={locale}
       session={session}
+      terminalContext={terminalContext}
       onLocaleChange={onLocaleChange}
       onLogout={vi.fn()}
     >
@@ -71,6 +72,19 @@ describe("AppFrame language selector", () => {
 });
 
 describe("AppFrame SaaS connectivity", () => {
+  it("shows the real store code in the management footer only when valid", async () => {
+    const context = { storeName: "Tienda Principal", companyName: "Mi Empresa", terminalName: "Caja Principal", terminalCode: "001", storeInternalCode: "3500002" };
+    let view!: ReturnType<typeof render>;
+    await act(async () => { view = render(frame("es", "Contenido", vi.fn(), context)); });
+    const titlebar = document.querySelector(".app-titlebar") as HTMLElement;
+    expect(within(titlebar).getByText("Mi Empresa")).toBeInTheDocument();
+    expect(within(titlebar).queryByText("Caja Principal")).not.toBeInTheDocument();
+    expect(within(titlebar).queryByText("Tienda Principal")).not.toBeInTheDocument();
+    expect(screen.getByText("Tienda Principal · 3500002")).toHaveAttribute("title", "Código de tienda en SaaS");
+    await act(async () => { view.rerender(frame("en", "Contenido", vi.fn(), { ...context, terminalName: "", storeInternalCode: "DEMO001" })); });
+    expect(within(titlebar).queryByText("001")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Tienda Principal ·/)).not.toBeInTheDocument();
+  });
   it.each([
     { locale: "es" as const, status: "Conectado con SaaS", action: "Comprobar conexión con SaaS" },
     { locale: "en" as const, status: "Connected to SaaS", action: "Check SaaS connection" },

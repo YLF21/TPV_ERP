@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest, type UserSession } from "@tpverp/app-common";
+import "./TerminalServerConnection.css";
+
+export type TerminalServerConnection = {
+  addresses: string[];
+  httpsPort: number | null;
+  backendPort: number;
+  publicUrl: string | null;
+};
 
 export type RegisteredTerminal = {
   id: string;
@@ -7,11 +15,12 @@ export type RegisteredTerminal = {
   type: "SERVIDOR" | "TERMINAL_VENTA" | "PDA";
   approved: boolean;
   active: boolean;
+  lastIp?: string | null;
 };
 
 export type PdaPairingCode = { code: string; expiresAt: string };
 export type WorkstationSlot = { code: string; status: string; name?: string; deviceName?: string;
-  lastSeenAt?: string; terminalId?: string; bindingId?: string; expiresAt?: string; outOfQuota?: boolean };
+  lastSeenAt?: string; lastIp?: string | null; terminalId?: string; bindingId?: string; expiresAt?: string; outOfQuota?: boolean };
 export type WorkstationView = { maxWindows: number; slots: WorkstationSlot[];
   legacyTerminals: RegisteredTerminal[] };
 export type WorkstationHistory = { bindingId: string; requestId?: string; deviceName?: string;
@@ -55,6 +64,10 @@ export function TerminalManagementScreen({ session, t }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [pairing, setPairing] = useState<PdaPairingCode | null>(null);
+  const [serverConnection, setServerConnection] = useState<TerminalServerConnection | null>(null);
+  const [connectionRevision, setConnectionRevision] = useState(0);
+  const [connectionLoading, setConnectionLoading] = useState(true);
+  const [connectionError, setConnectionError] = useState(false);
   const token = session.accessToken;
   const selected = terminals.find((terminal) => terminal.id === selectedId) ?? null;
   const selectedSlot = workstations?.slots.find(slot => slot.code === selectedSlotCode);
@@ -87,6 +100,18 @@ export function TerminalManagementScreen({ session, t }: {
   }
 
   useEffect(() => { void refresh(""); }, [token]);
+
+  useEffect(() => {
+    let active = true;
+    setServerConnection(null);
+    setConnectionLoading(true);
+    setConnectionError(false);
+    void apiRequest<TerminalServerConnection>("/terminals/server-connection", { token })
+      .then(value => { if (active) setServerConnection(value); })
+      .catch(() => { if (active) { setServerConnection(null); setConnectionError(true); } })
+      .finally(() => { if (active) setConnectionLoading(false); });
+    return () => { active = false; };
+  }, [token, connectionRevision]);
 
   useEffect(() => {
     setHistory(null);
@@ -176,8 +201,24 @@ export function TerminalManagementScreen({ session, t }: {
           <h2>{t("gestion.terminals.title")}</h2>
           <p>{t("gestion.terminals.subtitle")}</p>
         </div>
-        <button type="button" disabled={loading || busy} onClick={() => void refresh()}>{t("common.refresh")}</button>
+        <button type="button" disabled={loading || busy} onClick={() => {
+          setConnectionRevision(value => value + 1);
+          void refresh();
+        }}>{t("common.refresh")}</button>
       </header>
+
+      <section className="gestion-terminal-server-connection" aria-label={t("gestion.terminals.serverConnection.title")} aria-busy={connectionLoading}>
+        <h3>{t("gestion.terminals.serverConnection.title")}</h3>
+        {connectionLoading ? <p role="status">{t("common.loading")}</p> : connectionError ?
+          <p className="gestion-inline-error" role="alert">{t("gestion.terminals.serverConnection.loadError")}</p> : serverConnection &&
+          <dl>
+            <div><dt>{t("gestion.terminals.serverConnection.addresses")}</dt><dd>{serverConnection.addresses.length ?
+              serverConnection.addresses.map(address => <span key={address}>{address}</span>) : t("gestion.terminals.serverConnection.noAddresses")}</dd></div>
+            <div><dt>{t("gestion.terminals.serverConnection.httpsPort")}</dt><dd>{serverConnection.httpsPort ?? t("gestion.terminals.serverConnection.notConfigured")}</dd></div>
+            <div><dt>{t("gestion.terminals.serverConnection.backendPort")}</dt><dd>{serverConnection.backendPort}</dd></div>
+            <div><dt>{t("gestion.terminals.serverConnection.publicUrl")}</dt><dd>{serverConnection.publicUrl || t("gestion.terminals.serverConnection.notConfigured")}</dd></div>
+          </dl>}
+      </section>
 
       <div className="gestion-terminal-summary">
         <div><span>{t("gestion.terminals.workstations.capacity")}</span><strong>{workstations?.maxWindows ?? "—"}</strong></div>
@@ -221,6 +262,7 @@ export function TerminalManagementScreen({ session, t }: {
             <dl>
               <div><dt>{t("gestion.terminals.status")}</dt><dd>{selectedSlot.outOfQuota ? t("gestion.terminals.workstations.outOfQuota") : t(`gestion.terminals.workstations.status.${selectedSlot.status}`)}</dd></div>
               <div><dt>{t("gestion.terminals.workstations.device")}</dt><dd>{selectedSlot.deviceName || "—"}</dd></div>
+              <div><dt>{t("gestion.terminals.lastIp")}</dt><dd>{selectedSlot.lastIp || "—"}</dd></div>
               <div><dt>{t("gestion.terminals.workstations.lastSeen")}</dt><dd>{selectedSlot.lastSeenAt ? new Date(selectedSlot.lastSeenAt).toLocaleString() : "—"}</dd></div>
               <div><dt>{t("gestion.terminals.id")}</dt><dd>{selectedSlot.terminalId || "—"}</dd></div>
               {selectedSlot.expiresAt && <div><dt>{t("gestion.terminals.pairingExpires")}</dt><dd>{new Date(selectedSlot.expiresAt).toLocaleString()}</dd></div>}
@@ -244,6 +286,9 @@ export function TerminalManagementScreen({ session, t }: {
               </tr>)}</tbody></table>}
           </> : selectedLegacy ? <>
             <header><span>{t("gestion.terminals.workstations.legacy")}</span><h3>{selectedLegacy.name}</h3></header>
+            <dl>
+              <div><dt>{t("gestion.terminals.lastIp")}</dt><dd>{selectedLegacy.lastIp || "—"}</dd></div>
+            </dl>
             <p>{t("gestion.terminals.workstations.assignHelp")}</p>
             <label className="gestion-terminal-assign">{t("gestion.terminals.workstations.code")}
               <select value={assignCode} onChange={event => setAssignCode(event.target.value)}>
@@ -257,6 +302,7 @@ export function TerminalManagementScreen({ session, t }: {
               <header><span>{t(`gestion.terminals.type.${selected.type}`)}</span><h3>{selected.name}</h3></header>
               <dl>
                 <div><dt>{t("gestion.terminals.id")}</dt><dd>{selected.id}</dd></div>
+                <div><dt>{t("gestion.terminals.lastIp")}</dt><dd>{selected.lastIp || "—"}</dd></div>
                 <div><dt>{t("gestion.terminals.status")}</dt><dd>{t(`gestion.terminals.status.${terminalDisplayStatus(selected)}`)}</dd></div>
               </dl>
               <div className="gestion-terminal-actions">

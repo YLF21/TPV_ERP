@@ -14,6 +14,14 @@ public interface TerminalRepository extends JpaRepository<Terminal, UUID> {
     Optional<Terminal> findByTiendaIdAndWorkstationCode(UUID tiendaId, String workstationCode);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select terminal from Terminal terminal where terminal.tienda.id = :storeId and terminal.workstationCode = :code")
+    Optional<Terminal> findWorkstationForUpdate(@Param("storeId") UUID storeId, @Param("code") String code);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select terminal from Terminal terminal where terminal.tienda.id = :storeId and terminal.tipo = :type")
+    Optional<Terminal> findTypeForUpdate(@Param("storeId") UUID storeId, @Param("type") TerminalType type);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select terminal from Terminal terminal where terminal.id = :id")
     Optional<Terminal> findForAuthentication(@Param("id") UUID id);
 

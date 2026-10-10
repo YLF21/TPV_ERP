@@ -1,4 +1,5 @@
 import { AppBrand } from "./AppBrand";
+import { DesktopHeaderContext } from "./DesktopHeaderContext";
 import { useEffect, useMemo, useState } from "react";
 import {
   ClipboardText,
@@ -165,6 +166,7 @@ export function WarehouseScreen({
           {!embedded && <button type="button" className="report-brand-back" onClick={onBack}>
             <AppBrand app={app} label={t(app === "venta" ? "venta.title" : "gestion.title")} />
           </button>}
+          {!embedded && <DesktopHeaderContext terminalContext={terminalContext} />}
           <h1 className="report-title">{t("home.warehouse")}</h1>
         </header>
 

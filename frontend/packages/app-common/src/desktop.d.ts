@@ -11,11 +11,12 @@ type TerminalLinkState = {
   terminalName: string; storeId: string; storeName: string; installationId: string;
   status: "PENDING" | "ACTIVE" | "DISABLED" | "RELEASED" | "CANCELLED" | "EXPIRED";
   expiresAt?: string;
+  storeInternalCode?: string | null;
 };
-type TerminalDisplayContext = { companyName?: string; storeName: string; terminalCode: string; terminalName?: string };
+type TerminalDisplayContext = { companyName?: string; storeName: string; storeInternalCode?: string; terminalCode: string; terminalName?: string };
 type TerminalBootstrap = {
   protocolVersion: number; installationId: string; installationReference: string;
-  storeId: string; storeName: string; companyName?: string; publicKey: string; challenge: string;
+  storeId: string; storeName: string; companyName?: string; storeInternalCode?: string | null; publicKey: string; challenge: string;
   signature: string; maxWindows: number;
   slots: Array<{ code: string; status: string; name?: string; terminalId?: string;
     bindingId?: string; expiresAt?: string; outOfQuota?: boolean }>;
@@ -25,6 +26,10 @@ type BackendConnectionResult<T> = ({ ok: true } & T) | { ok: false; code: string
 declare global {
   interface Window {
     tpvDesktop?: {
+      display?: {
+        load: () => Promise<{ ok: true; mode: "FULLSCREEN" | "WINDOWED" } | { ok: false; code: string; message: string }>;
+        setMode: (mode: "FULLSCREEN" | "WINDOWED") => Promise<{ ok: true; mode: "FULLSCREEN" | "WINDOWED" } | { ok: false; code: string; message: string }>;
+      };
       backendConnection?: {
         load: () => Promise<BackendConnectionResult<{ configuration?: { backendUrl: string; installationId?: string };
           link?: TerminalLinkState; identity?: TerminalContext | null; deviceName: string; configurationError?: string;
@@ -43,6 +48,16 @@ declare global {
         cancelLink: () => Promise<BackendConnectionResult<{ link: TerminalLinkState | null; localOnly?: boolean }>>;
         saveAddress: (request: { backendUrl: string }) => Promise<BackendConnectionResult<{ restartRequired: boolean }>>;
         restart: () => Promise<BackendConnectionResult<Record<string, never>>>;
+      };
+      connectionRecovery?: {
+        status: () => Promise<{ ok: boolean; state: "CONNECTED" | "OFFLINE" | "CHECKING"; backendIp?: string; errorCode?: string }>;
+        retry: () => Promise<{ ok: boolean; state: "CONNECTED" | "OFFLINE" | "CHECKING"; backendIp?: string; errorCode?: string }>;
+        onStatus: (callback: (status: { ok: boolean; state: "CONNECTED" | "OFFLINE" | "CHECKING"; backendIp?: string; errorCode?: string }) => void) => () => void;
+      };
+      workRecovery?: {
+        load: () => Promise<{ ok: true; value: null | unknown } | { ok: false; code: string; message: string }>;
+        save: (value: unknown) => Promise<{ ok: true } | { ok: false; code: string; message: string }>;
+        clear: () => Promise<{ ok: true } | { ok: false; code: string; message: string }>;
       };
       saleControlOutbox?: SaleControlStorageBridge;
       closeApplication: () => Promise<void>;

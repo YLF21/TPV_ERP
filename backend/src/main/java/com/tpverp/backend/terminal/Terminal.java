@@ -115,6 +115,13 @@ public class Terminal {
     public String getWorkstationCode() { return workstationCode; }
     public String getDisplayCode() { return workstationCode == null ? nombre : workstationCode; }
     public UUID getCurrentBindingId() { return currentBindingId; }
+    public InetAddress getLastIp() { return lastIp; }
+    public Instant getLastSeenAt() { return lastSeenAt; }
+
+    public void recordConnection(Instant seenAt, InetAddress address) {
+        lastSeenAt = Objects.requireNonNull(seenAt, "seenAt");
+        if (address != null) lastIp = address;
+    }
 
     void assignWorkstationCode(String code) {
         if (workstationCode != null && !workstationCode.equals(code)) {
@@ -123,12 +130,21 @@ public class Terminal {
         workstationCode = required(code, "code");
     }
 
-    void bind(UUID bindingId) { currentBindingId = bindingId; }
+    void bind(UUID bindingId) {
+        if (!Objects.equals(currentBindingId, bindingId)) clearConnection();
+        currentBindingId = bindingId;
+    }
 
     void endBinding(String unusableCredentialHash) {
         deactivate();
         currentBindingId = null;
+        clearConnection();
         rotateCredential(unusableCredentialHash);
+    }
+
+    private void clearConnection() {
+        lastIp = null;
+        lastSeenAt = null;
     }
 
     public void approve() {

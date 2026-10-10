@@ -1,10 +1,13 @@
 import { DialogDismissButton } from "./DialogDismissButton";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { AppBrand } from "./AppBrand";
+import { DesktopHeaderContext } from "./DesktopHeaderContext";
 /// <reference types="vite/client" />
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { ApiError, apiRequest } from "../api/client";
+import { isOfflineApplicationClosePrepared, registerOfflineClosePreparation } from "../sale/offlineClosePreparation";
+import { offlineWorkRecoveryBridge, offlineSaleIdentity, readOfflineRecoveryStorage, restoreOfflineRecoveryStorage, saveOfflineSaleRecovery, retireOfflineSaleRecovery, validateOfflineSaleRecovery, isOfflineSaleRecoveryTombstone, type OfflineSaleRecovery } from "../sale/offlineSaleRecovery";
 import { useSaleControlDelivery } from "../sale/useSaleControlDelivery";
 import type { SaleControlDelivery } from "../sale/saleControlDelivery";
 import { roundUnitPrice } from "../money";
@@ -1628,7 +1631,59 @@ type SaleScreenProps = {
   onOpenSalesDocumentWindow?: () => void;
 };
 
-export function SaleScreen({
+type OfflineSaleTicket = {
+  lines: SaleLine[];
+  selectedCustomer: SaleCustomer | null;
+  previousTicketImportBatch: PreviousTicketImportBatch | null;
+  returnRetentionSourceDocumentId: string | null;
+  wholesaleMode: boolean;
+  selectedLineId: string | null;
+  saleComment: string;
+  salePrintMode: SalePrintMode;
+  checkoutDiscountCents: number;
+  documentDiscountPercent: number;
+  memberBalanceCents: number;
+  cashCheckoutId: string;
+  cashQuoteCents: number;
+  cashDialogOpen: boolean;
+  cardCheckoutId: string;
+  cardQuoteCents: number;
+  cardDialogOpen: boolean;
+};
+
+export function SaleScreen(props: SaleScreenProps) {
+  const bridge = offlineWorkRecoveryBridge();
+  const scope = `${props.session.userId}|${props.terminalContext.installationId}|${props.terminalContext.storeId}|${props.terminalContext.terminalId}|${props.terminalContext.bindingId}`;
+  const [loaded, setLoaded] = useState<{ scope: string; snapshot?: OfflineSaleRecovery<OfflineSaleTicket> } | null>(bridge ? null : { scope });
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    if (!bridge) { setLoaded({ scope }); return; }
+    let current = true;
+    setFailed(false);
+    void bridge.load().then(result => {
+      if (!current) return;
+      if (!result.ok) throw new Error("OFFLINE_RECOVERY_LOAD_FAILED");
+      if (result.value == null) { setLoaded({ scope }); return; }
+      if (isOfflineSaleRecoveryTombstone(result.value, props.terminalContext)) { setLoaded({ scope }); return; }
+      const snapshot = validateOfflineSaleRecovery(result.value, props.session.userId, props.terminalContext);
+      restoreOfflineRecoveryStorage(snapshot, props.terminalContext);
+      setLoaded({ scope, snapshot: snapshot as unknown as OfflineSaleRecovery<OfflineSaleTicket> });
+    }).catch(() => { if (current) setFailed(true); });
+    return () => { current = false; };
+  }, [bridge, scope, retry]);
+  if (!loaded || loaded.scope !== scope) {
+    const copy = props.locale === "en"
+      ? { waiting: "Recovering saved work…", error: "Saved work could not be recovered. Sign in with the original user on the same terminal, or retry.", retry: "Retry", logout: "Log out" }
+      : props.locale === "zh"
+        ? { waiting: "正在恢复保存的工作…", error: "无法恢复保存的工作。请在同一终端使用原用户登录，或重试。", retry: "重试", logout: "退出登录" }
+        : { waiting: "Recuperando trabajo guardado…", error: "No se pudo recuperar el trabajo guardado. Accede con el usuario original en el mismo terminal o reintenta.", retry: "Reintentar", logout: "Cerrar sesión" };
+    return <section role={failed ? "alert" : "status"}><p>{failed ? copy.error : copy.waiting}</p>{failed && <><button type="button" onClick={() => setRetry(value => value + 1)}>{copy.retry}</button><button type="button" onClick={props.onLogout ?? props.onBack}>{copy.logout}</button></>}</section>;
+  }
+  return <SaleScreenContent key={scope} {...props} offlineRecovery={loaded.snapshot} />;
+}
+
+function SaleScreenContent({
   controlDelivery: sharedControlDelivery,
   app,
   locale,
@@ -1641,7 +1696,15 @@ export function SaleScreen({
   onLogout,
   onOpenCustomerReceivables,
   onOpenSalesDocumentWindow,
-}: SaleScreenProps) {
+  offlineRecovery,
+}: SaleScreenProps & { offlineRecovery?: OfflineSaleRecovery<OfflineSaleTicket> }) {
+  const savedTicket = offlineRecovery?.ticket;
+  const [offlineRetirementFailed, setOfflineRetirementFailed] = useState(false);
+  const [offlineRetiring, setOfflineRetiring] = useState(false);
+  const [offlineRetirementRetry, setOfflineRetirementRetry] = useState(0);
+  const offlineRetirementBlockedRef = useRef(false);
+  const offlineRetirementCompleteRef = useRef(false);
+  const offlineRetirementFlightRef = useRef<Promise<void> | null>(null);
   const t = createTranslator(locale);
   const { delivery: controlDelivery, state: controlDeliveryState } = useSaleControlDelivery(session, terminalContext, sharedControlDelivery);
   const [controlSaving, setControlSaving] = useState(false);
@@ -1713,7 +1776,7 @@ export function SaleScreen({
   const [pendingOpenPriceProduct, setPendingOpenPriceProduct] = useState<SaleProduct | null>(null);
   const [pendingOpenPriceQuantity, setPendingOpenPriceQuantity] = useState(1);
   const [previousTicketImportBatch, setPreviousTicketImportBatch] =
-    useState<PreviousTicketImportBatch | null>(null);
+    useState<PreviousTicketImportBatch | null>(savedTicket?.previousTicketImportBatch ?? null);
   const [previousTicketImportBusy, setPreviousTicketImportBusy] = useState(false);
   const [previousTicketImportFocusRequest, setPreviousTicketImportFocusRequest] = useState(0);
   const [nextScanQuantity, setNextScanQuantity] = useState(1);
@@ -1730,10 +1793,10 @@ export function SaleScreen({
   const [editingProduct, setEditingProduct] = useState<ProductCreateEditProduct | null>(null);
   const [query, setQuery] = useState("");
   const [searchPreviewProduct, setSearchPreviewProduct] = useState<SaleProduct | null>(null);
-  const [lines, setLines] = useState<SaleLine[]>([]);
-  const [returnRetentionSourceDocumentId, setReturnRetentionSourceDocumentId] = useState<string | null>(null);
-  const [wholesaleMode, setWholesaleMode] = useState(false);
-  const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
+  const [lines, setLines] = useState<SaleLine[]>(savedTicket?.lines ?? []);
+  const [returnRetentionSourceDocumentId, setReturnRetentionSourceDocumentId] = useState<string | null>(savedTicket?.returnRetentionSourceDocumentId ?? null);
+  const [wholesaleMode, setWholesaleMode] = useState(savedTicket?.wholesaleMode ?? false);
+  const [selectedLineId, setSelectedLineId] = useState<string | null>(savedTicket?.selectedLineId ?? null);
   const [actionDialog, setActionDialog] = useState<
     "quantity"
     | "discount"
@@ -1771,12 +1834,12 @@ export function SaleScreen({
   const [customerCreateOpen, setCustomerCreateOpen] = useState(false);
   const [customerEditId, setCustomerEditId] = useState<string | null>(null);
   const [customerReceivablesOpen, setCustomerReceivablesOpen] = useState<SaleCustomer | null>(null);
-  const [selectedCustomer, setSelectedCustomer] = useState<SaleCustomer | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<SaleCustomer | null>(savedTicket?.selectedCustomer ?? null);
   const [selectedCustomerResultId, setSelectedCustomerResultId] = useState("");
   const [customerSort, setCustomerSort] = useState<TableSort<SaleCustomerSortColumn> | null>(null);
-  const [saleComment, setSaleComment] = useState("");
+  const [saleComment, setSaleComment] = useState(savedTicket?.saleComment ?? "");
   const [commentInput, setCommentInput] = useState("");
-  const [salePrintMode, setSalePrintMode] = useState<SalePrintMode>("DEFAULT");
+  const [salePrintMode, setSalePrintMode] = useState<SalePrintMode>(savedTicket?.salePrintMode ?? "DEFAULT");
   const [printModeInput, setPrintModeInput] = useState<SalePrintMode>("DEFAULT");
   const [lastPrintMode, setLastPrintMode] = useState<SalePrintMode>("DEFAULT");
   const [pendingCustomerContinuation, setPendingCustomerContinuation] = useState(false);
@@ -1809,19 +1872,19 @@ export function SaleScreen({
   const recoveredCashCloseFlow = cashCloseRecovery.status === "valid"
     ? cashCloseRecovery.envelope.flow
     : null;
-  const [cashDialogOpen, setCashDialogOpen] = useState(false);
+  const [cashDialogOpen, setCashDialogOpen] = useState(savedTicket?.cashDialogOpen ?? false);
   const [cashOpening, setCashOpening] = useState(false);
-  const [cashQuoteCents, setCashQuoteCents] = useState(0);
-  const [cashCheckoutId, setCashCheckoutId] = useState("");
+  const [cashQuoteCents, setCashQuoteCents] = useState(savedTicket?.cashQuoteCents ?? 0);
+  const [cashCheckoutId, setCashCheckoutId] = useState(savedTicket?.cashCheckoutId ?? "");
   const [cashSubmitting, setCashSubmitting] = useState(false);
   const [cashError, setCashError] = useState("");
   const [cashStatus, setCashStatus] = useState("");
   const [cashInputMode, setCashInputMode] = useState<CashInputMode>("touch");
   const [cashResult, setCashResult] = useState<CashPaymentResult | null>(null);
   const [ticketPrinterHealth, setTicketPrinterHealth] = useState<TicketPrinterHealth | null>(null);
-  const [cardDialogOpen, setCardDialogOpen] = useState(false);
-  const [cardQuoteCents, setCardQuoteCents] = useState(0);
-  const [cardCheckoutId, setCardCheckoutId] = useState("");
+  const [cardDialogOpen, setCardDialogOpen] = useState(savedTicket?.cardDialogOpen ?? false);
+  const [cardQuoteCents, setCardQuoteCents] = useState(savedTicket?.cardQuoteCents ?? 0);
+  const [cardCheckoutId, setCardCheckoutId] = useState(savedTicket?.cardCheckoutId ?? "");
   const [cardStatus, setCardStatus] = useState("PENDING");
   const [cardMessage, setCardMessage] = useState("");
   const [cardSubmitting, setCardSubmitting] = useState(false);
@@ -1872,9 +1935,13 @@ export function SaleScreen({
   const [authoritativeQuoteLoading, setAuthoritativeQuoteLoading] = useState(false);
   const [authoritativeQuoteError, setAuthoritativeQuoteError] = useState("");
   const [lastConfirmedLinePricing, setLastConfirmedLinePricing] = useState<Record<string, AuthoritativeSaleLine>>({});
-  const [checkoutDiscountCents, setCheckoutDiscountCents] = useState(0);
-  const [documentDiscountPercent, setDocumentDiscountPercent] = useState(0);
-  const [memberBalanceCents, setMemberBalanceCents] = useState(0);
+  const [checkoutDiscountCents, setCheckoutDiscountCents] = useState(savedTicket?.checkoutDiscountCents ?? 0);
+  const [documentDiscountPercent, setDocumentDiscountPercent] = useState(savedTicket?.documentDiscountPercent ?? 0);
+  const [memberBalanceCents, setMemberBalanceCents] = useState(savedTicket?.memberBalanceCents ?? 0);
+  const [offlineMemberBalanceReconciling, setOfflineMemberBalanceReconciling] = useState(
+    Boolean(savedTicket?.selectedCustomer?.activeMember && (savedTicket.memberBalanceCents ?? 0) > 0),
+  );
+  const memberBalanceCustomerRef = useRef(selectedCustomer?.id);
   const [memberWallet, setMemberWallet] = useState<MemberWalletView | null>(null);
   const [memberWalletStatus, setMemberWalletStatus] = useState<"IDLE" | "LOADING" | "READY" | "FAILED">("IDLE");
   const [memberWalletRetry, setMemberWalletRetry] = useState(0);
@@ -2001,14 +2068,56 @@ export function SaleScreen({
   const selectedCustomerRef = useRef(selectedCustomer);
   linesRef.current = lines;
   selectedCustomerRef.current = selectedCustomer;
-  const exitBlocked = lines.length > 0 || controlSaving;
+  const offlineSnapshotRef = useRef<() => OfflineSaleRecovery<OfflineSaleTicket>>(() => { throw new Error("OFFLINE_RECOVERY_NOT_READY"); });
+  offlineSnapshotRef.current = () => ({
+    schemaVersion: 1,
+    ...offlineSaleIdentity(session.userId, terminalContext),
+    ticket: { lines, selectedCustomer, previousTicketImportBatch, returnRetentionSourceDocumentId,
+      wholesaleMode, selectedLineId, saleComment, salePrintMode, checkoutDiscountCents,
+      documentDiscountPercent, memberBalanceCents, cashCheckoutId, cashQuoteCents, cashDialogOpen,
+      cardCheckoutId, cardQuoteCents, cardDialogOpen },
+    ...readOfflineRecoveryStorage(terminalContext),
+    cashAttempt: paymentCheckoutRef.current?.getOfflineCashAttempt() ?? null,
+  });
+  useLayoutEffect(() => registerOfflineClosePreparation(async () => {
+    const bridge = offlineWorkRecoveryBridge();
+    if (!bridge) throw new Error("OFFLINE_RECOVERY_UNAVAILABLE");
+    // Do not cancel, discard or finalize any backend operation while disconnected.
+    // A failed prior retirement may still be in flight. Serialize replacement
+    // so it cannot erase the checkpoint that authorizes this offline close.
+    try { await offlineRetirementFlightRef.current; } catch { /* The new checkpoint can recover. */ }
+    await saveOfflineSaleRecovery(bridge, offlineSnapshotRef.current());
+    offlineRetirementCompleteRef.current = false;
+  }), []);
+  useEffect(() => {
+    // A consumed/restored ticket must not reappear after the next normal restart.
+    if (!offlineRecovery || !paymentHydrated || paymentLocked || lines.length > 0 || pendingDraft || cashSessionCloseFlow
+      || pendingRecovery.status === "blocked" || cashCloseRecovery.status === "blocked") return;
+    if (offlineRetirementCompleteRef.current || offlineRetirementFlightRef.current) return;
+    const bridge = offlineWorkRecoveryBridge();
+    if (!bridge) return;
+    offlineRetirementBlockedRef.current = true;
+    setOfflineRetiring(true);
+    const flight = retireOfflineSaleRecovery(bridge, session.userId, terminalContext);
+    offlineRetirementFlightRef.current = flight;
+    void flight.then(() => {
+      offlineRetirementCompleteRef.current = true;
+      offlineRetirementBlockedRef.current = false;
+      setOfflineRetirementFailed(false);
+    }, () => { setOfflineRetirementFailed(true); }).finally(() => {
+      if (offlineRetirementFlightRef.current === flight) offlineRetirementFlightRef.current = null;
+      setOfflineRetiring(false);
+    });
+  }, [offlineRecovery, paymentHydrated, paymentLocked, lines.length, pendingDraft, cashSessionCloseFlow, pendingRecovery.status, cashCloseRecovery.status, offlineRetirementRetry]);
+  const exitBlocked = lines.length > 0 || controlSaving || offlineRetiring || offlineRetirementFailed;
   useLayoutEffect(() => {
     onExitBlockedChange?.(exitBlocked);
   }, [exitBlocked, onExitBlockedChange]);
   useLayoutEffect(() => {
     if (!window.tpvDesktop) return;
     const blockDesktopExit = (event: BeforeUnloadEvent) => {
-      if (linesRef.current.length === 0 && !controlSavingRef.current) return;
+      if (isOfflineApplicationClosePrepared()) return;
+      if (linesRef.current.length === 0 && !controlSavingRef.current && !offlineRetirementBlockedRef.current) return;
       // Electron cancels close/reload silently; browsers would show a prompt.
       event.preventDefault();
       event.returnValue = false;
@@ -2087,6 +2196,9 @@ export function SaleScreen({
     if (lines.length > previousCount) pendingLastCartLineVisibilityRef.current = true;
   }, [lines.length]);
   useEffect(() => {
+    if (memberBalanceCustomerRef.current === selectedCustomer?.id) return;
+    memberBalanceCustomerRef.current = selectedCustomer?.id;
+    setOfflineMemberBalanceReconciling(false);
     setMemberBalanceCents(0);
   }, [selectedCustomer?.id]);
   const activeMember = selectedCustomer?.activeMember === true;
@@ -2164,10 +2276,12 @@ export function SaleScreen({
     };
   }, [memberBalanceReservation.reservationId, memberWalletRetry, selectedCustomer?.activeMember, selectedCustomer?.id, session.accessToken]);
   useEffect(() => {
-    if (memberBalanceReservation.status !== "ACTIVE" && memberBalanceCents > 0) {
+    // Restored selection is an intention, not an authorization. Keep it while
+    // the stored reservation is checked; checkout remains blocked below.
+    if (!offlineMemberBalanceReconciling && memberBalanceReservation.status !== "ACTIVE" && memberBalanceCents > 0) {
       setMemberBalanceCents(0);
     }
-  }, [memberBalanceCents, memberBalanceReservation.status]);
+  }, [memberBalanceCents, memberBalanceReservation.status, offlineMemberBalanceReconciling]);
   const returnRetentionCandidates = useMemo(
     () => saleReturnCartReservations(lines).map((selection) => ({
       lineId: selection.lineId,
@@ -2225,6 +2339,12 @@ export function SaleScreen({
     returnRetentionConfigured,
     retentionSnapshotConfirmed,
   );
+  useEffect(() => {
+    if (!offlineMemberBalanceReconciling) return;
+    if (memberBalanceCents <= 0 || !activeMember || (memberBalanceReady && memberBalancePricingReady)) {
+      setOfflineMemberBalanceReconciling(false);
+    }
+  }, [offlineMemberBalanceReconciling, memberBalanceCents, activeMember, memberBalanceReady, memberBalancePricingReady]);
   // Quote/pricing readiness is independent from wallet-retention readiness:
   // F11 and ordinary tenders remain available while F10 waits for central
   // reconciliation.
@@ -2599,6 +2719,7 @@ export function SaleScreen({
     );
   const saleMutationSecurityUnavailable = saleMutationAuthorizations === null;
   const paymentActionsDisabled = basePaymentActionsDisabled
+    || offlineMemberBalanceReconciling
     || controlSaving
     || saleMutationSecurityUnavailable
     || !temporaryPriceAuthorizationsReady;
@@ -3212,18 +3333,18 @@ export function SaleScreen({
   }
 
   function handleBack() {
-    if (linesRef.current.length > 0 || controlSavingRef.current) return;
+    if (linesRef.current.length > 0 || controlSavingRef.current || offlineRetirementBlockedRef.current) return;
     onBack();
   }
 
   async function handleSaleLogout() {
-    if (controlSavingRef.current) return;
+    if (controlSavingRef.current || offlineRetirementBlockedRef.current) return;
     if (logoutInProgressRef.current) return;
     if (linesRef.current.length > 0) return;
     logoutInProgressRef.current = true;
     try {
       const result = await paymentCheckoutRef.current?.prepareLogout();
-      if (result === "READY" && linesRef.current.length === 0 && !controlSavingRef.current) onLogout?.();
+      if (result === "READY" && linesRef.current.length === 0 && !controlSavingRef.current && !offlineRetirementBlockedRef.current) onLogout?.();
     } catch {
       // Fail closed: checkout keeps the recoverable payment state visible.
     } finally {
@@ -3232,12 +3353,12 @@ export function SaleScreen({
   }
 
   async function handleApplicationClose() {
-    if (linesRef.current.length > 0 || controlSavingRef.current) return false;
+    if (linesRef.current.length > 0 || controlSavingRef.current || offlineRetirementBlockedRef.current) return false;
     if (shutdownInProgressRef.current || !paymentCheckoutRef.current) return false;
     shutdownInProgressRef.current = true;
     try {
       const result = await paymentCheckoutRef.current.prepareApplicationClose();
-      return result === "READY" && linesRef.current.length === 0 && !controlSavingRef.current;
+      return result === "READY" && linesRef.current.length === 0 && !controlSavingRef.current && !offlineRetirementBlockedRef.current;
     } catch {
       return false;
     } finally {
@@ -5643,6 +5764,7 @@ export function SaleScreen({
           <button type="button" className="report-brand-back" onClick={handleBack}>
             <AppBrand app={app} label={t(app === "venta" ? "venta.title" : "gestion.title")} />
           </button>
+          <DesktopHeaderContext terminalContext={terminalContext} />
           <h1 className="sale-command-screen-title">{t("sale.main.screen")}</h1>
           <SaleCommandMenuBar
             ariaLabel={t("sale.menu.aria")}
@@ -5968,6 +6090,7 @@ export function SaleScreen({
             )}
             <SalePaymentCheckout
               ref={paymentCheckoutRef}
+              offlineRecovery={offlineRecovery}
               locale={locale}
               currentUsername={session.username}
               totalCents={Math.round(authoritativeTotal * 100)}
@@ -6076,6 +6199,10 @@ export function SaleScreen({
             />
             {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
             {pendingError && <p className="sale-payment-status" role="alert">{pendingError}</p>}
+            {offlineRetirementFailed && <div className="sale-payment-status" role="alert">
+              <p>{locale === "en" ? "Saved recovery could not be updated. Retry before leaving Sales." : locale === "zh" ? "无法更新恢复记录。请重试后再退出销售。" : "No se pudo actualizar la recuperación guardada. Reintenta antes de salir de Ventas."}</p>
+              <button type="button" disabled={offlineRetiring} onClick={() => setOfflineRetirementRetry(value => value + 1)}>{t("sale.main.retry")}</button>
+            </div>}
           </section>
           {pendingPrintRetry && (
             <aside className="sale-sidebar-print-retry" aria-hidden={pendingRecoveryBlocked || undefined}>

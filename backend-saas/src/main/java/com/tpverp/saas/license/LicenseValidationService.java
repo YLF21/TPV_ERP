@@ -63,6 +63,7 @@ public class LicenseValidationService {
                 license.getCompany().getId(),
                 installation.getStore().getId(),
                 license.getReference(),
-                license.getCompany().getTaxId());
+                license.getCompany().getTaxId(),
+                installation.getStore().getInternalCode());
     }
 }

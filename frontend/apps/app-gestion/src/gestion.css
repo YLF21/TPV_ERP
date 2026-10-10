@@ -55,7 +55,6 @@ body,
   max-width: 520px;
 }
 
-.login-screen[data-app="gestion"],
 .home-screen[data-app="gestion"] {
   padding-bottom: 12px !important;
 }

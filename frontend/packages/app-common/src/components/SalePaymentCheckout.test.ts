@@ -2703,3 +2703,49 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
  it("clears an authorization password before invoking the payment operation",async()=>{let visible="secret";await authorizationPasswordIsEphemeral(visible,value=>{visible=value;},async password=>{expect(visible).toBe("");expect(password).toBe("secret");});expect(visible).toBe("");});
  it("clears and trims the compensation note before sending it",async()=>{let visible=" resolución ";await compensationNoteIsEphemeral(visible,value=>{visible=value;},async note=>{expect(visible).toBe("");expect(note).toBe("resolución");});expect(visible).toBe("");});
 });
+
+
+describe("durable offline payment recovery",()=>{
+ const mountRecovery=(onFinalized=vi.fn(),onHydrationChange=vi.fn())=>render(createElement(SalePaymentCheckout,{
+  locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},
+  permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},unifiedCheckout:true,
+  offlineRecovery:{paymentSessionId:"offline-session",cashAttempt:{sessionId:"offline-session",receivedCents:2000}},
+  onFinalized,onHydrationChange,
+ }));
+ it("recovers a completed document by its saved ID without submitting any payment",async()=>{
+  const done:ServerSession={id:"offline-session",status:"FINALIZED",total:"12.10",ticketNumber:"T-OFFLINE",printTicket:printTicket("T-OFFLINE"),allocations:[{id:"cash",idempotencyKey:"cash",kind:"CASH",amount:"12.10",status:"APPROVED"}]};
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/pos/payment-sessions/offline-session")return done;
+   if(path==="/terminal-configuration/payment")return {rules:{},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/vouchers")return [];
+   throw new Error(`unexpected request ${path}`);
+  });
+  const onFinalized=vi.fn();mountRecovery(onFinalized);
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith(done.printTicket,{kind:"CASH",totalCents:1210,receivedCents:2000},undefined,undefined));
+  expect(apiRequestMock.mock.calls.filter(([path])=>String(path).startsWith("/pos/payment-sessions")).map(([path])=>path)).toEqual(["/pos/payment-sessions/offline-session"]);
+ });
+ it("preserves an uncertain card allocation without automatic cancellation or simulator discard",async()=>{
+  const pending:ServerSession={id:"offline-session",status:"COLLECTING",total:"12.10",allocations:[{id:"card",idempotencyKey:"card",kind:"INTEGRATED_CARD",amount:"12.10",status:"PENDING"}]};
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/pos/payment-sessions/offline-session")return pending;
+   if(path==="/terminal-configuration/payment")return {rules:{},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/vouchers")return [];
+   throw new Error(`unexpected request ${path}`);
+  });
+  const hydrated=vi.fn();mountRecovery(vi.fn(),hydrated);
+  await waitFor(()=>expect(hydrated).toHaveBeenCalledWith(true));
+  expect(apiRequestMock.mock.calls.filter(([path])=>String(path).startsWith("/pos/payment-sessions")).map(([path])=>path)).toEqual(["/pos/payment-sessions/offline-session"]);
+ });
+ it("keeps payment hydration blocked when the authoritative saved session cannot be read",async()=>{
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/vouchers")return [];
+   throw new Error("offline");
+  });
+  const hydrated=vi.fn();const finalized=vi.fn();mountRecovery(finalized,hydrated);
+  await waitFor(()=>expect(apiRequestMock).toHaveBeenCalledWith("/pos/payment-sessions/offline-session",expect.anything()));
+  expect(hydrated).not.toHaveBeenCalledWith(true);
+  expect(finalized).not.toHaveBeenCalled();
+  expect(apiRequestMock.mock.calls.filter(([path])=>String(path).startsWith("/pos/payment-sessions")).map(([path])=>path)).toEqual(["/pos/payment-sessions/offline-session"]);
+ });
+});

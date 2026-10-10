@@ -410,7 +410,8 @@ public class LicenseLinkService {
                 policy.activationDate(),
                 policy.version(),
                 policy.updatedAt(),
-                token);
+                token,
+                store.getInternalCode());
     }
 
     private static <T> T requestValue(Supplier<T> supplier) {

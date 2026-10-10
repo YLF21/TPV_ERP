@@ -28,3 +28,26 @@ Describe 'TPV Electron backend config ACL' {
         $text | Should BeLike '*FullControl*'
     }
 }
+
+Describe 'TPV desktop backend configuration origin validation' {
+    $writerPath = Join-Path $PSScriptRoot '..\frontend\tools\write-backend-config.ps1'
+    $source = Get-Content -LiteralPath $writerPath -Raw
+    $start = $source.IndexOf('if ($BackendUrl.Length')
+    $end = $source.IndexOf('$payload =', $start)
+    $validation = [scriptblock]::Create('param([string] $BackendUrl)' + "`n" +
+        $source.Substring($start, $end - $start) + "`n" + 'return $config')
+
+    It 'recognizes IPv6 loopback in the Windows PowerShell authority form without writing files' {
+        $origin = ([Uri]'http://[::1]:18080').GetLeftPart([UriPartial]::Authority)
+        $config = & $validation $origin
+        $config.backendUrl | Should Be $origin
+        @($config.allowedHosts).Count | Should Be 0
+    }
+
+    It 'keeps remote HTTP, non-approved loopback aliases and credential origins prohibited' {
+        foreach ($origin in @('http://192.168.1.1:18080', 'http://[2001:db8::1]:18080',
+            'http://127.0.0.2:18080', 'http://admin@127.0.0.1:18080')) {
+            { & $validation $origin } | Should Throw
+        }
+    }
+}

@@ -1,4 +1,4 @@
-.login-screen.login-sale {
+.login-screen.login-desktop {
   display: flex !important;
   align-items: center;
   justify-content: center;
@@ -8,32 +8,13 @@
   font-family: Arial, "Microsoft YaHei UI", sans-serif !important;
 }
 
-.login-sale .entry-topbar {
+.login-desktop .entry-topbar {
   border: 0 !important;
   background: transparent !important;
 }
 
-.login-sale .language-picker button.selected {
+.login-desktop .language-picker button.selected {
   background: #0065fe !important;
-}
-
-.login-context-heading {
-  display: flex;
-  align-items: center;
-  gap: 22px;
-  max-width: calc(50vw - 130px);
-  white-space: nowrap;
-  font-size: 14px;
-}
-
-.login-context-heading > * {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.login-context-heading span {
-  color: #244e86;
-  font-weight: 700;
 }
 
 .login-entry {
@@ -47,7 +28,7 @@
   display: contents;
 }
 
-.login-sale-brand {
+.login-desktop-brand {
   display: flex;
   justify-content: center;
   align-items: center;
@@ -59,7 +40,7 @@
   line-height: 1;
 }
 
-.login-sale-brand .app-brand-wordmark {
+.login-desktop-brand .app-brand-wordmark {
   width: 200px;
   height: 64px;
   transform: translateY(7px);
@@ -68,7 +49,7 @@
   background: transparent;
 }
 
-.login-sale .login-panel {
+.login-desktop .login-panel {
   position: static !important;
   width: 100% !important;
   max-width: none !important;
@@ -83,7 +64,7 @@
   box-shadow: -14px -4px 20px rgba(0, 0, 0, .3) !important;
 }
 
-.login-sale .login-panel-heading {
+.login-desktop .login-panel-heading {
   margin: 0 0 20px !important;
   padding: 0 !important;
   background: transparent;
@@ -91,7 +72,7 @@
   text-align: center;
 }
 
-.login-sale .login-panel-heading span {
+.login-desktop .login-panel-heading span {
   overflow-wrap: anywhere;
   font-size: 20px;
   font-weight: 700;
@@ -104,7 +85,7 @@
   min-width: 0;
 }
 
-.login-sale .login-panel label {
+.login-desktop .login-panel label {
   padding-left: 10px;
   color: #222 !important;
   font-size: 26px !important;
@@ -132,7 +113,7 @@
   border-color: #0065fe;
 }
 
-.login-sale .login-panel .login-input-wrap input {
+.login-desktop .login-panel .login-input-wrap input {
   flex: 1;
   width: 100%;
   min-width: 0;
@@ -155,7 +136,7 @@
   opacity: 1;
 }
 
-.login-sale .login-panel .login-password-toggle {
+.login-desktop .login-panel .login-password-toggle {
   display: grid;
   place-items: center;
   flex: 0 0 40px;
@@ -170,11 +151,11 @@
   box-shadow: none !important;
 }
 
-.login-sale .login-panel .login-password-toggle:hover {
+.login-desktop .login-panel .login-password-toggle:hover {
   background: #f3f6fb !important;
 }
 
-.login-sale .login-panel .login-submit {
+.login-desktop .login-panel .login-submit {
   height: 96px !important;
   min-height: 96px !important;
   margin-top: 0;
@@ -187,12 +168,12 @@
   text-transform: uppercase;
 }
 
-.login-sale .login-panel .login-submit:hover:not(:disabled) {
+.login-desktop .login-panel .login-submit:hover:not(:disabled) {
   background: #0058df !important;
 }
 
-.login-sale .login-panel .login-secondary-action,
-.login-sale .login-panel .login-retry-button {
+.login-desktop .login-panel .login-secondary-action,
+.login-desktop .login-panel .login-retry-button {
   height: 44px !important;
   min-height: 44px !important;
   border: 1px solid #0065fe !important;
@@ -201,17 +182,17 @@
   color: #0065fe !important;
 }
 
-.login-sale .login-panel .login-secondary-action:hover,
-.login-sale .login-panel .login-retry-button:hover {
+.login-desktop .login-panel .login-secondary-action:hover,
+.login-desktop .login-panel .login-retry-button:hover {
   background: #edf4ff !important;
 }
 
-.login-sale .login-server-status {
+.login-desktop .login-server-status {
   justify-content: center;
   text-align: center;
 }
 
-.login-sale .login-status-hidden {
+.login-desktop .login-status-hidden {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -222,8 +203,8 @@
   white-space: nowrap;
 }
 
-.login-sale .login-panel:has(.login-server-status.offline) .login-submit,
-.login-sale .login-panel:has(.login-error) .login-submit {
+.login-desktop .login-panel:has(.login-server-status.offline) .login-submit,
+.login-desktop .login-panel:has(.login-error) .login-submit {
   margin-top: 0;
 }
 
@@ -232,50 +213,50 @@
     gap: 12px;
     max-width: calc(100vw - 150px);
   }
-  .login-sale > .top-date-time {
+  .login-desktop > .top-date-time {
     top: 42px !important;
   }
-  .login-screen.login-sale {
+  .login-screen.login-desktop {
     padding-top: 88px !important;
   }
 }
 
 @media (max-height: 850px), (max-width: 600px) {
-  .login-screen.login-sale {
+  .login-screen.login-desktop {
     padding: 88px 20px 46px !important;
   }
   .login-entry {
     width: 460px;
     gap: 16px;
   }
-  .login-sale-brand {
+  .login-desktop-brand {
     min-height: 54px;
     font-size: 44px;
   }
-  .login-sale-brand .app-brand-wordmark {
+  .login-desktop-brand .app-brand-wordmark {
     width: 146px;
     height: 47px;
     transform: translateY(5px);
   }
-  .login-sale .login-panel {
+  .login-desktop .login-panel {
     padding: 24px 32px 32px !important;
     gap: 20px !important;
     border-radius: 12px !important;
   }
-  .login-sale .login-panel-heading {
+  .login-desktop .login-panel-heading {
     margin-bottom: 8px !important;
   }
-  .login-sale .login-panel-heading span {
+  .login-desktop .login-panel-heading span {
     font-size: 17px;
   }
-  .login-sale .login-panel label,
-  .login-sale .login-panel .login-input-wrap input {
+  .login-desktop .login-panel label,
+  .login-desktop .login-panel .login-input-wrap input {
     font-size: 22px !important;
   }
   .login-input-wrap {
     height: 58px;
   }
-  .login-sale .login-panel .login-submit {
+  .login-desktop .login-panel .login-submit {
     height: 70px !important;
     min-height: 70px !important;
     margin-top: 0;
@@ -284,14 +265,14 @@
 }
 
 @media (max-height: 650px) {
-  .login-screen.login-sale {
+  .login-screen.login-desktop {
     align-items: flex-start;
   }
-  .login-sale .login-panel {
+  .login-desktop .login-panel {
     padding: 20px 30px !important;
     gap: 14px !important;
   }
-  .login-sale .login-panel .login-submit {
+  .login-desktop .login-panel .login-submit {
     margin-top: 0;
   }
 }
@@ -313,7 +294,7 @@
   margin-bottom: -12px;
 }
 
-.login-sale .login-panel .touch-keyboard-toggle {
+.login-desktop .login-panel .touch-keyboard-toggle {
   height: 44px !important;
 }
 
@@ -325,7 +306,7 @@
   --touch-alpha-key-height: clamp(44px, 6dvh, 56px);
 }
 
-.login-screen.login-sale.login-keyboard-open {
+.login-screen.login-desktop.login-keyboard-open {
   padding-bottom: calc(clamp(44px, 6dvh, 56px) * 4 + 90px) !important;
 }
 
@@ -346,28 +327,28 @@
 }
 
 @media (max-height: 1060px) {
-  .login-screen.login-sale.login-keyboard-open {
+  .login-screen.login-desktop.login-keyboard-open {
     padding-top: 54px !important;
   }
   .login-keyboard-open .login-entry {
     gap: 10px;
   }
-  .login-keyboard-open .login-sale-brand {
+  .login-keyboard-open .login-desktop-brand {
     min-height: 48px;
     font-size: 40px;
   }
-  .login-keyboard-open .login-sale-brand .app-brand-wordmark {
+  .login-keyboard-open .login-desktop-brand .app-brand-wordmark {
     width: 134px;
     height: 43px;
   }
-  .login-sale.login-keyboard-open .login-panel {
+  .login-desktop.login-keyboard-open .login-panel {
     padding: 16px 30px !important;
     gap: 10px !important;
   }
-  .login-sale.login-keyboard-open .login-panel-heading {
+  .login-desktop.login-keyboard-open .login-panel-heading {
     margin-bottom: 0 !important;
   }
-  .login-sale.login-keyboard-open .login-panel label {
+  .login-desktop.login-keyboard-open .login-panel label {
     font-size: 20px !important;
     line-height: 24px;
   }
@@ -380,7 +361,7 @@
   .login-keyboard-open .login-keyboard-button-row {
     margin-bottom: 0;
   }
-  .login-sale.login-keyboard-open .login-panel .login-submit {
+  .login-desktop.login-keyboard-open .login-panel .login-submit {
     height: 48px !important;
     min-height: 48px !important;
     margin-top: 0;

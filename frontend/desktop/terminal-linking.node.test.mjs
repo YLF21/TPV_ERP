@@ -33,7 +33,7 @@ test('proof is durable before POST, refresh uses proof and pins installation', a
   const storage = { read: () => state, write: (next) => { state = structuredClone(next); } };
   const config = { read: () => ({ configuration: committed && { backendUrl: committed } }), commit: async (url) => { committed = url; } };
   const request = async (url, options) => {
-    if (options.method === 'GET') return json(bootstrap(new URL(url).searchParams.get('challenge')));
+    if (options.method === 'GET') return json({ ...bootstrap(new URL(url).searchParams.get('challenge')), storeInternalCode: '3500002' });
     const body = JSON.parse(options.body);
     assert.equal(state.pending.credential, body.credential);
     assert.equal(state.pending.requestId, body.requestId);
@@ -50,6 +50,8 @@ test('proof is durable before POST, refresh uses proof and pins installation', a
   assert.equal(active.identity.terminalCredential, posts[0].body.credential);
   assert.equal(active.identity.companyName, 'Empresa Real SL');
   assert.equal(state.identity.companyName, 'Empresa Real SL');
+  assert.equal(active.identity.storeInternalCode, '3500002');
+  assert.equal(state.identity.storeInternalCode, '3500002');
   assert.equal(state.pending, null);
   const same = await bridge.probe({ backendUrl: 'https://new.example' });
   assert.equal(same.sameInstallation, true);
@@ -220,7 +222,7 @@ test.each([
   assert.equal(state.identity.companyName, expected);
 });
 
-test('load updates only companyName when another app changes pending state during verification', async () => {
+test('load updates only presentation data when another app changes pending state during verification', async () => {
   let state = { identity: { installationId: 'installation-a', bindingId: 'binding', terminalId: 'terminal',
     terminalCode: '002', terminalCredential: 'secret', storeName: 'Store' },
     link: { requestId: 'request', installationId: 'installation-a', terminalCode: '002', status: 'ACTIVE' } };
@@ -235,7 +237,7 @@ test('load updates only companyName when another app changes pending state durin
     config: { read: () => ({ configuration: { backendUrl: 'https://backend.example' } }) },
     getRuntimeBackendUrl: () => 'https://backend.example', getRuntimeBindingId: () => 'binding',
     request: async (url, options) => {
-      if (options.method === 'GET') return json(bootstrap(new URL(url).searchParams.get('challenge')));
+      if (options.method === 'GET') return json({ ...bootstrap(new URL(url).searchParams.get('challenge')), storeInternalCode: '3500002' });
       statusStarted();
       return status;
     }
@@ -249,6 +251,7 @@ test('load updates only companyName when another app changes pending state durin
   assert.equal(state.pending.requestId, 'other-request');
   assert.equal(state.identity.companyName, 'Empresa Real SL');
   assert.equal(loaded.identity.companyName, 'Empresa Real SL');
+  assert.equal(state.identity.storeInternalCode, '3500002');
   assert.equal(loaded.pendingRequest.code, '003');
 });
 
@@ -266,7 +269,7 @@ test('load does not return the old identity when another app replaces its bindin
     config: { read: () => ({ configuration: { backendUrl: 'https://backend.example' } }) },
     getRuntimeBackendUrl: () => 'https://backend.example', getRuntimeBindingId: () => 'old-binding',
     request: async (url, options) => {
-      if (options.method === 'GET') return json(bootstrap(new URL(url).searchParams.get('challenge')));
+      if (options.method === 'GET') return json({ ...bootstrap(new URL(url).searchParams.get('challenge')), storeInternalCode: '3500002' });
       statusStarted();
       return status;
     }
@@ -281,7 +284,54 @@ test('load does not return the old identity when another app replaces its bindin
   assert.equal(loaded.connectionUnavailable, false);
   assert.equal(loaded.displayContext, undefined);
   assert.equal(state.identity.companyName, undefined);
+  assert.equal(state.identity.storeInternalCode, undefined);
 });
+
+test('existing identity gains its SaaS store code with an unchanged company name and retains it offline or with old servers', async () => {
+  let state = { identity: { installationId: 'installation-a', bindingId: 'binding', terminalId: 'terminal',
+    terminalCode: '002', terminalCredential: 'secret', storeName: 'Store', companyName: 'Empresa Real SL' },
+    link: { requestId: 'request', installationId: 'installation-a', terminalCode: '002', status: 'ACTIVE' } };
+  let code = '3500002';
+  let offline = false;
+  const bridge = createTerminalLinking({
+    storage: { read: () => structuredClone(state), write: next => { state = structuredClone(next); } },
+    config: { read: () => ({ configuration: { backendUrl: 'https://backend.example' } }) },
+    getRuntimeBackendUrl: () => 'https://backend.example', getRuntimeBindingId: () => 'binding',
+    request: async (url, options) => {
+      if (offline) throw new TypeError('offline');
+      return options.method === 'GET'
+        ? json({ ...bootstrap(new URL(url).searchParams.get('challenge')), storeInternalCode: code }) : json(state.link);
+    }
+  });
+  assert.equal((await bridge.load()).identity.storeInternalCode, '3500002');
+  code = undefined;
+  assert.equal((await bridge.load()).identity.storeInternalCode, '3500002');
+  code = '3500003'; // Store codes are permanent for the verified binding.
+  assert.equal((await bridge.refreshLink()).identity.storeInternalCode, '3500002');
+  offline = true;
+  const cached = await bridge.load();
+  assert.equal(cached.identity, null);
+  assert.equal(cached.displayContext.storeInternalCode, '3500002');
+  assert.equal(cached.linkedIdentity.storeInternalCode, '3500002');
+  assert.equal(JSON.stringify(cached).includes('secret'), false);
+});
+
+test.each([undefined, '', '0000000', '3500000', '5300001', '3500002 ', '35000022', 'DEMO001'])
+  ('invalid optional SaaS store code %j cannot block terminal verification', async storeInternalCode => {
+    let state = { identity: { installationId: 'installation-a', bindingId: 'binding', terminalId: 'terminal',
+      terminalCode: '002', terminalCredential: 'secret', storeName: 'Store' },
+      link: { requestId: 'request', installationId: 'installation-a', terminalCode: '002', status: 'ACTIVE' } };
+    const bridge = createTerminalLinking({
+      storage: { read: () => structuredClone(state), write: next => { state = structuredClone(next); } },
+      config: { read: () => ({ configuration: { backendUrl: 'https://backend.example' } }) },
+      getRuntimeBindingId: () => 'binding',
+      request: async (url, options) => options.method === 'GET'
+        ? json({ ...bootstrap(new URL(url).searchParams.get('challenge')), storeInternalCode }) : json(state.link)
+    });
+    const loaded = await bridge.load();
+    assert.equal(loaded.identity.terminalCode, '002');
+    assert.equal(loaded.identity.storeInternalCode, undefined);
+  });
 
 test('a local storage TypeError does not masquerade as an offline backend', async () => {
   const state = { identity: { installationId: 'installation-a', bindingId: 'binding', terminalId: 'terminal',
@@ -320,6 +370,51 @@ test.each([
   assert.equal(loaded.connectionUnavailable, unavailable);
   assert.equal(loaded.displayContext?.companyName, unavailable ? 'Empresa Real SL' : undefined);
 });
+
+function cachedLinkedBridge(request) {
+  const state = { identity: { installationId: 'installation-a', bindingId: 'binding', terminalId: 'terminal',
+    terminalCode: '002', terminalName: 'Caja', terminalCredential: 'secret', storeName: 'Store',
+    companyName: 'Empresa Real SL' },
+    link: { requestId: 'request', installationId: 'installation-a', terminalCode: '002', status: 'ACTIVE' } };
+  return createTerminalLinking({
+    storage: { read: () => structuredClone(state), write: () => { throw new Error('Unexpected write'); } },
+    config: { read: () => ({ configuration: { backendUrl: 'https://backend.example' } }) },
+    getRuntimeBackendUrl: () => 'https://backend.example', getRuntimeBindingId: () => 'binding', request
+  });
+}
+
+test.each(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH',
+  'EAI_AGAIN', 'ENOTFOUND', 'EPIPE', 'BACKEND_ADDRESS_UNAVAILABLE'])
+  ('native transport error %s exposes cached display context without authorizing identity', async code => {
+    const bridge = cachedLinkedBridge(async () => { throw Object.assign(new Error('transport failed'), { code }); });
+    const loaded = await bridge.load();
+    assert.equal(loaded.connectionUnavailable, true);
+    assert.equal(loaded.identity, null);
+    assert.equal(loaded.link, null);
+    assert.deepEqual(loaded.displayContext, { companyName: 'Empresa Real SL', storeName: 'Store',
+      terminalCode: '002', terminalName: 'Caja' });
+    assert.equal(loaded.linkedIdentity?.bindingId, 'binding');
+    assert.equal(JSON.stringify(loaded).includes('secret'), false);
+  });
+
+test.each(['TLS hostname mismatch', 'invalid RSA signature', 'HTTP 403'])
+  ('%s does not become an offline transport failure', async scenario => {
+    const request = async (url, options) => {
+      if (scenario === 'TLS hostname mismatch') {
+        throw Object.assign(new Error('certificate does not match'), { code: 'ERR_TLS_CERT_ALTNAME_INVALID' });
+      }
+      if (options.method === 'GET') {
+        const signed = bootstrap(new URL(url).searchParams.get('challenge'));
+        return json(scenario === 'invalid RSA signature' ? { ...signed, signature: 'ZmFrZQ==' } : signed);
+      }
+      return { ok: false, status: 403, text: async () => JSON.stringify({ code: 'LINK_PROOF_INVALID' }) };
+    };
+    const loaded = await cachedLinkedBridge(request).load();
+    assert.equal(loaded.connectionUnavailable, false);
+    assert.equal(loaded.identity, null);
+    assert.equal(loaded.link, null);
+    assert.equal(loaded.displayContext, undefined);
+  });
 
 test.each(['invalid signature', 'restart required'])('%s suppresses offline display metadata', async (scenario) => {
   const state = { identity: { installationId: 'installation-a', bindingId: 'binding', terminalId: 'terminal',

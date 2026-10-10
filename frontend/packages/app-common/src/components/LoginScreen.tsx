@@ -9,6 +9,7 @@ import { TopDateTime } from "./TopDateTime";
 import { useOutsidePointerDown } from "./useOutsidePointerDown";
 import languageIcon from "../assets/language.png";
 import { AppBrand } from "./AppBrand";
+import { DesktopHeaderContext } from "./DesktopHeaderContext";
 import { Eye, EyeSlash, LockKey } from "@phosphor-icons/react";
 import { LoginUsernameHistory } from "./LoginUsernameHistory";
 import { TouchAlphaKeyboard } from "./TouchAlphaKeyboard";
@@ -56,7 +57,7 @@ export function LoginScreen({
 }: LoginScreenProps) {
   const t = createTranslator(locale);
   const desktopChrome = presentation === "desktop";
-  const saleLogin = desktopChrome && app === "venta";
+  const desktopLogin = desktopChrome && (app === "venta" || app === "gestion");
   const terminalName = terminalContext.terminalName || terminalContext.terminalCode;
   const screenHeading = heading ?? t(app === "venta" ? "venta.title" : "gestion.title");
   const historyKey = useMemo(() => `tpverp.${app}.loginUsers`, [app]);
@@ -167,18 +168,15 @@ export function LoginScreen({
   }
 
   return (
-    <main className={`login-screen login-screen-${presentation}${saleLogin ? " login-sale" : ""}${saleLogin && keyboardOpen ? " login-keyboard-open" : ""}`} data-app={app}>
+    <main className={`login-screen login-screen-${presentation}${desktopLogin ? " login-desktop" : ""}${desktopLogin && keyboardOpen ? " login-keyboard-open" : ""}`} data-app={app}>
       {desktopChrome && (
         <>
           <header className="entry-topbar">
-            {saleLogin ? <div className="login-context-heading">
-              <strong>{terminalContext.companyName || "—"}</strong>
-              <strong>{terminalContext.storeName}</strong>
-              <span>{terminalName}</span>
-            </div> : <strong className="app-brand-static"><AppBrand app={app} label={screenHeading} /></strong>}
+            <strong className="app-brand-static"><AppBrand app={desktopLogin ? "venta" : app} label={screenHeading} /></strong>
+            {desktopLogin && <DesktopHeaderContext terminalContext={terminalContext} />}
           </header>
           <TopDateTime locale={locale} />
-          {!saleLogin && <div className="login-store-heading">
+          {!desktopLogin && <div className="login-store-heading">
             <strong>{terminalContext.storeName}</strong>
             <span>{t("login.terminalPrefix")}: {terminalContext.terminalCode}</span>
           </div>}
@@ -199,9 +197,9 @@ export function LoginScreen({
           <button type="button" className="shutdown-button" aria-label={t("login.shutdown")} title={t("login.shutdown")} onClick={() => setShutdownOpen(true)}>⏻</button>
         </>
       )}
-      <div className={saleLogin ? "login-content" : undefined}>
-      <div className={saleLogin ? "login-entry" : undefined}>
-      {saleLogin && <div className="login-sale-brand"><AppBrand app="venta" label={screenHeading} /><span>{t("login.salesBrand")}</span></div>}
+      <div className={desktopLogin ? "login-content" : undefined}>
+      <div className={desktopLogin ? "login-entry" : undefined}>
+      {desktopLogin && <div className="login-desktop-brand"><AppBrand app="venta" label={screenHeading} /><span>{t(app === "gestion" ? "login.managementBrand" : "login.salesBrand")}</span></div>}
       <form className="login-panel" ref={formRef} onSubmit={submit} onFocusCapture={(event) => {
         const input = event.target;
         if (input instanceof HTMLInputElement && (input.id === `${app}-login-user` || input.id === `${app}-login-password`)) {
@@ -210,49 +208,49 @@ export function LoginScreen({
         }
       }}>
         <header className="login-panel-heading">
-          {!saleLogin && <strong>{screenHeading}</strong>}
-          <span>{saleLogin ? `${terminalContext.storeName} · ${terminalName}` : `${terminalContext.storeName} - ${t("login.terminalPrefix")} ${terminalContext.terminalCode}`}</span>
+          {!desktopLogin && <strong>{screenHeading}</strong>}
+          <span>{desktopLogin ? `${terminalContext.storeName} · ${terminalName}` : `${terminalContext.storeName} - ${t("login.terminalPrefix")} ${terminalContext.terminalCode}`}</span>
         </header>
         {notice && <p className="login-inline-notice">{notice}</p>}
-        <div className={saleLogin ? "login-field" : undefined} style={saleLogin ? undefined : { display: "grid", gap: 5 }}>
+        <div className={desktopLogin ? "login-field" : undefined} style={desktopLogin ? undefined : { display: "grid", gap: 5 }}>
           <label htmlFor={`${app}-login-user`}>{t("login.user")}</label>
-          {saleLogin ? <LoginUsernameHistory id={`${app}-login-user`} value={username}
+          {desktopLogin ? <LoginUsernameHistory id={`${app}-login-user`} value={username}
             history={userHistory} placeholder={t("login.salesUserPlaceholder")} historyLabel={t("login.userHistory")}
             disabled={loading} onChange={setUsername} /> : <div>
           <input
             id={`${app}-login-user`}
-            style={saleLogin ? undefined : { width: "100%" }}
+            style={desktopLogin ? undefined : { width: "100%" }}
             autoFocus
             autoComplete="username"
             list={`${app}-login-history`}
             value={username}
             disabled={loading}
             onChange={(event) => setUsername(event.target.value)}
-            placeholder={t(saleLogin ? "login.salesUserPlaceholder" : "login.userPlaceholder")}
+            placeholder={t(desktopLogin ? "login.salesUserPlaceholder" : "login.userPlaceholder")}
           />
           </div>}
-          {!saleLogin && <datalist id={`${app}-login-history`}>
+          {!desktopLogin && <datalist id={`${app}-login-history`}>
             {userHistory.map((user) => (
               <option key={user} value={user} />
             ))}
           </datalist>}
         </div>
-        <div className={saleLogin ? "login-field" : undefined} style={saleLogin ? undefined : { display: "grid", gap: 5 }}>
+        <div className={desktopLogin ? "login-field" : undefined} style={desktopLogin ? undefined : { display: "grid", gap: 5 }}>
           <label htmlFor={`${app}-login-password`}>{t("login.password")}</label>
-          <div className={saleLogin ? "login-input-wrap" : undefined}>
-          {saleLogin && <LockKey size={30} weight="fill" aria-hidden="true" />}
+          <div className={desktopLogin ? "login-input-wrap" : undefined}>
+          {desktopLogin && <LockKey size={30} weight="fill" aria-hidden="true" />}
           <input
             id={`${app}-login-password`}
-            style={saleLogin ? undefined : { width: "100%" }}
+            style={desktopLogin ? undefined : { width: "100%" }}
             ref={passwordInputRef}
             autoComplete="current-password"
             value={password}
             disabled={loading}
             onChange={(event) => setPassword(event.target.value)}
-            placeholder={saleLogin ? "****" : t("login.passwordPlaceholder")}
-            type={saleLogin && passwordVisible ? "text" : "password"}
+            placeholder={desktopLogin ? "****" : t("login.passwordPlaceholder")}
+            type={desktopLogin && passwordVisible ? "text" : "password"}
           />
-          {saleLogin && <button type="button" className="login-password-toggle"
+          {desktopLogin && <button type="button" className="login-password-toggle"
             aria-label={t(passwordVisible ? "login.hidePassword" : "login.showPassword")}
             aria-pressed={passwordVisible} aria-controls={`${app}-login-password`}
             disabled={loading} onMouseDown={(event) => event.preventDefault()}
@@ -262,7 +260,7 @@ export function LoginScreen({
           </div>
         </div>
         {error && <strong className="login-error">{error}</strong>}
-        {saleLogin && <div className="login-keyboard-button-row" onPointerDown={(event) => event.preventDefault()}>
+        {desktopLogin && <div className="login-keyboard-button-row" onPointerDown={(event) => event.preventDefault()}>
           {keyboardOpen && <TouchKeyboardClearButton locale={locale} disabled={loading || shutdownOpen} onClick={() => {
             if (keyboardField === "password") setPassword("");
             else setUsername("");
@@ -288,16 +286,16 @@ export function LoginScreen({
         </button>
         <span
           id="login-server-status"
-          className={`login-server-status${saleLogin && backendOnline === true ? " login-status-hidden" : ""} ${
+          className={`login-server-status${desktopLogin && backendOnline === true ? " login-status-hidden" : ""} ${
             backendOnline === false ? "offline" : backendOnline === null ? "checking" : "online"
           }`}
           role={backendOnline === false ? "alert" : "status"}
         >
           {backendOnline === null
-            ? t(saleLogin ? "login.localChecking" : "login.backendChecking")
+            ? t(desktopLogin ? "login.localChecking" : "login.backendChecking")
             : backendOnline
               ? t("login.backendOnline")
-              : t(saleLogin ? "login.localOffline" : "login.backendOffline")}
+              : t(desktopLogin ? "login.localOffline" : "login.backendOffline")}
         </span>
         {app === "venta" && backendOnline === false && onConfigureConnection && <button type="button" className="login-secondary-action"
           onClick={onConfigureConnection}>{t("terminalLink.title")}</button>}
@@ -322,7 +320,7 @@ export function LoginScreen({
       </form>
       </div>
       </div>
-      {saleLogin && <section className="login-touch-keyboard" aria-label={t("sale.touch.keyboard.title")}>
+      {desktopLogin && <section className="login-touch-keyboard" aria-label={t("sale.touch.keyboard.title")}>
         <div id={keyboardId} hidden={!keyboardOpen}>
           <TouchAlphaKeyboard locale={locale} collapsible={false} hideClearButton inputRef={keyboardInputRef}
             value={keyboardField === "password" ? password : username}
@@ -346,7 +344,7 @@ export function LoginScreen({
           </section>
         </div>
       )}
-      {desktopChrome && app !== "gestion" && <ScreenContextFooter locale={locale} terminalContext={terminalContext} terminalNameOnly={saleLogin} />}
+      {desktopChrome && <ScreenContextFooter locale={locale} terminalContext={terminalContext} terminalNameOnly={desktopLogin} />}
     </main>
   );
 }

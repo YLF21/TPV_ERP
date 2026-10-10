@@ -9,6 +9,7 @@ import { DeferredCashSessionDialog as SaleCashSessionDialog } from "./DeferredCa
 import { loadCashSessionReadiness } from "../sale/cashSessions";
 import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 import { AppBrand } from "./AppBrand";
+import { DesktopHeaderContext } from "./DesktopHeaderContext";
 import ventaWordmark from "../../../../branding/espos-wordmark.png";
 
 type SessionHomeScreenProps = {
@@ -138,7 +139,11 @@ export function SessionHomeScreen({
 
   return (
     <main className="home-screen" data-app={app}>
-      {app === "venta" ? (
+      <header className="entry-topbar">
+        <strong className="app-brand-static"><AppBrand app={app} label={t(app === "venta" ? "venta.title" : "gestion.title")} /></strong>
+        <DesktopHeaderContext terminalContext={terminalContext} />
+      </header>
+      {app === "venta" && (
         <header
           className="home-main-brand"
           style={{
@@ -158,15 +163,7 @@ export function SessionHomeScreen({
             style={{ width: "min(560px, 60vw)", height: "calc(100% - 16px)", minHeight: 0, maxHeight: 179, objectFit: "contain" }}
           />
         </header>
-      ) : (
-        <header className="entry-topbar">
-          <strong className="app-brand-static"><AppBrand app={app} label={t("gestion.title")} /></strong>
-        </header>
       )}
-      <div className="login-store-heading">
-        <strong>{terminalContext.storeName}</strong>
-        <span>{t("login.terminalPrefix")}: {terminalContext.terminalCode}</span>
-      </div>
       <SessionTopControls
         locale={locale}
         session={session}

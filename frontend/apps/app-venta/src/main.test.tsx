@@ -346,6 +346,27 @@ beforeEach(() => {
 });
 
 describe("APP VENTA locale wiring", () => {
+  it("shows the startup recovery dialog over login when the saved backend is offline", async () => {
+    const desktop = window.tpvDesktop!;
+    const retry = vi.fn(async () => ({ ok: true as const, state: "CONNECTED" as const }));
+    window.tpvDesktop = {
+      ...desktop,
+      connectionRecovery: {
+        status: vi.fn(async () => ({ ok: true as const, state: "OFFLINE" as const })),
+        retry,
+        onStatus: vi.fn(() => vi.fn()),
+      },
+    };
+    render(<App />);
+
+    expect(await screen.findByText("No se pudo conectar con el servidor al iniciar")).toBeInTheDocument();
+    expect(await screen.findByLabelText("login")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("login")).toBeInTheDocument();
+  });
+
   it("shows a centered localized loading experience", () => {
     render(<AppLoadingFallback locale="zh" />);
 
@@ -646,6 +667,26 @@ describe("APP VENTA locale wiring", () => {
       terminalCode: "001", terminalId: "verified-terminal", terminalCredential: "verified-proof" } });
     fireEvent.click(screen.getByRole("button", { name: "Verify terminal again" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Log in" })).toBeEnabled());
+  });
+
+  it("reactivates the saved terminal after a successful startup retry", async () => {
+    const load = vi.fn().mockResolvedValueOnce({ ok: true, identity: null, connectionUnavailable: true,
+      displayContext: { companyName: "Empresa Real", storeName: "Tienda Real", terminalCode: "001" } })
+      .mockResolvedValue({ ok: true, identity: { companyName: "Empresa Real", storeName: "Tienda Real",
+        terminalCode: "001", terminalId: "verified-terminal", terminalCredential: "verified-proof" } });
+    const retry = vi.fn(async () => ({ ok: true as const, state: "CONNECTED" as const }));
+    vi.stubGlobal("tpvDesktop", { terminalIdentity: { load }, backendConnection: {}, connectionRecovery: {
+      status: vi.fn(async () => ({ ok: true as const, state: "OFFLINE" as const })),
+      retry,
+      onStatus: vi.fn(() => vi.fn()),
+    } });
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "Log in" })).toBeDisabled();
+    fireEvent.click(await screen.findByRole("button", { name: "Reintentar" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Log in" })).toBeEnabled());
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   it("requires configuration after revocation instead of showing cached names as an offline login", async () => {

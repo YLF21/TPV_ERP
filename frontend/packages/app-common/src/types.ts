@@ -74,6 +74,7 @@ export type LocaleCode = "es" | "en" | "zh";
 export type TerminalContext = {
   companyName?: string;
   storeName: string;
+  storeInternalCode?: string;
   terminalCode: string;
   terminalId?: string;
   terminalCredential?: string;

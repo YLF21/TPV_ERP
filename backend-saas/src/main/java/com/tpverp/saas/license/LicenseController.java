@@ -36,6 +36,7 @@ public class LicenseController {
             @Valid @RequestBody LicenseSaasLinkRequest request,
             @RequestHeader(name = "X-TPV-Installation-Token", required = false) String previousToken,
             @RequestHeader(name = "X-TPV-Link-Recovery-Token", required = false) String recoveryToken,
+            @RequestHeader(name = "X-TPV-Store-Presentation", required = false) String storePresentation,
             HttpServletRequest httpRequest) {
         String pairingCode = pairingAttemptKey(request.pairingCode());
         if (attempts.blocked("license-link-code", pairingCode, CODE_SCOPE)) {
@@ -46,7 +47,7 @@ public class LicenseController {
         try {
             LicenseSaasLinkResponse response = linkService.link(request, previousToken, recoveryToken);
             attempts.success("license-link-code", pairingCode, CODE_SCOPE);
-            return response;
+            return "1".equals(storePresentation) ? response : response.withoutStoreInternalCode();
         } catch (ResponseStatusException exception) {
             if (exception.getStatusCode().is4xxClientError()
                     && exception.getStatusCode() != HttpStatus.TOO_MANY_REQUESTS) {
@@ -59,8 +60,10 @@ public class LicenseController {
     @PostMapping("/validate")
     public LicenseSaasValidationResponse validate(
             @Valid @RequestBody LicenseSaasValidationRequest request,
-            @RequestHeader(name = "X-TPV-Installation-Token", required = false) String token) {
-        return validationService.validate(request, token);
+            @RequestHeader(name = "X-TPV-Installation-Token", required = false) String token,
+            @RequestHeader(name = "X-TPV-Store-Presentation", required = false) String storePresentation) {
+        LicenseSaasValidationResponse response = validationService.validate(request, token);
+        return "1".equals(storePresentation) ? response : response.withoutStoreInternalCode();
     }
 
     private String pairingAttemptKey(String pairingCode) {

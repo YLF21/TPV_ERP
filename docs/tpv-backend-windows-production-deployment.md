@@ -1,5 +1,10 @@
 # Despliegue productivo del backend TPV ERP en Windows
 
+Para instalar en una sola operación el backend y su gateway HTTPS de Caddy,
+consulte la [guía de instalación conjunta del servidor Windows](tpv-server-windows-installation.md).
+El procedimiento de esta página sigue disponible para instalaciones standalone
+del backend.
+
 Este procedimiento prepara y verifica un backend con capacidad `VERIFACTU_ONLY`.
 La version, identidad y secuencias se leen del perfil `production-release` de
 `backend/pom.xml`; el esquema se lee de `META-INF/tpv-erp-release.properties`.

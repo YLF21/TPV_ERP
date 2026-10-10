@@ -27,6 +27,9 @@ public class Store {
     @Column(name = "codigo_tienda", nullable = false, length = 3)
     private String codigoTienda;
 
+    @Column(name = "saas_internal_code", length = 7)
+    private String saasInternalCode;
+
     private String nombre;
 
     @JdbcTypeCode(SqlTypes.JSON)
@@ -97,6 +100,19 @@ public class Store {
 
     public String getCodigoTienda() {
         return codigoTienda;
+    }
+
+    public String getSaasInternalCode() {
+        return saasInternalCode;
+    }
+
+    /** Optional presentation metadata; an absent or conflicting value never erases a confirmed code. */
+    public void rememberSaasInternalCode(String code) {
+        if (saasInternalCode == null && code != null
+                && code.matches("(0[1-9]|[1-4][0-9]|5[0-2])[0-9]{5}")
+                && !code.endsWith("00000")) {
+            saasInternalCode = code;
+        }
     }
 
     public String getTimezone() {

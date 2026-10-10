@@ -4,6 +4,7 @@ import com.tpverp.backend.security.domain.UserSession;
 import com.tpverp.backend.security.domain.UserSessionRepository;
 import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.terminal.TerminalRepository;
+import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -79,6 +80,16 @@ public class AuthenticationService {
 			String terminalCredential,
 			String userName,
 			String password) {
+		return login(terminalId, terminalCredential, userName, password, null);
+	}
+
+	@Transactional
+	public LoginResult login(
+			UUID terminalId,
+			String terminalCredential,
+			String userName,
+			String password,
+			InetAddress clientAddress) {
 		var terminal = terminalRepository.findForAuthentication(terminalId)
 				.orElseThrow(AuthenticationFailedException::new);
 		if (!passwordEncoder.matches(
@@ -104,6 +115,7 @@ public class AuthenticationService {
 		if (!passwordEncoder.matches(password, user.getPasswordHash())) {
 			throw new AuthenticationFailedException();
 		}
+		terminal.recordConnection(Instant.now(clock), clientAddress);
 		return createSession(user, terminal);
 	}
 

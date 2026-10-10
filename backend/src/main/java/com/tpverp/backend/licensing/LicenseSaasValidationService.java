@@ -127,6 +127,8 @@ public class LicenseSaasValidationService {
                 response.maxWindows(),
                 response.maxPda(),
                 response.licenseVersion());
+        LicenseSaasStorePresentation.rememberCode(store, license, response.saasCompanyId(), response.saasStoreId(),
+                response.licenseReference(), response.storeInternalCode());
         cacheAuthenticator.seal(license);
         licenses.save(license);
         return response;

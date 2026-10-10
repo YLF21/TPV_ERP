@@ -43,7 +43,8 @@ public class HttpLicenseSaasValidationClient implements LicenseSaasValidationCli
         try {
             var builder = HttpRequest.newBuilder(endpoint)
                     .timeout(REQUEST_TIMEOUT)
-                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                    .header("X-TPV-Store-Presentation", "1");
             credentials.readToken()
                     .ifPresent(token -> builder.header("X-TPV-Installation-Token", token));
             var request = builder

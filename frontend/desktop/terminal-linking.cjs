@@ -28,6 +28,18 @@ function optionalCompanyName(server) {
   const name = server.companyName.replace(/\s+/g, ' ').trim();
   return name && name.length <= 255 && !/[\x00-\x1f\x7f]/.test(name) ? name : null;
 }
+function optionalStoreInternalCode(source) {
+  const value = source?.storeInternalCode;
+  return typeof value === 'string' && /^(0[1-9]|[1-4][0-9]|5[0-2])[0-9]{5}$/.test(value)
+    && !value.endsWith('00000') ? value : null;
+}
+function presentationIdentity(identity, server, link) {
+  const companyName = optionalCompanyName(server) || identity.companyName;
+  const storeInternalCode = optionalStoreInternalCode(identity)
+    || optionalStoreInternalCode(link) || optionalStoreInternalCode(server);
+  return { ...identity, ...(companyName ? { companyName } : {}),
+    ...(storeInternalCode ? { storeInternalCode } : {}) };
+}
 function connectionUnavailable(failed) {
   if (typeof failed?.httpStatus === 'number') return failed.httpStatus >= 500;
   return failed?.transportFailure === true;
@@ -35,7 +47,9 @@ function connectionUnavailable(failed) {
 async function transport(work) {
   try { return await work(); }
   catch (failed) {
-    if (!(failed instanceof TypeError || failed?.name === 'AbortError' || failed?.name === 'TimeoutError')) throw failed;
+    const networkCode = ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH',
+      'EAI_AGAIN', 'ENOTFOUND', 'EPIPE', 'BACKEND_ADDRESS_UNAVAILABLE'].includes(failed?.code);
+    if (!(networkCode || failed instanceof TypeError || failed?.name === 'AbortError' || failed?.name === 'TimeoutError')) throw failed;
     const unavailable = error('BACKEND_CONNECTION_FAILED', failed?.message || 'El backend no responde');
     unavailable.transportFailure = true;
     unavailable.cause = failed;
@@ -119,12 +133,14 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
     return { installationId: identity.installationId, bindingId: identity.bindingId,
       terminalId: identity.terminalId, terminalCode: identity.terminalCode,
       ...(identity.terminalName ? { terminalName: identity.terminalName } : {}), storeName: identity.storeName,
+      ...(optionalStoreInternalCode(identity) ? { storeInternalCode: identity.storeInternalCode } : {}),
       ...(identity.companyName ? { companyName: identity.companyName } : {}) };
   }
   function displayContext(state) {
     const identity = state?.identity;
     if (!identity?.installationId || typeof identity.storeName !== 'string' || typeof identity.terminalCode !== 'string') return null;
     return { storeName: identity.storeName, terminalCode: identity.terminalCode,
+      ...(optionalStoreInternalCode(identity) ? { storeInternalCode: identity.storeInternalCode } : {}),
       ...(typeof identity.companyName === 'string' && identity.companyName ? { companyName: identity.companyName } : {}),
       ...(typeof identity.terminalName === 'string' && identity.terminalName ? { terminalName: identity.terminalName } : {}) };
   }
@@ -169,12 +185,13 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
         const checkedState = state;
         state = { ...state, link: refreshed };
         if (refreshed.status === 'ACTIVE') {
-          const name = optionalCompanyName(checked.server);
           const latest = await mutate(() => {
             const saved = storage.read();
             if (!sameLinkedIdentity(checkedState, saved)) return null;
-            if (!name || saved.identity.companyName === name) return saved;
-            const updated = { ...saved, identity: { ...saved.identity, companyName: name } };
+            const identity = presentationIdentity(saved.identity, checked.server, refreshed);
+            if (identity.companyName === saved.identity.companyName
+                && identity.storeInternalCode === saved.identity.storeInternalCode) return saved;
+            const updated = { ...saved, identity };
             storage.write(updated);
             return updated;
           });
@@ -212,6 +229,8 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
         terminalCode: strictString(link.terminalCode, 'Código', 9), terminalName: link.terminalName || pending.name,
         storeId: strictString(link.storeId, 'Tienda', 100), storeName: strictString(link.storeName, 'Tienda', 100),
         ...(pending.companyName ? { companyName: pending.companyName } : {}),
+        ...(optionalStoreInternalCode(link) || optionalStoreInternalCode(pending)
+          ? { storeInternalCode: optionalStoreInternalCode(link) || optionalStoreInternalCode(pending) } : {}),
         bindingId: strictString(link.bindingId, 'Vínculo', 100),
         installationId: pending.installationId, keyFingerprint: pending.keyFingerprint, deviceId: pending.deviceId,
         ...(pending.legacyBackendScope ? { legacyBackendScope: pending.legacyBackendScope,
@@ -235,6 +254,7 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
     }
     const checked = await probeInternal(backendUrl);
     const companyName = optionalCompanyName(checked.server);
+    const storeInternalCode = optionalStoreInternalCode(checked.server);
     if (checked.localServer && terminalCode !== '001') throw error('SERVER_SLOT_PROTECTED', 'El PC backend utiliza el código 001');
     if (current.identity?.bindingId && checked.sameInstallation) {
       if (!current.link?.requestId) throw error('ALREADY_LINKED', 'El equipo ya está vinculado');
@@ -278,13 +298,15 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
       const login = await api(checked.backendUrl, 'POST', '/auth/installation-login', { userName, password });
       adminToken = strictString(login.accessToken, 'Token', 4096);
     }
-    const pending = retry ? { ...retry, ...(companyName ? { companyName } : {}) } : {
+    const pending = retry ? { ...retry, ...(companyName ? { companyName } : {}),
+      ...(storeInternalCode ? { storeInternalCode } : {}) } : {
       requestId: crypto.randomUUID(), deviceId: current.deviceId || crypto.randomUUID(),
       credential: (terminalCode === '001' || legacyPos) && current.identity
         ? current.identity.terminalCredential : crypto.randomBytes(32).toString('base64url'), code: terminalCode, name: terminalName,
       deviceName: strictString(deviceName, 'Equipo', 100), backendUrl: checked.backendUrl,
       installationId: checked.server.installationId, keyFingerprint: checked.server.keyFingerprint,
       ...(companyName ? { companyName } : {}),
+      ...(storeInternalCode ? { storeInternalCode } : {}),
       mode: terminalCode === '001' ? (current.identity ? 'SERVER_EXISTING' : 'SERVER_ADMIN') : legacyPos ? 'LEGACY_POS' : 'WORKSTATION',
       ...((legacyServer || legacyPos) ? { legacyBackendScope: previousLegacyScope,
         legacyTerminalCode: current.identity.terminalCode } : {})
@@ -332,15 +354,18 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
       if (route.endsWith('/status') && current?.link?.requestId && current.identity) {
         const currentUrl = config.read().configuration?.backendUrl;
         if (!currentUrl) throw error('CONFIGURATION_REQUIRED', 'No hay dirección de backend configurada');
-        await probeInternal(currentUrl, true);
+        const checked = await probeInternal(currentUrl, true);
         const link = validateLink(await api(currentUrl, 'POST', route,
           { requestId: current.link.requestId, credential: current.identity.terminalCredential }),
           { requestId: current.link.requestId, installationId: current.identity.installationId,
             code: current.identity.terminalCode });
-        storage.write({ ...current, link });
+        const identity = link.status === 'ACTIVE'
+          ? presentationIdentity(current.identity, checked.server, link) : current.identity;
+        const updated = { ...current, identity, link };
+        storage.write(updated);
         const needsRestart = restartRequired();
-        return { link, linkedIdentity: linkedIdentity(current),
-          ...(link.status === 'ACTIVE' && !needsRestart ? { identity: current.identity } : {}),
+        return { link, linkedIdentity: linkedIdentity(updated),
+          ...(link.status === 'ACTIVE' && !needsRestart ? { identity } : {}),
           restartRequired: needsRestart };
       }
       throw error('NO_PENDING_LINK', 'No hay solicitud pendiente');
@@ -386,7 +411,8 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
           { requestId: pending.requestId, credential: pending.credential }), pending);
       }
     }
-    return persistLink(current, companyName ? { ...pending, companyName } : pending, link);
+    return persistLink(current, { ...pending, ...(companyName ? { companyName } : {}),
+      ...(optionalStoreInternalCode(checked.server) ? { storeInternalCode: checked.server.storeInternalCode } : {}) }, link);
   }
   async function saveAddress({ backendUrl } = {}) {
     const checked = await probeInternal(backendUrl, true);

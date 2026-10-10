@@ -42,6 +42,14 @@ Code 001 provisioning/adoption uses existing protected installation-admin author
 
 Renderer TerminalContext adds optional `installationId`, `storeId`, `bindingId`, `terminalName`, `legacyTerminalCode` and `legacyBackendScope` for safe state migration. Legacy markers are created only after successful proof of the old credential. Settings callers enforce CONFIGURACION_TERMINAL; first-login recovery is locally authorized by Windows. Main process validates IPC sender and all inputs. Activation requires restart whenever the runtime backend URL or binding changes.
 
+## SaaS store lookup code
+
+`storeInternalCode` is optional presentation data, separate from the store UUID, three-digit fiscal store code and terminal code. It is the permanent seven-digit `saas_store.internal_code`, with prefix 01..52 and a nonzero five-digit suffix. Local migration V271 adds nullable `tienda.saas_internal_code`; no code is generated or backfilled for unlinked stores.
+
+New local clients request this field from SaaS `/license/link` and `/license/validate` with `X-TPV-Store-Presentation: 1`. SaaS omits the field without that exact header so older strict JSON clients continue to work. The local backend remembers the first valid code only after the response matches the linked company, store and license. A missing, invalid or conflicting value does not erase the code or prevent an authoritative license status update. The license HMAC format remains unchanged.
+
+Bootstrap, LinkState and provisioning responses carry the optional code. Desktop caches it only after an active, verified binding; its offline display cache grants no authorization. The bootstrap signature continues to cover the challenge and installation UUID, not presentation fields. VENTAS and GESTIÓN display the code next to the store name in their footers, including login and the independent sales-document window. If missing, the desktop rechecks its verified identity every 60 seconds until the code arrives, rejecting responses for another binding and retaining all other context fields.
+
 ## Work ownership
 
 - Backend owner: backend Java, migration, backend tests, backend security and schema release metadata. No desktop/frontend changes.

@@ -49,6 +49,20 @@ test('invalid input and command failures expose only a stable error code', () =>
   assert.equal(isEncrypted(Buffer.from('plain text')), false);
 });
 
+test('DPAPI factory keeps the 64 KiB default and permits a scoped 8 MiB override', () => {
+  const run = (_file, _args, options) => options.input;
+  const defaultAdapter = createWindowsProfileCrypto({ platform: 'win32', systemRoot: 'C:\\Windows', run });
+  const largeAdapter = createWindowsProfileCrypto({ platform: 'win32', systemRoot: 'C:\\Windows',
+    maxPlaintextBytes: 8 * 1024 * 1024, run });
+  const text = 'x'.repeat(64 * 1024 + 1);
+  assert.throws(() => defaultAdapter.encryptString(text), error => error.code === 'SHARED_STORAGE_UNAVAILABLE');
+  assert.equal(largeAdapter.decryptString(largeAdapter.encryptString(text)), text);
+  assert.throws(() => largeAdapter.encryptString('x'.repeat(8 * 1024 * 1024 + 1)),
+    error => error.code === 'SHARED_STORAGE_UNAVAILABLE');
+  assert.throws(() => createWindowsProfileCrypto({ maxPlaintextBytes: 8 * 1024 * 1024 + 1 }),
+    error => error.code === 'SHARED_STORAGE_UNAVAILABLE');
+});
+
 test.skipIf(process.platform !== 'win32')('Windows CurrentUser DPAPI roundtrip and tamper rejection', () => {
   const adapter = createWindowsProfileCrypto();
   const text = `terminal-${crypto.randomUUID()}-中文`;
@@ -58,6 +72,16 @@ test.skipIf(process.platform !== 'win32')('Windows CurrentUser DPAPI roundtrip a
   const tampered = Buffer.from(encrypted);
   tampered[tampered.length - 1] ^= 1;
   assert.throws(() => adapter.decryptString(tampered), error => error.code === 'SHARED_STORAGE_UNAVAILABLE');
+});
+
+test.skipIf(process.platform !== 'win32')('real Windows DPAPI roundtrips a recovery snapshot above 64 KiB', () => {
+  const adapter = createWindowsProfileCrypto({ maxPlaintextBytes: 8 * 1024 * 1024 });
+  const text = `${crypto.randomUUID()}-${'é中文'.repeat(24 * 1024)}`;
+  assert.ok(Buffer.byteLength(text, 'utf8') > 64 * 1024);
+  const encrypted = adapter.encryptString(text);
+  assert.ok(isEncrypted(encrypted));
+  assert.equal(encrypted.includes(Buffer.from(text, 'utf8')), false);
+  assert.equal(adapter.decryptString(encrypted), text);
 });
 
 test.skipIf(process.platform !== 'win32')('another Windows process reads the shared ciphertext without Electron profile keys', () => {

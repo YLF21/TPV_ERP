@@ -337,6 +337,8 @@ public class LicenseSaasLinkService {
                 response.maxWindows(),
                 response.maxPda(),
                 response.licenseVersion());
+        LicenseSaasStorePresentation.rememberCode(store, license, response.companyId(), response.storeId(),
+                response.licenseReference(), response.storeInternalCode());
     }
 
     private void validateResponse(Store store, LicenseSaasLinkResponse response) {

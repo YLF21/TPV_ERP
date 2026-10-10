@@ -47,7 +47,8 @@ public class HttpLicenseSaasLinkClient implements LicenseSaasLinkClient {
         try {
             var builder = HttpRequest.newBuilder(endpoint)
                     .timeout(REQUEST_TIMEOUT)
-                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                    .header("X-TPV-Store-Presentation", "1");
             credentials.readToken().ifPresent(token -> builder.header(
                     "X-TPV-Installation-Token", token));
             if (recoveryToken != null && !recoveryToken.isBlank()) {

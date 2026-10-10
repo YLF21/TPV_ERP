@@ -26,6 +26,7 @@ export type {
 } from "./catalog/familyCatalogApi";
 export { loadTerminalIdentity, resolveTerminalIdentity } from "./terminalIdentity";
 export type { TerminalIdentityBridge, TerminalIdentityLoadResult } from "./terminalIdentity";
+export { useTerminalStoreCode } from "./useTerminalStoreCode";
 export { AppFrame } from "./components/AppFrame";
 export { AppLogo } from "./components/AppLogo";
 export { ErpSelect } from "./components/ErpSelect";

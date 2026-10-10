@@ -23,6 +23,8 @@ import org.junit.jupiter.api.Test;
 
 class HttpLicenseSaasLinkClientTest {
 
+    private final AtomicReference<String> presentationHeader = new AtomicReference<>();
+
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     @Test
@@ -52,6 +54,7 @@ class HttpLicenseSaasLinkClientTest {
             assertThat(result.companyTaxId()).isEqualTo("B12345674");
             assertThat(result.companyName()).isEqualTo("EMPRESA REAL");
             assertThat(result.storeCode()).isEqualTo("001");
+            assertThat(presentationHeader.get()).isEqualTo("1");
             assertThat(result.storeName()).isEqualTo("TIENDA 001");
             assertThat(result.status()).isEqualTo(LicenseSaasStatus.VALIDA);
             assertThat(result.validUntil()).isEqualTo(Instant.parse("2027-08-10T00:00:00Z"));
@@ -136,6 +139,7 @@ class HttpLicenseSaasLinkClientTest {
             throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/v1/license/link", exchange -> {
+            presentationHeader.set(exchange.getRequestHeaders().getFirst("X-TPV-Store-Presentation"));
             receivedToken.set(exchange.getRequestHeaders().getFirst(
                     "X-TPV-Installation-Token"));
             receivedRecoveryToken.set(exchange.getRequestHeaders().getFirst(

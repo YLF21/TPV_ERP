@@ -71,7 +71,7 @@ public class TerminalLinkingService {
         return new Bootstrap(1, installation.getId(), installation.getReferencia(), store.getId(), store.getNombreEfectivo(),
                 organization.currentCompany().getRazonSocial(),
                 Base64.getEncoder().encodeToString(key), challenge, Base64.getEncoder().encodeToString(signed),
-                capacity(store), slotViews(store, false));
+                capacity(store), slotViews(store, false), store.getSaasInternalCode());
     }
 
     public LinkState request(LinkRequest request) {
@@ -91,7 +91,7 @@ public class TerminalLinkingService {
         int number = codeNumber(request.code());
         if (number == 1) throw error("SERVER_SLOT_PROTECTED");
         if (number > capacity(store)) throw error("WORKSTATION_OUT_OF_QUOTA");
-        var terminal = terminals.findByTiendaIdAndWorkstationCode(store.getId(), request.code()).orElse(null);
+        var terminal = terminals.findWorkstationForUpdate(store.getId(), request.code()).orElse(null);
         if (terminal != null && terminal.getCurrentBindingId() != null) throw error("WORKSTATION_OCCUPIED");
         // Unassigned historical Windows machines still consume their existing license seats.
         requireCapacity(store, null);
@@ -105,8 +105,6 @@ public class TerminalLinkingService {
             terminal = Terminal.request(store, name, TerminalType.TERMINAL_VENTA, unusableCredential());
             terminal.assignWorkstationCode(request.code());
             terminal = terminals.saveAndFlush(terminal);
-        } else {
-            terminal = lockTerminal(terminal);
         }
         var now = now();
         var binding = bindings.saveAndFlush(new TerminalPhysicalBinding(terminal, request.requestId(), request.deviceId(),
@@ -118,10 +116,19 @@ public class TerminalLinkingService {
     }
 
     public LinkState status(Proof request) {
+        return status(request, null);
+    }
+
+    public LinkState status(Proof request, java.net.InetAddress clientAddress) {
         var store = lock(singleStore());
         expire(store);
         var binding = findProof(request);
-        binding.seen(now());
+        var terminal = terminals.findForCashSessionPreparation(binding.getTerminal().getId(), store.getId()).orElseThrow();
+        var seenAt = now();
+        binding.seen(seenAt);
+        if (binding.occupies() && binding.getId().equals(terminal.getCurrentBindingId())) {
+            terminal.recordConnection(seenAt, clientAddress);
+        }
         return state(binding);
     }
 
@@ -129,7 +136,7 @@ public class TerminalLinkingService {
         var store = lock(singleStore());
         expire(store);
         var binding = findProof(request);
-        if (binding.getStatus().equals("PENDING")) end(binding, "CANCELLED");
+        if (binding.getStatus().equals("PENDING")) end(binding, "CANCELLED", store);
         else if (binding.occupies()) throw error("LINK_REQUEST_NOT_PENDING");
         return state(binding);
     }
@@ -144,9 +151,8 @@ public class TerminalLinkingService {
         codeNumber(code);
         var store = lock(organization.currentStore());
         expire(store);
-        var terminal = terminals.findByTiendaIdAndWorkstationCode(store.getId(), code)
+        var terminal = terminals.findWorkstationForUpdate(store.getId(), code)
                 .orElseThrow(() -> error("WORKSTATION_NOT_FOUND"));
-        terminal = lockTerminal(terminal);
         if (code.equals("001")) throw error("SERVER_SLOT_PROTECTED");
         if (expectedBinding == null) throw error("BINDING_REQUIRED");
         var terminalId = terminal.getId();
@@ -174,10 +180,10 @@ public class TerminalLinkingService {
                 terminal.deactivate(); binding.disable(); revoke(terminal, "WORKSTATION_DISABLED");
                 audit(store, "WORKSTATION_DISABLED", binding);
             }
-            case "release" -> end(binding, "RELEASED");
+            case "release" -> end(binding, "RELEASED", store);
             case "cancel" -> {
                 if (!binding.getStatus().equals("PENDING")) throw error("LINK_REQUEST_NOT_PENDING");
-                end(binding, "CANCELLED");
+                end(binding, "CANCELLED", store);
             }
             default -> throw error("INVALID_WORKSTATION_ACTION");
         }
@@ -226,7 +232,7 @@ public class TerminalLinkingService {
         if (!local) throw forbidden("SERVER_ADOPTION_REQUIRES_LOOPBACK");
         validateAdoption(request);
         var store = lock(singleStore());
-        var terminal = terminals.findByTiendaIdAndTipo(store.getId(), TerminalType.SERVIDOR).orElse(null);
+        var terminal = terminals.findTypeForUpdate(store.getId(), TerminalType.SERVIDOR).orElse(null);
         boolean admin = administrator != null && administrator.isActivo() && administrator.isProtegido()
                 && administrator.getTienda() == null;
         if (!admin && (terminal == null || !terminal.getId().equals(request.terminalId())
@@ -245,7 +251,6 @@ public class TerminalLinkingService {
             throw error("DEVICE_ALREADY_BOUND");
         if (terminal == null) terminal = terminals.saveAndFlush(new Terminal(store, "001", TerminalType.SERVIDOR,
                 encoder.encode(request.credential())));
-        terminal = lockTerminal(terminal);
         if (terminal.getCurrentBindingId() != null) {
             var binding = bindings.findById(terminal.getCurrentBindingId()).orElseThrow();
             if (!admin) {
@@ -294,11 +299,11 @@ public class TerminalLinkingService {
 
     private void expire(Store store) {
         for (var value : bindings.findByTerminalTiendaIdOrderByCreatedAt(store.getId()))
-            if (value.getStatus().equals("PENDING") && !now().isBefore(value.getExpiresAt())) end(value, "EXPIRED");
+            if (value.getStatus().equals("PENDING") && !now().isBefore(value.getExpiresAt())) end(value, "EXPIRED", store);
         bindings.flush();
     }
-    private void end(TerminalPhysicalBinding binding, String status) {
-        var terminal = lockTerminal(binding.getTerminal());
+    private void end(TerminalPhysicalBinding binding, String status, Store store) {
+        var terminal = terminals.findForCashSessionPreparation(binding.getTerminal().getId(), store.getId()).orElseThrow();
         if (terminal.getWorkstationCode().equals("001")) throw error("SERVER_SLOT_PROTECTED");
         binding.end(status, now());
         if (binding.getId().equals(terminal.getCurrentBindingId())) {
@@ -310,9 +315,6 @@ public class TerminalLinkingService {
     private void revoke(Terminal terminal, String reason) {
         sessions.findByTerminalIdAndRevocadaEnIsNull(terminal.getId())
                 .forEach(value -> value.revocar(value.getUsuario(), reason, now()));
-    }
-    private Terminal lockTerminal(Terminal terminal) {
-        return terminals.findForCashSessionPreparation(terminal.getId(), terminal.getTienda().getId()).orElseThrow();
     }
     private TerminalPhysicalBinding findProof(Proof request) {
         if (request.requestId() == null || request.credential() == null || request.credential().length() > 256)
@@ -326,7 +328,7 @@ public class TerminalLinkingService {
     private ManagementView management(Store store) {
         return new ManagementView(capacity(store), slotViews(store, true), terminals.findAllByTiendaIdOrderByNombre(store.getId())
                 .stream().filter(value -> value.getTipo() == TerminalType.TERMINAL_VENTA && value.getWorkstationCode() == null)
-                .map(value -> new LegacyTerminal(value.getId(), value.getNombre(), value.getTipo(), value.isAprobada(), value.isActiva())).toList());
+                .map(value -> new LegacyTerminal(value.getId(), value.getNombre(), value.getTipo(), value.isAprobada(), value.isActiva(), ip(value))).toList());
     }
     private List<Slot> slotViews(Store store, boolean management) {
         int capacity = capacity(store);
@@ -347,15 +349,24 @@ public class TerminalLinkingService {
                     terminal == null ? null : terminal.getId(), binding == null ? null : binding.getId(),
                     binding == null ? null : binding.getExpiresAt(), number > capacity,
                     !management || binding == null ? null : binding.getDeviceName(),
-                    !management || binding == null ? null : binding.getLastSeenAt()));
+                    !management || binding == null ? null : latestSeenAt(terminal, binding),
+                    !management || terminal == null || (binding == null && number != 1) ? null : ip(terminal)));
         }
         return result;
+    }
+    private static String ip(Terminal terminal) {
+        return terminal.getLastIp() == null ? null : terminal.getLastIp().getHostAddress();
+    }
+    private static Instant latestSeenAt(Terminal terminal, TerminalPhysicalBinding binding) {
+        var observed = terminal.getLastSeenAt();
+        var polled = binding.getLastSeenAt();
+        return observed == null || (polled != null && polled.isAfter(observed)) ? polled : observed;
     }
     private LinkState state(TerminalPhysicalBinding binding) {
         var terminal = binding.getTerminal();
         return new LinkState(binding.getRequestId(), binding.getId(), terminal.getId(), terminal.getWorkstationCode(), binding.getName(),
                 terminal.getTienda().getId(), terminal.getTienda().getNombreEfectivo(), installationStatus.status().id(),
-                binding.getStatus(), binding.getExpiresAt());
+                binding.getStatus(), binding.getExpiresAt(), terminal.getTienda().getSaasInternalCode());
     }
     private int capacity(Store store) {
         if (installationStatus.statusForStore(store.getId()).mode() == OperationalMode.DEVELOPMENT) return developmentMaxWindows;
@@ -423,14 +434,26 @@ public class TerminalLinkingService {
         }
     }
     public record LinkState(UUID requestId, UUID bindingId, UUID terminalId, String terminalCode, String terminalName,
-            UUID storeId, String storeName, UUID installationId, String status, Instant expiresAt) { }
+            UUID storeId, String storeName, UUID installationId, String status, Instant expiresAt, String storeInternalCode) {
+        public LinkState(UUID requestId, UUID bindingId, UUID terminalId, String terminalCode, String terminalName,
+                UUID storeId, String storeName, UUID installationId, String status, Instant expiresAt) {
+            this(requestId, bindingId, terminalId, terminalCode, terminalName, storeId, storeName,
+                    installationId, status, expiresAt, null);
+        }
+    }
     public record Slot(String code, String status, String name, UUID terminalId, UUID bindingId, Instant expiresAt,
-            boolean outOfQuota, String deviceName, Instant lastSeenAt) { }
+            boolean outOfQuota, String deviceName, Instant lastSeenAt, String lastIp) { }
     public record Bootstrap(int protocolVersion, UUID installationId, String installationReference, UUID storeId, String storeName,
             String companyName,
-            String publicKey, String challenge, String signature, int maxWindows, List<Slot> slots) { }
+            String publicKey, String challenge, String signature, int maxWindows, List<Slot> slots, String storeInternalCode) {
+        public Bootstrap(int protocolVersion, UUID installationId, String installationReference, UUID storeId, String storeName,
+                String companyName, String publicKey, String challenge, String signature, int maxWindows, List<Slot> slots) {
+            this(protocolVersion, installationId, installationReference, storeId, storeName, companyName,
+                    publicKey, challenge, signature, maxWindows, slots, null);
+        }
+    }
     public record ManagementView(int maxWindows, List<Slot> slots, List<LegacyTerminal> legacyTerminals) { }
-    public record LegacyTerminal(UUID id, String name, TerminalType type, boolean approved, boolean active) { }
+    public record LegacyTerminal(UUID id, String name, TerminalType type, boolean approved, boolean active, String lastIp) { }
     public record HistoryItem(UUID bindingId, UUID requestId, String deviceName, String name, String status,
             Instant createdAt, Instant approvedAt, Instant endedAt) { }
 }
