@@ -393,6 +393,21 @@ describe("SettingsScreen", () => {
     expect(onOpenReports).toHaveBeenCalledOnce();
   });
 
+  it.each(["venta", "gestion"] as const)("scopes native window display settings to APP VENTA when viewing %s", (app) => {
+    render(
+      <SettingsScreen
+        app={app}
+        locale="es"
+        session={{ username: "venta", displayName: "VENTA", permissions: ["VENTA"] }}
+        terminalContext={terminalContext}
+        initialDestination="visualization"
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
+    expect(Boolean(screen.queryByRole("button", { name: "Formato de ventana" }))).toBe(app === "venta");
+  });
+
   it("keeps Caja separate and reuses the operational cash card", async () => {
     render(
       <SettingsScreen

@@ -17,6 +17,8 @@ import org.junit.jupiter.api.Test;
 
 class HttpLicenseSaasValidationClientTest {
 
+    private final AtomicReference<String> presentationHeader = new AtomicReference<>();
+
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Test
@@ -41,6 +43,8 @@ class HttpLicenseSaasValidationClientTest {
             LicenseSaasValidationResponse response = client.validate(request);
 
             assertThat(response.status()).isEqualTo(LicenseSaasStatus.VALIDA);
+            assertThat(response.storeInternalCode()).isNull();
+            assertThat(presentationHeader.get()).isEqualTo("1");
             assertThat(response.validUntil()).isEqualTo(Instant.parse("2027-08-10T00:00:00Z"));
             assertThat(received.get().get("installationReference").asText()).isEqualTo("INST-1");
             assertThat(received.get().get("licenseReference").asText()).isEqualTo("LIC-1");
@@ -84,6 +88,7 @@ class HttpLicenseSaasValidationClientTest {
             throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/v1/license/validate", exchange -> {
+            presentationHeader.set(exchange.getRequestHeaders().getFirst("X-TPV-Store-Presentation"));
             received.set(mapper.readTree(exchange.getRequestBody()));
             token.set(exchange.getRequestHeaders().getFirst("X-TPV-Installation-Token"));
             byte[] body = response.getBytes(java.nio.charset.StandardCharsets.UTF_8);

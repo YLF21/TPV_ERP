@@ -43,7 +43,7 @@ describe("LoginScreen", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders the sales brand above the card and company context without a corner logo", () => {
+  it("renders the sales brand above the card and company context beside the corner logo", () => {
     const html = renderToStaticMarkup(
       <LoginScreen
         app="venta"
@@ -57,9 +57,12 @@ describe("LoginScreen", () => {
     expect(html).toContain('class="entry-topbar"');
     expect(html).toContain('class="top-date-time"');
     expect(html).toContain("esPOS VENTA");
-    expect(html).toContain('class="login-sale-brand"');
+    expect(html).toContain('class="login-desktop-brand"');
     expect(html).toContain("Empresa Real");
-    expect(html).not.toContain('class="app-brand-static"');
+    expect(html).toContain('class="app-brand-static"');
+    const topbar = new DOMParser().parseFromString(html, "text/html").querySelector(".entry-topbar")!;
+    expect(topbar.querySelector(".desktop-header-context")?.textContent).toBe("Empresa Real");
+    expect(topbar.textContent).not.toContain("Tienda Principal");
     expect(html).toContain('class="report-footer-context"');
     expect(html).toContain("DB:");
     expect(html).toContain("Conexión");
@@ -90,19 +93,28 @@ describe("LoginScreen", () => {
     expect(html).not.toContain("Mostrar teclado");
   });
 
-  it("does not show the sales touch keyboard in the management login", () => {
+  it("uses the same desktop login layout in management with its own brand and field IDs", () => {
     const html = renderToStaticMarkup(
       <LoginScreen app="gestion" locale="es" terminalContext={terminalContext}
         onLocaleChange={vi.fn()} onLogin={vi.fn()} />
     );
 
-    expect(html).not.toContain('class="login-touch-keyboard"');
-    expect(html).not.toContain("Mostrar teclado");
+    expect(html).toContain('login-screen-desktop login-desktop');
+    expect(html).toContain('class="login-desktop-brand"');
+    expect(html).toContain("esPOS GESTIÓN");
+    expect(html).toContain(">GESTIÓN</span>");
+    expect(html).not.toContain(">VENTAS</span>");
+    expect(html).toContain('class="login-touch-keyboard"');
+    expect(html).toContain("Mostrar teclado");
+    expect(html).toContain('id="gestion-login-user"');
+    expect(html).toContain('id="gestion-login-password"');
+    expect(html).toContain('class="report-footer-context"');
+    expect(html).toContain('class="app-brand-static"');
   });
 
-  it("opens, folds and reopens the sales keyboard, edits the focused field and submits only on Entrar", async () => {
+  it.each(["venta", "gestion"] as const)("opens, folds and reopens the %s keyboard, edits the focused field and submits only on Entrar", async (app) => {
     mocks.authenticateRemote.mockResolvedValue({ userId: "user-1", permissions: [] });
-    render(<LoginScreen app="venta" locale="es" terminalContext={terminalContext}
+    render(<LoginScreen app={app} locale="es" terminalContext={terminalContext}
       onLocaleChange={vi.fn()} onLogin={vi.fn()} />);
     await waitFor(() => expect(screen.getByRole("button", { name: "Entrar" })).toBeEnabled());
 
@@ -144,7 +156,7 @@ describe("LoginScreen", () => {
     expect(mocks.authenticateRemote).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
-    await waitFor(() => expect(mocks.authenticateRemote).toHaveBeenCalledWith("USER", "sEcreto", "venta", terminalContext));
+    await waitFor(() => expect(mocks.authenticateRemote).toHaveBeenCalledWith("USER", "sEcreto", app, terminalContext));
   });
 
   it("disables the toggle and keys while authentication is loading", async () => {
@@ -175,8 +187,10 @@ describe("LoginScreen", () => {
       terminalContext={{ ...terminalContext, terminalName: name }} onLocaleChange={vi.fn()} onLogin={vi.fn()} />);
 
     await waitFor(() => expect(container.querySelector(".login-submit")).toBeEnabled());
-    expect(container.querySelector(".login-sale-brand > span")).toHaveTextContent(/^VENTAS$/);
-    expect(container.querySelector(".login-context-heading > span")).toHaveTextContent(new RegExp(`^${name}$`));
+    expect(container.querySelector(".login-desktop-brand > span")).toHaveTextContent(/^VENTAS$/);
+    expect(container.querySelector(".desktop-header-context")).toHaveTextContent(/^Empresa Real$/);
+    expect(container.querySelector(".entry-topbar")).not.toHaveTextContent(name);
+    expect(container.querySelector(".entry-topbar")).not.toHaveTextContent("Tienda Principal");
     expect(container.querySelector(".login-panel-heading > span")).toHaveTextContent(`Tienda Principal · ${name}`);
     expect(container.querySelector(".report-footer-context > span:nth-child(2)")).toHaveTextContent(new RegExp(`^${name}$`));
   });

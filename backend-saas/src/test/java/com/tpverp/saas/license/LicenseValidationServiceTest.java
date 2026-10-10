@@ -13,6 +13,7 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class LicenseValidationServiceTest {
 
@@ -35,6 +36,8 @@ class LicenseValidationServiceTest {
             var store = new SaasStore(UUID.randomUUID(), company,
                     profile == CommercialProfile.MAYORISTA ? "001" : "002", profile.name(), "Atlantic/Canary", NOW);
             store.setCommercialProfile(profile);
+            String internalCode = profile == CommercialProfile.MAYORISTA ? "3512345" : null;
+            ReflectionTestUtils.setField(store, "internalCode", internalCode);
             UUID installationId = UUID.randomUUID();
             var installation = new SaasInstallation(UUID.randomUUID(), company, store, license, installationId,
                     "INST-" + profile, "key", "token-hash", NOW);
@@ -44,6 +47,7 @@ class LicenseValidationServiceTest {
                     store.getId(), license.getReference(), "hash"), "token");
             assertThat(response.commercialProfile()).isEqualTo(profile);
             assertThat(response.saasStoreId()).isEqualTo(store.getId());
+            assertThat(response.storeInternalCode()).isEqualTo(internalCode);
         }
         assertThat(company.getCommercialProfile()).isEqualTo(CommercialProfile.MAYORISTA);
     }

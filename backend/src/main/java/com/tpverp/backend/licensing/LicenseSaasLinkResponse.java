@@ -31,7 +31,22 @@ public record LicenseSaasLinkResponse(
         LocalDate verifactuActivationDate,
         long verifactuPolicyVersion,
         Instant verifactuPolicyUpdatedAt,
-        String installationToken) {
+        String installationToken,
+        String storeInternalCode) {
+
+    public LicenseSaasLinkResponse(String licenseReference, UUID companyId, UUID storeId,
+            String companyTaxId, String companyName, Map<String, String> companyAddress,
+            String storeCode, String storeName, Map<String, String> storeAddress, String timeZoneId,
+            Instant validUntil, LicenseSaasStatus status, int maxWindows, int maxPda, long licenseVersion,
+            String taxId, TaxpayerType taxpayerType, TaxRegime impuestos, CommercialProfile commercialProfile,
+            LocalDate verifactuActivationDate, long verifactuPolicyVersion,
+            Instant verifactuPolicyUpdatedAt, String installationToken) {
+        this(licenseReference, companyId, storeId, companyTaxId, companyName, companyAddress,
+                storeCode, storeName, storeAddress, timeZoneId, validUntil, status, maxWindows,
+                maxPda, licenseVersion, taxId, taxpayerType, impuestos, commercialProfile,
+                verifactuActivationDate, verifactuPolicyVersion, verifactuPolicyUpdatedAt,
+                installationToken, null);
+    }
 
     public LicenseSaasLinkResponse(String licenseReference, UUID companyId, UUID storeId,
             String companyTaxId, String companyName, Map<String, String> companyAddress,

@@ -128,6 +128,8 @@ class LicenseSaasLinkServiceTest {
         assertThat(cacheAuthenticator.isAuthentic(saved.getValue())).isTrue();
         assertThat(result.license().licenseReference()).isEqualTo("LIC-SAAS-1");
         assertThat(result.serverTerminalId()).isEqualTo(server.getId());
+        assertThat(store.getSaasInternalCode()).isEqualTo("3500002");
+        assertThat(store.getCodigoTienda()).isEqualTo("001");
         verify(audit).record(
                 org.mockito.Mockito.eq("LICENSE_SAAS_LINKED"),
                 org.mockito.Mockito.eq(AuditResult.EXITO),
@@ -173,6 +175,7 @@ class LicenseSaasLinkServiceTest {
         verify(stores).save(store.capture());
         assertThat(store.getValue().getCodigoTienda()).isEqualTo("001");
         assertThat(store.getValue().getNombreEfectivo()).isEqualTo("TIENDA 001");
+        assertThat(store.getValue().getSaasInternalCode()).isEqualTo("3500002");
         verify(commercialBootstrap).initializeStore(store.getValue().getId(), company.getValue().getId());
         var terminal = ArgumentCaptor.forClass(Terminal.class);
         verify(terminals).save(terminal.capture());
@@ -399,6 +402,31 @@ class LicenseSaasLinkServiceTest {
                 .getModifiers())).isTrue();
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"same", "other-company", "other-store"})
+    void relinkExistingLicenseLearnsCodeOnlyForItsConfirmedCentralIdentity(String identity) {
+        var installation = installation();
+        var store = store();
+        var existing = license(store, installation, "LIC-SAAS-1");
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.count()).thenReturn(1L);
+        when(organization.currentStore()).thenReturn(store);
+        when(terminals.findByTiendaIdAndTipo(store.getId(), TerminalType.SERVIDOR))
+                .thenReturn(Optional.of(new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "hash")));
+        when(licenses.findByReferencia("LIC-SAAS-1")).thenReturn(Optional.of(existing));
+        when(client.link(any(), any())).thenReturn(saasResponse(
+                identity.equals("other-company") ? UUID.randomUUID() : existing.getSaasCompanyId(),
+                identity.equals("other-store") ? UUID.randomUUID() : existing.getSaasStoreId()));
+
+        service.link("ABC123", null);
+
+        assertThat(store.getSaasInternalCode()).isEqualTo(identity.equals("same") ? "3500002" : null);
+        assertThat(store.getCodigoTienda()).isEqualTo("001");
+        assertThat(existing.getTiendaId()).isEqualTo(store.getId());
+        assertThat(cacheAuthenticator.isAuthentic(existing)).isTrue();
+        verify(licenses).save(existing);
+    }
+
     private static Installation installation() {
         return new Installation("INST-1", "public-key", Instant.parse("2026-06-08T00:00:00Z"));
     }
@@ -508,6 +536,6 @@ class LicenseSaasLinkServiceTest {
                 java.time.LocalDate.of(2027, 1, 1),
                 3,
                 Instant.parse("2026-07-22T10:00:00Z"),
-                "token-instalacion");
+                "token-instalacion", "3500002");
     }
 }

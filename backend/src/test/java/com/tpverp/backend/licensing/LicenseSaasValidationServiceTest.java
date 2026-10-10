@@ -408,6 +408,88 @@ class LicenseSaasValidationServiceTest {
         verify(client, never()).validate(org.mockito.Mockito.any());
     }
 
+    @Test
+    void scheduledRefreshLearnsCodeWithoutRenewalAndKeepsAuthenticatedSnapshot() {
+        var installation = installation();
+        var store = store();
+        var license = license(store, installation);
+        license.applySaasLicenseSnapshot(NOW.minusSeconds(60), LicenseSaasStatus.VALIDA,
+                license.getValidaHasta(), license.getMaxWindows(), license.getMaxPda(), 1);
+        cacheAuthenticator.seal(license);
+        when(licenses.findByIdForSaasValidationForUpdate(license.getId())).thenReturn(Optional.of(license));
+        when(installations.findById(installation.getId())).thenReturn(Optional.of(installation));
+        when(stores.findWithCompanyById(store.getId())).thenReturn(Optional.of(store));
+        when(client.validate(org.mockito.ArgumentMatchers.any())).thenReturn(new LicenseSaasValidationResponse(
+                LicenseSaasStatus.VALIDA, license.getValidaHasta(), null, 0, null, null,
+                license.getMaxWindows(), license.getMaxPda(), 1, license.getSaasCompanyId(),
+                license.getSaasStoreId(), license.getReferencia(), license.getTaxId(), "0100001"));
+
+        service.validateLicense(license.getId());
+
+        assertThat(store.getSaasInternalCode()).isEqualTo("0100001");
+        assertThat(store.getCodigoTienda()).isEqualTo("001");
+        assertThat(license.getSaasLicenseVersion()).isEqualTo(1);
+        assertThat(cacheAuthenticator.isAuthentic(license)).isTrue();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "missing-code", "invalid-code", "different-code", "missing-company", "missing-store",
+            "missing-reference", "other-company", "other-store", "other-reference", "legacy"})
+    void presentationMetadataNeverErasesConfirmedCodeOrPreventsRevocation(String scenario) {
+        var installation = installation();
+        var store = store();
+        store.rememberSaasInternalCode("3500002");
+        var license = license(store, installation);
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.findAll()).thenReturn(List.of(store));
+        when(licenses.findActiveForSaasValidationForUpdate(store.getId(), installation.getId()))
+                .thenReturn(Optional.of(license));
+        var response = scenario.equals("legacy")
+                ? new LicenseSaasValidationResponse(LicenseSaasStatus.BLOQUEADA_MANUAL, license.getValidaHasta())
+                : new LicenseSaasValidationResponse(LicenseSaasStatus.BLOQUEADA_MANUAL, license.getValidaHasta(),
+                        null, 0, null, null, license.getMaxWindows(), license.getMaxPda(), 1,
+                        scenario.equals("missing-company") ? null : scenario.equals("other-company")
+                                ? UUID.randomUUID() : license.getSaasCompanyId(),
+                        scenario.equals("missing-store") ? null : scenario.equals("other-store")
+                                ? UUID.randomUUID() : license.getSaasStoreId(),
+                        scenario.equals("missing-reference") ? null : scenario.equals("other-reference")
+                                ? "OTHER" : license.getReferencia(),
+                        license.getTaxId(), scenario.equals("missing-code") ? null
+                                : scenario.equals("invalid-code") ? "not-a-code" : "3500003");
+        when(client.validate(org.mockito.ArgumentMatchers.any())).thenReturn(response);
+
+        service.validateActiveLicense();
+
+        assertThat(store.getSaasInternalCode()).isEqualTo("3500002");
+        assertThat(license.getEstadoSaas()).isEqualTo(LicenseSaasStatus.BLOQUEADA_MANUAL);
+        assertThat(cacheAuthenticator.isAuthentic(license)).isTrue();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"company", "store", "reference", "legacy"})
+    void doesNotLearnAFirstCodeFromIncompleteOrForeignIdentity(String mismatch) {
+        var installation = installation();
+        var store = store();
+        var license = license(store, installation);
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.findAll()).thenReturn(List.of(store));
+        when(licenses.findActiveForSaasValidationForUpdate(store.getId(), installation.getId()))
+                .thenReturn(Optional.of(license));
+        when(client.validate(org.mockito.ArgumentMatchers.any())).thenReturn(new LicenseSaasValidationResponse(
+                LicenseSaasStatus.BLOQUEADA_MANUAL, license.getValidaHasta(), null, 0, null, null,
+                license.getMaxWindows(), license.getMaxPda(), 1,
+                mismatch.equals("legacy") ? null : mismatch.equals("company") ? UUID.randomUUID() : license.getSaasCompanyId(),
+                mismatch.equals("legacy") ? null : mismatch.equals("store") ? UUID.randomUUID() : license.getSaasStoreId(),
+                mismatch.equals("legacy") ? null : mismatch.equals("reference") ? "OTHER" : license.getReferencia(),
+                license.getTaxId(), "3500002"));
+
+        service.validateActiveLicense();
+
+        assertThat(store.getSaasInternalCode()).isNull();
+        assertThat(license.getEstadoSaas()).isEqualTo(LicenseSaasStatus.BLOQUEADA_MANUAL);
+    }
+
     private static Installation installation() {
         return new Installation("INST-1", "public-key", Instant.parse("2026-06-08T00:00:00Z"));
     }

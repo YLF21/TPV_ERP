@@ -1,4 +1,4 @@
-import type { LocaleCode, UserSession } from "../types";
+import type { LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { useRef, useState, type ReactNode } from "react";
 import languageIcon from "../assets/language.png";
@@ -6,11 +6,14 @@ import { useOutsidePointerDown } from "./useOutsidePointerDown";
 import { SaasConnectionStatus } from "./SaasConnectionStatus";
 import { useScreenConnectionStatus } from "./useScreenConnectionStatus";
 import { AppLogo } from "./AppLogo";
+import { DesktopHeaderContext } from "./DesktopHeaderContext";
+import { validStoreInternalCode } from "../storeInternalCode";
 
 type AppFrameProps = {
   titleKey: string;
   locale: LocaleCode;
   session: UserSession;
+  terminalContext?: TerminalContext;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout: () => void;
   logoutError?: string;
@@ -24,12 +27,13 @@ const languageOptions: Array<{ code: LocaleCode; label: string }> = [
   { code: "zh", label: "中文" }
 ];
 
-export function AppFrame({ titleKey, locale, session, onLocaleChange, onLogout, logoutError, logoutBusy, children }: AppFrameProps) {
+export function AppFrame({ titleKey, locale, session, terminalContext, onLocaleChange, onLogout, logoutError, logoutBusy, children }: AppFrameProps) {
   const t = createTranslator(locale);
   const [languageOpen, setLanguageOpen] = useState(false);
   const languagePickerRef = useRef<HTMLDivElement | null>(null);
   const { saasConnected, checkingSaas, refreshSaas } = useScreenConnectionStatus({ includeBackendAddress: false });
   const connectionAction = t(checkingSaas ? "connection.checking" : "connection.check");
+  const storeCode = validStoreInternalCode(terminalContext?.storeInternalCode);
 
   useOutsidePointerDown(languageOpen, languagePickerRef, () => setLanguageOpen(false));
 
@@ -41,7 +45,7 @@ export function AppFrame({ titleKey, locale, session, onLocaleChange, onLogout, 
           {titleKey === "venta.title" && <AppLogo app="venta" />}
           {t(titleKey)}
         </strong>
-        <span>{t("login.serverContext")}</span>
+        {terminalContext && <DesktopHeaderContext terminalContext={terminalContext} inline />}
         <div className="app-titlebar-status">
           <span>{session.displayName}</span>
           <button
@@ -95,6 +99,9 @@ export function AppFrame({ titleKey, locale, session, onLocaleChange, onLogout, 
         {logoutError && <span role="alert" className="app-titlebar-error">{t(logoutError)}</span>}
       </header>
       {children}
+      {storeCode && <footer className="app-store-footer">
+        <span title={t("store.internalCodeTitle")}>{terminalContext?.storeName} · {storeCode}</span>
+      </footer>}
     </div>
   );
 }

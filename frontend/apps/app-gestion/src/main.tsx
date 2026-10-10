@@ -1,11 +1,10 @@
-import { lazy, StrictMode, Suspense, useEffect, useState } from "react";
+import { lazy, StrictMode, Suspense, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { useMemo } from "react";
 import {
   AppFrame,
   ApiError,
   apiRequest,
-  LoginScreen,
   PromotionListScreen,
   createTranslator,
   devTerminalContext,
@@ -26,6 +25,7 @@ import "../../../packages/app-common/src/styles/ShortcutButtons.css";
 import "../../../packages/app-common/src/styles/DesktopWindowCorners.css";
 import "../../../packages/app-common/src/styles/tpv.css";
 import "./gestion.css";
+import LoginScreen from "./GestionLoginScreen";
 import { canManageFamilies, canManageTaxes, visibleGestionModules } from "./gestionAccess";
 import { GestionDashboard } from "./GestionDashboard";
 import { ControlAlertsScreen } from "./ControlAlertsScreen";
@@ -39,6 +39,9 @@ import {
   type GestionGroupLock,
 } from "./gestionNavigation";
 import { GestionGroupUnlockDialog } from "./GestionGroupUnlockDialog";
+import { useTerminalStoreCode } from "../../../packages/app-common/src/useTerminalStoreCode";
+const BackendConnectionRecovery = lazy(() => import("../../../packages/app-common/src/components/BackendConnectionRecovery")
+  .then(module => ({ default: module.BackendConnectionRecovery })));
 
 const StockScreen = lazy(() =>
   import("../../../packages/app-common/src/components/StockScreen").then(({ StockScreen }) => ({
@@ -184,13 +187,13 @@ type StockSelection = {
   warehouseOperation?: import("./WarehouseOperationsScreen").WarehouseOperationMode;
 };
 
-function App() {
-  const [locale, setLocale] = useState<LocaleCode>("es");
+function AppContent({ locale, setLocale, recoveryEpoch }: { locale: LocaleCode; setLocale: (locale: LocaleCode) => void; recoveryEpoch: number }) {
   const [session, setSession] = useState<UserSession | null>(null);
   const [module, setModule] = useState<GestionModule>("dashboard");
   const [salesReport, setSalesReport] = useState("salesReport.dailySales");
   const [stockSelection, setStockSelection] = useState<StockSelection>({ key: "stock.current", view: "stock.current" });
   const [terminalContext, setTerminalContext] = useState<TerminalContext | null | undefined>(undefined);
+  useTerminalStoreCode(terminalContext, setTerminalContext);
   const [setupMode, setSetupMode] = useState<"organization" | "connection">("organization");
   const [logoutError, setLogoutError] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
@@ -198,6 +201,7 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     async function loadIdentity() {
+      if (recoveryEpoch > 0 && terminalContext) return;
       const identity = await loadTerminalIdentity(
         window.tpvDesktop?.terminalIdentity,
         import.meta.env.DEV ? devTerminalContext : null
@@ -206,7 +210,7 @@ function App() {
     }
     void loadIdentity();
     return () => { cancelled = true; };
-  }, []);
+  }, [recoveryEpoch]);
 
   if (terminalContext === undefined) {
     return null;
@@ -262,6 +266,7 @@ function App() {
       titleKey="gestion.title"
       locale={locale}
       session={session}
+      terminalContext={terminalContext}
       onLocaleChange={setLocale}
       onLogout={handleLogout}
       logoutError={logoutError ? "gestion.logoutError" : undefined}
@@ -923,6 +928,16 @@ function GestionScreen({
       )}
     </GestionShell>
   );
+}
+
+export function App() {
+  const [locale, setLocale] = useState<LocaleCode>("es");
+  const [recoveryEpoch, setRecoveryEpoch] = useState(0);
+  const reactivateLogin = useCallback(() => setRecoveryEpoch((epoch) => epoch + 1), []);
+  return <>
+    <AppContent locale={locale} setLocale={setLocale} recoveryEpoch={recoveryEpoch} />
+    <Suspense fallback={null}><BackendConnectionRecovery locale={locale} onRecovered={reactivateLogin} /></Suspense>
+  </>;
 }
 
 createRoot(document.getElementById("root")!).render(

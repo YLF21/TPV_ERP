@@ -21,6 +21,7 @@ import com.tpverp.backend.shared.access.OperationalMode;
 import com.tpverp.backend.shared.crypto.InstallationIdentity;
 import com.tpverp.backend.shared.crypto.InstallationIdentityStore;
 import jakarta.persistence.EntityManager;
+import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -150,6 +151,59 @@ class TerminalLinkingPostgreSqlTest {
         assertThat(bindings.count()).isEqualTo(2);
     }
 
+    @Test void authenticatedStatusPersistsTheLatestAddressOnlyForManagement() {
+        var request = request("002");
+        var linked = service.request(request);
+        service.status(proof(request), InetAddress.ofLiteral("192.168.82.101"));
+        assertThat(jdbc.queryForObject("select host(last_ip) from terminal where id=?", String.class, linked.terminalId()))
+                .isEqualTo("192.168.82.101");
+        assertThat(service.management().slots()).filteredOn(slot -> slot.code().equals("002"))
+                .extracting(TerminalLinkingService.Slot::lastIp).containsExactly("192.168.82.101");
+        assertThat(service.bootstrap(Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32])).slots())
+                .allSatisfy(slot -> assertThat(slot.lastIp()).isNull());
+
+        time.set(NOW.plusSeconds(10));
+        service.status(proof(request), InetAddress.ofLiteral("192.168.31.99"));
+        assertThat(service.management().slots()).filteredOn(slot -> slot.code().equals("002"))
+                .extracting(TerminalLinkingService.Slot::lastIp).containsExactly("192.168.31.99");
+        assertThatThrownBy(() -> service.status(new TerminalLinkingService.Proof(request.requestId(), "wrong"),
+                InetAddress.ofLiteral("192.168.1.200"))).hasMessage("LINK_PROOF_INVALID");
+        assertThat(jdbc.queryForObject("select host(last_ip) from terminal where id=?", String.class, linked.terminalId()))
+                .isEqualTo("192.168.31.99");
+    }
+
+    @Test void releasedAndReplacedBindingsCannotRetainOrOverwriteThePreviousComputerAddress() {
+        var oldRequest = request("002");
+        var old = service.request(oldRequest);
+        service.status(proof(oldRequest), InetAddress.ofLiteral("192.168.82.101"));
+        service.action("002", old.bindingId(), "release");
+        assertThat(jdbc.queryForObject("select host(last_ip) from terminal where id=?", String.class, old.terminalId())).isNull();
+        var replacementRequest = request("002");
+        var replacement = service.request(replacementRequest);
+        assertThat(replacement.terminalId()).isEqualTo(old.terminalId());
+        assertThat(service.management().slots()).filteredOn(slot -> slot.code().equals("002"))
+                .allSatisfy(slot -> assertThat(slot.lastIp()).isNull());
+        service.status(proof(replacementRequest), InetAddress.ofLiteral("192.168.82.102"));
+        service.status(proof(oldRequest), InetAddress.ofLiteral("192.168.82.101"));
+        assertThat(service.management().slots()).filteredOn(slot -> slot.code().equals("002"))
+                .extracting(TerminalLinkingService.Slot::lastIp).containsExactly("192.168.82.102");
+    }
+
+    @RepeatedTest(3) void loginAndStatusCanConcurrentlyRecordAnAddressWithoutChangingApproval() throws Exception {
+        var request = request("002");
+        var linked = service.request(request);
+        service.action("002", linked.bindingId(), "approve");
+        var address = InetAddress.ofLiteral("192.168.82.101");
+        var results = concurrently(
+                () -> authentication.login(linked.terminalId(), request.credential(), "ADMIN", "1234", address),
+                () -> service.status(proof(request), address));
+        assertThat(results).noneMatch(Throwable.class::isInstance);
+        assertThat(jdbc.queryForObject("select host(last_ip) from terminal where id=?", String.class, linked.terminalId()))
+                .isEqualTo("192.168.82.101");
+        assertThat(service.management().slots()).filteredOn(slot -> slot.code().equals("002"))
+                .extracting(TerminalLinkingService.Slot::status).containsExactly("ACTIVE");
+    }
+
     @Test void concurrentDifferentRequestsReserveOneSlotAndSameRequestReplaysOneBinding() throws Exception {
         var first = request("003"); var second = request("003");
         var results = concurrently(() -> service.request(first), () -> service.request(second));
@@ -213,7 +267,7 @@ class TerminalLinkingPostgreSqlTest {
         assertThat(service.status(proof(request)).status()).isEqualTo("ACTIVE");
     }
 
-    @Test void concurrentLoginAndReleaseCannotLeaveAnOldLiveSession() throws Exception {
+    @RepeatedTest(3) void concurrentLoginAndReleaseCannotLeaveAnOldLiveSession() throws Exception {
         var request = request("002"); var linked = service.request(request);
         service.action("002", linked.bindingId(), "approve");
         var results = concurrently(() -> authentication.login(linked.terminalId(), request.credential(), "ADMIN", "1234"),

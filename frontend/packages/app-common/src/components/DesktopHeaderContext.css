@@ -1,0 +1,20 @@
+.desktop-header-context {
+  position: fixed;
+  top: 4px;
+  left: 112px;
+  z-index: var(--tpv-layer-chrome, 20);
+  display: flex;
+  align-items: center;
+  height: 26px;
+  max-width: max(0px, calc(50vw - 230px));
+  min-width: 0;
+  font: 700 11px Arial, sans-serif;
+  white-space: nowrap;
+  color: #1d2d3e;
+}
+
+.desktop-header-context > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

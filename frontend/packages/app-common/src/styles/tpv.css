@@ -1883,6 +1883,20 @@ textarea {
   grid-template-rows: auto 1fr;
 }
 
+.app-store-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 28px;
+  padding: 0 12px;
+  border-top: 1px solid #b8c2cc;
+  background: #f8fafc;
+  color: #5d6b78;
+  font-size: 12px;
+  font-weight: 800;
+  user-select: text;
+}
+
 .app-titlebar {
   display: grid;
   grid-template-columns: auto auto 1fr auto auto;

@@ -3,6 +3,59 @@ import vm from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 
 describe("desktop preload hardware bridge", () => {
+  it("exposes scoped connection recovery calls and unsubscribes its status listener", async () => {
+    const invoke = vi.fn().mockResolvedValue({ ok: true });
+    const on = vi.fn();
+    const removeListener = vi.fn();
+    let desktopApi;
+    vm.runInNewContext(fs.readFileSync(new URL("./preload.cjs", import.meta.url), "utf8"), {
+      require: () => ({ contextBridge: { exposeInMainWorld: (_name, api) => { desktopApi = api; } },
+        ipcRenderer: { invoke, on, removeListener } }),
+    });
+    expect(Object.keys(desktopApi.connectionRecovery)).toEqual(["status", "retry", "onStatus"]);
+    await desktopApi.connectionRecovery.status();
+    await desktopApi.connectionRecovery.retry();
+    expect(invoke.mock.calls).toEqual([
+      ["tpv:connection-recovery:status"], ["tpv:connection-recovery:retry"],
+    ]);
+    const callback = vi.fn();
+    expect(() => desktopApi.connectionRecovery.onStatus(null)).toThrow("Callback obligatorio");
+    const unsubscribe = desktopApi.connectionRecovery.onStatus(callback);
+    expect(on).toHaveBeenCalledWith("tpv:connection-recovery:status", expect.any(Function));
+    const listener = on.mock.calls[0][1];
+    const status = { state: "RECOVERING", attempts: 2 };
+    listener({ sender: "electron" }, status);
+    expect(callback).toHaveBeenCalledExactlyOnceWith(status);
+    unsubscribe();
+    expect(removeListener).toHaveBeenCalledExactlyOnceWith("tpv:connection-recovery:status", listener);
+  });
+  it("exposes only scoped work recovery load, save and clear channels", async () => {
+    const invoke = vi.fn().mockResolvedValue({ ok: true });
+    let desktopApi;
+    vm.runInNewContext(fs.readFileSync(new URL("./preload.cjs", import.meta.url), "utf8"), {
+      require: () => ({ contextBridge: { exposeInMainWorld: (_name, api) => { desktopApi = api; } },
+        ipcRenderer: { invoke } }),
+    });
+    expect(Object.keys(desktopApi.workRecovery)).toEqual(["load", "save", "clear"]);
+    const snapshot = { screen: "sale", quantity: 2 };
+    await desktopApi.workRecovery.load();
+    await desktopApi.workRecovery.save(snapshot);
+    await desktopApi.workRecovery.clear();
+    expect(invoke.mock.calls).toEqual([
+      ["tpv:work-recovery:load"], ["tpv:work-recovery:save", snapshot], ["tpv:work-recovery:clear"],
+    ]);
+  });
+  it("exposes only the two dedicated display calls", async () => {
+    const invoke = vi.fn().mockResolvedValue({ ok: true, mode: "WINDOWED" });
+    let desktopApi;
+    vm.runInNewContext(fs.readFileSync(new URL("./preload.cjs", import.meta.url), "utf8"), {
+      require: () => ({ contextBridge: { exposeInMainWorld: (_name, api) => { desktopApi = api; } }, ipcRenderer: { invoke } }),
+    });
+    expect(Object.keys(desktopApi.display)).toEqual(["load", "setMode"]);
+    await desktopApi.display.load();
+    await desktopApi.display.setMode("WINDOWED");
+    expect(invoke.mock.calls).toEqual([["tpv:display:load"], ["tpv:display:set-mode", "WINDOWED"]]);
+  });
   it("exposes only scoped control-event storage operations through dedicated channels", async () => {
     const invoke = vi.fn().mockResolvedValue({ ok: true });
     let desktopApi;

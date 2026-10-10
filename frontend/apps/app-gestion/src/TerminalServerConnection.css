@@ -1,0 +1,47 @@
+.gestion-workspace.gestion-terminal-workspace {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+.gestion-terminal-server-connection {
+  padding: 12px 14px;
+  border: 1px solid var(--gestion-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--gestion-navy);
+  min-width: 0;
+}
+
+.gestion-terminal-server-connection h3 {
+  margin: 0 0 8px;
+  font-size: var(--gestion-font-label);
+}
+
+.gestion-terminal-server-connection dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.gestion-terminal-server-connection dt {
+  color: var(--gestion-muted);
+  font-size: var(--gestion-font-micro);
+}
+
+.gestion-terminal-server-connection dd {
+  margin: 4px 0 0;
+  font-size: var(--gestion-font-label);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.gestion-terminal-server-connection dd span { display: block; }
+.gestion-terminal-server-connection p { margin: 0; }
+
+@media (max-width: 1050px) {
+  .gestion-terminal-server-connection dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 600px) {
+  .gestion-terminal-server-connection dl { grid-template-columns: minmax(0, 1fr); }
+}

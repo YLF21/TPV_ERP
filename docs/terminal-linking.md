@@ -20,6 +20,8 @@ En **Terminales y PDA**, seleccionar por ejemplo 002 y pulsar **Liberar terminal
 
 ## Cambiar la dirección del backend
 
+Los terminales ya vinculados intentan recuperar automáticamente una IP cambiada al iniciar VENTA o GESTIÓN. Durante el uso, **Reintentar** comprueba únicamente la IP elegida para esa sesión; cerrar y volver a abrir activa otra búsqueda. El comportamiento, la protección de identidad y el guardado del trabajo pendiente se describen en [Recuperación de conexión de esPOS](backend-connection-recovery.md).
+
 Usar **Configurar conexión** desde el inicio de sesión, incluso si el backend anterior no responde, o desde la configuración del puesto con el permiso de configuración de terminal. Introducir o descubrir la nueva dirección, comprobarla, guardar y reiniciar.
 
 La aplicación verifica el certificado HTTPS remoto y una respuesta firmada por la instalación. Un cambio de dirección de la misma instalación conserva identidad y envíos pendientes. Se rechaza una instalación distinta o una clave cambiada: no se envía automáticamente la credencial existente a ese destino.

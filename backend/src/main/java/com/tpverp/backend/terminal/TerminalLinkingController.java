@@ -15,7 +15,9 @@ public class TerminalLinkingController {
     @PostMapping("/requests")
     public TerminalLinkingService.LinkState request(@RequestBody TerminalLinkingService.LinkRequest request) { return service.request(request); }
     @PostMapping("/requests/status")
-    public TerminalLinkingService.LinkState status(@RequestBody TerminalLinkingService.Proof request) { return service.status(request); }
+    public TerminalLinkingService.LinkState status(@RequestBody TerminalLinkingService.Proof request, HttpServletRequest http) {
+        return service.status(request, TerminalConnectionAddress.from(http));
+    }
     @PostMapping("/requests/cancel")
     public TerminalLinkingService.LinkState cancel(@RequestBody TerminalLinkingService.Proof request) { return service.cancel(request); }
     @PostMapping("/server/adopt")

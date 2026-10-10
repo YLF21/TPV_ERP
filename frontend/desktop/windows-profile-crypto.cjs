@@ -35,7 +35,7 @@ function isEncrypted(value) {
 function decodeOutput(output, limit) {
   const encoded = Buffer.isBuffer(output) ? output.toString('utf8') : output;
   if (typeof encoded !== 'string' || !encoded || encoded.length > Math.ceil(limit / 3) * 4 + 4
-      || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
+      || /[^A-Za-z0-9+/=]/.test(encoded)) {
     throw unavailable();
   }
   const result = Buffer.from(encoded, 'base64');
@@ -44,7 +44,9 @@ function decodeOutput(output, limit) {
 }
 
 function createWindowsProfileCrypto({ run = execFileSync, platform = process.platform,
-  systemRoot = process.env.SystemRoot } = {}) {
+  systemRoot = process.env.SystemRoot, maxPlaintextBytes = MAX_PLAINTEXT_BYTES } = {}) {
+  if (!Number.isInteger(maxPlaintextBytes) || maxPlaintextBytes < 1 || maxPlaintextBytes > 8 * 1024 * 1024) throw unavailable();
+  const maxEncryptedBytes = Math.max(MAX_ENCRYPTED_BYTES, maxPlaintextBytes + 65536);
   function protect(input, operation, outputLimit) {
     if (platform !== 'win32' || typeof systemRoot !== 'string' || !path.win32.isAbsolute(systemRoot)
         || !/^[A-Za-z]:\\(?:[^<>:"|?*\x00-\x1f]+\\?)*$/.test(systemRoot)) throw unavailable();
@@ -53,7 +55,7 @@ function createWindowsProfileCrypto({ run = execFileSync, platform = process.pla
     try {
       output = run(executable, ['-NoProfile', '-NonInteractive', '-Command', operation], {
         input: input.toString('base64'), encoding: 'utf8', windowsHide: true,
-        shell: false, timeout: 10000, maxBuffer: 512 * 1024,
+        shell: false, timeout: 10000, maxBuffer: Math.ceil(maxEncryptedBytes / 3) * 4 + 16384,
         stdio: ['pipe', 'pipe', 'pipe']
       });
     } catch { throw unavailable(); }
@@ -64,15 +66,15 @@ function createWindowsProfileCrypto({ run = execFileSync, platform = process.pla
     encryptString(text) {
       if (typeof text !== 'string') throw unavailable();
       const plaintext = Buffer.from(text, 'utf8');
-      if (plaintext.length > MAX_PLAINTEXT_BYTES) throw unavailable();
-      const encrypted = protect(plaintext, ENCRYPT_SCRIPT, MAX_ENCRYPTED_BYTES);
+      if (plaintext.length > maxPlaintextBytes) throw unavailable();
+      const encrypted = protect(plaintext, ENCRYPT_SCRIPT, maxEncryptedBytes);
       if (!encrypted.length) throw unavailable();
       return Buffer.concat([MAGIC, encrypted]);
     },
     decryptString(value) {
       if (!isEncrypted(value) || value.length <= MAGIC.length
-          || value.length - MAGIC.length > MAX_ENCRYPTED_BYTES) throw unavailable();
-      const plaintext = protect(value.subarray(MAGIC.length), DECRYPT_SCRIPT, MAX_PLAINTEXT_BYTES);
+          || value.length - MAGIC.length > maxEncryptedBytes) throw unavailable();
+      const plaintext = protect(value.subarray(MAGIC.length), DECRYPT_SCRIPT, maxPlaintextBytes);
       const text = plaintext.toString('utf8');
       if (!Buffer.from(text, 'utf8').equals(plaintext)) throw unavailable();
       return text;

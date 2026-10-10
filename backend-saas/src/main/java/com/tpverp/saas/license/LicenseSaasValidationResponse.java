@@ -1,5 +1,6 @@
 package com.tpverp.saas.license;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -17,7 +18,28 @@ public record LicenseSaasValidationResponse(
         UUID saasCompanyId,
         UUID saasStoreId,
         String licenseReference,
-        String taxId) {
+        String taxId,
+        @JsonInclude(JsonInclude.Include.NON_NULL) String storeInternalCode) {
+
+    public LicenseSaasValidationResponse withoutStoreInternalCode() {
+        return new LicenseSaasValidationResponse(status, validUntil,
+                verifactuActivationDate, verifactuPolicyVersion,
+                verifactuPolicyUpdatedAt, commercialProfile, maxWindows, maxPda,
+                licenseVersion, saasCompanyId, saasStoreId, licenseReference,
+                taxId, null);
+    }
+
+    public LicenseSaasValidationResponse(
+            LicenseSaasStatus status, Instant validUntil,
+            LocalDate verifactuActivationDate, long verifactuPolicyVersion,
+            Instant verifactuPolicyUpdatedAt, CommercialProfile commercialProfile,
+            int maxWindows, int maxPda, long licenseVersion, UUID saasCompanyId,
+            UUID saasStoreId, String licenseReference, String taxId) {
+        this(status, validUntil, verifactuActivationDate, verifactuPolicyVersion,
+                verifactuPolicyUpdatedAt, commercialProfile, maxWindows, maxPda,
+                licenseVersion, saasCompanyId, saasStoreId, licenseReference,
+                taxId, null);
+    }
 
     public LicenseSaasValidationResponse(
             LicenseSaasStatus status,
@@ -31,7 +53,7 @@ public record LicenseSaasValidationResponse(
             long licenseVersion) {
         this(status, validUntil, verifactuActivationDate, verifactuPolicyVersion,
                 verifactuPolicyUpdatedAt, commercialProfile, maxWindows, maxPda,
-                licenseVersion, null, null, null, null);
+                licenseVersion, null, null, null, null, null);
     }
 
     public LicenseSaasValidationResponse(
@@ -41,6 +63,6 @@ public record LicenseSaasValidationResponse(
             long verifactuPolicyVersion,
             Instant verifactuPolicyUpdatedAt) {
         this(status, validUntil, verifactuActivationDate, verifactuPolicyVersion,
-                verifactuPolicyUpdatedAt, null, 1, 0, 1, null, null, null, null);
+                verifactuPolicyUpdatedAt, null, 1, 0, 1, null, null, null, null, null);
     }
 }

@@ -36,8 +36,14 @@ const { createLinkingStorage } = require("./linking-storage.cjs");
 const { createWindowsProfileCrypto } = require("./windows-profile-crypto.cjs");
 const { createLinkingConfig } = require("./linking-config.cjs");
 const { discoverBackends } = require("./linking-discovery.cjs");
+const { createBackendConnectionRecovery } = require("./backend-connection-recovery.cjs");
+const { createWorkRecoveryStorage } = require("./work-recovery-storage.cjs");
+const { createWindowDisplay, displayTerminalScope, readDisplayMode, windowedBounds } = require("./window-display.cjs");
 
 const desktopAppConfig = getDesktopAppConfig(process.env.TPV_DESKTOP_APP_KIND);
+if (process.platform === "win32") {
+  app.setAppUserModelId(desktopAppConfig.appId);
+}
 const desktopAppIcon = resolveDesktopIcon(desktopAppConfig);
 const appName = process.env.TPV_DESKTOP_APP_NAME || desktopAppConfig.name;
 let appUrl = process.env.TPV_DESKTOP_APP_URL || "";
@@ -130,6 +136,7 @@ const defaultHardwareConfig = {
 };
 
 let mainWindow;
+let mainWindowDisplay;
 let customerDisplayWindow;
 let salesDocumentWindow;
 const salesDocumentBootstraps = new Map();
@@ -143,6 +150,8 @@ let linkingStorage;
 let backendConnection;
 let runtimeBackendUrl;
 let runtimeBindingId;
+let connectionRecovery;
+let workRecovery;
 const registerPrivilegedHandler = createPrivilegedIpcRegistrar({
   ipcMain,
   getTrustedOrigin: () => trustedAppOrigin
@@ -156,14 +165,24 @@ const mainAndSalesWindows = () => [mainWindow, salesDocumentWindow, salesUtility
 function createWindow() {
   Menu.setApplicationMenu(null);
 
-  const opensMaximized = mainWindowMode === "MAXIMIZED";
+  const terminalScope = desktopAppConfig.key === "venta"
+    ? displayTerminalScope(linkingStorage?.read()?.identity, runtimeBackendUrl || process.env.TPV_DESKTOP_BACKEND_URL)
+    : undefined;
+  const savedMode = desktopAppConfig.key === "venta"
+    ? readDisplayMode(app.getPath("userData"), mainWindowMode, terminalScope)
+    : mainWindowMode;
+  const opensMaximized = savedMode === "MAXIMIZED" || savedMode === "WINDOWED";
+  const normalBounds = desktopAppConfig.key === "venta"
+    ? windowedBounds(screen.getPrimaryDisplay().workArea)
+    : undefined;
 
   mainWindow = new BrowserWindow({
     icon: desktopAppIcon,
     title: appName,
-    fullscreen: !opensMaximized,
+    fullscreen: savedMode === "FULLSCREEN",
     frame: true,
     show: !opensMaximized,
+    ...(normalBounds ? normalBounds : {}),
     autoHideMenuBar: true,
     backgroundColor: "#263033",
     webPreferences: {
@@ -173,6 +192,10 @@ function createWindow() {
       sandbox: true
     }
   });
+
+  mainWindowDisplay = desktopAppConfig.key === "venta"
+    ? createWindowDisplay({ window: mainWindow, screen, userDataPath: app.getPath("userData"), fallbackMode: mainWindowMode, terminalScope })
+    : undefined;
 
   if (opensMaximized) {
     mainWindow.once("ready-to-show", () => {
@@ -1233,9 +1256,26 @@ async function exportProductLabelPdf(request, defaultFileName) {
   }
 }
 
+registerIpc("tpv:display:load", () => mainWindowDisplay?.load() ??
+  structuredError("DISPLAY_UNAVAILABLE", "El modo de ventana no está disponible"));
+registerIpc("tpv:display:set-mode", (_event, mode) => mainWindowDisplay?.setMode(mode) ??
+  structuredError("DISPLAY_UNAVAILABLE", "El modo de ventana no está disponible"));
 registerIpc("tpv:close-application", () => {
   app.quit();
 });
+registerIpc("tpv:connection-recovery:status", () => connectionRecovery?.status() || { ok: true, state: "CONNECTED" });
+registerIpc("tpv:connection-recovery:retry", () => connectionRecovery?.retry() || { ok: true, state: "CONNECTED" });
+const workRecoveryCall = (action) => {
+  try {
+    if (!workRecovery) throw new Error("WORK_RECOVERY_UNAVAILABLE");
+    return { ok: true, ...action(workRecovery) };
+  } catch {
+    return structuredError("WORK_RECOVERY_FAILED", "No se pudo guardar o recuperar el trabajo de este terminal");
+  }
+};
+registerIpc("tpv:work-recovery:load", () => workRecoveryCall(store => ({ value: store.load() })));
+registerIpc("tpv:work-recovery:save", (_event, value) => workRecoveryCall(store => { store.save(value); return {}; }));
+registerIpc("tpv:work-recovery:clear", () => workRecoveryCall(store => { store.clear(); return {}; }));
 
 registerIpc("tpv:terminal-identity:load", () => readTerminalIdentity());
 const controlStorageCall = (action) => {
@@ -1437,9 +1477,10 @@ async function initializeDesktopRuntime() {
     : path.join(app.getPath("userData"), "backend-config.json");
   const legacyName = desktopAppConfig.key === "venta" ? "esPOS GESTIÓN" : "esPOS VENTA";
   const legacyPackageName = desktopAppConfig.key === "venta" ? "tpv-erp-app-gestion" : "tpv-erp-app-venta";
+  const profileCrypto = createWindowsProfileCrypto();
   linkingStorage = createLinkingStorage({
     safeStorage,
-    sharedCrypto: createWindowsProfileCrypto(),
+    sharedCrypto: profileCrypto,
     legacyPaths: [
       path.join(app.getPath("userData"), "server-terminal-identity.dpapi"),
       path.join(app.getPath("appData"), legacyPackageName, "server-terminal-identity.dpapi"),
@@ -1447,6 +1488,9 @@ async function initializeDesktopRuntime() {
     ]
   });
   await linkingStorage.initialize();
+  workRecovery = createWorkRecoveryStorage({ userDataPath: app.getPath("userData"),
+    appKind: desktopAppConfig.key, profileCrypto: createWindowsProfileCrypto({ maxPlaintextBytes: 8 * 1024 * 1024 }),
+    getIdentity: () => linkingStorage.read()?.identity });
   const linkingConfig = createLinkingConfig({
     configPath, packaged: isPackaged,
     helperPath: isPackaged
@@ -1456,6 +1500,7 @@ async function initializeDesktopRuntime() {
   backendConnection = createTerminalLinking({
     storage: linkingStorage, config: linkingConfig,
     discover: () => discoverBackends(),
+    request: (url, options) => connectionRecovery ? connectionRecovery.request(url, options) : fetch(url, options),
     getRuntimeBackendUrl: () => runtimeBackendUrl,
     getRuntimeBindingId: () => runtimeBindingId,
     getLegacyBackendScope: () => {
@@ -1487,10 +1532,19 @@ async function initializeDesktopRuntime() {
       backendConfig = resolveBackendConfig({ configPath: undefined, useEnvironment: false });
     }
     runtimeBackendUrl = backendConfig.backendUrl;
+    connectionRecovery = createBackendConnectionRecovery({ backendUrl: runtimeBackendUrl,
+      storage: linkingStorage, discover: () => discoverBackends(),
+      onStatus: status => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("tpv:connection-recovery:status", status);
+      } });
+    await connectionRecovery.startup();
     desktopServer = createDesktopServer({
       staticRoot: resolveDesktopDist(desktopAppConfig),
       backendUrl: backendConfig.backendUrl,
-      backendAllowedHosts: backendConfig.allowedHosts
+      backendAllowedHosts: backendConfig.allowedHosts,
+      backendTransport: connectionRecovery.getTransport(),
+      canProxy: connectionRecovery.canProxy,
+      onTransportFailure: connectionRecovery.transportFailure
     });
     const storedIdentity = linkingStorage.read()?.identity;
     const bindingIdentity = storedIdentity?.installationId && storedIdentity?.bindingId
@@ -1529,6 +1583,7 @@ app.whenReady().then(async () => {
   try {
     await initializeDesktopRuntime();
     createWindow();
+    connectionRecovery?.startMonitor();
   } catch (error) {
     dialog.showErrorBox("No se puede iniciar TPV ERP", error instanceof Error ? error.message : "Error de inicio");
     app.quit();
@@ -1536,6 +1591,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("will-quit", () => {
+  connectionRecovery?.close();
   void desktopServer?.close();
 });
 

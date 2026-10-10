@@ -2,6 +2,25 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("tpvDesktop", {
   closeApplication: () => ipcRenderer.invoke("tpv:close-application"),
+  connectionRecovery: {
+    status: () => ipcRenderer.invoke("tpv:connection-recovery:status"),
+    retry: () => ipcRenderer.invoke("tpv:connection-recovery:retry"),
+    onStatus: (callback) => {
+      if (typeof callback !== "function") throw new TypeError("Callback obligatorio");
+      const listener = (_event, status) => callback(status);
+      ipcRenderer.on("tpv:connection-recovery:status", listener);
+      return () => ipcRenderer.removeListener("tpv:connection-recovery:status", listener);
+    }
+  },
+  workRecovery: {
+    load: () => ipcRenderer.invoke("tpv:work-recovery:load"),
+    save: (value) => ipcRenderer.invoke("tpv:work-recovery:save", value),
+    clear: () => ipcRenderer.invoke("tpv:work-recovery:clear")
+  },
+  display: {
+    load: () => ipcRenderer.invoke("tpv:display:load"),
+    setMode: (mode) => ipcRenderer.invoke("tpv:display:set-mode", mode)
+  },
   saleControlOutbox: {
     list: (context) => ipcRenderer.invoke("tpv:sale-control:list", context),
     put: (event) => ipcRenderer.invoke("tpv:sale-control:put", event),

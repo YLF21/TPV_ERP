@@ -19,6 +19,7 @@ import { useSaleUserLocalePreference } from "./saleUserLocale";
 import { evaluateCompatibility, InvalidCompatibilityContractError, loadBackendCompatibility } from "../../../packages/app-common/src/api/compatibility";
 import { apiRequest, ApiConnectionError, ApiError } from "../../../packages/app-common/src/api/client";
 import { loadTerminalLoginContext } from "../../../packages/app-common/src/terminalIdentity";
+import { useTerminalStoreCode } from "../../../packages/app-common/src/useTerminalStoreCode";
 import type { SaleOperationAuthorization } from "../../../packages/app-common/src/sale/operationSecurity";
 import {
   createProductFromInternalEan,
@@ -29,6 +30,8 @@ import {
 import type { ProductLabelIssuer } from "../../../packages/app-common/src/hardware/hardware";
 import type { ProductLabelCommercialContext } from "../../../packages/app-common/src/components/SaleProductLabelDialog";
 import { AppVentaHomeEscapeNavigation } from "../../../packages/app-common/src/components/AppVentaHomeEscapeNavigation";
+const BackendConnectionRecovery = lazy(() => import("../../../packages/app-common/src/components/BackendConnectionRecovery")
+  .then(module => ({ default: module.BackendConnectionRecovery })));
 import { createTranslator } from "../../../packages/app-common/src/i18n/LocalizedMessages";
 import { normalizeSaleSettingsDestination, requestSaleSettingsBack, type SaleSettingsDestination } from "../../../packages/app-common/src/components/saleSettingsNavigation";
 
@@ -171,6 +174,8 @@ let salesDocumentBootstrapPromise: Promise<SalesDocumentBootstrap | null> | null
 
 function SalesDocumentWindowApp() {
   const [bootstrap, setBootstrap] = useState<SalesDocumentBootstrap | null | undefined>();
+  const [terminalContext, setTerminalContext] = useState<TerminalContext | null | undefined>();
+  useTerminalStoreCode(terminalContext, setTerminalContext);
 
   useEffect(() => {
     salesDocumentBootstrapPromise ??=
@@ -178,7 +183,10 @@ function SalesDocumentWindowApp() {
       ?? Promise.resolve(null);
     let active = true;
     void salesDocumentBootstrapPromise.then((value) => {
-      if (active) setBootstrap(value);
+      if (active) {
+        setBootstrap(value);
+        setTerminalContext(value?.terminalContext);
+      }
     });
     return () => { active = false; };
   }, []);
@@ -195,7 +203,7 @@ function SalesDocumentWindowApp() {
       </main>
     );
   }
-  return <SalesDocumentScreen {...bootstrap} />;
+  return <SalesDocumentScreen {...bootstrap} terminalContext={terminalContext ?? bootstrap.terminalContext} />;
 }
 
 type SalesUtilityBootstrap = {
@@ -363,16 +371,17 @@ export function SalesUtilityWindowApp() {
   </SaleTouchKeyboardScope>;
 }
 
-export function App() {
+function AppContent({ localePreference, recoveryEpoch }: { localePreference: ReturnType<typeof useSaleUserLocalePreference>; recoveryEpoch: number }) {
   const [session, setSession] = useState<UserSession | null>(null);
   const [terminalContext, setTerminalContext] = useState<TerminalContext | null | undefined>(undefined);
+  useTerminalStoreCode(terminalContext, setTerminalContext);
   const [offlineTerminalContext, setOfflineTerminalContext] = useState<TerminalContext | null>(null);
   const [screen, setScreen] = useState<"home" | "sale" | "stock" | "warehouse" | "salesReport" | "settings" | "hardwareSettings" | "documentPrintingSettings" | "diagnosticsSettings" | "connection">("home");
   const [settingsDestination, setSettingsDestination] = useState<SaleSettingsDestination>("visualization");
   const [saleExitBlocked, setSaleExitBlocked] = useState(false);
   const [receivablesOpen, setReceivablesOpen] = useState(false);
   const [receivablesCustomerId, setReceivablesCustomerId] = useState<string | undefined>();
-  const { locale, applyUserLocale, changeLocale, resetLocale } = useSaleUserLocalePreference();
+  const { locale, applyUserLocale, changeLocale, resetLocale } = localePreference;
   const [compatibilityGate, setCompatibilityGate] = useState<CompatibilityGate>({ status: "ready" });
   const compatibleSession = compatibilityGate.status === "ready"
     && compatibilityGate.sessionToken === session?.accessToken ? session : null;
@@ -384,6 +393,7 @@ export function App() {
   useEffect(() => {
     let cancelled = false;
     async function loadIdentity() {
+      if (recoveryEpoch > 0 && terminalContext) return;
       const result = await loadTerminalLoginContext(
         window.tpvDesktop?.terminalIdentity,
         import.meta.env.DEV ? devTerminalContext : null
@@ -395,7 +405,7 @@ export function App() {
     }
     void loadIdentity();
     return () => { cancelled = true; };
-  }, []);
+  }, [recoveryEpoch]);
 
   const reconnectLoginTerminal = useCallback(async () => {
     const result = await loadTerminalLoginContext(window.tpvDesktop?.terminalIdentity, null);
@@ -849,6 +859,16 @@ export function App() {
       onOpenSettings={() => setScreen("settings")}
     />
   );
+}
+
+export function App() {
+  const localePreference = useSaleUserLocalePreference();
+  const [recoveryEpoch, setRecoveryEpoch] = useState(0);
+  const reactivateLogin = useCallback(() => setRecoveryEpoch((epoch) => epoch + 1), []);
+  return <>
+    <AppContent localePreference={localePreference} recoveryEpoch={recoveryEpoch} />
+    <Suspense fallback={null}><BackendConnectionRecovery locale={localePreference.locale} onRecovered={reactivateLogin} /></Suspense>
+  </>;
 }
 
 const isSalesDocumentWindow =

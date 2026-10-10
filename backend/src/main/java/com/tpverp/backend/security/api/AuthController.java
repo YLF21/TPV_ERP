@@ -2,6 +2,8 @@ package com.tpverp.backend.security.api;
 
 import com.tpverp.backend.security.application.AuthenticationService;
 import com.tpverp.backend.security.application.LoginResult;
+import com.tpverp.backend.terminal.TerminalConnectionAddress;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
@@ -23,12 +25,13 @@ public class AuthController {
 	}
 
 	@PostMapping("/login")
-	public LoginResult login(@Valid @RequestBody LoginRequest request) {
+	public LoginResult login(@Valid @RequestBody LoginRequest request, HttpServletRequest http) {
 		return authenticationService.login(
 				request.terminalId(),
 				request.terminalCredential(),
 				request.userName(),
-				request.password());
+				request.password(),
+				TerminalConnectionAddress.from(http));
 	}
 
 	@PostMapping("/installation-login")

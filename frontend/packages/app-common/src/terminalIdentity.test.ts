@@ -37,10 +37,10 @@ describe("terminal identity", () => {
 
   it("keeps offline presentation separate from identity and strips any cached credentials", async () => {
     const bridge = { load: vi.fn().mockResolvedValue({ ok: true, identity: null,
-      connectionUnavailable: true, displayContext: { ...validIdentity, companyName: "Empresa Real" } }) };
+      connectionUnavailable: true, displayContext: { ...validIdentity, companyName: "Empresa Real", storeInternalCode: "3500002" } }) };
     const result = await loadTerminalLoginContext(bridge, validIdentity);
     expect(result.identity).toBeNull();
-    expect(result.offlineContext).toEqual({ storeName: "TIENDA REAL", terminalCode: "SERVIDOR",
+    expect(result.offlineContext).toEqual({ storeName: "TIENDA REAL", storeInternalCode: "3500002", terminalCode: "SERVIDOR",
       companyName: "Empresa Real", terminalName: undefined });
     expect(result.offlineContext).not.toHaveProperty("terminalCredential");
     expect(result.offlineContext).not.toHaveProperty("terminalId");

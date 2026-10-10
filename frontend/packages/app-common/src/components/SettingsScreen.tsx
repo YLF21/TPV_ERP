@@ -17,6 +17,7 @@ import { SystemCompatibilityCard } from "./SystemCompatibilityCard";
 import { CashOperationsCard } from "./CashOperationsCard";
 import { CashActivityPanel } from "./CashActivityPanel";
 import { ErpSelect } from "./ErpSelect";
+import { DesktopDisplaySettings } from "./DesktopDisplaySettings";
 import { OperationalStatusCard } from "./OperationalStatusCard";
 import { apiRequest, ApiError } from "../api/client";
 import { hasPermission } from "../auth/auth";
@@ -430,6 +431,7 @@ export function SettingsScreen({
 
       {selectedSection === "visualization" ? (
         <div className="sale-settings-visualization-layout">
+          {app === "venta" ? <DesktopDisplaySettings locale={locale} /> : null}
           <section className="sale-settings-panel settings-report-preferences">
             <h3>{t("settings.reports.visualization")}</h3>
             <p>{t("settings.reports.visualizationHelp")}</p>

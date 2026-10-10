@@ -21,7 +21,11 @@ function Assert-PlainPath([string]$Target, [bool]$ExpectFile) {
 if ($BackendUrl.Length -gt 512) { throw 'URL demasiado larga' }
 $uri = [System.Uri]::new($BackendUrl)
 if (!$uri.IsAbsoluteUri -or $uri.UserInfo -or $uri.Query -or $uri.Fragment -or $uri.AbsolutePath -ne '/') { throw 'URL inválida' }
-$localHost = @('localhost','127.0.0.1','::1') -contains $uri.DnsSafeHost.ToLowerInvariant()
+$literalAddress = $null
+$literalHost = $uri.DnsSafeHost.Trim('[', ']')
+$localHost = @('localhost','127.0.0.1') -contains $literalHost.ToLowerInvariant()
+if ([Net.IPAddress]::TryParse($literalHost, [ref]$literalAddress) -and
+    $literalAddress.Equals([Net.IPAddress]::IPv6Loopback)) { $localHost = $true }
 if ($uri.Scheme -ne 'https' -and !($uri.Scheme -eq 'http' -and $localHost)) { throw 'HTTPS obligatorio para backend remoto' }
 if ($uri.AbsoluteUri.TrimEnd('/') -ne $BackendUrl) { throw 'URL debe ser origen normalizado' }
 $config = @{ backendUrl = $BackendUrl; allowedHosts = @() }

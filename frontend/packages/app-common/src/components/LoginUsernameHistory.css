@@ -2,7 +2,7 @@
   position: relative;
 }
 
-.login-sale .login-panel .login-username-history-toggle {
+.login-desktop .login-panel .login-username-history-toggle {
   flex: 0 0 40px;
   display: grid;
   place-items: center;
@@ -17,7 +17,7 @@
   box-shadow: none !important;
 }
 
-.login-sale .login-panel .login-username-history-toggle:hover:not(:disabled) {
+.login-desktop .login-panel .login-username-history-toggle:hover:not(:disabled) {
   background: #f3f6fb !important;
 }
 
@@ -38,7 +38,7 @@
   box-shadow: 0 8px 20px rgba(12, 29, 53, .16);
 }
 
-.login-sale .login-panel .login-username-history-list button {
+.login-desktop .login-panel .login-username-history-list button {
   min-height: 44px !important;
   height: auto !important;
   padding: 10px 14px;
@@ -55,7 +55,7 @@
   cursor: pointer;
 }
 
-.login-sale .login-panel .login-username-history-list button[aria-selected="true"] {
+.login-desktop .login-panel .login-username-history-list button[aria-selected="true"] {
   background: #0065fe !important;
   color: #fff !important;
 }

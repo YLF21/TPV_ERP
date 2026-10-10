@@ -1,6 +1,7 @@
 import { DialogDismissButton } from "./DialogDismissButton";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { AppBrand } from "./AppBrand";
+import { DesktopHeaderContext } from "./DesktopHeaderContext";
 import { useEffect, useRef, useState } from "react";
 import { FilePdf, FileXls, Printer } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
@@ -3959,6 +3960,7 @@ export function SalesReportScreen({
           {!embedded && <button type="button" className="report-brand-back" onClick={onBack}>
             <AppBrand app={app} label={t(app === "venta" ? "venta.title" : "gestion.title")} />
           </button>}
+          {!embedded && <DesktopHeaderContext terminalContext={terminalContext} />}
           <h1 className="report-title">{t("home.salesReport")}</h1>
         </header>
         {!embedded && <aside className="report-nav">

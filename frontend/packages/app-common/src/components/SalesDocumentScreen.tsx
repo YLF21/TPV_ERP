@@ -1,5 +1,6 @@
 import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
+import { DesktopHeaderContext } from "./DesktopHeaderContext";
 import esposWordmark from "../../../../branding/espos-wordmark.png";
 import {
   useEffect,
@@ -43,6 +44,7 @@ import { saleCommandFromKeyboard, type SaleCommandId } from "../sale/saleCommand
 import type { PendingSaleRecoveryEnvelope } from "../sale/pendingSaleRecovery";
 import { retryPrintSucceeded } from "../sale/printRetry";
 import type { LocaleCode, TerminalContext, UserSession } from "../types";
+import { validStoreInternalCode } from "../storeInternalCode";
 import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 import { CustomerPendingSaleDialog } from "./CustomerPendingSaleDialog";
 import { SalesDocumentCustomerDialog } from "./SalesDocumentCustomerDialog";
@@ -184,6 +186,7 @@ export function SalesDocumentScreen({
   interfaceMode = "KEYBOARD",
 }: Props) {
   const t = createTranslator(locale);
+  const storeCode = validStoreInternalCode(terminalContext.storeInternalCode);
   const [documentType, setDocumentType] = useState<DocumentType>("FACTURA_VENTA");
   const [products, setProducts] = useState<SaleProduct[]>([]);
   const selectableProducts = useMemo(
@@ -1305,7 +1308,10 @@ export function SalesDocumentScreen({
           <span className="sales-document-app-badge">
             <img src={esposWordmark} alt="esPOS" />
           </span>
-          <h1>{t("salesDocument.title")}</h1>
+          <div style={{ minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 14px" }}>
+            <DesktopHeaderContext terminalContext={terminalContext} inline inverse />
+            <h1 style={{ alignSelf: "stretch", padding: 0, fontSize: 18 }}>{t("salesDocument.title")}</h1>
+          </div>
         </div>
         <div className="sales-document-type-switch" role="group" aria-label={t("salesDocument.type")}>
           <button
@@ -1491,7 +1497,9 @@ export function SalesDocumentScreen({
       </section>
 
       <footer className="sales-document-footer">
-        <span>{terminalContext.storeName}</span>
+        <span title={storeCode ? t("store.internalCodeTitle") : undefined}>
+          {terminalContext.storeName}{storeCode ? ` · ${storeCode}` : ""}
+        </span>
         <span>{session.displayName}</span>
         <span>Ctrl+F {"\u00b7"} {t("salesDocument.shortcut")}</span>
       </footer>

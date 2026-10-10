@@ -44,10 +44,6 @@
   background: #edf2f7;
 }
 
-.sale-settings-screen .sale-settings-terminal-context {
-  display: none !important;
-}
-
 .sale-settings-screen .report-user-button,
 .sale-settings-screen .language-button,
 .sale-settings-screen .shutdown-button {
@@ -806,8 +802,15 @@
 }
 
 .sale-settings-screen .settings-user-security,
+.sale-settings-screen .settings-window-display,
 .sale-settings-screen .settings-report-preferences {
   grid-column: 1 / -1;
+}
+
+.sale-settings-screen .sale-settings-window-control {
+  width: min(320px, 100%);
+  display: grid;
+  gap: 6px;
 }
 
 .sale-settings-screen .sale-settings-panel p,

@@ -1,4 +1,5 @@
 import { AppBrand } from "./AppBrand";
+import { DesktopHeaderContext } from "./DesktopHeaderContext";
 import { useEffect, type ReactNode } from "react";
 import {
   Desktop,
@@ -133,10 +134,8 @@ export function SaleSettingsShell({
           <button type="button" className="report-brand-back" disabled={navigationDisabled} onClick={onBack}>
             <AppBrand app={app} label={t(app === "venta" ? "venta.title" : "gestion.title")} />
           </button>
+          <DesktopHeaderContext terminalContext={terminalContext} />
           <h1 className="report-title">{t("settings.title")}</h1>
-          <span className="sale-settings-terminal-context">
-            {terminalContext.storeName} · {t("login.terminalPrefix")} {terminalContext.terminalCode}
-          </span>
         </header>
 
         <aside className="settings-nav sale-settings-nav" aria-label={t("settings.sections")}>

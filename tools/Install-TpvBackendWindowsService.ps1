@@ -11,6 +11,7 @@ param(
     [string] $ServiceAccount = 'VirtualService',
     [string] $ListenAddress = '127.0.0.1',
     [ValidateRange(1, 65535)] [int] $Port = 8080,
+    [string] $PublicUrl = '',
     [string] $ExpectedVersion,
     [Parameter(Mandatory)] [string] $ExpectedReleaseId,
     [string] $ExpectedSchemaVersion,
@@ -79,6 +80,16 @@ function Assert-LoopbackAddress([string] $Address) {
     $parsed = $null
     if (-not [IPAddress]::TryParse($Address, [ref]$parsed) -or -not [IPAddress]::IsLoopback($parsed)) {
         throw "ListenAddress debe ser una direccion loopback literal (127.0.0.1 o ::1), no '$Address'."
+    }
+}
+
+function Assert-BackendPublicUrl([string] $Value) {
+    if ([string]::IsNullOrEmpty($Value)) { return }
+    $uri = $null
+    if ($Value.Length -gt 512 -or -not [Uri]::TryCreate($Value, [UriKind]::Absolute, [ref]$uri) -or
+        $uri.Scheme -ne 'https' -or $uri.UserInfo -or $uri.Query -or $uri.Fragment -or
+        $uri.AbsolutePath -ne '/' -or $uri.AbsoluteUri.TrimEnd('/') -cne $Value) {
+        throw 'PublicUrl debe ser un origen HTTPS normalizado, sin credenciales, ruta, consulta ni fragmento.'
     }
 }
 
@@ -249,6 +260,9 @@ function Assert-Java25([string] $Path) {
 }
 
 Assert-Administrator
+Import-Module (Join-Path $PSScriptRoot 'TpvServerPorts.psm1') -Force
+$tpvInstallationMutex = Enter-TpvServerInstallationLock
+try {
 $bundle = (Resolve-Path -LiteralPath $BundleDirectory -ErrorAction Stop).Path
 $verificationArgs = @{ ExpectedReleaseId = $ExpectedReleaseId; AsObject = $true }
 foreach ($key in @('ExpectedVersion', 'ExpectedSchemaVersion', 'ExpectedReleaseSequence', 'ExpectedBuildSequence')) {
@@ -284,6 +298,8 @@ if ($configurationFull.StartsWith(([IO.Path]::GetFullPath($bundle)).TrimEnd('\')
     throw 'La configuracion debe estar fuera del bundle inmutable.'
 }
 Assert-LoopbackAddress $ListenAddress
+Assert-BackendPublicUrl $PublicUrl
+$publicUrlArgument = if ($PublicUrl) { " --tpv.terminal-discovery.public-url=$PublicUrl" } else { '' }
 $configurationUri = ConvertTo-FileUri $configurationFull
 $serviceSid = Get-ServiceAccountSid $ServiceAccount
 if ($Phase -eq 'Start') {
@@ -333,12 +349,16 @@ if ($Phase -eq 'Start') {
     $installedXml = [xml]::new()
     $installedXml.XmlResolver = $null
     $installedXml.Load($serviceXml)
-    $expectedArguments = "--enable-native-access=ALL-UNNAMED -jar `"$releaseJar`" --spring.profiles.active=prod --server.address=$ListenAddress --server.port=$Port `"--spring.config.additional-location=$configurationUri`""
+    $expectedArguments = "--enable-native-access=ALL-UNNAMED -jar `"$releaseJar`" --spring.profiles.active=prod --server.address=$ListenAddress --server.port=$Port$publicUrlArgument `"--spring.config.additional-location=$configurationUri`""
     if ([string]$installedXml.service.executable -cne $java -or
         [string]$installedXml.service.arguments -cne $expectedArguments -or
         [string]$installedXml.service.id -cne $ServiceName -or
         [string]$installedXml.service.serviceaccount.username -cne $expectedStartName) {
         throw 'El XML instalado no coincide con la release, configuracion, Java o identidad aprobados.'
+    }
+    $publicEnvironments = @($installedXml.service.env | Where-Object { $_.name -ceq 'TPV_BACKEND_PUBLIC_URL' })
+    if ($PublicUrl -and ($publicEnvironments.Count -ne 1 -or [string]$publicEnvironments[0].value -cne $PublicUrl)) {
+        throw 'La URL HTTPS anunciada no coincide con la configuracion aprobada.'
     }
 }
 
@@ -435,16 +455,20 @@ if ($PSCmdlet.ShouldProcess($install, "Instalar/actualizar $ServiceName con rele
         $escapedInstall = ConvertTo-XmlText $install
         $escapedListen = ConvertTo-XmlText $ListenAddress
         $escapedConfigurationUri = ConvertTo-XmlText $configurationUri
+        $publicUrlEnvironment = if ($PublicUrl) {
+            '<env name="TPV_BACKEND_PUBLIC_URL" value="' + (ConvertTo-XmlText $PublicUrl) + '" />'
+        } else { '' }
         $xml = @"
 <service>
   <id>$(ConvertTo-XmlText $ServiceName)</id>
   <name>TPV ERP Backend</name>
   <description>Backend productivo TPV ERP VeriFactu.</description>
   <executable>$escapedJava</executable>
-  <arguments>--enable-native-access=ALL-UNNAMED -jar &quot;$escapedJar&quot; --spring.profiles.active=prod --server.address=$escapedListen --server.port=$Port &quot;--spring.config.additional-location=$escapedConfigurationUri&quot;</arguments>
+  <arguments>--enable-native-access=ALL-UNNAMED -jar &quot;$escapedJar&quot; --spring.profiles.active=prod --server.address=$escapedListen --server.port=$Port$(ConvertTo-XmlText $publicUrlArgument) &quot;--spring.config.additional-location=$escapedConfigurationUri&quot;</arguments>
   <workingdirectory>$escapedInstall</workingdirectory>
   <startmode>Manual</startmode>
   <env name="TPV_VERIFACTU_SERVICE_ACCOUNT" value="$([Security.SecurityElement]::Escape($expectedStartName))" />
+  $publicUrlEnvironment
   $accountXml
   <onfailure action="restart" delay="10 sec" />
   <onfailure action="restart" delay="30 sec" />
@@ -476,4 +500,7 @@ if ($PSCmdlet.ShouldProcess($install, "Instalar/actualizar $ServiceName con rele
     }
     Write-Host "Servicio $ServiceName instalado/actualizado sin arrancarlo. Release: $($bundleInfo.ReleaseId)" -ForegroundColor Green
     Write-Host "Rollback conservador: se conserva $releaseDirectory y la configuracion anterior en rollback."
+}
+} finally {
+    Exit-TpvServerInstallationLock -Mutex $tpvInstallationMutex
 }

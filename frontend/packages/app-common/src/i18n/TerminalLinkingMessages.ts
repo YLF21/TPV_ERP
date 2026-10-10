@@ -1,6 +1,15 @@
 import type { LocaleCode } from "../types";
 
 const es: Record<string, string> = {
+  "gestion.terminals.lastIp": "IP del terminal",
+  "gestion.terminals.serverConnection.title": "Conexión del servidor",
+  "gestion.terminals.serverConnection.addresses": "IP en red local",
+  "gestion.terminals.serverConnection.httpsPort": "Puerto terminales (HTTPS)",
+  "gestion.terminals.serverConnection.backendPort": "Puerto interno (backend)",
+  "gestion.terminals.serverConnection.publicUrl": "Dirección configurada",
+  "gestion.terminals.serverConnection.notConfigured": "Sin configurar",
+  "gestion.terminals.serverConnection.noAddresses": "SIN DATOS",
+  "gestion.terminals.serverConnection.loadError": "No se pudo consultar la conexión del servidor. Actualiza para volver a intentar.",
   "terminalLink.title": "CONFIGURAR CONEXIÓN",
   "terminalLink.setup": "Vincular este equipo",
   "terminalLink.search": "Buscar servidores",
@@ -85,6 +94,15 @@ const es: Record<string, string> = {
 };
 
 const en: Record<string, string> = {
+  "gestion.terminals.lastIp": "Terminal IP",
+  "gestion.terminals.serverConnection.title": "Server connection",
+  "gestion.terminals.serverConnection.addresses": "Local network IP",
+  "gestion.terminals.serverConnection.httpsPort": "Terminal port (HTTPS)",
+  "gestion.terminals.serverConnection.backendPort": "Internal port (backend)",
+  "gestion.terminals.serverConnection.publicUrl": "Configured address",
+  "gestion.terminals.serverConnection.notConfigured": "Not configured",
+  "gestion.terminals.serverConnection.noAddresses": "NO DATA",
+  "gestion.terminals.serverConnection.loadError": "Could not retrieve the server connection. Refresh to retry.",
   "gestion.terminals.workstations.reactivate": "Reactivate computer",
   "terminalLink.restartHelp": "Computer approved. Restart the application to activate the connection.",
   "terminalLink.title": "Configure connection", "terminalLink.setup": "Link this computer",
@@ -143,6 +161,15 @@ const en: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  "gestion.terminals.lastIp": "终端 IP",
+  "gestion.terminals.serverConnection.title": "服务器连接",
+  "gestion.terminals.serverConnection.addresses": "局域网 IP",
+  "gestion.terminals.serverConnection.httpsPort": "终端端口（HTTPS）",
+  "gestion.terminals.serverConnection.backendPort": "内部端口（后端）",
+  "gestion.terminals.serverConnection.publicUrl": "已配置地址",
+  "gestion.terminals.serverConnection.notConfigured": "未配置",
+  "gestion.terminals.serverConnection.noAddresses": "无数据",
+  "gestion.terminals.serverConnection.loadError": "无法查询服务器连接。请刷新重试。",
   "gestion.terminals.workstations.reactivate": "重新启用电脑",
   "terminalLink.restartHelp": "电脑已获批准。请重启应用以启用连接。",
   "terminalLink.title": "配置连接", "terminalLink.setup": "绑定此电脑", "terminalLink.search": "搜索服务器",

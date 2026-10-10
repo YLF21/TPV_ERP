@@ -132,6 +132,21 @@ afterEach(() => {
 });
 
 describe("SalesDocumentScreen", () => {
+  it("shows the actual SaaS store code in its own footer and omits invalid values", () => {
+    configureDocumentApi([]);
+    const view = render(<SalesDocumentScreen locale="es" session={session}
+      terminalContext={{ ...terminalContext, companyName: "Mi Empresa", terminalName: "Caja Principal", storeInternalCode: "3500002" }} />);
+    const topbar = document.querySelector(".sales-document-topbar") as HTMLElement;
+    expect(topbar).toHaveTextContent("Mi Empresa");
+    expect(topbar).not.toHaveTextContent("Caja Principal");
+    expect(topbar).not.toHaveTextContent("Tienda Principal");
+    expect(screen.getByText("Tienda Principal · 3500002")).toHaveAttribute("title", "Código de tienda en SaaS");
+    view.rerender(<SalesDocumentScreen locale="es" session={session}
+      terminalContext={{ ...terminalContext, storeInternalCode: "0000000" }} />);
+    expect(topbar.querySelector(".desktop-header-context")).toHaveTextContent(/^—$/);
+    expect(screen.getByText("Tienda Principal")).not.toHaveAttribute("title");
+  });
+
   it("opens product search by touch and types into the contextual customer keyboard", async () => {
     configureDocumentApi([]);
     render(<SalesDocumentScreen locale="es" session={session} terminalContext={terminalContext} interfaceMode="TOUCH" />);

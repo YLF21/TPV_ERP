@@ -70,6 +70,9 @@ function createDesktopServer({
   staticRoot,
   backendUrl,
   backendAllowedHosts = [],
+  backendTransport,
+  canProxy = () => true,
+  onTransportFailure = () => {},
   maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES,
   timeoutMs = DEFAULT_TIMEOUT_MS
 } = {}) {
@@ -79,8 +82,10 @@ function createDesktopServer({
   }
   const rootReal = fs.realpathSync(root);
   const backend = new URL(validateBackendUrl(backendUrl, { allowedHosts: backendAllowedHosts }));
-  const resolveBackendAddress = createBackendAddressResolver(backend.href);
-  const transport = backend.protocol === "https:" ? https : http;
+  const displayUrl = backendTransport ? `${backend.protocol}//${backendTransport.connectIp.includes(':')
+    ? `[${backendTransport.connectIp}]` : backendTransport.connectIp}:${backend.port || 443}` : backend.href;
+  const resolveBackendAddress = createBackendAddressResolver(displayUrl);
+  const transport = backendTransport?.transport || (backend.protocol === "https:" ? https : http);
   let server;
 
   async function serveBackendAddress(request, response) {
@@ -143,6 +148,11 @@ function createDesktopServer({
   }
 
   function proxy(request, response, requestUrl) {
+    if (!canProxy()) {
+      writeError(response, 503, "No se pudo verificar la conexión con el backend");
+      request.resume();
+      return;
+    }
     if (requestSizeExceeded(request, maxRequestBytes)) {
       writeError(response, 413, "La solicitud supera el límite permitido");
       request.resume();
@@ -154,7 +164,7 @@ function createDesktopServer({
     headers.origin = backend.origin;
     delete headers.referer;
     const targetPath = `${backend.pathname.replace(/\/$/, "")}${requestUrl.pathname}${requestUrl.search}`;
-    const upstream = transport.request({
+    const options = {
       protocol: backend.protocol,
       hostname: backend.hostname,
       port: backend.port || undefined,
@@ -163,22 +173,32 @@ function createDesktopServer({
       headers,
       timeout: timeoutMs,
       rejectUnauthorized: backend.protocol === "https:"
-    }, (upstreamResponse) => {
+    };
+    let locallyAborted = false;
+    const upstream = transport.request(backendTransport ? backendTransport.requestOptions(options) : options, (upstreamResponse) => {
       const responseHeaders = {};
       for (const [header, value] of Object.entries(upstreamResponse.headers)) {
         if (!HOP_BY_HOP_HEADERS.has(header)) responseHeaders[header] = value;
       }
       Object.assign(responseHeaders, securityHeaders(responseHeaders["content-type"] || "application/octet-stream"));
       response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
+      upstreamResponse.on("error", () => {
+        if (!locallyAborted) onTransportFailure();
+        response.destroy();
+      });
       upstreamResponse.pipe(response);
     });
     upstream.on("timeout", () => upstream.destroy(new Error("Backend timeout")));
-    upstream.on("error", () => writeError(response, 502, "No se pudo conectar con el backend"));
-    request.on("aborted", () => upstream.destroy());
+    upstream.on("error", () => {
+      if (!locallyAborted) onTransportFailure();
+      writeError(response, 502, "No se pudo conectar con el backend");
+    });
+    request.on("aborted", () => { locallyAborted = true; upstream.destroy(); });
     let bytes = 0;
     request.on("data", (chunk) => {
       bytes += chunk.length;
       if (bytes > maxRequestBytes) {
+        locallyAborted = true;
         request.destroy();
         upstream.destroy();
       }

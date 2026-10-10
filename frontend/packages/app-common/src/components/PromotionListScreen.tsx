@@ -1,4 +1,5 @@
 import { AppBrand } from "./AppBrand";
+import { DesktopHeaderContext } from "./DesktopHeaderContext";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowClockwise, CalendarBlank, CaretDown, ChartBar, Circle, DotsThree, MagnifyingGlass, Tag } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
@@ -189,6 +190,7 @@ export function PromotionListScreen({
             {!embedded && <button type="button" className="promotion-back" onClick={onBack}>
               <AppBrand app={app} label={t(app === "venta" ? "venta.title" : "gestion.title")} />
             </button>}
+            {!embedded && <DesktopHeaderContext terminalContext={terminalContext} />}
             <span className="promotion-eyebrow">{t("promotion.list.title")}</span>
             <h1>{t("promotion.list.heading")}</h1>
             <p>{t("promotion.list.subtitle")}</p>

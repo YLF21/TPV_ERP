@@ -46,6 +46,20 @@ describe("ScreenContextFooter real connectivity", () => {
     expect(screen.queryByText("Terminal: SERVIDOR")).not.toBeInTheDocument();
   });
 
+  it("shows only a verified seven-digit SaaS store code next to the store name", async () => {
+    await act(async () => { render(<ScreenContextFooter locale="es"
+      terminalContext={{ ...terminalContext, storeInternalCode: "3500002" }} />); });
+    expect(screen.getByText("Tienda Principal · 3500002")).toHaveAttribute("title", "Código de tienda en SaaS");
+    expect(screen.getByText("Terminal: SERVIDOR")).toBeInTheDocument();
+  });
+
+  it.each(["", "123", "12345678", "DEMO001", "0000000", "3500000", "5300001", "3500002 "])("omits an invalid store code: %s", async (storeInternalCode) => {
+    await act(async () => { render(<ScreenContextFooter locale="es"
+      terminalContext={{ ...terminalContext, storeInternalCode }} />); });
+    expect(screen.getByText("Tienda Principal")).not.toHaveAttribute("title");
+    expect(screen.queryByText(/Tienda Principal ·/)).not.toBeInTheDocument();
+  });
+
   it("does not infer a SaaS connection from the browser having a network", async () => {
     expect(navigator.onLine).toBe(true);
     await mountFooter();

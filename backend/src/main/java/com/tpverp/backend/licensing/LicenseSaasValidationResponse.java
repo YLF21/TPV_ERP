@@ -18,7 +18,17 @@ public record LicenseSaasValidationResponse(
         UUID saasCompanyId,
         UUID saasStoreId,
         String licenseReference,
-        String taxId) {
+        String taxId,
+        String storeInternalCode) {
+
+    public LicenseSaasValidationResponse(LicenseSaasStatus status, Instant validUntil,
+            LocalDate verifactuActivationDate, long verifactuPolicyVersion, Instant verifactuPolicyUpdatedAt,
+            CommercialProfile commercialProfile, int maxWindows, int maxPda, long licenseVersion,
+            UUID saasCompanyId, UUID saasStoreId, String licenseReference, String taxId) {
+        this(status, validUntil, verifactuActivationDate, verifactuPolicyVersion, verifactuPolicyUpdatedAt,
+                commercialProfile, maxWindows, maxPda, licenseVersion, saasCompanyId, saasStoreId,
+                licenseReference, taxId, null);
+    }
 
     public LicenseSaasValidationResponse(
             LicenseSaasStatus status,

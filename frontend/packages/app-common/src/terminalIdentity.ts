@@ -4,7 +4,7 @@ export type TerminalIdentityLoadResult = {
   ok: boolean;
   identity?: TerminalContext | null;
   connectionUnavailable?: boolean;
-  displayContext?: Pick<TerminalContext, "companyName" | "storeName" | "terminalCode" | "terminalName"> | null;
+  displayContext?: Pick<TerminalContext, "companyName" | "storeName" | "storeInternalCode" | "terminalCode" | "terminalName"> | null;
 };
 
 // Cached names are presentation data. They never become a verified identity.
@@ -22,6 +22,7 @@ export async function loadTerminalLoginContext(
       && display && hasText(display.storeName) && hasText(display.terminalCode)
       ? {
           storeName: display.storeName,
+          storeInternalCode: display.storeInternalCode,
           terminalCode: display.terminalCode,
           companyName: display.companyName,
           terminalName: display.terminalName

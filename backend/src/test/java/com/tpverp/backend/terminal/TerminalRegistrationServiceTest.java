@@ -81,6 +81,7 @@ class TerminalRegistrationServiceTest {
     @Test
     void pdaRequestUsesTheOnlyConfiguredStoreAndReturnsBrowserIdentity() {
         var store = store("001");
+        store.rememberSaasInternalCode("3500002");
         var terminals = mock(TerminalRepository.class);
         var stores = mock(StoreRepository.class);
         var encoder = mock(PasswordEncoder.class);
@@ -98,6 +99,7 @@ class TerminalRegistrationServiceTest {
 
         assertThat(result.terminalCode()).isEqualTo("PDA ALMACEN");
         assertThat(result.storeName()).isEqualTo(store.getNombreEfectivo());
+        assertThat(result.storeInternalCode()).isEqualTo("3500002");
         assertThat(result.terminalCredential()).isNotBlank();
         assertThat(result.status()).isEqualTo("PENDING");
     }
@@ -116,6 +118,7 @@ class TerminalRegistrationServiceTest {
     @Test
     void installationAdminCanProvisionAndRotateTheUniqueServerCredential() {
         var store = store("001");
+        store.rememberSaasInternalCode("3500002");
         var server = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "old-hash");
         var terminals = mock(TerminalRepository.class);
         var stores = mock(StoreRepository.class);
@@ -130,6 +133,7 @@ class TerminalRegistrationServiceTest {
         var result = service(terminals, stores, encoder, audit).provisionServer(admin);
 
         assertThat(result.terminalId()).isEqualTo(server.getId());
+        assertThat(result.storeInternalCode()).isEqualTo("3500002");
         assertThat(result.terminalCredential()).isNotBlank();
         assertThat(server.getCredentialHash()).isEqualTo("new-hash");
         verify(audit).recordForStore(

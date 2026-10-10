@@ -93,7 +93,7 @@ public class TerminalRegistrationService {
         var registration = request(store.getId(), terminalName, TerminalType.PDA);
         return new PdaRegistrationResult(
                 registration.terminalId(), terminalName, store.getNombreEfectivo(),
-                registration.credential(), registration.status());
+                registration.credential(), registration.status(), store.getSaasInternalCode());
     }
 
     @Transactional
@@ -132,7 +132,7 @@ public class TerminalRegistrationService {
                 Map.of("terminalId", terminal.getId()));
         return new PdaRegistrationResult(
                 terminal.getId(), terminal.getNombre(), terminal.getTienda().getNombreEfectivo(),
-                credential, "APPROVED");
+                credential, "APPROVED", terminal.getTienda().getSaasInternalCode());
     }
 
     @Transactional
@@ -166,7 +166,7 @@ public class TerminalRegistrationService {
                 AuditResult.EXITO,
                 Map.of("terminalId", terminal.getId(), "storeId", store.getId()));
         return new ServerProvisioningResult(
-                terminal.getId(), terminal.getDisplayCode(), store.getNombreEfectivo(), credential);
+                terminal.getId(), terminal.getDisplayCode(), store.getNombreEfectivo(), credential, store.getSaasInternalCode());
     }
 
     @Transactional
@@ -298,7 +298,12 @@ public class TerminalRegistrationService {
             String terminalCode,
             String storeName,
             String terminalCredential,
-            String status) {
+            String status,
+            String storeInternalCode) {
+        public PdaRegistrationResult(UUID terminalId, String terminalCode, String storeName,
+                String terminalCredential, String status) {
+            this(terminalId, terminalCode, storeName, terminalCredential, status, null);
+        }
     }
 
     public record PairingCodeResult(String code, Instant expiresAt) {
@@ -308,17 +313,22 @@ public class TerminalRegistrationService {
             UUID terminalId,
             String terminalCode,
             String storeName,
-            String terminalCredential) {
+            String terminalCredential,
+            String storeInternalCode) {
+        public ServerProvisioningResult(UUID terminalId, String terminalCode, String storeName, String terminalCredential) {
+            this(terminalId, terminalCode, storeName, terminalCredential, null);
+        }
     }
 
-    public record TerminalItem(UUID id, String name, TerminalType type, boolean approved, boolean active) {
+    public record TerminalItem(UUID id, String name, TerminalType type, boolean approved, boolean active, String lastIp) {
         static TerminalItem from(Terminal terminal) {
             return new TerminalItem(
                     terminal.getId(),
                     terminal.getNombre(),
                     terminal.getTipo(),
                     terminal.isAprobada(),
-                    terminal.isActiva());
+                    terminal.isActiva(),
+                    terminal.getLastIp() == null ? null : terminal.getLastIp().getHostAddress());
         }
     }
 }

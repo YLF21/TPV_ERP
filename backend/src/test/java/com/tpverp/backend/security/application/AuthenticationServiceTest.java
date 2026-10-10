@@ -16,6 +16,7 @@ import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.terminal.Terminal;
 import com.tpverp.backend.terminal.TerminalRepository;
 import com.tpverp.backend.terminal.TerminalType;
+import java.net.InetAddress;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -59,6 +60,26 @@ class AuthenticationServiceTest {
 		var session = ArgumentCaptor.forClass(UserSession.class);
 		verify(sesionRepository).save(session.capture());
 		assertThat(session.getValue().getTokenHash()).doesNotContain(result.accessToken());
+	}
+
+	@Test
+	void recordsTheAddressOnlyAfterValidLoginForEachTerminalType() {
+		for (var type : TerminalType.values()) {
+			var store = store();
+			var terminal = new Terminal(store, "PC", type, "credential");
+			var user = new UserAccount(store, "ADMIN", "password-hash", new Role(store, "ADMIN"));
+			when(terminalRepository.findForAuthentication(terminal.getId())).thenReturn(Optional.of(terminal));
+			when(usuarioRepository.findByEmpresaIdAndUserName(store.getEmpresa().getId(), "ADMIN"))
+					.thenReturn(Optional.of(user));
+			when(passwordEncoder.matches("secret", "credential")).thenReturn(true);
+			when(passwordEncoder.matches("1234", "password-hash")).thenReturn(true);
+			var address = InetAddress.ofLiteral("192.168.82.101");
+
+			service().login(terminal.getId(), "secret", "ADMIN", "1234", address);
+
+			assertThat(terminal.getLastIp()).isEqualTo(address);
+			assertThat(terminal.getLastSeenAt()).isEqualTo(Instant.parse("2026-06-08T10:00:00Z"));
+		}
 	}
 
 	@Test
@@ -177,8 +198,10 @@ class AuthenticationServiceTest {
 		when(passwordEncoder.matches("server-secret", "credential")).thenReturn(true);
 		when(passwordEncoder.matches("bad", "password-hash")).thenReturn(false);
 
-		assertThatThrownBy(() -> service().login(terminal.getId(), "server-secret", "ADMIN", "bad"))
+		assertThatThrownBy(() -> service().login(terminal.getId(), "server-secret", "ADMIN", "bad", InetAddress.ofLiteral("192.168.1.90")))
 				.isInstanceOf(AuthenticationFailedException.class);
+		assertThat(terminal.getLastIp()).isNull();
+		assertThat(terminal.getLastSeenAt()).isNull();
 	}
 
 	@Test
@@ -212,8 +235,9 @@ class AuthenticationServiceTest {
 		when(terminalRepository.findForAuthentication(terminal.getId())).thenReturn(Optional.of(terminal));
 		when(passwordEncoder.matches("wrong", "credential")).thenReturn(false);
 
-		assertThatThrownBy(() -> service().login(terminal.getId(), "wrong", "ADMIN", "0000"))
+		assertThatThrownBy(() -> service().login(terminal.getId(), "wrong", "ADMIN", "0000", InetAddress.ofLiteral("192.168.1.90")))
 				.isInstanceOf(AuthenticationFailedException.class);
+		assertThat(terminal.getLastIp()).isNull();
 	}
 
 	private AuthenticationService service() {
