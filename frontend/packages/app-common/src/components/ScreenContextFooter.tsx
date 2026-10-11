@@ -4,6 +4,7 @@ import type { LocaleCode, TerminalContext } from "../types";
 import { useScreenConnectionStatus } from "./useScreenConnectionStatus";
 import { SaasConnectionStatus } from "./SaasConnectionStatus";
 import { validStoreInternalCode } from "../storeInternalCode";
+import { TerminalFooterInfo } from "./TerminalFooterInfo";
 
 type ScreenContextFooterProps = {
   locale: LocaleCode;
@@ -21,7 +22,7 @@ export function ScreenContextFooter({ locale, terminalContext, terminalNameOnly 
       <span title={storeCode ? t("store.internalCodeTitle") : undefined}>
         {terminalContext.storeName}{storeCode ? ` · ${storeCode}` : ""}
       </span>
-      <span>{terminalNameOnly ? terminalContext.terminalName || terminalContext.terminalCode : `${t("login.terminalPrefix")}: ${terminalContext.terminalCode}`}</span>
+      <TerminalFooterInfo locale={locale} terminalContext={terminalContext} terminalNameOnly={terminalNameOnly} />
       <span className="report-database" title={t("connection.backendAddress")}>
         <Database size={17} weight="bold" aria-hidden="true" />
         {`DB: ${backendLabel ?? "—"}`}

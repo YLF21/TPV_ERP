@@ -2,6 +2,7 @@ export const zh: Record<string, string> = {
   internalAccessOnly: "本门户仅供内部员工使用，门店账号无权访问。",
   centralAdministration: "中央管理",
   internalPortal: "SaaS 内部门户",
+  saasVersion: "SaaS 版本",
   administration: "管理",
   adminAccess: "管理员登录",
   mainNavigation: "主导航",

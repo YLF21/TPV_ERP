@@ -25,6 +25,8 @@ describe("desktop release metadata", () => {
   it("shares the locked Electron and application versions across both targets", () => {
     const metadata = desktopBuild.readBuildMetadata();
     for (const appKey of ["venta", "gestion"]) {
+      const appManifest = JSON.parse(fs.readFileSync(path.join(desktopBuild.frontendRoot, "apps", `app-${appKey}`, "package.json"), "utf8"));
+      expect(appManifest.version).toBe(metadata.version);
       const config = desktopBuild.createDesktopConfig(appKey);
       expect(config.electronVersion).toBe(metadata.electronVersion);
       expect(config.extraMetadata.version).toBe(metadata.version);

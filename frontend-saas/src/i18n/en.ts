@@ -2,6 +2,7 @@ export const en: Record<string, string> = {
   internalAccessOnly: "This portal is for internal staff only. Store accounts do not have access.",
   centralAdministration: "Central administration",
   internalPortal: "Internal SaaS portal",
+  saasVersion: "SaaS version",
   administration: "Administration",
   adminAccess: "Admin access",
   mainNavigation: "Main navigation",

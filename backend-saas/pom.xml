@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.tpverp</groupId>
 	<artifactId>tpv-erp-saas-backend</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>0.1.0</version>
 	<name>TPV ERP SaaS Backend</name>
 	<description>Servidor central SaaS para TPV ERP</description>
 	<properties>
@@ -78,6 +78,13 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+				<executions>
+					<execution>
+						<goals>
+							<goal>build-info</goal>
+						</goals>
+						</execution>
+				</executions>
 			</plugin>
 					<plugin>
 				<groupId>org.jacoco</groupId>

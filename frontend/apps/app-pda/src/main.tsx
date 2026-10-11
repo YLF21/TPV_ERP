@@ -1,6 +1,7 @@
 import { lazy, StrictMode, Suspense, useEffect, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { SpinnerGap } from "@phosphor-icons/react";
+import { version as applicationVersion } from "../package.json";
 import {
   ApiError,
   LoginScreen,
@@ -269,7 +270,7 @@ function PdaEnrollment({
     <main className="pda-enrollment">
       <section className="pda-enrollment-card">
         <header>
-          <span>TPV ERP</span>
+          <span>TPV ERP · v{applicationVersion}</span>
           <strong>{text.setupTitle}</strong>
           <p>{mode === "register" ? text.setupHelp : text.pairingHelp}</p>
         </header>
@@ -345,7 +346,7 @@ function PdaWorkspace({
   return (
     <main className="pda-app-shell">
       <header className="pda-app-header">
-        <div><span>TPV ERP · PDA</span><strong>{copy[locale].title}</strong></div>
+        <div><span>TPV ERP · PDA · v{applicationVersion}</span><strong>{copy[locale].title}</strong></div>
         <div className="pda-header-actions">
           <small>{copy[locale].device}: {identity.terminalCode}</small>
           <select aria-label="Idioma" value={locale} onChange={(event) => onLocaleChange(event.target.value as LocaleCode)}>

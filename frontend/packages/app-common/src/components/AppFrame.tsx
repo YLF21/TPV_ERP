@@ -8,6 +8,7 @@ import { useScreenConnectionStatus } from "./useScreenConnectionStatus";
 import { AppLogo } from "./AppLogo";
 import { DesktopHeaderContext } from "./DesktopHeaderContext";
 import { validStoreInternalCode } from "../storeInternalCode";
+import { TerminalFooterInfo } from "./TerminalFooterInfo";
 
 type AppFrameProps = {
   titleKey: string;
@@ -99,8 +100,11 @@ export function AppFrame({ titleKey, locale, session, terminalContext, onLocaleC
         {logoutError && <span role="alert" className="app-titlebar-error">{t(logoutError)}</span>}
       </header>
       {children}
-      {storeCode && <footer className="app-store-footer">
-        <span title={t("store.internalCodeTitle")}>{terminalContext?.storeName} · {storeCode}</span>
+      {terminalContext && <footer className="app-store-footer">
+        <span title={storeCode ? t("store.internalCodeTitle") : undefined}>
+          {terminalContext.storeName}{storeCode ? ` · ${storeCode}` : ""}
+        </span>
+        <TerminalFooterInfo locale={locale} terminalContext={terminalContext} />
       </footer>}
     </div>
   );

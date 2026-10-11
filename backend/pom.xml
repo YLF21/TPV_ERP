@@ -10,7 +10,9 @@
 	</parent>
 	<groupId>com.tpverp</groupId>
 	<artifactId>tpv-erp-backend</artifactId>
-	<version>4.2.0</version>
+	<!-- Product version: 0.x.x for trials; 1.x.x starts deployment releases.
+	     Fiscal release identities below are independent and immutable. -->
+	<version>0.1.0</version>
 	<name>TPV ERP Backend</name>
 	<description>Backend local para TPV ERP</description>
 	<url/>
@@ -324,6 +326,11 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+				<executions>
+					<execution>
+						<goals><goal>build-info</goal></goals>
+					</execution>
+				</executions>
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>

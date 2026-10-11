@@ -11,6 +11,7 @@ import { InvoiceTable } from "../billing/BillingView";
 import { MasterTable } from "../masters/MastersView";
 import { canWriteTenantMasters } from "./access-selection.mjs";
 import { useTenantLabels, type TenantLabel } from "./labels";
+import { appVersion } from "../../lib/appVersion";
 
 export function TenantPortal({
   credentials,
@@ -102,7 +103,7 @@ export function TenantPortal({
         <div className="brand">
           <div>
             <strong>{data?.session.companyName ?? "ERP SaaS"}</strong>
-            <span>{t("clientPortal")}</span>
+            <span>{t("clientPortal")} · {t("saasVersion")} {appVersion}</span>
           </div>
         </div>
         <nav className="nav-list top-nav-list tenant-top-nav" aria-label={t("mainNavigation")}>

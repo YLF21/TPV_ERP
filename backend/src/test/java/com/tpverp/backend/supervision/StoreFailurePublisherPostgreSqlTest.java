@@ -69,8 +69,10 @@ class StoreFailurePublisherPostgreSqlTest {
         licenses = mock(LicenseRepository.class);
         publisher = new StoreFailurePublisher(jdbc, licenses, outbox);
         site = new StoreFailurePublisher.Site(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        var buildProperties = new java.util.Properties();
+        buildProperties.setProperty("version", "0.1.0");
         recorder = new ApplicationFailureRecorder(jdbc, licenses, new DataSourceTransactionManager(dataSource),
-                new org.springframework.mock.env.MockEnvironment().withProperty("tpv.verifactu.system-version", "4.2.0"), outbox);
+                new org.springframework.boot.info.BuildProperties(buildProperties), outbox);
         var license = mock(com.tpverp.backend.licensing.License.class);
         when(license.getLocalCompanyId()).thenReturn(site.companyId());
         when(license.getTiendaId()).thenReturn(site.storeId());

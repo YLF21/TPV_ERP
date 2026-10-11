@@ -3,6 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
+import { version as applicationVersion } from "../../../../package.json";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { CONNECTION_REFRESH_MS, CONNECTION_TIMEOUT_MS } from "./useScreenConnectionStatus";
 
@@ -33,11 +34,12 @@ describe("ScreenContextFooter real connectivity", () => {
     vi.unstubAllGlobals();
   });
 
-  it.each([false, true])("uses the terminal name only when explicitly requested: %s", async (terminalNameOnly) => {
+  it.each([false, true])("uses the terminal name and optional prefix: %s", async (terminalNameOnly) => {
     await act(async () => { render(<ScreenContextFooter locale="es"
       terminalContext={{ ...terminalContext, terminalName: "Caja Principal" }} terminalNameOnly={terminalNameOnly} />); });
-    expect(screen.getByText(terminalNameOnly ? "Caja Principal" : "Terminal: SERVIDOR")).toBeInTheDocument();
-    expect(screen.queryByText(terminalNameOnly ? "Terminal: SERVIDOR" : "Caja Principal")).not.toBeInTheDocument();
+    expect(screen.getByText(terminalNameOnly ? "Caja Principal" : "Terminal: Caja Principal")).toBeInTheDocument();
+    expect(screen.queryByText("Terminal: SERVIDOR")).not.toBeInTheDocument();
+    expect(screen.getByText(`v${applicationVersion}`)).toBeInTheDocument();
   });
 
   it("uses the code without a prefix when a terminal name is not available", async () => {
