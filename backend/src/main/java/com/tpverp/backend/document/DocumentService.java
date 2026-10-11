@@ -1576,7 +1576,11 @@ public class DocumentService {
             throw new IllegalStateException("La instantanea fiscal de devolucion no cuadra");
         }
         refund.confirm(nextNumber(refund), organization.currentUser(authentication).getId(), Instant.now(clock), false);
-        captureInvoicePrintSnapshot(refund);
+        if (invoiceReturn) {
+            captureInvoicePrintSnapshot(refund);
+        } else if (original.getTicketPrintFiscalProfile() != null) {
+            refund.captureTicketPrintFiscalProfile(original.getTicketPrintFiscalProfile());
+        }
         documents.saveAndFlush(refund);
         recordCreated(refund);
         recordConfirmed(refund, terminalId);
@@ -2785,6 +2789,12 @@ public class DocumentService {
     }
 
     private void captureInvoicePrintSnapshot(CommercialDocument document) {
+        if (document.getTipo() == CommercialDocumentType.TICKET) {
+            if (invoicePrintSnapshots != null && document.getTicketPrintFiscalProfile() == null) {
+                document.captureTicketPrintFiscalProfile(invoicePrintSnapshots.currentFiscalProfile());
+            }
+            return;
+        }
         if (invoicePrintSnapshots != null
                 && (document.getTipo() == CommercialDocumentType.FACTURA_VENTA
                 || document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA

@@ -10,10 +10,11 @@ public record VoucherPresentationSnapshot(
         InvoicePresentationSnapshot.LogoReference logo,
         String terminalName,
         List<TraceEntry> traceability,
-        Boolean showStoreName) {
+        Boolean showStoreName,
+        String userName) {
 
     public VoucherPresentationSnapshot {
-        if (schemaVersion < 1 || schemaVersion > 2) {
+        if (schemaVersion < 1 || schemaVersion > 3) {
             throw new IllegalArgumentException("voucher_print_snapshot_version_invalid");
         }
         if (template == null) {
@@ -26,6 +27,15 @@ public record VoucherPresentationSnapshot(
     }
 
     public VoucherPresentationSnapshot(
+            int schemaVersion, String observations,
+            InvoicePresentationSnapshot.TemplateReference template,
+            InvoicePresentationSnapshot.LogoReference logo, String terminalName,
+            List<TraceEntry> traceability, Boolean showStoreName) {
+        this(schemaVersion, observations, template, logo, terminalName,
+                traceability, showStoreName, null);
+    }
+
+    public VoucherPresentationSnapshot(
             int schemaVersion,
             String observations,
             InvoicePresentationSnapshot.TemplateReference template,
@@ -33,7 +43,7 @@ public record VoucherPresentationSnapshot(
             String terminalName,
             List<TraceEntry> traceability) {
         this(schemaVersion, observations, template, logo, terminalName,
-                traceability, Boolean.TRUE);
+                traceability, Boolean.TRUE, null);
     }
 
     public boolean shouldShowStoreName() {

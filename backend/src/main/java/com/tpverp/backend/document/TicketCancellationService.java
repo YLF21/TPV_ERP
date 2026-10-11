@@ -8,6 +8,7 @@ import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.security.sales.SaleOperationCode;
 import com.tpverp.backend.security.sales.SaleOperationSecurityService;
 import com.tpverp.backend.terminal.CurrentTerminal;
+import com.tpverp.backend.terminal.TerminalRepository;
 import com.tpverp.backend.terminal.PaymentTerminalOperation;
 import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
 import com.tpverp.backend.terminal.PaymentTerminalOperationsService;
@@ -51,6 +52,12 @@ public class TicketCancellationService {
     private final CurrentTerminal currentTerminal;
     private final Clock clock;
     private final TransactionTemplate transactions;
+    private TerminalRepository terminals;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setTerminals(TerminalRepository terminals) {
+        this.terminals = terminals;
+    }
 
     public TicketCancellationService(
             DocumentService documents,
@@ -349,7 +356,7 @@ public class TicketCancellationService {
                 .toList();
         var cancellationUserId = ticket.getAnuladoPor();
         var cancellationUsername = cancellationUserId == null
-                ? "No disponible" : username(cancellationUserId);
+                ? "" : operatorName(cancellationUserId);
         var receipt = new CancellationReceipt(
                 UUID.nameUUIDFromBytes(("legacy-cancellation:" + ticketId)
                         .getBytes(StandardCharsets.UTF_8)),
@@ -360,10 +367,10 @@ public class TicketCancellationService {
                 ticket.getTotal(),
                 firstText(ticket.getMotivoAnulacion(), "Anulación histórica"),
                 cancellationUsername,
-                cancellationUsername,
+                cancellationUserId == null ? "No disponible" : username(cancellationUserId),
                 false,
                 payments);
-        return renderCancellationReceipt(receipt);
+        return renderCancellationReceipt(receipt, null);
     }
 
     private CancellationReceipt cancellationReceipt(
@@ -389,18 +396,21 @@ public class TicketCancellationService {
                 ticket.getAnuladoEn(),
                 ticket.getTotal(),
                 operation.getReason(),
-                username(operation.getOperatorUserId()),
+                operatorName(operation.getOperatorUserId()),
                 username(operation.getAuthorizerUserId()),
                 !operation.getOperatorUserId().equals(operation.getAuthorizerUserId()),
                 payments);
-        return renderCancellationReceipt(receipt);
+        return renderCancellationReceipt(receipt, operation.getTerminalId());
     }
 
-    private CancellationReceipt renderCancellationReceipt(CancellationReceipt receipt) {
+    private CancellationReceipt renderCancellationReceipt(CancellationReceipt receipt, UUID terminalId) {
         if (cancellationPrinting == null) return receipt;
         try {
+            String terminalName = terminals == null || terminalId == null ? null
+                    : terminals.findByIdAndTiendaId(terminalId, organization.currentStore().getId())
+                            .map(com.tpverp.backend.terminal.Terminal::getNombre).orElse(null);
             var rendered = cancellationPrinting.render(
-                    receipt, organization.currentStore());
+                    receipt, organization.currentStore(), terminalName);
             return receipt.withRenderedDocument(rendered.pdf(), rendered.png());
         } catch (RuntimeException failure) {
             LOGGER.warn("Could not render cancellation receipt {} with Jasper",
@@ -414,6 +424,16 @@ public class TicketCancellationService {
                 .map(user -> user.getUserName() == null || user.getUserName().isBlank()
                         ? user.getNombre() : user.getUserName())
                 .orElse(userId.toString());
+    }
+
+    private String operatorName(UUID userId) {
+        var storeId = organization.currentStore().getId();
+        return users.findById(userId)
+                .filter(user -> user.getTienda() == null
+                        ? user.isProtegido()
+                        : storeId.equals(user.getTienda().getId()))
+                .map(user -> user.getUserName() == null ? "" : user.getUserName().trim())
+                .orElse("");
     }
 
     private static String firstText(String... values) {

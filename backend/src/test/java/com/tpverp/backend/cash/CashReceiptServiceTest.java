@@ -247,10 +247,12 @@ class CashReceiptServiceTest {
         assertThat(root.path("movement").path("signatureRequired").asBoolean()).isEqualTo(withdrawal);
         assertThat(root.path("movement").path("title").asText()).isEqualTo(withdrawal
                 ? "RETIRADA DE EFECTIVO" : "ENTRADA DE EFECTIVO");
+        assertThat(root.path("userName").asText()).isEqualTo("María López");
+        assertThat(root.path("terminalName").asText()).isEqualTo("TPV 1");
         assertThat(root.path("lines").findValuesAsText("label")).containsExactly(
-                "Operador", "Terminal", "Importe", "Motivo", "Unidades de 20,00\u00a0€");
+                "Importe", "Motivo", "Unidades de 20,00\u00a0€");
         assertThat(root.path("lines").findValuesAsText("value")).containsExactly(
-                "María López", "TPV 1", "20.00", "Ingreso en banco", "1");
+                "20.00", "Ingreso en banco", "1");
     }
 
     @Test
@@ -294,7 +296,7 @@ class CashReceiptServiceTest {
                 org.mockito.ArgumentMatchers.eq(DocumentTemplateFormat.TICKET_80), data.capture(),
                 org.mockito.ArgumentMatchers.anyString());
         assertThat(data.getValue().path("lines").findValuesAsText("label")).containsExactly(
-                "Operador", "Terminal", "Importe");
+                "Importe");
     }
 
     private static CashMovement receiptMovement(Fixture fixture, CashMovementType type,

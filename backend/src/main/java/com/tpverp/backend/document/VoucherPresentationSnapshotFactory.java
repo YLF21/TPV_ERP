@@ -27,6 +27,7 @@ public class VoucherPresentationSnapshotFactory {
     private final ObjectMapper mapper;
     private final DocumentTemplatePresentationService templatePresentations;
     private final BuiltInDocumentJrxmlCatalog builtInTemplates;
+    private DocumentAttributionResolver attributionResolver;
 
     public VoucherPresentationSnapshotFactory(
             CurrentOrganization organization,
@@ -45,6 +46,11 @@ public class VoucherPresentationSnapshotFactory {
         this.mapper = mapper;
         this.templatePresentations = templatePresentations;
         this.builtInTemplates = builtInTemplates;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAttributionResolver(DocumentAttributionResolver attributionResolver) {
+        this.attributionResolver = attributionResolver;
     }
 
     public String create(
@@ -74,8 +80,11 @@ public class VoucherPresentationSnapshotFactory {
                                 sourceDocument.getTerminalOrigenId(), store.getId())
                         .map(com.tpverp.backend.terminal.Terminal::getNombre)
                         .orElse(null);
+        String userName = attributionResolver == null ? null
+                : attributionResolver.resolve(List.of(sourceDocument))
+                        .get(sourceDocument.getId()).userName();
         var snapshot = new VoucherPresentationSnapshot(
-                2,
+                3,
                 presentation.observations(),
                 templateReference,
                 presentation.logo() == null ? null
@@ -84,7 +93,7 @@ public class VoucherPresentationSnapshotFactory {
                                 presentation.logo().sha256()),
                 terminalName,
                 List.copyOf(merged.values()),
-                presentation.showStoreName());
+                presentation.showStoreName(), userName);
         try {
             return mapper.writeValueAsString(snapshot);
         } catch (JsonProcessingException error) {

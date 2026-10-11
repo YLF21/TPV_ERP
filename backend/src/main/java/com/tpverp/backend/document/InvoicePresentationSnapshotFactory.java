@@ -67,13 +67,7 @@ public class InvoicePresentationSnapshotFactory {
     public String create(DocumentTemplateType templateType) {
         var store = organization.currentStore();
         var company = organization.currentCompany();
-        var license = licenses.findByTiendaIdOrderByValidaDesdeDesc(store.getId()).stream()
-                .filter(com.tpverp.backend.licensing.License::isActiva)
-                .max(Comparator.comparing(com.tpverp.backend.licensing.License::getValidaDesde))
-                .orElse(null);
-        InvoiceFiscalProfile profile = license == null
-                ? InvoiceFiscalProfile.IVA
-                : profile(license.getRegimenImpuesto(), license.getCommercialProfile());
+        InvoiceFiscalProfile profile = currentFiscalProfile();
         var storePresentation = storePrintConfiguration == null ? null
                 : storePrintConfiguration.presentation(templateType);
         String observations = storePresentation == null
@@ -108,6 +102,16 @@ public class InvoicePresentationSnapshotFactory {
         }
     }
 
+    public InvoiceFiscalProfile currentFiscalProfile() {
+        var store = organization.currentStore();
+        var license = licenses.findByTiendaIdOrderByValidaDesdeDesc(store.getId()).stream()
+                .filter(com.tpverp.backend.licensing.License::isActiva)
+                .max(Comparator.comparing(com.tpverp.backend.licensing.License::getValidaDesde))
+                .orElse(null);
+        return license == null ? InvoiceFiscalProfile.IVA
+                : profile(license.getRegimenImpuesto(), license.getCommercialProfile());
+    }
+
     public InvoicePresentationSnapshot read(String value) {
         try {
             var snapshot = mapper.readValue(value, InvoicePresentationSnapshot.class);
@@ -122,7 +126,7 @@ public class InvoicePresentationSnapshotFactory {
 
     private static InvoiceFiscalProfile profile(
             TaxRegime taxRegime, CommercialProfile commercialProfile) {
-        if (taxRegime == TaxRegime.IVA) return InvoiceFiscalProfile.IVA;
+        if (taxRegime != TaxRegime.IGIC) return InvoiceFiscalProfile.IVA;
         return commercialProfile == CommercialProfile.MINORISTA
                 ? InvoiceFiscalProfile.IGIC_MINORISTA
                 : InvoiceFiscalProfile.IGIC;

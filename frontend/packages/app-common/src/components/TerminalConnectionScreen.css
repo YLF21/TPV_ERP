@@ -26,3 +26,29 @@
   padding: 16px !important;
 }
 .sale-settings-screen .terminal-link-panel--embedded :is(button, fieldset, .terminal-link-server, .terminal-link-pending, .terminal-link-error) { border-radius: 6px; }
+
+.terminal-link-panel .terminal-link-name-input {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding-left: 8px;
+  border: 1px solid #9fb3c8;
+  border-radius: 2px;
+  background: #fff;
+}
+.terminal-link-name-input > span { flex: none; }
+.terminal-link-panel .terminal-link-name-input input:not([type="checkbox"]):not([type="radio"]) {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: none !important;
+}
+.terminal-link-name-input:focus-within { outline: 2px solid #173f67; outline-offset: 1px; }
+.sale-settings-screen .terminal-link-name-input { border-color: #8fa5bc; border-radius: 6px; font-size: 13px; }
+.sale-settings-screen .terminal-link-name-input:focus-within {
+  border-color: var(--sale-settings-blue);
+  outline: 3px solid rgba(23, 105, 170, 0.17);
+  outline-offset: 0;
+}

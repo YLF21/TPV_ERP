@@ -15,6 +15,8 @@
     <field name="issuerAddress" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.headerAddressLine"/></field>
     <field name="issuerEmail" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.email"/></field>
     <field name="observations" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.observations"/></field>
+    <field name="userName" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.userName"/></field>
+    <field name="terminalName" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.terminalName"/></field>
     <title height="50" splitType="Stretch">
         <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
         <element kind="image" x="17" y="2" width="177" height="46" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Center" vImageAlign="Middle">
@@ -75,13 +77,21 @@
             <element kind="line" positionType="Float" x="0" y="42" width="211" height="1"><pen lineWidth="0.4" lineStyle="Dashed"/></element>
         </band>
     </detail>
-    <summary height="58" splitType="Stretch">
+    <summary height="84" splitType="Stretch">
         <element kind="textField" x="3" y="4" width="205" height="27" fontName="SansSerif" fontSize="8" textAdjust="StretchHeight" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Center">
             <printWhenExpression><![CDATA[$F{observations} != null && !$F{observations}.trim().isEmpty()]]></printWhenExpression>
             <expression><![CDATA[$F{observations}]]></expression>
         </element>
         <element kind="staticText" positionType="Float" x="3" y="33" width="205" height="22" fontName="SansSerif" fontSize="8" hTextAlign="Center">
             <text><![CDATA[Documento sin precios ni importes. Conserve este ticket para cambios.]]></text>
+        </element>
+        <element kind="textField" x="0" y="57" width="211" height="12" fontName="SansSerif" fontSize="8" textAdjust="ScaleFont" removeLineWhenBlank="true" hTextAlign="Left">
+            <printWhenExpression><![CDATA[$F{userName} != null && !$F{userName}.trim().isEmpty()]]></printWhenExpression>
+            <expression><![CDATA["ATENDIDO POR: " + ($F{userName} == null ? "" : $F{userName})]]></expression>
+        </element>
+        <element kind="textField" x="0" y="70" width="211" height="12" fontName="SansSerif" fontSize="8" textAdjust="ScaleFont" removeLineWhenBlank="true" hTextAlign="Left">
+            <printWhenExpression><![CDATA[$F{terminalName} != null && !$F{terminalName}.trim().isEmpty()]]></printWhenExpression>
+            <expression><![CDATA["TERMINAL: " + ($F{terminalName} == null ? "" : $F{terminalName})]]></expression>
         </element>
     </summary>
 </jasperReport>

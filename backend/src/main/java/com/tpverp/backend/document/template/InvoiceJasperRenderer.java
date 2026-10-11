@@ -7,6 +7,7 @@ import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.CommercialDocumentRepository;
 import com.tpverp.backend.document.CommercialDocumentType;
 import com.tpverp.backend.document.DocumentAdjustment;
+import com.tpverp.backend.document.DocumentAttributionResolver;
 import com.tpverp.backend.document.DocumentLine;
 import com.tpverp.backend.document.DocumentLineType;
 import com.tpverp.backend.document.DocumentLineTotals;
@@ -34,6 +35,7 @@ import java.util.Comparator;
 import java.util.Collections;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -63,6 +65,7 @@ public class InvoiceJasperRenderer {
     private final BuiltInDocumentJrxmlCatalog builtInTemplates;
     private CommercialDocumentRepository documents;
     private SalesInvoiceRectificationRepository rectifications;
+    private DocumentAttributionResolver attributionResolver;
     private final Map<CompiledCacheKey, byte[]> compiledCache = Collections.synchronizedMap(
             new LinkedHashMap<>(16, 0.75f, true) {
                 @Override
@@ -91,6 +94,11 @@ public class InvoiceJasperRenderer {
             SalesInvoiceRectificationRepository rectifications) {
         this.documents = documents;
         this.rectifications = rectifications;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setPrintAttributionResolver(DocumentAttributionResolver attributionResolver) {
+        this.attributionResolver = attributionResolver;
     }
 
     public Optional<byte[]> render(
@@ -426,6 +434,11 @@ public class InvoiceJasperRenderer {
         documentNode.put("displayNumber", document.getNumero());
         documentNode.put("issueDate", document.getFecha().toString());
         documentNode.put("operationDate", document.getFecha().toString());
+        var attribution = attributionResolver == null
+                ? DocumentAttributionResolver.Attribution.empty(document)
+                : attributionResolver.resolve(List.of(document)).get(document.getId());
+        putNullable(root, "operatorName", singleLine(attribution.userName()));
+        putNullable(root, "terminalName", singleLine(attribution.terminalName()));
 
         var issuer = root.putObject("issuer");
         boolean invoice = document.getTipo() == CommercialDocumentType.FACTURA_VENTA
@@ -517,7 +530,8 @@ public class InvoiceJasperRenderer {
         document.getLineas().stream()
                 .filter(line -> !DocumentLineTotals.isMemberBalance(line))
                 .sorted(Comparator.comparingInt(DocumentLine::getPosicion))
-                .forEach(line -> line(lines.addObject(), line, adjustmentsById));
+                .forEach(line -> line(lines.addObject(), line, adjustmentsById,
+                        document.getTipo() == CommercialDocumentType.FACTURA_VENTA));
         taxBreakdown(root.putArray("taxBreakdown"), document);
 
         var totals = root.putObject("totals");
@@ -619,7 +633,8 @@ public class InvoiceJasperRenderer {
     private static void line(
             ObjectNode node,
             DocumentLine line,
-            Map<java.util.UUID, DocumentAdjustment> adjustmentsById) {
+            Map<java.util.UUID, DocumentAdjustment> adjustmentsById,
+            boolean saleInvoice) {
         var memberDiscountLabel = printableMemberDiscountLabel(line, adjustmentsById);
         node.put("position", line.getPosicion());
         node.put("code", memberDiscountLabel == null ? line.getCodigo() : "");
@@ -629,6 +644,9 @@ public class InvoiceJasperRenderer {
         node.put("quantity", line.getCantidad());
         putNullable(node, "unit", null);
         node.put("unitPriceNet", netUnitPrice(line));
+        if (saleInvoice) {
+            node.put("unitPriceSale", saleUnitPrice(line));
+        }
         node.put("discountPercent", line.getDescuento());
         node.put("discountAmount", discountAmount(line));
         node.put("taxRegime", line.getRegimenImpuesto());
@@ -658,6 +676,14 @@ public class InvoiceJasperRenderer {
         }
         var divisor = BigDecimal.ONE.add(line.getPorcentajeImpuesto().movePointLeft(2));
         return line.getPrecioUnitario().divide(divisor, 6, Money.ROUNDING);
+    }
+
+    private static BigDecimal saleUnitPrice(DocumentLine line) {
+        if (line.isImpuestosIncluidos()) {
+            return line.getPrecioUnitario();
+        }
+        var factor = BigDecimal.ONE.add(line.getPorcentajeImpuesto().movePointLeft(2));
+        return line.getPrecioUnitario().multiply(factor).setScale(6, Money.ROUNDING);
     }
 
     private static BigDecimal discountAmount(DocumentLine line) {
@@ -754,6 +780,10 @@ public class InvoiceJasperRenderer {
 
     private static String normalized(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static String singleLine(String value) {
+        return value == null ? null : value.trim().replaceAll("\\s+", " ");
     }
 
     private static void putNullable(ObjectNode node, String name, String value) {

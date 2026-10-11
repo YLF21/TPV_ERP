@@ -98,6 +98,9 @@ public class CommercialDocument {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "impresion_factura_snapshot", columnDefinition = "jsonb")
     private String invoicePrintSnapshot;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "perfil_fiscal_impresion_ticket", length = 32)
+    private InvoiceFiscalProfile ticketPrintFiscalProfile;
     @OneToMany(mappedBy = "documento", cascade = CascadeType.ALL, orphanRemoval = true,
             fetch = FetchType.LAZY)
     @OrderBy("posicion")
@@ -596,6 +599,18 @@ public class CommercialDocument {
 
     public String getInvoicePrintSnapshot() {
         return invoicePrintSnapshot;
+    }
+
+    public InvoiceFiscalProfile getTicketPrintFiscalProfile() {
+        return ticketPrintFiscalProfile;
+    }
+
+    public void captureTicketPrintFiscalProfile(InvoiceFiscalProfile profile) {
+        if (tipo != CommercialDocumentType.TICKET) return;
+        if (ticketPrintFiscalProfile != null) {
+            throw new IllegalStateException("ticket_print_fiscal_profile_is_immutable");
+        }
+        ticketPrintFiscalProfile = Objects.requireNonNull(profile, "ticketPrintFiscalProfile");
     }
 
     public void captureInvoicePrintSnapshot(String snapshot) {

@@ -39,6 +39,13 @@ public class TicketCancellationJasperRenderer {
     public RenderedCancellation render(
             TicketCancellationService.CancellationReceipt receipt,
             Store store) {
+        return render(receipt, store, null);
+    }
+
+    public RenderedCancellation render(
+            TicketCancellationService.CancellationReceipt receipt,
+            Store store,
+            String terminalName) {
         Objects.requireNonNull(receipt, "receipt");
         Objects.requireNonNull(store, "store");
         var company = store.getEmpresa();
@@ -53,7 +60,9 @@ public class TicketCancellationJasperRenderer {
                 .setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " " + store.getMoneda());
         parameters.put("REASON", text(receipt.reason()));
-        parameters.put("OPERATOR_USERNAME", text(receipt.operatorUsername()));
+        parameters.put("OPERATOR_USERNAME",
+                receipt.operatorUsername() == null ? "" : receipt.operatorUsername().trim());
+        parameters.put("TERMINAL_NAME", terminalName == null ? "" : terminalName.trim());
         parameters.put("AUTHORIZER_USERNAME", text(receipt.authorizerUsername()));
         parameters.put("AUTHORIZATION_TYPE", receipt.delegated()
                 ? "Autorización delegada" : "Autorización del propio operador");

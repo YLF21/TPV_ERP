@@ -112,6 +112,7 @@ public class VoucherPrintService {
         boolean showStoreName = snapshot.shouldShowStoreName();
         root.put("showStoreName", showStoreName);
         putNullable(root, "terminalName", snapshot.terminalName());
+        putNullable(root, "userName", snapshot.userName());
         putNullable(root, "observations", snapshot.observations());
 
         var issuer = root.putObject("issuer");

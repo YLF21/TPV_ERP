@@ -216,6 +216,7 @@
   padding-right: 0 !important;
   overflow: visible !important;
 }
+.stock-screen--venta.stock-promotions-screen .stock-toolbar { align-items: flex-start !important; }
 .stock-promotion-export-actions {
   display: flex;
   flex: 1 1 auto;

@@ -3,10 +3,84 @@ import { useEffect } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppVentaHomeEscapeNavigation } from "./AppVentaHomeEscapeNavigation";
+import { AppBrand } from "./AppBrand";
+import userEvent from "@testing-library/user-event";
 
 afterEach(cleanup);
 
 describe("AppVentaHomeEscapeNavigation", () => {
+  it("uses the Escape confirmation for the logo instead of calling its direct back handler", async () => {
+    const onConfirmHome = vi.fn();
+    const directBack = vi.fn();
+    render(
+      <AppVentaHomeEscapeNavigation locale="es" onConfirmHome={onConfirmHome}>
+        <button type="button" className="report-brand-back" onClick={directBack}>
+          <AppBrand app="venta" label="esPOS VENTA" />
+        </button>
+      </AppVentaHomeEscapeNavigation>,
+    );
+    fireEvent.click(screen.getByRole("img", { name: "esPOS VENTA" }));
+    expect(screen.getByRole("alertdialog").textContent).toMatch(/volver al inicio/i);
+    expect(directBack).not.toHaveBeenCalled();
+    expect(onConfirmHome).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "Escape" });
+    await Promise.resolve();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "esPOS VENTA" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "esPOS VENTA" }));
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(onConfirmHome).toHaveBeenCalledOnce();
+    expect(directBack).not.toHaveBeenCalled();
+  });
+
+  it.each(["{Enter}", " "])("confirms keyboard activation of the logo with %s", async key => {
+    const user = userEvent.setup();
+    const onConfirmHome = vi.fn();
+    const directBack = vi.fn();
+    render(
+      <AppVentaHomeEscapeNavigation locale="es" onConfirmHome={onConfirmHome}>
+        <button type="button" className="report-brand-back" onClick={directBack}>Logo</button>
+      </AppVentaHomeEscapeNavigation>,
+    );
+    screen.getByRole("button", { name: "Logo" }).focus();
+    await user.keyboard(key);
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    expect(onConfirmHome).not.toHaveBeenCalled();
+    expect(directBack).not.toHaveBeenCalled();
+  });
+
+  it.each(["blocked", "disabled", "dialog", "dropdown"])("blocks logo navigation with %s", state => {
+    const onConfirmHome = vi.fn();
+    const directBack = vi.fn();
+    render(
+      <AppVentaHomeEscapeNavigation locale="es" onConfirmHome={onConfirmHome} navigationBlocked={state === "blocked"}>
+        <button type="button" className="report-brand-back" disabled={state === "disabled"} onClick={directBack}>Logo</button>
+        {state === "dialog" && <section role="dialog" aria-modal="true">Operación</section>}
+        {state === "dropdown" && <button type="button" aria-expanded="true">Menú</button>}
+      </AppVentaHomeEscapeNavigation>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Logo" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(onConfirmHome).not.toHaveBeenCalled();
+    expect(directBack).not.toHaveBeenCalled();
+  });
+
+  it("leaves explicit back buttons and screens outside the APP VENTA guard unchanged", () => {
+    const onBack = vi.fn();
+    const { unmount } = render(
+      <AppVentaHomeEscapeNavigation locale="es" onConfirmHome={vi.fn()}>
+        <button type="button" className="report-back" onClick={onBack}>Volver</button>
+      </AppVentaHomeEscapeNavigation>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Volver" }));
+    expect(onBack).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    unmount();
+    render(<button type="button" className="report-brand-back" onClick={onBack}>Logo de Gestión</button>);
+    fireEvent.click(screen.getByRole("button", { name: "Logo de Gestión" }));
+    expect(onBack).toHaveBeenCalledTimes(2);
+  });
+
   it("silently blocks Escape until navigation is allowed again", () => {
     const onConfirmHome = vi.fn();
     const view = (navigationBlocked: boolean) => (

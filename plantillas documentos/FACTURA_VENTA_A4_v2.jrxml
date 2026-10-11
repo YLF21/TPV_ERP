@@ -54,6 +54,9 @@
 		<description><![CDATA[unitPriceNet]]></description>
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="unitPriceNet"/>
 	</field>
+	<field name="unitPriceSale" class="java.math.BigDecimal">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="unitPriceSale"/>
+	</field>
 	<field name="discountPercent" class="java.math.BigDecimal">
 		<description><![CDATA[discountPercent]]></description>
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="discountPercent"/>
@@ -345,8 +348,8 @@
 				<pen lineWidth="0.75" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="1af28989-b031-43ce-bcac-50a5d5547910" x="395" y="0" width="50" height="20" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
-			<text><![CDATA[Precio neto]]></text>
+		<element kind="textField" uuid="1af28989-b031-43ce-bcac-50a5d5547910" x="395" y="0" width="50" height="20" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA["IGIC_MINORISTA".equals($F{fiscalProfile}) ? "Precio" : "Precio neto"]]></expression>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
 			<property name="com.jaspersoft.studio.unit.width" value="px"/>
 			<box leftPadding="3" rightPadding="2">
@@ -407,7 +410,7 @@
 				</box>
 			</element>
 			<element kind="textField" uuid="7fb467f7-0920-49ab-a4cb-0a573deb0102" x="395" y="0" width="50" height="24" fontName="SansSerif" fontSize="8.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
-				<expression><![CDATA[$F{unitPriceNet}]]></expression>
+				<expression><![CDATA["IGIC_MINORISTA".equals($F{fiscalProfile}) ? $F{unitPriceSale} : $F{unitPriceNet}]]></expression>
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<box leftPadding="3" rightPadding="2">
 					<bottomPen lineWidth="0.25" lineStyle="Solid"/>
@@ -550,15 +553,19 @@
 			<text><![CDATA[RESUMEN ECONÓMICO]]></text>
 		</element>
 		<element kind="staticText" uuid="118be083-6c79-4875-804e-a66d978021bf" x="315" y="20" width="145" height="14" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<text><![CDATA[Importe bruto]]></text>
 		</element>
 		<element kind="textField" uuid="a7896c46-39ac-4330-8ddc-817320cf13a7" x="460" y="20" width="95" height="14" fontName="SansSerif" fontSize="8.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<expression><![CDATA[$F{grossAmount}]]></expression>
 		</element>
 		<element kind="staticText" uuid="25336817-d098-46a2-a1d5-7dc36256fa26" x="315" y="34" width="145" height="14" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<text><![CDATA[Descuentos]]></text>
 		</element>
 		<element kind="textField" uuid="0a99df63-80cf-4bd9-95fc-b1cc7591ab22" x="460" y="34" width="95" height="14" fontName="SansSerif" fontSize="8.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<expression><![CDATA[$F{discountTotal}]]></expression>
 		</element>
 				<element kind="staticText" uuid="73000000-0000-4000-8000-000000000001" x="315" y="48" width="145" height="14" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
@@ -570,9 +577,11 @@
 			<expression><![CDATA[$F{memberBalanceTotal}.negate()]]></expression>
 		</element>
 		<element kind="staticText" uuid="793cfb3d-2e1d-4a97-af8b-e2a76ca55efc" x="315" y="62" width="145" height="14" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<text><![CDATA[Base imponible]]></text>
 		</element>
 		<element kind="textField" uuid="c71dd227-077f-470d-9010-bb37eb043d64" x="460" y="62" width="95" height="14" fontName="SansSerif" fontSize="8.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<expression><![CDATA[$F{taxableBaseTotal}]]></expression>
 		</element>
 		<element kind="staticText" uuid="9dcf80eb-82f9-4589-bd0d-0e9cbf5bc647" x="315" y="76" width="145" height="14" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
@@ -599,7 +608,7 @@
 		</element>
 		<element kind="staticText" uuid="7d46fc51-b1e7-4d50-841c-d512c021a59b" x="315" y="118" width="240" height="14" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
 			<printWhenExpression><![CDATA["IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
-			<text><![CDATA[Comerciante minorista]]></text>
+			<text><![CDATA[COMERCIANTE MINORISTA]]></text>
 		</element>
 		<element kind="staticText" uuid="5477ef5b-cd3e-4b9a-8260-b2a2cf4b43c0" positionType="Float" x="0" y="155" width="555" height="16" fontName="SansSerif" fontSize="9.0" bold="true" vTextAlign="Middle">
 			<text><![CDATA[Observaciones]]></text>

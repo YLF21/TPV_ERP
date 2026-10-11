@@ -28,6 +28,10 @@
     1 AS dummy,
     d.cliente_id IS NOT NULL AS tiene_cliente,
     EXISTS (SELECT 1 FROM documento_pago dp WHERE dp.documento_id = d.id) AS tiene_pago,
+    NOT COALESCE(d.perfil_fiscal_impresion_ticket = 'IGIC_MINORISTA', FALSE)
+        OR EXISTS (SELECT 1 FROM documento_linea dl WHERE dl.documento_id = d.id
+                   AND dl.regimen_impuesto <> 'IGIC' AND dl.porcentaje_impuesto IS NOT NULL)
+        AS mostrar_bloque_impuestos,
     compensacion.numero AS numero_devolucion,
     original.numero AS numero_original
 FROM documento d
@@ -67,6 +71,7 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
 		<property name="com.jaspersoft.studio.field.tree.path" value="documento"/>
 	</field>
 	<field name="numero_devolucion" class="java.lang.String"/>
+	<field name="mostrar_bloque_impuestos" class="java.lang.Boolean"/>
 	<field name="numero_original" class="java.lang.String"/>
 	<background splitType="Stretch"/>
 	<title height="67">
@@ -139,6 +144,7 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
 			</element>
 		</band>
 		<band height="23" splitType="Stretch">
+			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{mostrar_bloque_impuestos})]]></printWhenExpression>
 			<element kind="subreport" uuid="56d18b81-e961-4c97-aefb-941b09cdca0b" positionType="Float" x="0" y="0" width="204" height="20">
 				<connectionExpression><![CDATA[$P{REPORT_CONNECTION}]]></connectionExpression>
 				<expression><![CDATA[$P{TPV_SUBREPORT_DIR} + "ticket_impuesto"

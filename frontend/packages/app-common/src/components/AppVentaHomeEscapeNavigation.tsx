@@ -37,6 +37,11 @@ export function AppVentaHomeEscapeNavigation({ children, locale, onConfirmHome, 
   }
 
   useEffect(() => {
+    const requestConfirmation = (focusTarget: HTMLElement | null) => {
+      if (confirmationOpen || navigationBlocked || hasOpenAppVentaFunctionalLayer()) return;
+      previouslyFocusedRef.current = focusTarget;
+      setConfirmationOpen(true);
+    };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return;
       if (confirmationOpen) {
@@ -51,14 +56,25 @@ export function AppVentaHomeEscapeNavigation({ children, locale, onConfirmHome, 
       if (event.target instanceof HTMLSelectElement || hasOpenAppVentaFunctionalLayer()) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (navigationBlocked) return;
-      previouslyFocusedRef.current = document.activeElement instanceof HTMLElement
+      requestConfirmation(document.activeElement instanceof HTMLElement
         ? document.activeElement
-        : null;
-      setConfirmationOpen(true);
+        : null);
+    };
+    const handleBrandClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || !(event.target instanceof Element)) return;
+      const brandButton = event.target.closest<HTMLButtonElement>("button.report-brand-back");
+      if (!brandButton || brandButton.disabled) return;
+      // Capture before the shared screen's direct onBack; only APP VENTA mounts this guard.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      requestConfirmation(brandButton);
     };
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("click", handleBrandClick, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("click", handleBrandClick, true);
+    };
   }, [confirmationOpen, navigationBlocked, onConfirmHome]);
 
   useEffect(() => {
