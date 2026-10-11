@@ -290,7 +290,10 @@ class TicketJasperRendererPostgreSqlTest {
             TicketJasperRenderer.RenderedTicket rendered, String profile) throws Exception {
         try (var pdf = Loader.loadPDF(rendered.pdf())) {
             var text = new PDFTextStripper().getText(pdf);
-            assertThat(text).contains("10,00", "Producto TEST", "QR tributario:")
+            // DecimalFormat in the ticket uses the host locale, while the standalone
+            // tax query formats with a comma. Check amounts independently of that separator.
+            assertThat(text).contains("Producto TEST", "QR tributario:")
+                    .containsPattern("\\b10[,.]00\\s*€")
                     .doesNotContain("IGIC incluido", "I.G.I.C. Incluido", "IGIC EXENTO", "null");
             assertThat(text).contains("ATENDIDO POR: ticket-test", "TERMINAL: Caja TEST");
             var operator = textBounds(pdf, "ATENDIDO POR: ticket-test");
@@ -302,14 +305,15 @@ class TicketJasperRendererPostgreSqlTest {
             assertThat(observation.top()).isGreaterThan(terminal.bottom());
             if ("IGIC_MINORISTA".equals(profile)) {
                 assertThat(text).containsOnlyOnce("COMERCIANTE MINORISTA")
-                        .doesNotContain("Impuesto", "Base", "Cuota", "21%", "1,74");
+                        .doesNotContain("Impuesto", "Base", "Cuota", "21%", "1,74", "1.74");
                 var minorista = textBounds(pdf, "COMERCIANTE MINORISTA");
                 assertThat(minorista.top()).isGreaterThan(terminal.bottom());
                 assertThat(observation.top()).isGreaterThan(minorista.bottom())
                         .isLessThan(minorista.bottom() + 15f);
             } else {
-                assertThat(text).contains("Impuesto", "Base", "Cuota", "1,74",
+                assertThat(text).contains("Impuesto", "Base", "Cuota",
                                 "IVA".equals(profile) ? "IVA" : "IGIC")
+                        .containsPattern("\\b1[,.]74\\s*€")
                         .doesNotContain("COMERCIANTE MINORISTA");
             }
         }

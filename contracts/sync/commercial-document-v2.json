@@ -63,6 +63,7 @@
   "terminalOrigenId": "00000000-0000-0000-0000-000000000007",
   "fechaVencimiento": "2026-10-10",
   "settledByOrigin": false,
+  "perfilFiscalImpresionTicket": null,
   "relaciones": [
     {
       "tipo": "COMPENSA",
