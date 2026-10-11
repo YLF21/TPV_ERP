@@ -2,6 +2,15 @@
 
 Monorepo de APP VENTA, APP GESTION y los paquetes compartidos.
 
+## Versiones de esPOS VENTA, GESTION y PDA
+
+Durante las pruebas se utiliza la serie `0.x.x`, actualmente `0.1.0`. Para el
+primer despliegue se pasará a `1.0.0` y a partir de ahí se utilizará `1.x.x`.
+La versión registrada en `package.json` y en los manifiestos de Venta,
+Gestión y PDA debe coincidir con `package-lock.json`. El registro raíz
+determina la versión de ambos instaladores de escritorio; PDA utiliza su
+propio manifiesto. Cada pantalla muestra la versión registrada de su aplicación.
+
 ## Ejecucion local
 
 La forma recomendada en Windows es usar el entorno aislado desde la raiz del

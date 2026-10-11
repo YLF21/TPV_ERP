@@ -1,6 +1,6 @@
 {
   "name": "tpv-erp-frontend",
-  "version": "4.2.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "workspaces": ["apps/*", "packages/*"],

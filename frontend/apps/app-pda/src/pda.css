@@ -876,7 +876,7 @@ select {
   }
   .pda-classic-login-shell .login-screen > .report-footer-context {
     position: fixed !important; right: 0 !important; bottom: 0 !important; left: 0 !important; z-index: 4;
-    min-height: 46px; display: grid; grid-template-columns: minmax(0,1.35fr) minmax(0,.8fr) minmax(0,1fr);
+    min-height: 46px; display: grid; grid-template-columns: minmax(0,1.35fr) auto minmax(0,.8fr) minmax(0,1fr);
     align-items: center; gap: 0; padding: 0 10px; box-sizing: border-box;
     border-top: 1px solid #c4d0dc; background: #fff; color: #425b73;
     box-shadow: 0 -2px 8px rgba(31,55,86,.08);

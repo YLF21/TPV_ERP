@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { evaluateCompatibility, InvalidCompatibilityContractError, loadBackendCompatibility, type BackendCompatibility } from "./compatibility";
 import { afterEach, vi } from "vitest";
+import { version as desktopVersion } from "../../../../package.json";
+import { version as pdaVersion } from "../../../../apps/app-pda/package.json";
 
 const compatible: BackendCompatibility = {
   backendVersion: "2.0.0",
@@ -13,6 +15,15 @@ const compatible: BackendCompatibility = {
 
 describe("backend compatibility", () => {
   afterEach(() => vi.unstubAllGlobals());
+  it.each(["venta", "gestion", "pda"])("negotiates with the registered version of %s", async (appKind) => {
+    vi.stubGlobal("__TPV_APP_KIND__", appKind);
+    vi.resetModules();
+    const { evaluateCompatibility: evaluateCurrentApp } = await import("./compatibility");
+    expect(evaluateCurrentApp(compatible)).toMatchObject({
+      compatible: true,
+      frontendVersion: appKind === "pda" ? pdaVersion : desktopVersion
+    });
+  });
   it("accepts a backend with the required contract", () => {
     expect(evaluateCompatibility(compatible, "1.0.0")).toMatchObject({ compatible: true });
   });

@@ -7,10 +7,11 @@ import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.security.domain.OperationalSessionContext;
 import com.tpverp.backend.shared.api.CorrelationIdFilter;
 import java.util.List;
+import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mock.env.MockEnvironment;
+import org.springframework.boot.info.BuildProperties;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -18,7 +19,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 class ApplicationFailureRecorderTest {
     @Test
     void capturesOnlyBoundedCodeIdentifiersAndKeepsTraceWithoutMessagesOrFilenames() {
-        var recorder = recorder("4.2.0");
+        var recorder = recorder("0.1.0");
         var request = new MockHttpServletRequest();
         UUID trace = UUID.randomUUID();
         request.setAttribute(CorrelationIdFilter.ATTRIBUTE, trace.toString());
@@ -26,6 +27,7 @@ class ApplicationFailureRecorderTest {
         cause.setStackTrace(new StackTraceElement[]{new StackTraceElement("com.tpverp.backend.document.SaleService", "save", "private-name.java", 42)});
         var evidence = recorder.evidence(ApplicationFailureRecorder.Module.SALES, new RuntimeException("secret wrapper", cause), request);
         assertThat(evidence.traceId()).isEqualTo(trace.toString());
+        assertThat(evidence.appVersion()).isEqualTo("0.1.0");
         assertThat(evidence.exceptionType()).isEqualTo("java.lang.NullPointerException");
         assertThat(evidence.errorLocation()).isEqualTo("com.tpverp.backend.document.SaleService.save:42");
         assertThat(evidence.toString()).doesNotContain("secret", "private", "SELECT", ".java");
@@ -48,7 +50,7 @@ class ApplicationFailureRecorderTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         LicenseRepository licenses = mock(LicenseRepository.class);
         PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
-        var recorder = new ApplicationFailureRecorder(jdbc, licenses, transactions, new MockEnvironment(), mock(com.tpverp.backend.sync.SyncOutboxService.class));
+        var recorder = new ApplicationFailureRecorder(jdbc, licenses, transactions, new BuildProperties(new Properties()), mock(com.tpverp.backend.sync.SyncOutboxService.class));
         var anonymous = new UsernamePasswordAuthenticationToken("anonymous", "ignored");
         var global = new UsernamePasswordAuthenticationToken("global", "ignored", List.of());
         recorder.record(null, ApplicationFailureRecorder.Module.APPLICATION, new RuntimeException(), null);
@@ -63,7 +65,9 @@ class ApplicationFailureRecorderTest {
     }
 
     private ApplicationFailureRecorder recorder(String version) {
+        var properties = new Properties();
+        properties.setProperty("version", version);
         return new ApplicationFailureRecorder(mock(JdbcTemplate.class), mock(LicenseRepository.class),
-                mock(PlatformTransactionManager.class), new MockEnvironment().withProperty("tpv.verifactu.system-version", version), mock(com.tpverp.backend.sync.SyncOutboxService.class));
+                mock(PlatformTransactionManager.class), new BuildProperties(properties), mock(com.tpverp.backend.sync.SyncOutboxService.class));
     }
 }

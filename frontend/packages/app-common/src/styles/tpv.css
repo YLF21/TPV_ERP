@@ -1887,6 +1887,7 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 18px;
   min-height: 28px;
   padding: 0 12px;
   border-top: 1px solid #b8c2cc;
@@ -2574,7 +2575,8 @@ textarea {
   font-weight: 800;
 }
 
-.report-footer-context span {
+.report-footer-context span,
+.app-store-footer > span {
   display: inline-flex;
   align-items: center;
   min-height: 22px;
@@ -2582,7 +2584,8 @@ textarea {
   border-right: 1px solid #d7e0ea;
 }
 
-.report-footer-context span:last-child {
+.report-footer-context span:last-child,
+.app-store-footer > span:last-child {
   border-right: 0;
 }
 

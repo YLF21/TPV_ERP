@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
+import { version as applicationVersion } from "../../../../package.json";
 import type { LocaleCode, TerminalContext } from "../types";
 import { AppFrame } from "./AppFrame";
 import { CONNECTION_REFRESH_MS } from "./useScreenConnectionStatus";
@@ -81,6 +82,8 @@ describe("AppFrame SaaS connectivity", () => {
     expect(within(titlebar).queryByText("Caja Principal")).not.toBeInTheDocument();
     expect(within(titlebar).queryByText("Tienda Principal")).not.toBeInTheDocument();
     expect(screen.getByText("Tienda Principal · 3500002")).toHaveAttribute("title", "Código de tienda en SaaS");
+    expect(screen.getByRole("contentinfo")).toHaveTextContent("Terminal: Caja Principal");
+    expect(screen.getByRole("contentinfo")).toHaveTextContent(`v${applicationVersion}`);
     await act(async () => { view.rerender(frame("en", "Contenido", vi.fn(), { ...context, terminalName: "", storeInternalCode: "DEMO001" })); });
     expect(within(titlebar).queryByText("001")).not.toBeInTheDocument();
     expect(screen.queryByText(/Tienda Principal ·/)).not.toBeInTheDocument();

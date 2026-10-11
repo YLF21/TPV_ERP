@@ -2,6 +2,11 @@
 
 Backend central para licencias, vinculacion de instalaciones y eventos sincronizados desde tiendas.
 
+La version registrada del backend SaaS se define en `pom.xml`. La serie `0.x.x`
+corresponde a pruebas; la serie `1.x.x` comienza con el despliegue. Maven incluye
+esta version en `META-INF/build-info.properties` del artefacto. El endpoint
+`/actuator/info` ya figura en la exposicion interna de Actuator.
+
 La organización del panel, los accesos multitienda, los códigos internos y la supervisión se describen en [SaaS multitienda y supervisión](../docs/saas-multitienda-supervision-2026-09-20.md).
 
 La captura, el contrato v1/v2, la consulta de fallos de aplicación y el orden de actualización V70/V252 se describen en [Recepción y consulta de fallos: fase 1](../docs/saas-failure-reporting-phase1-2026-09-22.md).

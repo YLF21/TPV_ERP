@@ -222,6 +222,13 @@
   border-radius: 3px;
 }
 
+.login-page .saas-login-version {
+  margin: 12px 0 0;
+  color: #516175;
+  font-size: 12px;
+  text-align: center;
+}
+
 @media (max-width: 820px) {
   .login-page {
     min-width: 320px;

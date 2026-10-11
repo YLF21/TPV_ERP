@@ -4,6 +4,7 @@ export const es: Record<string, string> = {
   internalAccessOnly: "Este portal es exclusivo para el personal interno. Las cuentas de tiendas no tienen acceso.",
   centralAdministration: "Administración central",
   internalPortal: "Portal interno del SaaS",
+  saasVersion: "Versión SaaS",
   mainNavigation: "Navegacion principal",
   language: "Idioma",
   dashboard: "Resumen",

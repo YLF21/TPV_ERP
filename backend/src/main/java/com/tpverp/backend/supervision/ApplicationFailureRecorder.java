@@ -13,7 +13,7 @@ import java.util.HexFormat;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.env.Environment;
+import org.springframework.boot.info.BuildProperties;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -32,14 +32,14 @@ public class ApplicationFailureRecorder {
     private final SyncOutboxService outbox;
 
     public ApplicationFailureRecorder(JdbcTemplate jdbc, LicenseRepository licenses,
-            PlatformTransactionManager transactionManager, Environment environment, SyncOutboxService outbox) {
+            PlatformTransactionManager transactionManager, BuildProperties buildProperties, SyncOutboxService outbox) {
         this.jdbc = jdbc;
         this.outbox = outbox;
         this.licenses = licenses;
         transaction = new TransactionTemplate(transactionManager);
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         transaction.setTimeout(3);
-        appVersion = safe(environment.getProperty("tpv.verifactu.system-version"), "[A-Za-z0-9][A-Za-z0-9._+\\-]{0,79}");
+        appVersion = safe(buildProperties.getVersion(), "[A-Za-z0-9][A-Za-z0-9._+\\-]{0,79}");
     }
 
     public void record(Authentication authentication, Module module, Throwable failure, HttpServletRequest request) {

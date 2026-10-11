@@ -1,6 +1,6 @@
 const path = require("node:path");
 
-const DESKTOP_APP_VERSION = "4.2.0";
+const { version: DESKTOP_APP_VERSION } = require("../package.json");
 
 const APP_CONFIGS = Object.freeze({
   venta: Object.freeze({

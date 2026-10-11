@@ -29,6 +29,7 @@ import { OutboxRecoveryView } from "../features/outbox/OutboxRecoveryView";
 import { ReportsView } from "../features/reports/ReportsView";
 import { AuditView } from "../features/audit/AuditView";
 import { setActiveLocale } from "../i18n";
+import { appVersion } from "../lib/appVersion";
 
 import type { SupportTarget } from "../features/support/support-labels";
 
@@ -323,7 +324,7 @@ export default function App() {
       <header className="app-system-bar">
         <div className="system-product">
           <strong>esPOS SAAS</strong>
-          <span>{l("shellDescription")}</span>
+          <span>{l("shellDescription")} · {i18n.t("saasVersion")} {appVersion}</span>
         </div>
         <div className="system-session">
           <strong>{session?.username ?? credentials.username}</strong>

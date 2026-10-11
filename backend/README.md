@@ -2,6 +2,19 @@
 
 Backend local modular construido con Java 25, Spring Boot 4.0.6 y PostgreSQL 18.
 
+## Version del producto
+
+`pom.xml` es la fuente de la version del backend: `0.x.x` identifica pruebas y
+`1.x.x` inicia las versiones para despliegue. Maven genera `META-INF/build-info.properties`
+para publicar esa misma version en `/api/v1/system/compatibility`, `/actuator/info`
+y los nuevos diagnosticos de errores enviados a supervision.
+
+La identidad fiscal de `META-INF/tpv-erp-release.properties` y del perfil
+`production-release` conserva su propio contrato inmutable. Cambiar la version
+del producto no modifica registros fiscales, migraciones ni declaraciones.
+El empaquetador de produccion sigue exigiendo que la version del producto y la
+release fiscal aprobada coincidan.
+
 ## Preparacion local
 
 1. Crear las bases y usuarios descritos en `scripts/create-databases.sql`.

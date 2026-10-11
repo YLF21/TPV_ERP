@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.info.BuildProperties;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,10 +31,10 @@ public class SystemCompatibilityController {
     private final String minimumFrontendVersion;
 
     public SystemCompatibilityController(
-            @Value("${tpv.compatibility.backend-version:0.0.1-SNAPSHOT}") String backendVersion,
+            BuildProperties buildProperties,
             @Value("${tpv.compatibility.api-version:1}") String apiVersion,
             @Value("${tpv.compatibility.minimum-frontend-version:0.0.1}") String minimumFrontendVersion) {
-        this.backendVersion = backendVersion;
+        this.backendVersion = buildProperties.getVersion();
         this.apiVersion = apiVersion;
         this.minimumFrontendVersion = minimumFrontendVersion;
     }

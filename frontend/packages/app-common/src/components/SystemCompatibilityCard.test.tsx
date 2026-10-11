@@ -3,6 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SystemCompatibilityCard } from "./SystemCompatibilityCard";
+import { version as applicationVersion } from "../../../../package.json";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -18,6 +19,6 @@ describe("SystemCompatibilityCard", () => {
 
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Compatible"));
     expect(screen.getByText("2.4.0")).toBeVisible();
-    expect(screen.getByText("0.0.1")).toBeVisible();
+    expect(screen.getByText(applicationVersion)).toBeVisible();
   });
 });

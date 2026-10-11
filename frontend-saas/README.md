@@ -2,6 +2,11 @@
 
 Aplicación de administración de empresas, tiendas, licencias e incidencias.
 
+La versión registrada en `package.json` se muestra en los portales interno y de
+tiendas. Durante las pruebas se utiliza `0.x.x`, actualmente `0.1.0`; el primer
+despliegue iniciará la serie `1.x.x` con `1.0.0`. El registro debe coincidir con
+la versión raíz de `package-lock.json`.
+
 ```sh
 npm ci
 npm run dev

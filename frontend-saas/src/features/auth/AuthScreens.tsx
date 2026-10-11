@@ -5,6 +5,7 @@ import type { LoginCredentials } from "../../lib/types";
 import { Notice } from "../../shared/types";
 import { useI18n, Language } from "../../i18n/index";
 import { LanguageSelector } from "../../shared/ui";
+import { appVersion } from "../../lib/appVersion";
 
 export function LoginScreen({
   onLogin,
@@ -73,6 +74,7 @@ export function LoginScreen({
           <button className="primary-button" type="submit" disabled={loading}>{mode === "login" ? t("enter") : mode === "request" ? t("recoveryRequest") : t("recoveryConfirm")}</button>
         </form>
         <p><a href="./tienda.html">{t("clientPortal")} →</a></p>
+        <p className="saas-login-version">{t("saasVersion")} {appVersion}</p>
       </section>
     </main>
   );

@@ -7,6 +7,7 @@ import { LanguageSelector } from "../shared/ui";
 import { errorMessage } from "../shared/lib";
 import { TenantWorkspace } from "../features/tenant/TenantWorkspace";
 import { RequiredPasswordChangeScreen } from "../features/auth/AuthScreens";
+import { appVersion } from "../lib/appVersion";
 
 // Independent entry point: no administrative session or navigation is mounted here.
 export function TenantApp() {
@@ -79,6 +80,7 @@ export function TenantApp() {
             <label>{i18n.t("password")}<input type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required disabled={busy} /></label>
             <button className="primary-button" type="submit" disabled={busy}>{i18n.t("enter")}</button>
           </form>
+          <p className="saas-login-version">{i18n.t("saasVersion")} {appVersion}</p>
         </section>
       </main>}
   </I18nContext.Provider>;
