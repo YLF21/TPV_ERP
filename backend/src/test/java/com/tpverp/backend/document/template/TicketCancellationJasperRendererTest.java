@@ -43,7 +43,7 @@ class TicketCancellationJasperRendererTest {
                         "credito_devolucion", new BigDecimal("25.50"), "DEV-123")));
 
         var rendered = new TicketCancellationJasperRenderer(
-                new SafeJrxmlCompiler()).render(receipt, store);
+                new SafeJrxmlCompiler()).render(receipt, store, "TPV CAJA 1");
 
         assertThat(rendered.pdf()).startsWith("%PDF".getBytes());
         try (var document = Loader.loadPDF(rendered.pdf())) {
@@ -64,7 +64,9 @@ class TicketCancellationJasperRendererTest {
                             "CREDITO DEVOLUCION",
                             "DEV-123",
                             "TOTAL ANULADO",
-                            "25.50 EUR");
+                            "25.50 EUR",
+                            "ATENDIDO POR: CAJERO",
+                            "TERMINAL: TPV CAJA 1");
         }
         var raster = ImageIO.read(new ByteArrayInputStream(rendered.png()));
         assertThat(raster).isNotNull();

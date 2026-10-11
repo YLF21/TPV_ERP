@@ -3054,7 +3054,7 @@ export function StockScreen({
   }, [detailRow, selectedView, session.accessToken, stockExportBusy, managementProductActions]);
 
   useEffect(() => {
-    if (app !== "venta" || !canManageProducts || partyDirectory || selectedView === "stock.bulkEdit" || productCreateOpen) return;
+    if (app !== "venta" || !canManageProducts || partyDirectory || selectedView === "stock.bulkEdit" || selectedView === "stock.promotions" || productCreateOpen) return;
     function handleAddProductShortcut(event: globalThis.KeyboardEvent) {
       if (event.defaultPrevented || event.key !== STOCK_CREATE_PRODUCT_SHORTCUT || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
       if (document.querySelector('[aria-modal="true"]')) return;
@@ -7629,7 +7629,7 @@ export function StockScreen({
                 {canManageProducts && <button type="button" aria-keyshortcuts="F7" disabled={!selectedStockRow} onClick={() => openStockDetail(selectedStockRow, "edit")}><ShortcutButtonLabel label={t("product.edit.title")} shortcut={t("safeManagement.shortcut.modify")} /></button>}
                 {canManageProducts && <button type="button" aria-keyshortcuts="F8" onClick={() => { setEditingProduct(null); setProductCreateOpen(true); }}><ShortcutButtonLabel label={t("product.create.button")} shortcut={t("safeManagement.shortcut.add")} /></button>}
                 {session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!selectedStockRow || selectedStockRow.code === "0"} onClick={() => openProductRetirement(selectedStockRow)}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut={t("safeManagement.shortcut.retire")} /></button>}
-              </div> : canManageProducts && (
+              </div> : canManageProducts && !(app === "venta" && selectedView === "stock.promotions") && (
                 <button
                   type="button"
                   className="stock-add-product-button"

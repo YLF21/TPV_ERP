@@ -1,6 +1,7 @@
 package com.tpverp.backend.document.template;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -36,6 +37,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -171,6 +173,154 @@ class TicketJasperRendererPostgreSqlTest {
         }
     }
 
+    @ParameterizedTest(name = "perfil fiscal {0}")
+    @EnumSource(TicketPrintStyle.class)
+    void rendersOnlyFrozenIgicMinoristaWithoutTaxBreakdown(TicketPrintStyle style) throws Exception {
+        var renderer = integratedRenderer(style);
+        var operatorPositions = new java.util.HashMap<String, Float>();
+        for (String profile : new String[] {"IGIC_MINORISTA", "IGIC", "IVA", "LEGACY"}) {
+            clearDatabase();
+            var document = insertTaxPresentationFixture(profile);
+            var rendered = renderer.renderForPrint(document);
+            assertTaxPresentation(rendered, profile);
+            try (var pdf = Loader.loadPDF(rendered.pdf())) {
+                var operator = textBounds(pdf, "ATENDIDO POR: ticket-test");
+                operatorPositions.put(profile, operator.top());
+                if ("IGIC_MINORISTA".equals(profile)) {
+                    assertThat(operator.top() - textBounds(pdf, "TOTAL A PAGAR").bottom())
+                            .as("The hidden tax section must not reserve a blank block")
+                            .isLessThan(25f);
+                }
+            }
+            writePreview("minorista-" + profile.toLowerCase(java.util.Locale.ROOT)
+                    + "-" + style.name().toLowerCase(java.util.Locale.ROOT), rendered);
+            assertThat(jdbc.queryForObject("select total from documento where id = ?",
+                    BigDecimal.class, document.getId())).isEqualByComparingTo("10.00");
+            assertThat(jdbc.queryForObject("select impuesto from documento_linea where documento_id = ?",
+                    BigDecimal.class, document.getId())).isEqualByComparingTo("1.74");
+        }
+        assertThat(operatorPositions.get("IGIC") - operatorPositions.get("IGIC_MINORISTA"))
+                .as("Remove the whole tax section, not only its visible text")
+                .isGreaterThan(30f);
+        assertThat(operatorPositions.get("IVA")).isEqualTo(operatorPositions.get("IGIC"));
+        assertThat(operatorPositions.get("LEGACY")).isEqualTo(operatorPositions.get("IGIC"));
+    }
+
+    @ParameterizedTest(name = "plantilla editable {0}")
+    @ValueSource(strings = {"IGIC_MINORISTA", "IGIC", "IVA", "LEGACY"})
+    void editableStandaloneTicketUsesTheSameFrozenTaxPresentation(String profile) throws Exception {
+        var document = insertTaxPresentationFixture(profile);
+        var rendered = renderStandalone(document);
+        assertTaxPresentation(rendered, profile);
+        writePreview("minorista-editable-" + profile.toLowerCase(java.util.Locale.ROOT), rendered);
+    }
+
+    @Test
+    void ticketPrintProfileConstraintRejectsUnknownProfilesAndOtherDocumentTypes() throws Exception {
+        var document = insertFixture().document();
+        assertThat(jdbc.queryForObject(
+                "select perfil_fiscal_impresion_ticket from documento where id = ?",
+                String.class, document.getId())).isNull();
+        assertThatThrownBy(() -> jdbc.update(
+                "update documento set perfil_fiscal_impresion_ticket = 'MINORISTA' where id = ?",
+                document.getId())).hasMessageContaining("documento_ticket_print_fiscal_profile_check");
+        assertThatThrownBy(() -> jdbc.update(
+                "update documento set tipo = 'FACTURA_VENTA', "
+                        + "perfil_fiscal_impresion_ticket = 'IGIC_MINORISTA' where id = ?",
+                document.getId())).hasMessageContaining("documento_ticket_print_fiscal_profile_check");
+    }
+
+    @Test
+    void mixedTicketKeepsTheOtherTaxRegimeAndItsHeader() throws Exception {
+        var document = insertTaxPresentationFixture("IGIC_MINORISTA");
+        jdbc.update("""
+                insert into documento_linea (
+                    id, documento_id, producto_id, posicion, cantidad, codigo, nombre, tarifa,
+                    precio_unitario, descuento, impuestos_incluidos, regimen_impuesto,
+                    porcentaje_impuesto, base, impuesto, total, tipo_linea)
+                select gen_random_uuid(), documento_id, producto_id, 2, cantidad, 'P-2',
+                    'Producto IVA', tarifa, precio_unitario, descuento, impuestos_incluidos,
+                    'IVA', porcentaje_impuesto, base, impuesto, total, tipo_linea
+                from documento_linea where documento_id = ?
+                """, document.getId());
+        var outputs = new java.util.ArrayList<TicketJasperRenderer.RenderedTicket>();
+        for (var style : TicketPrintStyle.values()) {
+            outputs.add(integratedRenderer(style).renderForPrint(document));
+        }
+        outputs.add(renderStandalone(document));
+        for (var rendered : outputs) {
+            try (var pdf = Loader.loadPDF(rendered.pdf())) {
+                assertThat(new PDFTextStripper().getText(pdf))
+                        .contains("COMERCIANTE MINORISTA", "Impuesto", "Base", "Cuota", "IVA")
+                        .doesNotContain("IGIC", "null");
+            }
+        }
+    }
+
+    private CommercialDocument insertTaxPresentationFixture(String profile) throws Exception {
+        var document = insertFixture().document();
+        String regime = "IVA".equals(profile) ? "IVA" : "IGIC";
+        jdbc.update("update documento set perfil_fiscal_impresion_ticket = ?, "
+                        + "comentario_interno = 'comerciante minorista' where id = ?",
+                "LEGACY".equals(profile) ? null : profile, document.getId());
+        jdbc.update("update documento_linea set regimen_impuesto = ? where documento_id = ?",
+                regime, document.getId());
+        // A current licence may disagree with the frozen document. Neither it nor a free comment
+        // can reclassify the historical printout, including legacy tickets without a snapshot.
+        jdbc.update("""
+                insert into licencia (
+                    id, tienda_id, instalacion_id, referencia, valida_desde, valida_hasta,
+                    max_windows, max_pda, tax_id, taxpayer_type, regimen_impuesto,
+                    perfil_comercial, blob_original, hash, format_version, importada_en,
+                    ultima_validacion_saas, import_result, activa)
+                select ?, d.tienda_id, cf.instalacion_id, ?, ?, ?, 1, 0, 'B12345674',
+                    'SOCIEDAD', ?, ?, 'test', 'hash', 3, ?, ?, 'ACEPTADA', true
+                from documento d
+                join tienda t on t.id = d.tienda_id
+                join cadena_fiscal cf on cf.empresa_id = t.empresa_id
+                where d.id = ?
+                """, UUID.randomUUID(), UUID.randomUUID().toString().replace("-", ""),
+                timestamp(NOW.minusSeconds(60)), timestamp(NOW.plusSeconds(86400)), regime,
+                "IGIC_MINORISTA".equals(profile) ? "MAYORISTA" : "MINORISTA",
+                timestamp(NOW.plusSeconds(1)), timestamp(NOW.plusSeconds(1)), document.getId());
+        return document;
+    }
+
+    private static void assertTaxPresentation(
+            TicketJasperRenderer.RenderedTicket rendered, String profile) throws Exception {
+        try (var pdf = Loader.loadPDF(rendered.pdf())) {
+            var text = new PDFTextStripper().getText(pdf);
+            // DecimalFormat in the ticket uses the host locale, while the standalone
+            // tax query formats with a comma. Check amounts independently of that separator.
+            assertThat(text).contains("Producto TEST", "QR tributario:")
+                    .containsPattern("\\b10[,.]00\\s*€")
+                    .doesNotContain("IGIC incluido", "I.G.I.C. Incluido", "IGIC EXENTO", "null");
+            assertThat(text).contains("ATENDIDO POR: ticket-test", "TERMINAL: Caja TEST");
+            var operator = textBounds(pdf, "ATENDIDO POR: ticket-test");
+            var terminal = textBounds(pdf, "TERMINAL: Caja TEST");
+            var observation = textBounds(pdf, "OBS-LINE-1");
+            assertThat(operator.left()).isLessThan(20f);
+            assertThat(terminal.left()).isEqualTo(operator.left());
+            assertThat(terminal.top()).isGreaterThan(operator.bottom());
+            assertThat(observation.top()).isGreaterThan(terminal.bottom());
+            if ("IGIC_MINORISTA".equals(profile)) {
+                assertThat(text).containsOnlyOnce("COMERCIANTE MINORISTA")
+                        .doesNotContain("Impuesto", "Base", "Cuota", "21%", "1,74", "1.74");
+                var minorista = textBounds(pdf, "COMERCIANTE MINORISTA");
+                assertThat(minorista.top()).isGreaterThan(terminal.bottom());
+                assertThat(observation.top()).isGreaterThan(minorista.bottom())
+                        .isLessThan(minorista.bottom() + 15f);
+            } else {
+                assertThat(text).contains("Impuesto", "Base", "Cuota",
+                                "IVA".equals(profile) ? "IVA" : "IGIC")
+                        .containsPattern("\\b1[,.]74\\s*€")
+                        .doesNotContain("COMERCIANTE MINORISTA");
+            }
+        }
+        assertThat(decodeQr(ImageIO.read(new java.io.ByteArrayInputStream(rendered.png()))))
+                .isEqualTo(QR_URL);
+    }
+
     private TicketJasperRenderer integratedRenderer(TicketPrintStyle style) {
         var storage = new DocumentTemplateArtifactStorage(temporaryDirectory);
         var bundle = new BuiltInTicketJasperBundle(new TicketJrxmlBundleCompiler(), storage);
@@ -218,11 +368,15 @@ class TicketJasperRendererPostgreSqlTest {
     private static void writePreview(
             TicketPrintStyle style, TicketJasperRenderer.RenderedTicket rendered)
             throws Exception {
+        writePreview("cambio-" + style.name().toLowerCase(java.util.Locale.ROOT), rendered);
+    }
+
+    private static void writePreview(
+            String filename, TicketJasperRenderer.RenderedTicket rendered) throws Exception {
         var configuredDirectory = System.getProperty("tpv.test.printPreviewDirectory");
         if (configuredDirectory == null || configuredDirectory.isBlank()) return;
         var directory = java.nio.file.Path.of(configuredDirectory);
         java.nio.file.Files.createDirectories(directory);
-        var filename = "cambio-" + style.name().toLowerCase(java.util.Locale.ROOT);
         java.nio.file.Files.write(directory.resolve(filename + ".pdf"), rendered.pdf());
         java.nio.file.Files.write(directory.resolve(filename + ".png"), rendered.png());
     }
@@ -230,14 +384,31 @@ class TicketJasperRendererPostgreSqlTest {
     @Test
     void rendersAndDecodesEditableStandaloneTicketWithFrozenIssuer() throws Exception {
         var fixture = insertFixture();
+        var rendered = renderStandalone(fixture.document());
+        assertThat(decodeQr(ImageIO.read(new java.io.ByteArrayInputStream(rendered.png()))))
+                .isEqualTo(QR_URL);
+        try (var loaded = Loader.loadPDF(rendered.pdf())) {
+            assertThat(new PDFTextStripper().getText(loaded))
+                    .contains("Obligado congelado SL", "B12345674",
+                            "Calle congelada 7", "QR tributario:",
+                            "Factura verificable", "ENTORNO DE PRUEBAS", "OBS-LINE-4")
+                    .doesNotContain("Calle Test 1", "null");
+            var observations = textBounds(loaded, "OBS-LINE-4");
+            var qrPrefix = textBounds(loaded, "QR tributario:");
+            assertThat(qrPrefix.top()).isGreaterThan(observations.bottom() + 2f);
+        }
+    }
+
+    private TicketJasperRenderer.RenderedTicket renderStandalone(CommercialDocument document)
+            throws Exception {
         byte[] source = java.nio.file.Files.readAllBytes(java.nio.file.Path.of(
                 "..", "plantillas documentos", "ticekt_v1.jrxml"));
         var report = new TicketJrxmlBundleCompiler().compileUpload(Map.of(
                 TicketJrxmlBundleCompiler.MASTER_FILENAME, source))
                 .reports().get(TicketJrxmlBundleCompiler.MASTER_FILENAME);
         var parameters = new java.util.HashMap<String, Object>();
-        parameters.put("TIENDA_ID", fixture.document().getTiendaId().toString());
-        parameters.put("DOCUMENTO_ID", fixture.document().getId().toString());
+        parameters.put("TIENDA_ID", document.getTiendaId().toString());
+        parameters.put("DOCUMENTO_ID", document.getId().toString());
 
         net.sf.jasperreports.engine.JasperPrint print;
         try (var connection = dataSource.getConnection()) {
@@ -248,18 +419,7 @@ class TicketJasperRendererPostgreSqlTest {
         var raster = InvoiceJasperRenderer.ticketRaster(print);
         var pdf = net.sf.jasperreports.engine.JasperExportManager.exportReportToPdf(print);
 
-        assertThat(decodeQr(ImageIO.read(new java.io.ByteArrayInputStream(raster))))
-                .isEqualTo(QR_URL);
-        try (var loaded = Loader.loadPDF(pdf)) {
-            assertThat(new PDFTextStripper().getText(loaded))
-                    .contains("Obligado congelado SL", "B12345674",
-                            "Calle congelada 7", "QR tributario:",
-                            "Factura verificable", "ENTORNO DE PRUEBAS", "OBS-LINE-4")
-                    .doesNotContain("Calle Test 1", "null");
-            var observations = textBounds(loaded, "OBS-LINE-4");
-            var qrPrefix = textBounds(loaded, "QR tributario:");
-            assertThat(qrPrefix.top()).isGreaterThan(observations.bottom() + 2f);
-        }
+        return new TicketJasperRenderer.RenderedTicket(pdf, raster);
     }
 
     private Fixture insertFixture() throws Exception {
@@ -285,6 +445,7 @@ class TicketJasperRendererPostgreSqlTest {
         var storeId = UUID.randomUUID();
         var roleId = UUID.randomUUID();
         var userId = UUID.randomUUID();
+        var terminalId = UUID.randomUUID();
         var warehouseId = UUID.randomUUID();
         var installationId = UUID.randomUUID();
         var chainId = UUID.randomUUID();
@@ -323,6 +484,10 @@ class TicketJasperRendererPostgreSqlTest {
                 values (?, ?, 'TEST', 'ticket-test', 'hash', ?)
                 """, userId, storeId, roleId);
         jdbc.update("""
+                insert into terminal (id, tienda_id, nombre, tipo, credential_hash)
+                values (?, ?, 'Caja TEST', 'TERMINAL_VENTA', 'hash')
+                """, terminalId, storeId);
+        jdbc.update("""
                 insert into almacen (id, tienda_id, nombre, predeterminado)
                 values (?, ?, 'GENERAL', true)
                 """, warehouseId, storeId);
@@ -350,6 +515,8 @@ class TicketJasperRendererPostgreSqlTest {
                 """, document.getId(), storeId, warehouseId, document.getNumero(),
                 document.getFecha(), timestamp(NOW.minusSeconds(30)), timestamp(NOW),
                 userId, userId);
+        jdbc.update("update documento set terminal_origen_id = ? where id = ?",
+                terminalId, document.getId());
         jdbc.update("""
                 insert into documento_linea (
                     id, documento_id, producto_id, posicion, cantidad, codigo, nombre, tarifa,
@@ -423,7 +590,9 @@ class TicketJasperRendererPostgreSqlTest {
                             .map(position -> position.getYDirAdj() + position.getHeightDir())
                             .max(Float::compareTo)
                             .orElseThrow();
-                    matches.add(new TextBounds(top, bottom));
+                    float left = textPositions.stream().map(TextPosition::getXDirAdj)
+                            .min(Float::compareTo).orElseThrow();
+                    matches.add(new TextBounds(top, bottom, left));
                 }
             }
         };
@@ -467,5 +636,5 @@ class TicketJasperRendererPostgreSqlTest {
 
     private record Fixture(CommercialDocument document) {}
 
-    private record TextBounds(float top, float bottom) {}
+    private record TextBounds(float top, float bottom, float left) {}
 }

@@ -16,6 +16,26 @@ class CommercialDocumentTest {
     private static final Instant NOW = Instant.parse("2026-07-16T10:15:30Z");
 
     @Test
+    void ticketPrintProfileIsNullableForLegacyAndImmutableOnceCaptured() {
+        var ticket = documentWithTotal(CommercialDocumentType.TICKET, new BigDecimal("10.00"));
+        assertThat(ticket.getTicketPrintFiscalProfile()).isNull();
+        ticket.captureTicketPrintFiscalProfile(InvoiceFiscalProfile.IGIC_MINORISTA);
+        assertThat(ticket.getTicketPrintFiscalProfile()).isEqualTo(InvoiceFiscalProfile.IGIC_MINORISTA);
+        assertThatThrownBy(() -> ticket.captureTicketPrintFiscalProfile(InvoiceFiscalProfile.IGIC))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("ticket_print_fiscal_profile_is_immutable");
+        assertThat(ticket.getInvoicePrintSnapshot()).isNull();
+        assertThat(ticket.getTotal()).isEqualByComparingTo("10.00");
+    }
+
+    @Test
+    void ticketPrintProfileCannotBeAttachedToAnInvoice() {
+        var invoice = saleInvoice(new BigDecimal("10.00"));
+        invoice.captureTicketPrintFiscalProfile(InvoiceFiscalProfile.IGIC_MINORISTA);
+        assertThat(invoice.getTicketPrintFiscalProfile()).isNull();
+    }
+
+    @Test
     void receivableStateUsesOnlyRealPayments() {
         var document = saleInvoice(new BigDecimal("100.00"));
 

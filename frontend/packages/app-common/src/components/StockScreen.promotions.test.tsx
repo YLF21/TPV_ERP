@@ -75,6 +75,24 @@ afterEach(() => {
 });
 
 describe("StockScreen promotions", () => {
+  it("keeps product creation out of the APP VENTA promotions destination, including F5", async () => {
+    render(<StockScreen {...props} app="venta" />);
+    await screen.findByRole("button", { name: /Promoción vigente/ });
+    expect(screen.queryByRole("button", { name: /Añadir producto/ })).toBeNull();
+    const search = screen.getByRole("searchbox", { name: "Buscar artículo" });
+    search.focus();
+    fireEvent.keyDown(search, { key: "F5" });
+    expect(screen.queryByRole("dialog", { name: "Añadir producto" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar stock" }));
+    expect(screen.getByRole("dialog", { name: "Filtrar stock" })).toBeTruthy();
+  });
+
+  it("preserves product creation in APP GESTIÓN promotions", async () => {
+    render(<StockScreen {...props} app="gestion" />);
+    await screen.findByRole("button", { name: /Promoción vigente/ });
+    expect(screen.getByRole("button", { name: /Añadir producto/ })).toBeTruthy();
+  });
+
   it.each(["venta", "gestion"] as const)("loads every page and shows an inactive expired promotion in %s", async app => {
     render(<StockScreen {...props} app={app} />);
     const expired = await screen.findByRole("button", { name: /Promoción caducada/ });

@@ -991,6 +991,9 @@ class DocumentServiceTest {
 
     @Test
     void createsDirectTicketWithDailyNumberAndMixedPayments() {
+        var printSnapshots = org.mockito.Mockito.mock(InvoicePresentationSnapshotFactory.class);
+        service.setInvoicePrintSnapshots(printSnapshots);
+        when(printSnapshots.currentFiscalProfile()).thenReturn(InvoiceFiscalProfile.IGIC_MINORISTA);
         var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
         var card = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", true);
         when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
@@ -1013,6 +1016,7 @@ class DocumentServiceTest {
         assertThat(ticket.getNumero()).isEqualTo("001-260608-00001");
         assertThat(ticket.getEstado()).isEqualTo(DocumentStatus.CONFIRMADO);
         assertThat(ticket.getPagos()).hasSize(2);
+        assertThat(ticket.getTicketPrintFiscalProfile()).isEqualTo(InvoiceFiscalProfile.IGIC_MINORISTA);
         assertThat(ticket.isOrigenStock()).isFalse();
         verify(cashPaymentRecorder).recordDocumentPayments(terminalId, ticket);
         verify(memberLoyaltyService).recordPaidSale(same(ticket), accrualOf("10.00"));
@@ -1024,6 +1028,9 @@ class DocumentServiceTest {
         var existing=new CommercialDocument(store.getId(),UUID.randomUUID(),CommercialDocumentType.TICKET,
                 LocalDate.now(),user.getId(),BigDecimal.ZERO);
         existing.identifyPaymentTerminalRefund(operationId);
+        existing.captureTicketPrintFiscalProfile(InvoiceFiscalProfile.IGIC_MINORISTA);
+        var printSnapshots = org.mockito.Mockito.mock(InvoicePresentationSnapshotFactory.class);
+        service.setInvoicePrintSnapshots(printSnapshots);
         when(documentRepository.findByPaymentTerminalRefundOperationId(operationId)).thenReturn(Optional.of(existing));
 
         assertThat(service.createApprovedCardRefund(operationId,UUID.randomUUID(),BigDecimal.TEN,
@@ -1031,6 +1038,36 @@ class DocumentServiceTest {
         verify(stockGateway,never()).confirm(any());
         verify(fiscalIntegration,never()).registerAlta(any(),any(Boolean.class));
         verify(relationRepository,never()).save(any());
+        assertThat(existing.getTicketPrintFiscalProfile()).isEqualTo(InvoiceFiscalProfile.IGIC_MINORISTA);
+        verifyNoInteractions(printSnapshots);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(InvoiceFiscalProfile.class)
+    @org.junit.jupiter.params.provider.NullSource
+    void ticketRefundInheritsOriginalPrintProfileWithoutConsultingCurrentLicense(InvoiceFiscalProfile profile) {
+        var original = new CommercialDocument(store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 6, 8), user.getId(), BigDecimal.ZERO);
+        var line = new DocumentLine(original, UUID.randomUUID(), 1, BigDecimal.ONE, "P-1", "Producto",
+                "VENTA", BigDecimal.TEN, BigDecimal.ZERO, true, "IGIC", BigDecimal.ZERO);
+        original.addLine(line);
+        original.confirm("001-260608-00001", user.getId(), NOW, false);
+        if (profile != null) original.captureTicketPrintFiscalProfile(profile);
+        var printSnapshots = org.mockito.Mockito.mock(InvoicePresentationSnapshotFactory.class);
+        service.setInvoicePrintSnapshots(printSnapshots);
+        when(documentRepository.findLockedRefundSource(original.getId(), store.getId()))
+                .thenReturn(Optional.of(original));
+        when(documentRepository.confirmedRefundedQuantity(line.getId())).thenReturn(BigDecimal.ZERO);
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(documentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+
+        var refund = service.createApprovedCardRefund(UUID.randomUUID(), original.getId(), BigDecimal.TEN,
+                List.of(new PaymentTerminalRefundLineSelection(line.getId(), BigDecimal.ONE)), authentication());
+
+        assertThat(refund.getTicketPrintFiscalProfile()).isEqualTo(profile);
+        assertThat(refund.getTotal()).isEqualByComparingTo("-10.00");
+        verifyNoInteractions(printSnapshots);
     }
 
     @Test

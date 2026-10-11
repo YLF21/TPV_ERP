@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { UserSession } from "@tpverp/app-common";
 import { CashOpeningAlertsScreen } from "./CashOpeningAlertsScreen";
 import * as activityApi from "./cashActivityApi";
@@ -48,13 +48,16 @@ describe("CashOpeningAlertsScreen", () => {
 
   it("shows a pending opening discrepancy before closure and records an audited review", async () => {
     const onReviewed = vi.fn();
-    render(<CashOpeningAlertsScreen session={session(["GESTION_CUENTAS"])} t={t} locale="es" refreshSignal={0} onReviewed={onReviewed} />);
+    // Settle the initial load and the selected-alert effect before editing its comment.
+    await act(async () => {
+      render(<CashOpeningAlertsScreen session={session(["GESTION_CUENTAS"])} t={t} locale="es" refreshSignal={0} onReviewed={onReviewed} />);
+    });
     expect(await screen.findByText("CAJA 01")).not.toBeNull();
     expect(screen.getAllByText(/-5,00/)).toHaveLength(2);
     expect(screen.getByText("gestion.cashOpeningAlerts.detail")).not.toBeNull();
     const reviewComment = screen.getByRole("textbox", { name: "gestion.cashOpeningAlerts.reviewComment" });
     fireEvent.change(reviewComment, { target: { value: "Verified" } });
-    await waitFor(() => expect((reviewComment as HTMLTextAreaElement).value).toBe("Verified"));
+    await waitFor(() => expect((screen.getByRole("textbox", { name: "gestion.cashOpeningAlerts.reviewComment" }) as HTMLTextAreaElement).value).toBe("Verified"));
     fireEvent.click(screen.getByRole("button", { name: "gestion.cashOpeningAlerts.markReviewed" }));
     await waitFor(() => expect(alertsApi.reviewCashAlert).toHaveBeenCalledWith("alert-1", "OPENING", "Verified", 2, "token"));
     expect(onReviewed).toHaveBeenCalledOnce();

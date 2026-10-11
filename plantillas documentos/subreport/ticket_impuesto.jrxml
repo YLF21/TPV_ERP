@@ -17,24 +17,13 @@
         dl.porcentaje_impuesto,
         dl.base,
         dl.impuesto,
-        COALESCE(NULLIF(dl.regimen_impuesto, ''), licencia_actual.regimen_impuesto, 'IVA') AS regimen_impuesto,
-        (
-            COALESCE(UPPER(licencia_actual.perfil_comercial), '') = 'MINORISTA'
-            OR COALESCE(d.comentario_interno, '') ILIKE '%comerciante minorista%'
-        )
-            AND COALESCE(NULLIF(dl.regimen_impuesto, ''), licencia_actual.regimen_impuesto, 'IVA') = 'IGIC'
+        dl.regimen_impuesto,
+        COALESCE(d.perfil_fiscal_impresion_ticket = 'IGIC_MINORISTA', FALSE)
+            AND dl.regimen_impuesto = 'IGIC'
             AS impuesto_exento
     FROM documento_linea dl
     INNER JOIN documento d
         ON d.id = dl.documento_id
-    LEFT JOIN LATERAL (
-        SELECT l.regimen_impuesto, l.perfil_comercial
-        FROM licencia l
-        WHERE l.tienda_id = d.tienda_id
-          AND l.activa = TRUE
-        ORDER BY l.valida_desde DESC NULLS LAST, l.importada_en DESC NULLS LAST
-        LIMIT 1
-    ) licencia_actual ON TRUE
     WHERE dl.documento_id = CAST($P{DOCUMENTO_ID} AS uuid)
 )
 SELECT
@@ -48,7 +37,7 @@ WHERE porcentaje_impuesto IS NOT NULL
    OR impuesto_exento
 GROUP BY regimen_impuesto, impuesto_exento,
     CASE WHEN impuesto_exento THEN NULL ELSE porcentaje_impuesto END
-ORDER BY porcentaje_iva NULLS FIRST]]></query>
+ORDER BY impuesto_exento, porcentaje_iva NULLS FIRST]]></query>
 	<field name="porcentaje_iva" class="java.math.BigDecimal">
 		<property name="com.jaspersoft.studio.field.name" value="porcentaje_iva"/>
 		<property name="com.jaspersoft.studio.field.label" value="porcentaje_iva"/>
@@ -89,6 +78,7 @@ ORDER BY porcentaje_iva NULLS FIRST]]></query>
 			</element>
 		</band>
 		<band height="16" splitType="Stretch">
+			<printWhenExpression><![CDATA[!java.lang.Boolean.TRUE.equals($F{impuesto_exento})]]></printWhenExpression>
 			<element kind="textField" uuid="da74e3f8-737e-47f3-b6e0-5e0b4467495b" x="8" y="2" width="70" height="12" fontSize="8.0">
 				<printWhenExpression><![CDATA[!java.lang.Boolean.TRUE.equals($F{impuesto_exento})]]></printWhenExpression>
 				<expression><![CDATA[$F{porcentaje_iva} == null
@@ -108,10 +98,6 @@ ORDER BY porcentaje_iva NULLS FIRST]]></query>
 				<expression><![CDATA[$F{importe_iva} == null
     ? ""
     : new java.text.DecimalFormat("#,##0.00").format($F{importe_iva}) + " €"]]></expression>
-			</element>
-			<element kind="staticText" uuid="17087eaa-3b75-4ed2-a2cb-f38a207f15f1" x="5" y="2" width="197" height="12" fontSize="8.0" hTextAlign="Center">
-				<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{impuesto_exento})]]></printWhenExpression>
-				<text><![CDATA[Comercio minorista]]></text>
 			</element>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
 		</band>

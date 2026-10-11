@@ -1,0 +1,56 @@
+<jasperReport name="retirada_caja_ticket_80" language="java" pageWidth="227" pageHeight="2000" columnWidth="211" leftMargin="8" rightMargin="8" topMargin="8" bottomMargin="8" ignorePagination="true">
+    <parameter name="TPV_ISSUER_LOGO_STREAM" class="java.io.InputStream"/>
+    <parameter name="TPV_ISSUER_LOGO_PRESENT" class="java.lang.Boolean"/>
+    <query language="jsonql"><![CDATA[lines]]></query>
+    <field name="label" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="label"/></field>
+    <field name="value" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="value"/></field>
+    <field name="issuer" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.issuer.headerPrimaryName"/></field>
+    <field name="amountFormatted" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.movement.amountFormatted"/></field>
+    <field name="createdAtFormatted" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.movement.createdAtFormatted"/></field>
+    <title height="36">
+        <printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($P{TPV_ISSUER_LOGO_PRESENT})]]></printWhenExpression>
+        <element kind="image" x="0" y="0" width="211" height="32" scaleImage="RetainShape" hImageAlign="Center">
+            <expression><![CDATA[$P{TPV_ISSUER_LOGO_STREAM}]]></expression>
+        </element>
+    </title>
+    <pageHeader height="118" splitType="Stretch">
+        <element kind="textField" x="0" y="0" width="211" height="18" fontSize="11" bold="true" pdfFontName="Helvetica-Bold" textAdjust="StretchHeight" hTextAlign="Center" blankWhenNull="true">
+            <expression><![CDATA[$F{issuer}]]></expression>
+        </element>
+        <element kind="staticText" positionType="Float" x="0" y="22" width="211" height="20" fontSize="13" bold="true" pdfFontName="Helvetica-Bold" hTextAlign="Center">
+            <text><![CDATA[RETIRADA DE EFECTIVO]]></text>
+        </element>
+        <element kind="textField" positionType="Float" x="0" y="44" width="211" height="14" fontSize="9" hTextAlign="Center" blankWhenNull="true">
+            <expression><![CDATA[$F{createdAtFormatted}]]></expression>
+        </element>
+        <element kind="staticText" positionType="Float" x="0" y="63" width="211" height="13" fontSize="9" bold="true" pdfFontName="Helvetica-Bold" hTextAlign="Center">
+            <text><![CDATA[IMPORTE RETIRADO]]></text>
+        </element>
+        <element kind="textField" positionType="Float" x="0" y="77" width="211" height="31" fontSize="24" bold="true" pdfFontName="Helvetica-Bold" textAdjust="ScaleFont" hTextAlign="Center" vTextAlign="Middle" blankWhenNull="true">
+            <expression><![CDATA[$F{amountFormatted}]]></expression>
+        </element>
+        <element kind="line" positionType="Float" x="0" y="114" width="211" height="1"/>
+    </pageHeader>
+    <detail>
+        <band height="20" splitType="Stretch">
+            <printWhenExpression><![CDATA[!"Importe".equals($F{label}) && $F{value} != null && !$F{value}.trim().isEmpty()]]></printWhenExpression>
+            <element kind="textField" x="0" y="3" width="211" height="15" fontSize="9" textAdjust="StretchHeight" blankWhenNull="true">
+                <expression><![CDATA[$F{label} + ": " + $F{value}]]></expression>
+            </element>
+        </band>
+    </detail>
+    <summary height="180" splitType="Prevent">
+        <element kind="staticText" x="0" y="12" width="211" height="14" fontSize="9" bold="true" pdfFontName="Helvetica-Bold">
+            <text><![CDATA[Firma de quien entrega]]></text>
+        </element>
+        <element kind="line" x="0" y="73" width="211" height="1"/>
+        <element kind="staticText" x="0" y="85" width="211" height="14" fontSize="9" bold="true" pdfFontName="Helvetica-Bold">
+            <text><![CDATA[Firma de quien recibe]]></text>
+        </element>
+        <element kind="line" x="0" y="146" width="211" height="1"/>
+        <element kind="staticText" x="0" y="158" width="211" height="22" fontSize="7" hTextAlign="Center">
+            <text><![CDATA[Documento operativo.
+No sustituye justificantes contables.]]></text>
+        </element>
+    </summary>
+</jasperReport>

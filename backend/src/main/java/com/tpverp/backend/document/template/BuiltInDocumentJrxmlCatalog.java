@@ -13,8 +13,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class BuiltInDocumentJrxmlCatalog {
 
-    private static final int VERSION = 1;
-    private static final String RESOURCE_ROOT = "reports/documents/v1/";
+    private static final String RESOURCE_ROOT = "reports/documents/";
     private static final Map<DocumentTemplateType, Map<DocumentTemplateFormat, String>> FILES =
             files();
 
@@ -28,11 +27,12 @@ public class BuiltInDocumentJrxmlCatalog {
 
     public InvoicePresentationSnapshot.TemplateReference reference(
             DocumentTemplateType type, DocumentTemplateFormat format) {
-        var value = compiled(type, format);
+        int version = currentVersion(type, format);
+        var value = compiled(type, format, version);
         return new InvoicePresentationSnapshot.TemplateReference(
                 null,
                 code(type, format),
-                VERSION,
+                version,
                 SafeJrxmlCompiler.DATA_SCHEMA_VERSION,
                 value.sha256(),
                 true);
@@ -45,11 +45,12 @@ public class BuiltInDocumentJrxmlCatalog {
         Objects.requireNonNull(reference, "reference");
         if (!reference.builtIn()
                 || !code(type, format).equals(reference.code())
-                || reference.version() != VERSION
+                || reference.version() < 1
+                || reference.version() > currentVersion(type, format)
                 || reference.dataSchemaVersion() != SafeJrxmlCompiler.DATA_SCHEMA_VERSION) {
             throw new IllegalStateException("document_builtin_template_reference_mismatch");
         }
-        var value = compiled(type, format);
+        var value = compiled(type, format, reference.version());
         if (reference.sha256() != null && !value.sha256().equals(reference.sha256())) {
             throw new IllegalStateException("document_builtin_template_reference_mismatch");
         }
@@ -57,15 +58,15 @@ public class BuiltInDocumentJrxmlCatalog {
     }
 
     private SafeJrxmlCompiler.CompiledTemplate compiled(
-            DocumentTemplateType type, DocumentTemplateFormat format) {
-        var key = new Key(type, format);
-        return compiled.computeIfAbsent(key, ignored -> compiler.compile(source(type, format)));
+            DocumentTemplateType type, DocumentTemplateFormat format, int version) {
+        var key = new Key(type, format, version);
+        return compiled.computeIfAbsent(key, ignored -> compiler.compile(source(type, format, version)));
     }
 
     private static byte[] source(
-            DocumentTemplateType type, DocumentTemplateFormat format) {
+            DocumentTemplateType type, DocumentTemplateFormat format, int version) {
         String filename = filename(type, format);
-        var resource = new ClassPathResource(RESOURCE_ROOT + filename);
+        var resource = new ClassPathResource(RESOURCE_ROOT + "v" + version + "/" + filename);
         if (!resource.exists()) {
             throw new IllegalStateException(
                     "document_builtin_template_source_missing:" + filename);
@@ -126,6 +127,16 @@ public class BuiltInDocumentJrxmlCatalog {
         return Map.copyOf(result);
     }
 
-    private record Key(DocumentTemplateType type, DocumentTemplateFormat format) {
+    private static int currentVersion(DocumentTemplateType type, DocumentTemplateFormat format) {
+        if (type == DocumentTemplateType.FACTURA_VENTA) return 2;
+        if (format != DocumentTemplateFormat.TICKET_80) return 1;
+        return switch (type) {
+            case ALBARAN_VENTA, VALE, TICKET_REGALO, ENTRADA_CAJA,
+                    RETIRADA_CAJA, RECTIFICATIVA_VENTA -> 2;
+            default -> 1;
+        };
+    }
+
+    private record Key(DocumentTemplateType type, DocumentTemplateFormat format, int version) {
     }
 }

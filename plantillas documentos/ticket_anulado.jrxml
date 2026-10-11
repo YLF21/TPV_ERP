@@ -43,9 +43,9 @@ SELECT
     COALESCE(d.confirmado_en, d.creado_en) AS fecha_original,
     d.anulado_en AS fecha_anulacion,
     COALESCE(NULLIF(TRIM(op.motivo), ''), NULLIF(TRIM(d.motivo_anulacion), ''), 'Sin motivo indicado') AS motivo,
-    COALESCE(NULLIF(TRIM(uop.user_name), ''), NULLIF(TRIM(uop.nombre), ''), '—') AS operador,
+    COALESCE(NULLIF(TRIM(uop.user_name), ''), NULLIF(TRIM(uop.nombre), '')) AS operador,
     COALESCE(NULLIF(TRIM(uau.user_name), ''), NULLIF(TRIM(uau.nombre), ''), '—') AS autorizador,
-    COALESCE(NULLIF(TRIM(term.nombre), ''), '—') AS terminal,
+    NULLIF(TRIM(term.nombre), '') AS terminal,
     d.total AS total_anulado,
     COALESCE(pagos.resumen, 'Sin información de pago') AS resumen_pagos,
     dl.posicion,
@@ -78,8 +78,10 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) op ON TRUE
 LEFT JOIN usuario uop ON uop.id = COALESCE(op.operador_usuario_id, d.anulado_por)
+    AND (uop.tienda_id = d.tienda_id OR (uop.tienda_id IS NULL AND uop.protegido))
 LEFT JOIN usuario uau ON uau.id = COALESCE(op.autorizador_usuario_id, d.anulado_por)
-LEFT JOIN terminal term ON term.id = COALESCE(op.terminal_id, d.terminal_origen_id)
+    AND (uau.tienda_id = d.tienda_id OR (uau.tienda_id IS NULL AND uau.protegido))
+LEFT JOIN terminal term ON term.id = op.terminal_id AND term.tienda_id = d.tienda_id
 LEFT JOIN LATERAL (
     SELECT string_agg(
         UPPER(REPLACE(COALESCE(NULLIF(TRIM(mp.nombre), ''), 'PAGO'), '_', ' '))
@@ -187,10 +189,10 @@ ORDER BY dl.posicion NULLS LAST
 			<expression><![CDATA["Fecha anulación: " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss").format($F{fecha_anulacion})]]></expression>
 		</element>
 		<element kind="textField" uuid="935217bc-239f-4c69-8f0b-b05a66759b60" style="Texto" x="5" y="245" width="197" height="13">
-			<expression><![CDATA["Terminal: " + $F{terminal}]]></expression>
+			<expression><![CDATA["Terminal: " + ($F{terminal} == null ? "" : $F{terminal})]]></expression>
 		</element>
 		<element kind="textField" uuid="974b7cd7-e71c-4054-953e-e254fb54069e" style="Texto" x="5" y="259" width="197" height="13">
-			<expression><![CDATA["Operador: " + $F{operador} + " · Autoriza: " + $F{autorizador}]]></expression>
+			<expression><![CDATA["Operador: " + ($F{operador} == null ? "" : $F{operador}) + " · Autoriza: " + $F{autorizador}]]></expression>
 		</element>
 		<element kind="textField" uuid="93441bd4-e480-43b6-9c32-25fa4861a8a7" style="Texto" x="5" y="273" width="197" height="18" textAdjust="StretchHeight">
 			<expression><![CDATA["Motivo: " + $F{motivo}]]></expression>
@@ -219,7 +221,7 @@ ORDER BY dl.posicion NULLS LAST
 			</element>
 		</band>
 	</detail>
-	<summary height="154" splitType="Stretch">
+	<summary height="184" splitType="Stretch">
 		<element kind="line" uuid="11d5b174-1369-47f8-8c7a-694881336e8c" x="5" y="2" width="197" height="1"><pen lineWidth="0.8"/></element>
 		<element kind="staticText" uuid="d476cf4a-f875-41c6-bb07-f8bec5f10135" style="Texto" x="5" y="7" width="197" height="13" bold="true" hTextAlign="Center"><text><![CDATA[COMPENSACIÓN DE PAGOS]]></text></element>
 		<element kind="textField" uuid="231828bd-a5ea-4ce2-ab0d-1af7bc08cd30" style="Texto" x="5" y="22" width="197" height="34" textAdjust="StretchHeight">
@@ -236,6 +238,14 @@ ORDER BY dl.posicion NULLS LAST
 		</element>
 		<element kind="staticText" uuid="de944bd2-5696-4c16-97a0-4bbe04cfc84e" style="Centrado" x="5" y="119" width="197" height="28" fontSize="7.0">
 			<text><![CDATA[Este comprobante acredita una anulación interna y no sustituye a una factura ni constituye un documento fiscal.]]></text>
+		</element>
+		<element kind="textField" style="Texto" x="5" y="154" width="197" height="12" textAdjust="ScaleFont" removeLineWhenBlank="true" hTextAlign="Left">
+			<printWhenExpression><![CDATA[$F{operador} != null && !$F{operador}.trim().isEmpty()]]></printWhenExpression>
+			<expression><![CDATA["ATENDIDO POR: " + ($F{operador} == null ? "" : $F{operador})]]></expression>
+		</element>
+		<element kind="textField" style="Texto" x="5" y="168" width="197" height="12" textAdjust="ScaleFont" removeLineWhenBlank="true" hTextAlign="Left">
+			<printWhenExpression><![CDATA[$F{terminal} != null && !$F{terminal}.trim().isEmpty()]]></printWhenExpression>
+			<expression><![CDATA["TERMINAL: " + ($F{terminal} == null ? "" : $F{terminal})]]></expression>
 		</element>
 	</summary>
 </jasperReport>

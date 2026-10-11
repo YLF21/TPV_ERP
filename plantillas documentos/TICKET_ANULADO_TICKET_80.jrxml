@@ -11,12 +11,13 @@
 	<parameter name="TOTAL_FORMATTED" class="java.lang.String"/>
 	<parameter name="REASON" class="java.lang.String"/>
 	<parameter name="OPERATOR_USERNAME" class="java.lang.String"/>
+	<parameter name="TERMINAL_NAME" class="java.lang.String"/>
 	<parameter name="AUTHORIZER_USERNAME" class="java.lang.String"/>
 	<parameter name="AUTHORIZATION_TYPE" class="java.lang.String"/>
 	<parameter name="PAYMENTS_TEXT" class="java.lang.String"/>
 	<parameter name="OPERATION_ID" class="java.lang.String"/>
 	<detail>
-		<band height="430" splitType="Stretch">
+		<band height="456" splitType="Stretch">
 			<element kind="textField" uuid="3e13bc37-7885-497e-bd72-4f7c6873db14" x="0" y="0" width="211" height="20" fontName="SansSerif" fontSize="13.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$P{STORE_NAME}]]></expression>
 			</element>
@@ -57,6 +58,14 @@
 				<component kind="barcode4j:Code128" moduleWidth="1.0" textPosition="none" quietZone="5.0" verticalQuietZone="0.0"><codeExpression><![CDATA[$P{OPERATION_ID}]]></codeExpression></component>
 			</element>
 			<element kind="textField" uuid="57ecb9c7-cdb0-4798-ac04-463048332a01" positionType="Float" x="0" y="408" width="211" height="10" fontName="Monospaced" fontSize="6.0" hTextAlign="Center"><expression><![CDATA[$P{OPERATION_ID}]]></expression></element>
+			<element kind="textField" x="0" y="429" width="211" height="12" fontName="SansSerif" fontSize="8" textAdjust="ScaleFont" removeLineWhenBlank="true" hTextAlign="Left">
+				<printWhenExpression><![CDATA[$P{OPERATOR_USERNAME} != null && !$P{OPERATOR_USERNAME}.trim().isEmpty()]]></printWhenExpression>
+				<expression><![CDATA["ATENDIDO POR: " + ($P{OPERATOR_USERNAME} == null ? "" : $P{OPERATOR_USERNAME})]]></expression>
+			</element>
+			<element kind="textField" x="0" y="443" width="211" height="12" fontName="SansSerif" fontSize="8" textAdjust="ScaleFont" removeLineWhenBlank="true" hTextAlign="Left">
+				<printWhenExpression><![CDATA[$P{TERMINAL_NAME} != null && !$P{TERMINAL_NAME}.trim().isEmpty()]]></printWhenExpression>
+				<expression><![CDATA["TERMINAL: " + ($P{TERMINAL_NAME} == null ? "" : $P{TERMINAL_NAME})]]></expression>
+			</element>
 		</band>
 	</detail>
 </jasperReport>

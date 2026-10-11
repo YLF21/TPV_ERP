@@ -45,6 +45,9 @@
 	<field name="unitPriceNet" class="java.math.BigDecimal">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="unitPriceNet"/>
 	</field>
+	<field name="unitPriceSale" class="java.math.BigDecimal">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="unitPriceSale"/>
+	</field>
 	<field name="discountPercent" class="java.math.BigDecimal">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="discountPercent"/>
 	</field>
@@ -161,6 +164,12 @@
 	<field name="observations" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.observations"/>
 	</field>
+	<field name="operatorName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.operatorName"/>
+	</field>
+	<field name="terminalName" class="java.lang.String">
+		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.terminalName"/>
+	</field>
 	<field name="fiscalProfile" class="java.lang.String">
 		<property name="net.sf.jasperreports.jsonql.field.expression" value="$.fiscalProfile"/>
 	</field>
@@ -259,9 +268,9 @@
 			</element>
 			<element kind="textField" uuid="e8c8ce0f-75cc-47fc-b167-dd3a8d45c257" positionType="Float" x="0" y="33" width="211" height="12" fontName="SansSerif" fontSize="8.0" hTextAlign="Right">
 				<expression><![CDATA[
-					($F{unitPriceNet} == null ? "" : new java.text.DecimalFormat("#0.00").format($F{unitPriceNet}))
+					("IGIC_MINORISTA".equals($F{fiscalProfile}) ? ($F{unitPriceSale} == null ? "" : new java.text.DecimalFormat("#0.00").format($F{unitPriceSale})) : ($F{unitPriceNet} == null ? "" : new java.text.DecimalFormat("#0.00").format($F{unitPriceNet})))
 					+ ($F{discountPercent} == null ? "" : " · Dto. " + new java.text.DecimalFormat("#0.##").format($F{discountPercent}) + "%")
-					+ ($F{taxRate} == null ? "" : " · Imp. " + new java.text.DecimalFormat("#0.##").format($F{taxRate}) + "%")
+					+ ("IGIC_MINORISTA".equals($F{fiscalProfile}) || $F{taxRate} == null ? "" : " · Imp. " + new java.text.DecimalFormat("#0.##").format($F{taxRate}) + "%")
 				]]></expression>
 			</element>
 			<element kind="line" uuid="1af6f012-61db-423c-88ff-fc46512a0859" positionType="Float" x="0" y="46" width="211" height="1">
@@ -269,23 +278,29 @@
 			</element>
 		</band>
 	</detail>
-	<summary height="480" splitType="Stretch">
-		<element kind="staticText" uuid="edc48977-d611-4285-bd1f-761ef76da81b" x="0" y="5" width="211" height="13" fontName="SansSerif" fontSize="8.0" bold="true">
+	<summary height="519" splitType="Stretch">
+		<element kind="staticText" uuid="edc48977-d611-4285-bd1f-761ef76da81b" x="0" y="5" width="211" height="13" removeLineWhenBlank="true" fontName="SansSerif" fontSize="8.0" bold="true">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<text><![CDATA[DESGLOSE DE IMPUESTOS]]></text>
 		</element>
-		<element kind="staticText" uuid="0da43520-0e61-4c8e-8567-39c99fdf416c" x="0" y="20" width="55" height="11" fontName="SansSerif" fontSize="8.0" bold="true">
+		<element kind="staticText" uuid="0da43520-0e61-4c8e-8567-39c99fdf416c" x="0" y="20" width="55" height="11" removeLineWhenBlank="true" fontName="SansSerif" fontSize="8.0" bold="true">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<text><![CDATA[Impuesto]]></text>
 		</element>
-		<element kind="staticText" uuid="24ab0fba-a115-416b-b102-31c29c4af604" x="56" y="20" width="35" height="11" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right">
+		<element kind="staticText" uuid="24ab0fba-a115-416b-b102-31c29c4af604" x="56" y="20" width="35" height="11" removeLineWhenBlank="true" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<text><![CDATA[Tipo %]]></text>
 		</element>
-		<element kind="staticText" uuid="0308957e-d7ed-4cc5-a33d-e341180714f1" x="95" y="20" width="55" height="11" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right">
+		<element kind="staticText" uuid="0308957e-d7ed-4cc5-a33d-e341180714f1" x="95" y="20" width="55" height="11" removeLineWhenBlank="true" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<text><![CDATA[Base]]></text>
 		</element>
-		<element kind="staticText" uuid="ba13ae88-765c-464a-a590-c6a0ffc3cdb0" x="155" y="20" width="56" height="11" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right">
+		<element kind="staticText" uuid="ba13ae88-765c-464a-a590-c6a0ffc3cdb0" x="155" y="20" width="56" height="11" removeLineWhenBlank="true" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<text><![CDATA[Cuota]]></text>
 		</element>
-		<element kind="component" uuid="e6470c34-0ef1-4294-a83f-140ce3593dba" x="0" y="32" width="211" height="16">
+		<element kind="component" uuid="e6470c34-0ef1-4294-a83f-140ce3593dba" x="0" y="32" width="211" height="16" removeLineWhenBlank="true">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<component kind="list" printOrder="Vertical">
 				<datasetRun uuid="70defe13-53db-4dc1-a567-f33108b27a73" subDataset="TaxBreakdownDataset">
 					<dataSourceExpression><![CDATA[SUB_DATA_SOURCE("^^.taxBreakdown.*")]]></dataSourceExpression>
@@ -309,16 +324,20 @@
 				</contents>
 			</component>
 		</element>
-		<element kind="staticText" uuid="cfab1e5b-82d4-4712-a907-ce7214580f2c" positionType="Float" x="0" y="54" width="120" height="12" fontName="SansSerif" fontSize="8.0">
+		<element kind="staticText" uuid="cfab1e5b-82d4-4712-a907-ce7214580f2c" positionType="Float" x="0" y="54" width="120" height="12" removeLineWhenBlank="true" fontName="SansSerif" fontSize="8.0">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<text><![CDATA[Importe bruto]]></text>
 		</element>
-		<element kind="textField" uuid="18b71c68-cd3f-43ff-a46c-3490dc38048a" positionType="Float" x="130" y="54" width="81" height="12" fontName="SansSerif" fontSize="8.0" pattern="#0.00" hTextAlign="Right">
+		<element kind="textField" uuid="18b71c68-cd3f-43ff-a46c-3490dc38048a" positionType="Float" x="130" y="54" width="81" height="12" removeLineWhenBlank="true" fontName="SansSerif" fontSize="8.0" pattern="#0.00" hTextAlign="Right">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<expression><![CDATA[$F{grossAmount}]]></expression>
 		</element>
-		<element kind="staticText" uuid="b2009ef1-05ef-4c2c-be6e-684fe5636ee1" positionType="Float" x="0" y="66" width="120" height="12" fontName="SansSerif" fontSize="8.0">
+		<element kind="staticText" uuid="b2009ef1-05ef-4c2c-be6e-684fe5636ee1" positionType="Float" x="0" y="66" width="120" height="12" removeLineWhenBlank="true" fontName="SansSerif" fontSize="8.0">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<text><![CDATA[Descuentos]]></text>
 		</element>
-		<element kind="textField" uuid="259647fe-83bf-4c13-a9a1-daeea0e4e70d" positionType="Float" x="130" y="66" width="81" height="12" fontName="SansSerif" fontSize="8.0" pattern="#0.00" hTextAlign="Right">
+		<element kind="textField" uuid="259647fe-83bf-4c13-a9a1-daeea0e4e70d" positionType="Float" x="130" y="66" width="81" height="12" removeLineWhenBlank="true" fontName="SansSerif" fontSize="8.0" pattern="#0.00" hTextAlign="Right">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<expression><![CDATA[$F{discountTotal}]]></expression>
 		</element>
 				<element kind="staticText" uuid="74000000-0000-4000-8000-000000000001" positionType="Float" x="0" y="78" width="120" height="12" fontName="SansSerif" fontSize="8.0">
@@ -329,16 +348,20 @@
 			<printWhenExpression><![CDATA[$F{memberBalanceTotal} != null && $F{memberBalanceTotal}.compareTo(java.math.BigDecimal.ZERO) > 0]]></printWhenExpression>
 			<expression><![CDATA[$F{memberBalanceTotal}.negate()]]></expression>
 		</element>
-		<element kind="staticText" uuid="224492de-6b64-4534-b791-9fbc66319641" positionType="Float" x="0" y="90" width="120" height="12" fontName="SansSerif" fontSize="8.0">
+		<element kind="staticText" uuid="224492de-6b64-4534-b791-9fbc66319641" positionType="Float" x="0" y="90" width="120" height="12" removeLineWhenBlank="true" fontName="SansSerif" fontSize="8.0">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<text><![CDATA[Base imponible]]></text>
 		</element>
-		<element kind="textField" uuid="5ecfc3d7-eb27-4820-a9c7-621df0d824fa" positionType="Float" x="130" y="90" width="81" height="12" fontName="SansSerif" fontSize="8.0" pattern="#0.00" hTextAlign="Right">
+		<element kind="textField" uuid="5ecfc3d7-eb27-4820-a9c7-621df0d824fa" positionType="Float" x="130" y="90" width="81" height="12" removeLineWhenBlank="true" fontName="SansSerif" fontSize="8.0" pattern="#0.00" hTextAlign="Right">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<expression><![CDATA[$F{taxableBaseTotal}]]></expression>
 		</element>
-		<element kind="staticText" uuid="b945ad3f-3354-4a38-be1c-f0e45a3925a5" positionType="Float" x="0" y="102" width="120" height="12" fontName="SansSerif" fontSize="8.0">
+		<element kind="staticText" uuid="b945ad3f-3354-4a38-be1c-f0e45a3925a5" positionType="Float" x="0" y="102" width="120" height="12" removeLineWhenBlank="true" fontName="SansSerif" fontSize="8.0">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<text><![CDATA[Impuestos]]></text>
 		</element>
-		<element kind="textField" uuid="95e60668-09d3-4d77-ae6a-43675f5c3c34" positionType="Float" x="130" y="102" width="81" height="12" fontName="SansSerif" fontSize="8.0" pattern="#0.00" hTextAlign="Right">
+		<element kind="textField" uuid="95e60668-09d3-4d77-ae6a-43675f5c3c34" positionType="Float" x="130" y="102" width="81" height="12" removeLineWhenBlank="true" fontName="SansSerif" fontSize="8.0" pattern="#0.00" hTextAlign="Right">
+			<printWhenExpression><![CDATA[!"IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
 			<expression><![CDATA[$F{taxTotal}]]></expression>
 		</element>
 		<element kind="line" uuid="2981af7f-dd2a-474a-b843-884ee74ea35c" positionType="Float" x="0" y="117" width="211" height="1">
@@ -366,10 +389,26 @@
 			<printWhenExpression><![CDATA[$F{paymentMethod} != null && !$F{paymentMethod}.trim().isEmpty()]]></printWhenExpression>
 			<expression><![CDATA["Forma de pago: " + $F{paymentMethod}]]></expression>
 		</element>
-		<element kind="staticText" uuid="f17e9916-4188-4917-a54f-aef3e78a5814" positionType="Float" x="0" y="190" width="211" height="13" fontName="SansSerif" fontSize="8.5" bold="true">
+		<element kind="textField" uuid="78602962-d15d-48ba-99ef-9f66273ee423" positionType="Float" x="0" y="190" width="211" height="12" fontName="SansSerif" fontSize="8.0" textAdjust="ScaleFont" removeLineWhenBlank="true" hTextAlign="Left">
+			<printWhenExpression><![CDATA[$F{operatorName} != null && !$F{operatorName}.trim().isEmpty()]]></printWhenExpression>
+			<expression><![CDATA["ATENDIDO POR: " + $F{operatorName}]]></expression>
+		</element>
+		<element kind="textField" uuid="b7dd38a7-3e1c-4607-889c-797ba74be132" positionType="Float" x="0" y="203" width="211" height="12" fontName="SansSerif" fontSize="8.0" textAdjust="ScaleFont" removeLineWhenBlank="true" hTextAlign="Left">
+			<printWhenExpression><![CDATA[$F{terminalName} != null && !$F{terminalName}.trim().isEmpty()]]></printWhenExpression>
+			<expression><![CDATA["TERMINAL: " + $F{terminalName}]]></expression>
+		</element>
+		<element kind="staticText" uuid="03d1c3c2-20c2-42ae-aea7-aa99c0ddf13d" positionType="Float" x="0" y="216" width="211" height="12" removeLineWhenBlank="true" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Left">
+			<printWhenExpression><![CDATA["IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
+			<text><![CDATA[COMERCIANTE MINORISTA]]></text>
+		</element>
+		<element kind="line" uuid="5f33c143-3542-4f1b-9f46-7b75c9766391" positionType="Float" x="0" y="228" width="211" height="1" removeLineWhenBlank="true">
+			<printWhenExpression><![CDATA["IGIC_MINORISTA".equals($F{fiscalProfile})]]></printWhenExpression>
+			<pen lineWidth="0.25"/>
+		</element>
+		<element kind="staticText" uuid="f17e9916-4188-4917-a54f-aef3e78a5814" positionType="Float" x="0" y="229" width="211" height="13" fontName="SansSerif" fontSize="8.5" bold="true">
 			<text><![CDATA[OBSERVACIONES]]></text>
 		</element>
-		<element kind="textField" uuid="98dc404b-8bb6-48a3-b9ec-ec1fcf874d75" positionType="Float" x="0" y="205" width="211" height="50" fontName="SansSerif" fontSize="8.5" textAdjust="StretchHeight" blankWhenNull="true">
+		<element kind="textField" uuid="98dc404b-8bb6-48a3-b9ec-ec1fcf874d75" positionType="Float" x="0" y="244" width="211" height="50" fontName="SansSerif" fontSize="8.5" textAdjust="StretchHeight" blankWhenNull="true">
 			<expression><![CDATA[$F{observations}]]></expression>
 			<box>
 				<pen lineWidth="0.5"/>
@@ -379,11 +418,11 @@
 				<rightPen lineWidth="0.5"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="438c8202-9301-4b6f-8505-474be19ae8bf" positionType="Float" x="0" y="258" width="211" height="12" fontName="SansSerif" fontSize="7.0" bold="true">
+		<element kind="staticText" uuid="438c8202-9301-4b6f-8505-474be19ae8bf" positionType="Float" x="0" y="297" width="211" height="12" fontName="SansSerif" fontSize="7.0" bold="true">
 			<printWhenExpression><![CDATA[$F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
 			<text><![CDATA[DATOS BANCARIOS]]></text>
 		</element>
-		<element kind="component" uuid="67ddb821-65c5-4b4c-bd60-d992268c2dba" positionType="Float" x="0" y="272" width="211" height="18">
+		<element kind="component" uuid="67ddb821-65c5-4b4c-bd60-d992268c2dba" positionType="Float" x="0" y="311" width="211" height="18">
 			<printWhenExpression><![CDATA[$F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
 			<component kind="list" printOrder="Vertical">
 				<datasetRun uuid="aef2a1e6-24f0-4d9d-9b10-b94a199fb196" subDataset="InvoiceBankAccountsDataset">
@@ -399,55 +438,55 @@
 				</contents>
 			</component>
 		</element>
-		<element kind="textField" uuid="79dc70ca-3c17-48d5-a723-f62a8a427b41" positionType="Float" x="20" y="296" width="171" height="24" fontName="SansSerif" fontSize="6.0" textAdjust="StretchHeight" bold="true" hTextAlign="Center">
+		<element kind="textField" uuid="79dc70ca-3c17-48d5-a723-f62a8a427b41" positionType="Float" x="20" y="335" width="171" height="24" fontName="SansSerif" fontSize="6.0" textAdjust="StretchHeight" bold="true" hTextAlign="Center">
 			<printWhenExpression><![CDATA[$F{fiscalLegend} != null && !$F{fiscalLegend}.trim().isEmpty() && $F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
 			<expression><![CDATA[$F{fiscalLegend}]]></expression>
 		</element>
-		<element kind="textField" uuid="218d7341-433c-4825-9313-30d302416eda" positionType="Float" x="20" y="258" width="171" height="24" fontName="SansSerif" fontSize="6.0" textAdjust="StretchHeight" bold="true" hTextAlign="Center">
+		<element kind="textField" uuid="218d7341-433c-4825-9313-30d302416eda" positionType="Float" x="20" y="297" width="171" height="24" fontName="SansSerif" fontSize="6.0" textAdjust="StretchHeight" bold="true" hTextAlign="Center">
 			<printWhenExpression><![CDATA[$F{fiscalLegend} != null && !$F{fiscalLegend}.trim().isEmpty() && (!($F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode) || ((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty())]]></printWhenExpression>
 			<expression><![CDATA[$F{fiscalLegend}]]></expression>
 		</element>
-		<element kind="textField" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a105" positionType="Float" x="20" y="284" width="171" height="12" fontName="SansSerif" fontSize="6.0" bold="true" hTextAlign="Center" blankWhenNull="true">
+		<element kind="textField" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a105" positionType="Float" x="20" y="323" width="171" height="12" fontName="SansSerif" fontSize="6.0" bold="true" hTextAlign="Center" blankWhenNull="true">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalVerificationUrl} != null && !$F{fiscalVerificationUrl}.trim().isEmpty() && (!($F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode) || ((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty())]]></printWhenExpression>
 			<expression><![CDATA[$F{fiscalQrPrefix}]]></expression>
 		</element>
-		<element kind="textField" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a109" positionType="Float" x="20" y="322" width="171" height="12" fontName="SansSerif" fontSize="6.0" bold="true" hTextAlign="Center" blankWhenNull="true">
+		<element kind="textField" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a109" positionType="Float" x="20" y="361" width="171" height="12" fontName="SansSerif" fontSize="6.0" bold="true" hTextAlign="Center" blankWhenNull="true">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalVerificationUrl} != null && !$F{fiscalVerificationUrl}.trim().isEmpty() && $F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
 			<expression><![CDATA[$F{fiscalQrPrefix}]]></expression>
 		</element>
-		<element kind="textField" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a106" positionType="Float" x="20" y="400" width="171" height="12" fontName="SansSerif" fontSize="5.0" bold="true" hTextAlign="Center" blankWhenNull="true">
+		<element kind="textField" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a106" positionType="Float" x="20" y="439" width="171" height="12" fontName="SansSerif" fontSize="5.0" bold="true" hTextAlign="Center" blankWhenNull="true">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalTestNotice} != null && !$F{fiscalTestNotice}.trim().isEmpty() && (!($F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode) || ((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty())]]></printWhenExpression>
 			<expression><![CDATA[$F{fiscalTestNotice}]]></expression>
 		</element>
-		<element kind="textField" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a108" positionType="Float" x="20" y="438" width="171" height="8" fontName="SansSerif" fontSize="5.0" bold="true" hTextAlign="Center" blankWhenNull="true">
+		<element kind="textField" uuid="f3c2bb48-6a30-4e11-bf8a-5d7c2d00a108" positionType="Float" x="20" y="477" width="171" height="8" fontName="SansSerif" fontSize="5.0" bold="true" hTextAlign="Center" blankWhenNull="true">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalTestNotice} != null && !$F{fiscalTestNotice}.trim().isEmpty() && $F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
 			<expression><![CDATA[$F{fiscalTestNotice}]]></expression>
 		</element>
-		<element kind="component" uuid="e3152778-2ca9-45a8-a31b-f67440cbec99" positionType="Float" x="56" y="336" width="100" height="100">
+		<element kind="component" uuid="e3152778-2ca9-45a8-a31b-f67440cbec99" positionType="Float" x="56" y="375" width="100" height="100">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalVerificationUrl} != null && !$F{fiscalVerificationUrl}.trim().isEmpty() && $F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
 			<component kind="barcode4j:QRCode" margin="4" errorCorrectionLevel="M">
 				<codeExpression><![CDATA[$F{fiscalVerificationUrl}]]></codeExpression>
 			</component>
 		</element>
-		<element kind="component" uuid="6ce4efb4-a029-4231-b43a-8860bcc795f7" positionType="Float" x="56" y="298" width="100" height="100">
+		<element kind="component" uuid="6ce4efb4-a029-4231-b43a-8860bcc795f7" positionType="Float" x="56" y="337" width="100" height="100">
 			<printWhenExpression><![CDATA[java.lang.Boolean.TRUE.equals($F{fiscalQrRequired}) && $F{fiscalVerificationUrl} != null && !$F{fiscalVerificationUrl}.trim().isEmpty() && (!($F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode) || ((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty())]]></printWhenExpression>
 			<component kind="barcode4j:QRCode" margin="4" errorCorrectionLevel="M">
 				<codeExpression><![CDATA[$F{fiscalVerificationUrl}]]></codeExpression>
 			</component>
 		</element>
-		<element kind="line" uuid="ca40dff6-3af5-46d9-ad37-3b031ca0a835" positionType="Float" x="35" y="450" width="141" height="1">
+		<element kind="line" uuid="ca40dff6-3af5-46d9-ad37-3b031ca0a835" positionType="Float" x="35" y="489" width="141" height="1">
 			<printWhenExpression><![CDATA[$F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
 			<pen lineWidth="0.5"/>
 		</element>
-		<element kind="staticText" uuid="a31ff610-8f0c-4232-a26b-e822f28732a2" positionType="Float" x="10" y="456" width="191" height="14" fontName="Monospaced" fontSize="7.0" hTextAlign="Center">
+		<element kind="staticText" uuid="a31ff610-8f0c-4232-a26b-e822f28732a2" positionType="Float" x="10" y="495" width="191" height="14" fontName="Monospaced" fontSize="7.0" hTextAlign="Center">
 			<printWhenExpression><![CDATA[$F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode && !((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
 			<text><![CDATA[CONSERVE ESTE JUSTIFICANTE]]></text>
 		</element>
-		<element kind="line" uuid="be288493-e55e-4254-8b2d-f28c755eea44" positionType="Float" x="35" y="416" width="141" height="1">
+		<element kind="line" uuid="be288493-e55e-4254-8b2d-f28c755eea44" positionType="Float" x="35" y="455" width="141" height="1">
 			<printWhenExpression><![CDATA[!($F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode) || ((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
 			<pen lineWidth="0.5"/>
 		</element>
-		<element kind="staticText" uuid="66ba0ee6-cbd3-412e-9981-0c412d4beb22" positionType="Float" x="10" y="422" width="191" height="14" fontName="Monospaced" fontSize="7.0" hTextAlign="Center">
+		<element kind="staticText" uuid="66ba0ee6-cbd3-412e-9981-0c412d4beb22" positionType="Float" x="10" y="461" width="191" height="14" fontName="Monospaced" fontSize="7.0" hTextAlign="Center">
 			<printWhenExpression><![CDATA[!($F{bankAccounts} instanceof com.fasterxml.jackson.databind.JsonNode) || ((com.fasterxml.jackson.databind.JsonNode)$F{bankAccounts}).isEmpty()]]></printWhenExpression>
 			<text><![CDATA[CONSERVE ESTE JUSTIFICANTE]]></text>
 		</element>

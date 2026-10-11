@@ -22,6 +22,15 @@ function setBridge(load: ReturnType<typeof vi.fn>, overrides: Record<string, unk
 const unlinkedLoad = { ok: true, deviceName: "PC 2", identity: null,
   configuration: { backendUrl: "https://store.example:8443" }, link: null };
 
+const freeRemoteProbe = { ok: true, sameInstallation: false, localServer: false,
+  server: { installationId: "installation", storeId: "store", maxWindows: 3,
+    slots: [{ code: "002", status: "FREE" }] } };
+
+async function openNewTerminalName() {
+  fireEvent.click(await screen.findByRole("button", { name: "Comprobar conexión" }));
+  return screen.findByRole("textbox", { name: "Nombre de terminal" });
+}
+
 describe("terminal connection address", () => {
   it("requires HTTPS for remote servers and only allows local HTTP", () => {
     expect(connectionUrl("localhost", "8080")).toBe("http://localhost:8080");
@@ -179,6 +188,92 @@ describe("terminal linking restart", () => {
 });
 
 describe("shared terminal binding between desktop apps", () => {
+  it("starts a fresh terminal with an empty suffix and keeps the fixed prefix visible when cleared", async () => {
+    setBridge(vi.fn().mockResolvedValue(unlinkedLoad), {
+      probe: vi.fn().mockResolvedValue(freeRemoteProbe),
+    });
+    render(<TerminalConnectionScreen locale="es" identity={null} onReady={vi.fn()} />);
+    const nameInput = await openNewTerminalName() as HTMLInputElement;
+    const requestButton = screen.getByRole("button", { name: "Solicitar vinculación" });
+    const prefix = nameInput.closest("label")?.querySelector('[aria-hidden="true"]');
+    expect(nameInput).toHaveValue("");
+    expect(nameInput).toHaveAttribute("maxLength", "71");
+    expect(prefix).toHaveTextContent("TERMINAL");
+    expect(requestButton).toBeDisabled();
+
+    fireEvent.change(nameInput, { target: { value: "caja sur" } });
+    expect(nameInput).toHaveValue("CAJA SUR");
+    expect(requestButton).toBeEnabled();
+    fireEvent.change(nameInput, { target: { value: "" } });
+    expect(nameInput).toHaveValue("");
+    expect(prefix).toHaveTextContent("TERMINAL");
+    expect(requestButton).toBeDisabled();
+  });
+
+  it("normalizes typed and pasted suffixes and removes repeated leading TERMINAL prefixes", async () => {
+    const requestLink = vi.fn().mockResolvedValue({ ok: true,
+      link: { ...activeLink, terminalName: "TERMINAL CAJA SUR", status: "PENDING" } });
+    setBridge(vi.fn().mockResolvedValue(unlinkedLoad), {
+      probe: vi.fn().mockResolvedValue(freeRemoteProbe), requestLink,
+    });
+    render(<TerminalConnectionScreen locale="es" identity={null} onReady={vi.fn()} />);
+    const nameInput = await openNewTerminalName() as HTMLInputElement;
+    fireEvent.change(nameInput, { target: { value: "caja sur" } });
+    expect(nameInput).toHaveValue("CAJA SUR");
+    nameInput.setSelectionRange(0, nameInput.value.length);
+    fireEvent.paste(nameInput, { clipboardData: { getData: () => "terminal TERMINAL caja sur" } });
+    expect(nameInput).toHaveValue("CAJA SUR");
+    fireEvent.change(nameInput, { target: { value: "terminal terminal" } });
+    expect(nameInput).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Solicitar vinculación" })).toBeDisabled();
+    fireEvent.change(nameInput, { target: { value: "terminal TERMINAL caja sur  " } });
+    expect(nameInput.value.trim()).toBe("CAJA SUR");
+    fireEvent.click(screen.getByRole("button", { name: "Solicitar vinculación" }));
+    await waitFor(() => expect(requestLink).toHaveBeenCalledWith({
+      backendUrl: "https://store.example:8443", code: "002", name: "TERMINAL CAJA SUR",
+    }));
+  });
+
+  it("limits the suffix to 71 characters and completes uppercase conversion after IME composition", async () => {
+    setBridge(vi.fn().mockResolvedValue(unlinkedLoad), {
+      probe: vi.fn().mockResolvedValue(freeRemoteProbe),
+    });
+    render(<TerminalConnectionScreen locale="es" identity={null} onReady={vi.fn()} />);
+    const nameInput = await openNewTerminalName() as HTMLInputElement;
+    fireEvent.compositionStart(nameInput);
+    fireEvent.change(nameInput, { target: { value: "caja" } });
+    expect(nameInput).toHaveValue("caja");
+    fireEvent.compositionEnd(nameInput);
+    expect(nameInput).toHaveValue("CAJA");
+    fireEvent.change(nameInput, { target: { value: "a".repeat(72) } });
+    expect(nameInput).toHaveValue("A".repeat(71));
+    nameInput.setSelectionRange(0, nameInput.value.length);
+    fireEvent.paste(nameInput, { clipboardData: { getData: () => `TERMINAL ${"b".repeat(71)}` } });
+    expect(nameInput).toHaveValue("B".repeat(71));
+    fireEvent.change(nameInput, { target: { value: "caxja", selectionStart: 3, selectionEnd: 3 } });
+    expect(nameInput).toHaveValue("CAXJA");
+    expect(nameInput.selectionStart).toBe(3);
+    expect(nameInput.selectionEnd).toBe(3);
+  });
+
+  it("uses the same terminal name format for local code 001", async () => {
+    const requestLink = vi.fn().mockResolvedValue({ ok: true,
+      link: { ...activeLink, terminalCode: "001", terminalName: "TERMINAL SERVIDOR", status: "PENDING" } });
+    setBridge(vi.fn().mockResolvedValue({ ...unlinkedLoad,
+      configuration: { backendUrl: "http://localhost:8080" } }), {
+      probe: vi.fn().mockResolvedValue({ ...freeRemoteProbe, localServer: true,
+        server: { ...freeRemoteProbe.server, slots: [{ code: "001", status: "FREE" }] } }),
+      requestLink,
+    });
+    render(<TerminalConnectionScreen locale="es" identity={null} onReady={vi.fn()} />);
+    const nameInput = await openNewTerminalName();
+    fireEvent.change(nameInput, { target: { value: "servidor" } });
+    fireEvent.click(screen.getByRole("button", { name: "Solicitar vinculación" }));
+    await waitFor(() => expect(requestLink).toHaveBeenCalledWith({
+      backendUrl: "http://localhost:8080", code: "001", name: "TERMINAL SERVIDOR",
+    }));
+  });
+
   it.each([
     ["VENTA to GESTIÓN", "VENTA", "GESTIÓN"],
     ["GESTIÓN to VENTA", "GESTIÓN", "VENTA"],
@@ -263,10 +358,38 @@ describe("shared terminal binding between desktop apps", () => {
     render(<TerminalConnectionScreen locale="es" identity={null} onReady={onReady} />);
     await waitFor(() => expect((screen.getByRole("textbox", { name: "Equipo o dominio" }) as HTMLInputElement).value).toBe("store.example"));
     fireEvent.click(screen.getByRole("button", { name: "Comprobar conexión" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Nombre de terminal" }),
+      { target: { value: "caja 2" } });
     fireEvent.click(await screen.findByRole("button", { name: "Solicitar vinculación" }));
     await waitFor(() => expect(onReady).toHaveBeenCalledWith(verifiedIdentity));
+    expect(bridge.requestLink).toHaveBeenCalledWith({
+      backendUrl: "https://store.example:8443", code: "002", name: "TERMINAL CAJA 2",
+    });
     expect(load).toHaveBeenCalledTimes(2);
     expect(bridge.refreshLink).not.toHaveBeenCalled();
+  });
+
+  it("preserves the exact pending name when retrying a protected local request", async () => {
+    const requestLink = vi.fn().mockResolvedValue({ ok: true, link: {
+      ...activeLink, terminalCode: "001", terminalName: "CAJA ORIGINAL", status: "PENDING",
+    } });
+    const pendingRequest = { code: "001", name: "CAJA ORIGINAL",
+      backendUrl: "http://localhost:8080", mode: "SERVER_ADMIN" };
+    setBridge(vi.fn().mockResolvedValue({ ...unlinkedLoad, deviceName: "OTRO EQUIPO",
+      configuration: { backendUrl: "http://localhost:8080" }, pendingRequest }), {
+      refreshLink: vi.fn().mockResolvedValue({ ok: false, code: "SERVER_AUTH_REQUIRED" }),
+      requestLink,
+    });
+    render(<TerminalConnectionScreen locale="es" identity={null} onReady={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Consultar estado" }));
+    const adminUser = await screen.findByRole("textbox", { name: "Usuario ADMIN" });
+    fireEvent.change(adminUser, { target: { value: "admin" } });
+    fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "secret" } });
+    fireEvent.click(adminUser.closest("fieldset")!.querySelector("button")!);
+    await waitFor(() => expect(requestLink).toHaveBeenCalledWith({
+      backendUrl: "http://localhost:8080", code: "001", name: "CAJA ORIGINAL",
+      administrator: { username: "admin", password: "secret" },
+    }));
   });
 
   it("keeps connection configuration editable and never calls onReady from its load", async () => {

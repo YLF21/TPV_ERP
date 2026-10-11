@@ -93,13 +93,13 @@ public class CashReceiptService {
         movement.put("signatureRequired", withdrawal);
         movement.put("createdAtFormatted", DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm", locale)
                 .withZone(ZoneId.of(store.getTimezone())).format(receipt.createdAt()));
+        data.put("userName", receipt.userName());
+        data.put("terminalName", receipt.terminalName());
         var issuer = data.putObject("issuer");
         issuer.put("headerPrimaryName", store.getNombreEfectivo());
         issuer.put("legalName", organization.currentCompany().getRazonSocial());
         issuer.put("details", organization.currentCompany().getRazonSocial());
         var lines = data.putArray("lines");
-        line(lines, "Operador", receipt.userName());
-        line(lines, "Terminal", receipt.terminalName());
         line(lines, "Importe", receipt.amount());
         line(lines, "Autorizador", receipt.authorizerName());
         line(lines, "Motivo", receipt.comment());

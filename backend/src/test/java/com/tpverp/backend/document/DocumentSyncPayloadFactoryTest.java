@@ -21,6 +21,19 @@ class DocumentSyncPayloadFactoryTest {
     private final DocumentSyncPayloadFactory factory = new DocumentSyncPayloadFactory(relations, attributions);
     private static final Instant CONFIRMED_AT = Instant.parse("2026-09-10T10:00:00Z");
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(InvoiceFiscalProfile.class)
+    @org.junit.jupiter.params.provider.NullSource
+    void preservesOptionalTicketPrintProfileWithoutInferringLegacyValues(InvoiceFiscalProfile profile) {
+        var document = document(CommercialDocumentType.TICKET);
+        if (profile != null) document.captureTicketPrintFiscalProfile(profile);
+        when(relations.findOutgoingForSync(document.getId(), document.getTiendaId())).thenReturn(List.of());
+
+        assertThat(factory.create(document, 1))
+                .containsEntry("schemaVersion", 2)
+                .containsEntry("perfilFiscalImpresionTicket", profile == null ? null : profile.name());
+    }
+
     @Test
     void preservesLegacyHeaderLinesAndPaymentsAndAddsPersistedAttribution() {
         var document = document(CommercialDocumentType.TICKET);

@@ -47,7 +47,8 @@ SELECT
     ldt.contenido AS logo_contenido,
     d.numero AS numero_documento,
     po.creado_en AS fecha_cobro,
-    COALESCE(NULLIF(TRIM(term.nombre), ''), '—') AS terminal,
+    NULLIF(TRIM(term.nombre), '') AS terminal,
+    NULLIF(TRIM(uop.user_name), '') AS operador,
     COALESCE(NULLIF(TRIM(c.nombre_fiscal), ''), '—') AS cliente,
     c.client_id AS codigo_cliente,
     c.numero_documento AS documento_cliente,
@@ -79,7 +80,7 @@ INNER JOIN metodo_pago mp ON mp.id = po.metodo_pago_id
 LEFT JOIN configuracion_documento_impreso_tienda cdi ON cdi.tienda_id = t.id
 LEFT JOIN logo_documento_tienda ldt ON ldt.id = cdi.logo_id AND ldt.tienda_id = t.id
 LEFT JOIN LATERAL (
-    SELECT evento.terminal_id
+    SELECT evento.terminal_id, evento.usuario_id
     FROM documento_evento_operativo evento
     WHERE evento.documento_id = d.id
       AND evento.tipo = 'COBRADO'
@@ -87,8 +88,11 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) evento_cobro ON TRUE
 LEFT JOIN terminal term
-    ON term.id = COALESCE(evento_cobro.terminal_id, d.terminal_origen_id)
+    ON term.id = evento_cobro.terminal_id
    AND term.tienda_id = d.tienda_id
+LEFT JOIN usuario uop
+    ON uop.id = evento_cobro.usuario_id
+   AND (uop.tienda_id = d.tienda_id OR (uop.tienda_id IS NULL AND uop.protegido))
 WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
   AND d.tipo IN ('ALBARAN_VENTA', 'FACTURA_VENTA', 'TICKET')
   AND (d.tipo <> 'TICKET' OR d.cuenta_cobrar = TRUE)
@@ -107,6 +111,7 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
 	<field name="numero_documento" class="java.lang.String"/>
 	<field name="fecha_cobro" class="java.sql.Timestamp"/>
 	<field name="terminal" class="java.lang.String"/>
+	<field name="operador" class="java.lang.String"/>
 	<field name="cliente" class="java.lang.String"/>
 	<field name="codigo_cliente" class="java.lang.String"/>
 	<field name="documento_cliente" class="java.lang.String"/>
@@ -153,7 +158,7 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
 			<expression><![CDATA["Fecha de cobro: " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss").format($F{fecha_cobro})]]></expression>
 		</element>
 		<element kind="textField" uuid="4c32c665-cc4e-4637-aa32-73978a682cf3" style="Texto" x="5" y="242" width="197" height="13">
-			<expression><![CDATA["Terminal: " + $F{terminal}]]></expression>
+			<expression><![CDATA["Terminal: " + ($F{terminal} == null ? "" : $F{terminal})]]></expression>
 		</element>
 		<element kind="textField" uuid="217b5418-6e80-4d32-97e4-666928197509" style="Texto" x="5" y="255" width="197" height="14" textAdjust="StretchHeight">
 			<expression><![CDATA["Cliente: " + $F{cliente} + ($F{codigo_cliente} == null ? "" : " · " + $F{codigo_cliente}) + ($F{documento_cliente} == null ? "" : " · " + $F{documento_cliente})]]></expression>
@@ -182,7 +187,7 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
 			<element kind="line" uuid="59880d59-f345-47c5-b30d-65bf38d0ef76" x="5" y="40" width="197" height="1"><pen lineWidth="0.5" lineStyle="Dashed"/></element>
 		</band>
 	</detail>
-	<summary height="132" splitType="Stretch">
+	<summary height="163" splitType="Stretch">
 		<element kind="textField" uuid="6b49aa5d-2ee4-4dcc-8267-f1ce6203839f" style="Texto" x="5" y="4" width="122" height="14" fontSize="9.0" bold="true" pdfFontName="Helvetica-Bold">
 			<expression><![CDATA[$F{metodo_pago}]]></expression>
 		</element>
@@ -206,5 +211,13 @@ WHERE d.id = CAST($P{DOCUMENTO_ID} AS uuid)
 		</element>
 		<element kind="line" uuid="c9244a3f-c1f7-445a-bf7f-bf34943d822d" x="5" y="103" width="197" height="1"><pen lineWidth="0.5"/></element>
 		<element kind="staticText" uuid="a98ce7a7-1e43-4c11-aabe-b60706f3b997" style="Centrado" x="5" y="109" width="197" height="18" fontSize="7.0"><text><![CDATA[Justificante de cobro. Conserve este documento como comprobante del pago realizado.]]></text></element>
+		<element kind="textField" style="Texto" x="5" y="135" width="197" height="12" textAdjust="ScaleFont" removeLineWhenBlank="true" hTextAlign="Left">
+			<printWhenExpression><![CDATA[$F{operador} != null && !$F{operador}.trim().isEmpty()]]></printWhenExpression>
+			<expression><![CDATA["ATENDIDO POR: " + ($F{operador} == null ? "" : $F{operador})]]></expression>
+		</element>
+		<element kind="textField" style="Texto" x="5" y="149" width="197" height="12" textAdjust="ScaleFont" removeLineWhenBlank="true" hTextAlign="Left">
+			<printWhenExpression><![CDATA[$F{terminal} != null && !$F{terminal}.trim().isEmpty()]]></printWhenExpression>
+			<expression><![CDATA["TERMINAL: " + ($F{terminal} == null ? "" : $F{terminal})]]></expression>
+		</element>
 	</summary>
 </jasperReport>

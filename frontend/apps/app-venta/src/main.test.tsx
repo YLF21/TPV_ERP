@@ -106,6 +106,7 @@ vi.mock("../../../packages/app-common/src/components/SaleScreen", () => ({
       <button type="button" onClick={() => onExitBlockedChange?.(true)}>Report occupied sale</button>
       <button type="button" onClick={() => onExitBlockedChange?.(false)}>Report empty sale</button>
       <button type="button" onClick={onBack}>Leave sale</button>
+      <button type="button" className="report-brand-back" onClick={onBack}>Sale logo</button>
       <button type="button" onClick={onLogout}>Log out from sale</button>
       <button type="button" onClick={() => onOpenCustomerReceivables?.("customer-from-sale")}>Open sale receivables</button>
       {onOpenSalesDocumentWindow && (
@@ -538,7 +539,7 @@ describe("APP VENTA locale wiring", () => {
     expect(await screen.findByLabelText("home")).toBeVisible();
   });
 
-  it.each(["back", "logout", "Escape"] as const)("connects the sale exit guard to %s and releases it when the cart is empty", async (exit) => {
+  it.each(["back", "logout", "Escape", "logo"] as const)("connects the sale exit guard to %s and releases it when the cart is empty", async (exit) => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
     fireEvent.click(screen.getByRole("button", { name: "Open sales" }));
@@ -546,7 +547,7 @@ describe("APP VENTA locale wiring", () => {
     const leaveSale = () => {
       if (exit === "Escape") fireEvent.keyDown(window, { key: "Escape" });
       else fireEvent.click(screen.getByRole("button", {
-        name: exit === "back" ? "Leave sale" : "Log out from sale",
+        name: exit === "logo" ? "Sale logo" : exit === "back" ? "Leave sale" : "Log out from sale",
       }));
     };
 
@@ -559,7 +560,7 @@ describe("APP VENTA locale wiring", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Report empty sale" }));
     leaveSale();
-    if (exit === "Escape") {
+    if (exit === "Escape" || exit === "logo") {
       expect(screen.getByRole("alertdialog")).toHaveTextContent(/volver al inicio/i);
       fireEvent.keyDown(window, { key: "Enter" });
     }

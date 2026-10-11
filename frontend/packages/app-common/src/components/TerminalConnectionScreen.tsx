@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode, TerminalContext } from "../types";
 import { SaleSettingsShell, type SaleSettingsShellProps } from "./SaleSettingsShell";
@@ -7,6 +7,14 @@ import "./TerminalConnectionScreen.css";
 type Bridge = NonNullable<NonNullable<Window["tpvDesktop"]>["backendConnection"]>;
 type Probe = Extract<Awaited<ReturnType<Bridge["probe"]>>, { ok: true }>;
 type Link = Extract<Awaited<ReturnType<Bridge["refreshLink"]>>, { ok: true }>["link"];
+
+const TERMINAL_NAME_PREFIX = "TERMINAL";
+const TERMINAL_NAME_SUFFIX_LIMIT = 80 - TERMINAL_NAME_PREFIX.length - 1;
+
+function terminalNameSuffix(value: string): string {
+  return value.toUpperCase().trimStart().replace(/^(?:TERMINAL(?:\s+|$))+/, "")
+    .slice(0, TERMINAL_NAME_SUFFIX_LIMIT);
+}
 
 export function connectionUrl(hostInput: string, portInput: string): string | null {
   const host = hostInput.trim();
@@ -61,6 +69,33 @@ export function TerminalConnectionScreen({ locale, identity, onReady, onBack, se
   const readyReported = useRef(false);
   const edited = useRef({ host: false, port: false, name: false, code: false });
   const pendingRef = useRef(false);
+  const namePrefixId = useId();
+  const nameInput = useRef<HTMLInputElement>(null);
+  const nameSelection = useRef<{ start: number; end: number } | null>(null);
+  const composingName = useRef(false);
+
+  useLayoutEffect(() => {
+    if (nameSelection.current && nameInput.current) {
+      nameInput.current.setSelectionRange(nameSelection.current.start, nameSelection.current.end);
+      nameSelection.current = null;
+    }
+  }, [name]);
+
+  function editName(input: HTMLInputElement) {
+    edited.current.name = true;
+    if (composingName.current) { setName(input.value); return; }
+    const value = input.value;
+    const normalized = terminalNameSuffix(value);
+    const selection = {
+      start: terminalNameSuffix(value.slice(0, input.selectionStart ?? value.length)).length,
+      end: terminalNameSuffix(value.slice(0, input.selectionEnd ?? value.length)).length,
+    };
+    nameSelection.current = selection;
+    // Keep the caret stable even when normalization leaves React state unchanged.
+    input.value = normalized;
+    input.setSelectionRange(selection.start, selection.end);
+    setName(normalized);
+  }
 
   function actionBusy(value: boolean) {
     busyRef.current = value;
@@ -107,7 +142,7 @@ export function TerminalConnectionScreen({ locale, identity, onReady, onBack, se
         code: result.linkedIdentity.terminalCode,
         name: result.linkedIdentity.terminalName || result.link?.terminalName || result.deviceName,
       } : null);
-      if (!edited.current.name) setName(result.pendingRequest?.name || result.link?.terminalName || result.linkedIdentity?.terminalName || result.deviceName);
+      if (!edited.current.name) setName(terminalNameSuffix(result.pendingRequest?.name || result.link?.terminalName || result.linkedIdentity?.terminalName || ""));
       if (initial || result.pendingRequest || (result.link?.status !== "RELEASED" && (result.link || result.linkedIdentity))) {
         setCode(result.pendingRequest?.code || result.link?.terminalCode || result.linkedIdentity?.terminalCode || "");
       }
@@ -183,7 +218,10 @@ export function TerminalConnectionScreen({ locale, identity, onReady, onBack, se
     finally { actionBusy(false); }
   }
   async function requestLink() {
-    if (!bridge || (!probe && !pendingRequest) || !code || !name.trim() || busyRef.current || loadRunning.current || refreshRunning.current) return;
+    const requestedName = pendingRequest?.name || (link?.status === "PENDING" ? link.terminalName
+      : legacySlot ? legacySlot.name || name.trim()
+      : terminalNameSuffix(name).trim() ? `${TERMINAL_NAME_PREFIX} ${terminalNameSuffix(name).trim()}` : "");
+    if (!bridge || (!probe && !pendingRequest) || !code || !requestedName || busyRef.current || loadRunning.current || refreshRunning.current) return;
     const backendUrl = connectionUrl(host, port);
     if (!backendUrl) { showError({ code: "INVALID_URL" }); return; }
     actionBusy(true); setError("");
@@ -191,7 +229,7 @@ export function TerminalConnectionScreen({ locale, identity, onReady, onBack, se
     try {
       const result = await bridge.requestLink({ backendUrl,
         code: pendingRequest?.code || (link?.status === "PENDING" ? link.terminalCode : code),
-        name: pendingRequest?.name || (link?.status === "PENDING" ? link.terminalName : name.trim()),
+        name: requestedName,
         ...(adminRequired && code === "001" && (probe?.localServer || pendingRequest?.mode === "SERVER_ADMIN")
           ? { administrator: { username: adminUser.trim(), password: adminPassword } } : {}) });
       if (!mounted.current) return;
@@ -300,12 +338,29 @@ export function TerminalConnectionScreen({ locale, identity, onReady, onBack, se
       </div> : <p role="status">{t("terminalLink.legacyAssign")}</p>
       : available.length ? <><label>{t("terminalLink.code")}<select value={code} onChange={event => { edited.current.code = true; setCode(event.target.value); setAdminRequired(false); }}>
         {available.map(slot => <option key={slot.code} value={slot.code}>{slot.code}</option>)}</select></label>
-        <label>{t("terminalLink.name")}<input value={name} maxLength={80} onChange={event => { edited.current.name = true; setName(event.target.value); }} placeholder={deviceName} /></label>
+        <label>{t("terminalLink.name")}<span className="terminal-link-name-input">
+          <span id={namePrefixId} aria-hidden="true">{TERMINAL_NAME_PREFIX}</span>
+          <input ref={nameInput} value={name} maxLength={TERMINAL_NAME_SUFFIX_LIMIT} autoComplete="off" aria-describedby={namePrefixId}
+            spellCheck={false} onChange={event => editName(event.currentTarget)}
+            onPaste={event => {
+              if (composingName.current) return;
+              event.preventDefault();
+              const input = event.currentTarget;
+              const start = input.selectionStart ?? input.value.length;
+              const end = input.selectionEnd ?? start;
+              const pasted = event.clipboardData.getData("text").replace(/[\r\n\t]+/g, " ");
+              input.value = input.value.slice(0, start) + pasted + input.value.slice(end);
+              input.setSelectionRange(start + pasted.length, start + pasted.length);
+              editName(input);
+            }}
+            onCompositionStart={() => { composingName.current = true; }}
+            onCompositionEnd={event => { composingName.current = false; editName(event.currentTarget); }} />
+        </span></label>
         {adminRequired && code === "001" && probe.localServer && <fieldset><legend>{t("terminalLink.localAdmin")}</legend>
           <label>{t("terminalLink.adminUser")}<input value={adminUser} onChange={event => setAdminUser(event.target.value)} autoComplete="username" /></label>
           <label>{t("terminalLink.adminPassword")}<input type="password" value={adminPassword} onChange={event => setAdminPassword(event.target.value)} autoComplete="current-password" /></label>
         </fieldset>}
-        <button type="button" disabled={busy || !code || !name.trim() || (adminRequired && (!adminUser.trim() || !adminPassword))} onClick={() => void requestLink()}>{t("terminalLink.request")}</button></>
+        <button type="button" disabled={busy || !code || !terminalNameSuffix(name).trim() || (adminRequired && (!adminUser.trim() || !adminPassword))} onClick={() => void requestLink()}>{t("terminalLink.request")}</button></>
         : <p role="status">{t("terminalLink.noSlots")}</p>}</>}
     {(identity || linkedInstallation || pendingRequest) && probe?.sameInstallation && <div className="terminal-link-toolbar"><button type="button" disabled={busy || restartRequired} onClick={() => void saveAddress()}>{t("terminalLink.saveAddress")}</button></div>}
     {identity && restartRequired && <button type="button" disabled={busy} onClick={() => void restart()}>{t("terminalLink.restart")}</button>}

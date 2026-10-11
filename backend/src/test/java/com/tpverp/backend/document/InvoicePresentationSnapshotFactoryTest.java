@@ -37,6 +37,41 @@ import org.junit.jupiter.api.Test;
 class InvoicePresentationSnapshotFactoryTest {
 
     @Test
+    void currentProfileUsesLatestActiveLicenseAndDistinguishesRegimeFromCommercialProfile() {
+        var organization = mock(CurrentOrganization.class);
+        var licenses = mock(LicenseRepository.class);
+        var store = mock(Store.class);
+        var storeId = UUID.randomUUID();
+        when(store.getId()).thenReturn(storeId);
+        when(organization.currentStore()).thenReturn(store);
+        var older = mock(License.class);
+        var latest = mock(License.class);
+        var inactive = mock(License.class);
+        when(older.isActiva()).thenReturn(true);
+        when(older.getValidaDesde()).thenReturn(Instant.parse("2026-01-01T00:00:00Z"));
+        when(latest.isActiva()).thenReturn(true);
+        when(latest.getValidaDesde()).thenReturn(Instant.parse("2026-02-01T00:00:00Z"));
+        when(licenses.findByTiendaIdOrderByValidaDesdeDesc(storeId))
+                .thenReturn(List.of(inactive, older, latest));
+        var factory = new InvoicePresentationSnapshotFactory(organization, licenses,
+                mock(InvoicePrintSettingsRepository.class), mock(InvoiceBankAccountRepository.class),
+                new ObjectMapper(), mock(BuiltInDocumentJrxmlCatalog.class));
+
+        when(latest.getRegimenImpuesto()).thenReturn(TaxRegime.IGIC);
+        when(latest.getCommercialProfile()).thenReturn(CommercialProfile.MINORISTA);
+        assertThat(factory.currentFiscalProfile()).isEqualTo(InvoiceFiscalProfile.IGIC_MINORISTA);
+        when(latest.getCommercialProfile()).thenReturn(CommercialProfile.MAYORISTA);
+        assertThat(factory.currentFiscalProfile()).isEqualTo(InvoiceFiscalProfile.IGIC);
+        when(latest.getRegimenImpuesto()).thenReturn(TaxRegime.IVA);
+        when(latest.getCommercialProfile()).thenReturn(CommercialProfile.MINORISTA);
+        assertThat(factory.currentFiscalProfile()).isEqualTo(InvoiceFiscalProfile.IVA);
+        when(latest.getRegimenImpuesto()).thenReturn(null);
+        assertThat(factory.currentFiscalProfile()).isEqualTo(InvoiceFiscalProfile.IVA);
+        when(licenses.findByTiendaIdOrderByValidaDesdeDesc(storeId)).thenReturn(List.of(inactive));
+        assertThat(factory.currentFiscalProfile()).isEqualTo(InvoiceFiscalProfile.IVA);
+    }
+
+    @Test
     void freezesIndependentIntegratedAndImportedInvoiceFormats() {
         var organization = mock(CurrentOrganization.class);
         var licenses = mock(LicenseRepository.class);

@@ -87,7 +87,7 @@ class VoucherJasperRendererTest {
                 List.of("T-2025-12"), Instant.parse("2025-08-14T11:30:00Z"));
         voucherWithoutExpiration.capturePrintSnapshot("{}");
         var snapshot = new VoucherPresentationSnapshot(
-                1, "Presentar el vale original.",
+                3, "Presentar el vale original.",
                 new InvoicePresentationSnapshot.TemplateReference(
                         template.getId(), template.getCode(), template.getTemplateVersion(),
                         SafeJrxmlCompiler.DATA_SCHEMA_VERSION, compiled.sha256(), false),
@@ -104,7 +104,8 @@ class VoucherJasperRendererTest {
                                 LocalDate.of(2026, 8, 7), "CONSUMO_PARCIAL"),
                         new VoucherPresentationSnapshot.TraceEntry(
                                 "T-2026-003900", CommercialDocumentType.TICKET,
-                                LocalDate.of(2026, 7, 25), "CONSUMO_PARCIAL")));
+                                LocalDate.of(2026, 7, 25), "CONSUMO_PARCIAL")),
+                true, "CAJERA VALE");
         var snapshotFactory = mock(VoucherPresentationSnapshotFactory.class);
         when(snapshotFactory.read("{}")).thenReturn(snapshot);
         when(snapshotFactory.logoDataUri(snapshot, store.getId())).thenReturn(
@@ -125,6 +126,14 @@ class VoucherJasperRendererTest {
         var renderedWithoutExpiration = service.render(voucherWithoutExpiration);
 
         byte[] pdf = java.util.Base64.getDecoder().decode(rendered.renderedPdf().base64());
+        var previewDirectory = System.getProperty("tpv.test.printPreviewDirectory");
+        if (previewDirectory != null && !previewDirectory.isBlank()) {
+            var output = Path.of(previewDirectory);
+            Files.createDirectories(output);
+            Files.write(output.resolve("vale.pdf"), pdf);
+            Files.write(output.resolve("vale.png"), java.util.Base64.getDecoder().decode(
+                    rendered.ticketRenderedImage().base64()));
+        }
         try (var document = Loader.loadPDF(pdf)) {
             assertThat(document.getPage(0).getMediaBox().getWidth()).isEqualTo(227f);
             String text = new PDFTextStripper().getText(document);
@@ -135,7 +144,8 @@ class VoucherJasperRendererTest {
                             "T-2026-003900",
                             "Tienda Centro", "TPV ERP SL",
                             "B12345678", "Calle Empresa 1", "928000000",
-                            "Presentar el vale original")
+                            "Presentar el vale original",
+                            "ATENDIDO POR: CAJERA VALE", "TERMINAL: TPV-01")
                     .doesNotContain("empresa@example.test", "Consumo parcial",
                             "Factura rectificativa", "01/08/2026", "07/08/2026");
             assertThat(text.indexOf("T-2026-004587"))
@@ -175,8 +185,8 @@ class VoucherJasperRendererTest {
                 companyOnly.renderedPdf().base64());
         try (var document = Loader.loadPDF(companyOnlyPdf)) {
             assertThat(new PDFTextStripper().getText(document))
-                    .contains("TPV ERP SL")
-                    .doesNotContain("Tienda Centro");
+                    .contains("TPV ERP SL", "TERMINAL: TPV-01")
+                    .doesNotContain("Tienda Centro", "ATENDIDO POR:", "CAJERA VALE");
         }
     }
 }

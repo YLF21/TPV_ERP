@@ -11,6 +11,10 @@ import com.tpverp.backend.document.template.OperationalDocumentJasperRenderer;
 import com.tpverp.backend.document.template.RenderedDocumentView;
 import com.tpverp.backend.organization.StoreDocumentPrintConfigurationService;
 import com.tpverp.backend.terminal.CurrentTerminal;
+import com.tpverp.backend.terminal.TerminalRepository;
+import com.tpverp.backend.terminal.Terminal;
+import com.tpverp.backend.security.domain.UserAccountRepository;
+import com.tpverp.backend.security.domain.UserAccount;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -49,6 +53,8 @@ public class GiftReceiptService {
     private final GiftReceiptPrintIdentityRepository printIdentities;
     private final StoreDocumentPrintConfigurationService printConfiguration;
     private OperationalDocumentJasperRenderer printing;
+    private UserAccountRepository users;
+    private TerminalRepository terminals;
 
     public GiftReceiptService(
             GiftReceiptRepository receipts,
@@ -78,6 +84,12 @@ public class GiftReceiptService {
         this.printing = printing;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    void setPrintAttribution(UserAccountRepository users, TerminalRepository terminals) {
+        this.users = users;
+        this.terminals = terminals;
+    }
+
     @Transactional(readOnly = true)
     public RenderedDocumentView printDocument(String code) {
         if (printing == null) {
@@ -92,6 +104,16 @@ public class GiftReceiptService {
         document.put("issueDateDisplay", PRINT_DATE.withZone(ZoneId.of(
                 organization.currentStore().getTimezone())).format(receipt.getCreatedAt()));
         document.put("barcode", receipt.getCode());
+        String userName = users == null ? null : users.findById(receipt.getCreatedBy())
+                .filter(user -> user.getTienda() == null
+                        ? user.isProtegido()
+                        : receipt.getStoreId().equals(user.getTienda().getId()))
+                .map(UserAccount::getUserName).orElse(null);
+        String terminalName = terminals == null || receipt.getTerminalId() == null ? null
+                : terminals.findByIdAndTiendaId(receipt.getTerminalId(), receipt.getStoreId())
+                        .map(Terminal::getNombre).orElse(null);
+        data.put("userName", userName);
+        data.put("terminalName", terminalName);
         var identity = printIdentities.forSourceTicket(
                 receipt.getSourceDocumentId(), receipt.getStoreId());
         var issuer = data.putObject("issuer");

@@ -61,6 +61,7 @@ public class DocumentSyncPayloadFactory {
         payload.put("terminalOrigenNombre", nullableLabel(attribution.terminalName()));
         payload.put("fechaVencimiento", nullableDate(document.getFechaVencimiento()));
         payload.put("settledByOrigin", document.isSettledByOrigin());
+        payload.put("perfilFiscalImpresionTicket", nullableEnum(document.getTicketPrintFiscalProfile()));
         payload.put("relaciones", outgoing.stream().map(relation -> Map.of(
                 "tipo", relation.getType().name(), "origenId", relation.getOriginId().toString())).toList());
         return payload;

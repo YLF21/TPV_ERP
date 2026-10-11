@@ -55,10 +55,11 @@ class TicketCancellationServiceTest {
                 .thenReturn(Optional.empty());
         var user = mock(UserAccount.class);
         when(user.getUserName()).thenReturn("ADMIN");
+        when(user.isProtegido()).thenReturn(true);
         var users = mock(UserAccountRepository.class);
         when(users.findById(userId)).thenReturn(Optional.of(user));
         var renderer = mock(TicketCancellationJasperRenderer.class);
-        when(renderer.render(any(), any())).thenReturn(
+        when(renderer.render(any(), any(), any())).thenReturn(
                 new TicketCancellationJasperRenderer.RenderedCancellation(
                         "%PDF legacy".getBytes(java.nio.charset.StandardCharsets.UTF_8),
                         "PNG legacy".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
@@ -118,10 +119,11 @@ class TicketCancellationServiceTest {
                 .thenReturn(Optional.of(operation));
         var user = mock(UserAccount.class);
         when(user.getUserName()).thenReturn("ADMIN");
+        when(user.isProtegido()).thenReturn(true);
         var users = mock(UserAccountRepository.class);
         when(users.findById(userId)).thenReturn(Optional.of(user));
         var renderer = mock(TicketCancellationJasperRenderer.class);
-        when(renderer.render(any(), any())).thenReturn(
+        when(renderer.render(any(), any(), any())).thenReturn(
                 new TicketCancellationJasperRenderer.RenderedCancellation(
                         "%PDF cancellation".getBytes(java.nio.charset.StandardCharsets.UTF_8),
                         "PNG cancellation".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
@@ -202,7 +204,7 @@ class TicketCancellationServiceTest {
                 .thenReturn(List.of(restoredEvent, invalidatedEvent));
         var voucherPrinting = mock(VoucherPrintService.class);
         var cancellationPrinting = mock(TicketCancellationJasperRenderer.class);
-        when(cancellationPrinting.render(any(), any())).thenReturn(
+        when(cancellationPrinting.render(any(), any(), any())).thenReturn(
                 new TicketCancellationJasperRenderer.RenderedCancellation(
                         "%PDF cancellation".getBytes(java.nio.charset.StandardCharsets.UTF_8),
                         "PNG cancellation".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
@@ -220,6 +222,7 @@ class TicketCancellationServiceTest {
         when(voucherPrinting.render(restoredVoucher)).thenReturn(printDocument);
         var users = mock(UserAccountRepository.class);
         when(authorizer.getUserName()).thenReturn("ADMIN");
+        when(authorizer.isProtegido()).thenReturn(true);
         when(users.findById(authorizerId)).thenReturn(Optional.of(authorizer));
 
         var transactionManager = mock(PlatformTransactionManager.class);
