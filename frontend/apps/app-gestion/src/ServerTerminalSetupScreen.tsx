@@ -29,7 +29,7 @@ export function ServerTerminalSetupScreen({ locale, onLocaleChange, onOrganizati
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [waiting, setWaiting] = useState(false);
-  const [error, setError] = useState("");
+  const [errorKey, setErrorKey] = useState("");
   const lifecycle = useRef(0);
   const operation = useRef(false);
   const waitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -65,7 +65,7 @@ export function ServerTerminalSetupScreen({ locale, onLocaleChange, onOrganizati
     setPassword("");
     if (result.mustChangePassword) {
       setStage("password");
-      setError("");
+      setErrorKey("");
     } else if (needsPairing) {
       await linkWithSession(id);
     } else complete(id);
@@ -106,13 +106,13 @@ export function ServerTerminalSetupScreen({ locale, onLocaleChange, onOrganizati
   async function run(id: number, task: () => Promise<void>) {
     if (operation.current || !active(id)) return;
     operation.current = true;
-    setBusy(true); setError(""); setWaiting(false);
+    setBusy(true); setErrorKey(""); setWaiting(false);
     waitTimer.current = setTimeout(() => { if (active(id)) setWaiting(true); }, 2000);
     try { await task(); }
     catch (caught) {
       if (!active(id)) return;
       if (caught instanceof ApiConnectionError) { setBackendOnline(false); setBackendAddress(null); }
-      setError(caught instanceof ApiConnectionError ? "gestion.serverSetup.offline"
+      setErrorKey(caught instanceof ApiConnectionError ? "gestion.serverSetup.offline"
         : caught instanceof ApiError && caught.status === 401 ? "gestion.serverSetup.invalidAdmin"
         : "gestion.serverSetup.error");
     } finally {
@@ -150,12 +150,12 @@ export function ServerTerminalSetupScreen({ locale, onLocaleChange, onOrganizati
     }
     if (initial && caught instanceof ApiError && caught.problem?.code === "INITIAL_ADMIN_SETUP_UNAVAILABLE") {
       releaseSession(); setStage("manual"); setPassword("");
-      setError("gestion.serverSetup.manualDescription");
+      setErrorKey("gestion.serverSetup.manualDescription");
       return;
     }
     // A changed manual credential remains usable by its owner on a later retry.
     if (!initial) { releaseSession(); setStage("manual"); setPassword(""); }
-    setError(caught instanceof ApiConnectionError ? "gestion.serverSetup.offline" : "gestion.serverSetup.licenseError");
+    setErrorKey(caught instanceof ApiConnectionError ? "gestion.serverSetup.offline" : "gestion.serverSetup.licenseError");
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -165,9 +165,9 @@ export function ServerTerminalSetupScreen({ locale, onLocaleChange, onOrganizati
     if (stage === "password") {
       const current = session.current;
       if (!current) return;
-      if (!/^\d{4,12}$/.test(newPassword)) { setError("gestion.serverSetup.passwordFormat"); return; }
-      if (newPassword === current.password) { setError("gestion.serverSetup.passwordDifferent"); return; }
-      if (newPassword !== confirmation) { setError("gestion.serverSetup.passwordMismatch"); return; }
+      if (!/^\d{4,12}$/.test(newPassword)) { setErrorKey("gestion.serverSetup.passwordFormat"); return; }
+      if (newPassword === current.password) { setErrorKey("gestion.serverSetup.passwordDifferent"); return; }
+      if (newPassword !== confirmation) { setErrorKey("gestion.serverSetup.passwordMismatch"); return; }
       await run(id, async () => {
         let changed: InstallationLoginResult;
         try {
@@ -187,7 +187,7 @@ export function ServerTerminalSetupScreen({ locale, onLocaleChange, onOrganizati
               releaseSession();
               setPassword(""); setNewPassword(""); setConfirmation("");
               setStage("manual");
-              setError("gestion.serverSetup.manualDescription");
+              setErrorKey("gestion.serverSetup.manualDescription");
               return;
             }
           }
@@ -206,7 +206,7 @@ export function ServerTerminalSetupScreen({ locale, onLocaleChange, onOrganizati
       });
       return;
     }
-    if (!pairingCode.trim()) { setError("gestion.serverSetup.pairingRequired"); return; }
+    if (!pairingCode.trim()) { setErrorKey("gestion.serverSetup.pairingRequired"); return; }
     if (stage === "manual") {
       if (!password) return;
       await run(id, async () => {
@@ -267,7 +267,7 @@ export function ServerTerminalSetupScreen({ locale, onLocaleChange, onOrganizati
             </>}
             <button type="submit" className="login-submit" disabled={busy || (stage !== "password" && (!pairingCode.trim() || (stage === "manual" && !password)))}>{t(busy ? "login.loading" : stage === "password" ? "gestion.serverSetup.savePassword" : "gestion.serverSetup.submit")}</button>
           </>}
-          {error && <strong className="login-error" role="alert">{t(error)}</strong>}
+          {errorKey && <strong className="login-error" role="alert">{t(errorKey)}</strong>}
         </form>
       </div></div>
       <footer className="report-footer-context"><span>v{frontendVersion}</span></footer>

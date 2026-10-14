@@ -878,3 +878,10 @@ final result: passed
 - Playwright con datos ficticios confirma selección azul `rgb(0,101,254)`, conservación del código e IP al traducir y navegar, vinculación pendiente en inglés, espera en chino y cambio de contraseña en inglés. Sin desbordamiento horizontal a 1366×768 y foco restaurado al cerrar con Escape. Capturas: `frontend/output/playwright/setup-language-menu-1366.png`, `connection-language-zh-1366.png`, `linking-pending-language-en-1366.png`, `setup-wait-language-zh-1366.png` y `setup-password-language-en-1366.png`.
 
 final result: passed
+
+## PR #224: control de traducciones — 2026-10-14
+
+- Los dos jobs frontend de la primera ejecución fallaron por el mismo guard: interpretaba las claves guardadas en `setError` como texto visible sin traducir. El asistente explicita ahora `errorKey/setErrorKey`; el guard valida los setters de claves contra los catálogos ES/EN/ZH y mantiene el rechazo de literales visibles en los setters anteriores. La prueba añade un caso de clave ausente para evitar que la corrección oculte traducciones pendientes.
+- 25 pruebas focales correctas (22 del asistente y tres del guard), typecheck de Gestión y `git diff --check` correctos. Se conserva el comportamiento visual y la traducción de avisos al cambiar de idioma.
+
+final result: passed
