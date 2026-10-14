@@ -45,6 +45,62 @@ describe("terminal connection address", () => {
   });
 });
 
+describe("terminal connection entry language", () => {
+  it("changes language in place while preserving a pending request and address", async () => {
+    const pendingRequest = { code: "002", name: "TERMINAL CAJA", backendUrl: "https://store.example:8443", mode: "REMOTE" };
+    const load = vi.fn().mockResolvedValue({ ...unlinkedLoad, pendingRequest });
+    const bridge = setBridge(load);
+    const onLocaleChange = vi.fn();
+    const onReady = vi.fn();
+    const view = render(<TerminalConnectionScreen locale="es" identity={null} onReady={onReady} onLocaleChange={onLocaleChange} />);
+    expect(await screen.findByText("002 · TERMINAL CAJA")).toBeVisible();
+    fireEvent.change(screen.getByRole("textbox", { name: "Equipo o dominio" }), { target: { value: "manual.example" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cambiar idioma" }));
+    expect(screen.getByRole("menuitemradio", { name: "Español ES" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "English EN" }));
+    expect(onLocaleChange).toHaveBeenCalledWith("en");
+    view.rerender(<TerminalConnectionScreen locale="en" identity={null} onReady={onReady} onLocaleChange={onLocaleChange} />);
+    expect(screen.getByRole("textbox", { name: "Host or domain" })).toHaveValue("manual.example");
+    expect(screen.getByText("002 · TERMINAL CAJA")).toBeVisible();
+    expect(load).toHaveBeenCalledOnce();
+    expect(bridge.requestLink).not.toHaveBeenCalled();
+    expect(bridge.refreshLink).not.toHaveBeenCalled();
+  });
+
+  it("keeps an in-flight probe running once across locale changes and translates its error", async () => {
+    let resolveProbe!: (result: unknown) => void;
+    const probe = vi.fn().mockReturnValue(new Promise(resolve => { resolveProbe = resolve; }));
+    const load = vi.fn().mockResolvedValue(unlinkedLoad);
+    setBridge(load, { probe });
+    const onReady = vi.fn();
+    const onLocaleChange = vi.fn();
+    const view = render(<TerminalConnectionScreen locale="es" identity={null} onReady={onReady} onLocaleChange={onLocaleChange} />);
+    await screen.findByDisplayValue("store.example");
+    fireEvent.click(screen.getByRole("button", { name: "Comprobar conexión" }));
+    expect(probe).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Cambiar idioma" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "中文 ZH" }));
+    view.rerender(<TerminalConnectionScreen locale="zh" identity={null} onReady={onReady} onLocaleChange={onLocaleChange} />);
+    expect(load).toHaveBeenCalledOnce();
+    expect(probe).toHaveBeenCalledOnce();
+    await act(async () => { resolveProbe({ ok: false, code: "TLS_INVALID" }); });
+    expect(screen.getByRole("alert")).toHaveTextContent("无法验证服务器证书");
+    expect(probe).toHaveBeenCalledOnce();
+  });
+
+  it("closes with Escape and restores keyboard focus to the language button", async () => {
+    setBridge(vi.fn().mockResolvedValue(unlinkedLoad));
+    render(<TerminalConnectionScreen locale="es" identity={null} onReady={vi.fn()} onLocaleChange={vi.fn()} />);
+    const trigger = screen.getByRole("button", { name: "Cambiar idioma" });
+    fireEvent.click(trigger);
+    const selected = screen.getByRole("menuitemradio", { name: "Español ES" });
+    expect(selected).toHaveFocus();
+    fireEvent.keyDown(selected, { key: "Escape" });
+    expect(screen.queryByRole("menuitemradio")).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+});
+
 describe("terminal linking restart", () => {
   it("embeds connection after support in the shared settings navigation", async () => {
     const load = vi.fn().mockResolvedValue(unlinkedLoad);

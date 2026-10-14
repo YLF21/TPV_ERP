@@ -9,6 +9,15 @@ import org.springframework.data.repository.query.Param;
 
 public interface UserAccountRepository extends JpaRepository<UserAccount, UUID> {
 
+    // Scalar query avoids stale account hydration. NO KEY UPDATE serializes password/login
+    // transactions without blocking foreign-key checks performed by terminal/session writes.
+    @Query(value = """
+            select id from usuario
+            where tienda_id is null and upper(user_name) = 'ADMIN'
+            for no key update
+            """, nativeQuery = true)
+    Optional<UUID> lockGlobalAdmin();
+
     Optional<UserAccount> findByTiendaIdAndNombre(UUID tiendaId, String nombre);
 
     Optional<UserAccount> findByNombreAndTiendaIsNull(String nombre);

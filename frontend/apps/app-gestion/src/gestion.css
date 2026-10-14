@@ -70,7 +70,7 @@ body,
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: var(--gestion-navigation-width, 238px) 6px minmax(0, 1fr);
+  grid-template-columns: var(--gestion-navigation-width, 300px) 6px minmax(0, 1fr);
   overflow: hidden;
   background: var(--gestion-bg);
   color: var(--gestion-text);
@@ -82,45 +82,42 @@ body,
   min-height: 0;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
-  background: var(--gestion-navy);
+  overflow: hidden;
+  border-radius: 8px;
+  background: #0065fe;
   color: #fff;
 }
 
 .gestion-nav-brand {
-  padding: 20px 18px 17px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 20px 18px 13px;
+  text-align: center;
 }
 
 .gestion-nav h1 {
   margin: 0;
-  font-size: 23px;
+  font-size: 22px;
   line-height: 1;
   letter-spacing: 0.035em;
-}
-
-.gestion-nav p {
-  margin: 8px 0 0;
-  color: #c8d3df;
-  font-size: var(--gestion-font-label);
-  font-weight: 700;
 }
 
 .gestion-nav nav {
   display: grid;
   align-content: start;
-  padding: 12px 0;
+  gap: 6px;
+  min-height: 0;
+  padding: 8px 10px 14px;
   overflow-y: auto;
 }
 
 @supports not selector(::-webkit-scrollbar) {
   .gestion-nav nav {
     scrollbar-width: thin;
-    scrollbar-color: #4d82b1 transparent;
+    scrollbar-color: #b7d4ff transparent;
   }
 }
 
 .gestion-nav nav::-webkit-scrollbar {
-  width: 8px;
+  width: 7px;
 }
 
 .gestion-nav nav::-webkit-scrollbar-track {
@@ -128,13 +125,12 @@ body,
 }
 
 .gestion-nav nav::-webkit-scrollbar-thumb {
-  border: 1px solid #12385f;
-  border-radius: 2px;
-  background: #4d82b1;
+  border-radius: 6px;
+  background: #b7d4ff;
 }
 
 .gestion-nav nav::-webkit-scrollbar-thumb:hover {
-  background: #76a8d2;
+  background: #e2edff;
 }
 
 .gestion-nav nav::-webkit-scrollbar-button,
@@ -153,16 +149,18 @@ body,
 
 .gestion-nav-item {
   display: grid;
+  gap: 4px;
 }
 
 .gestion-nav nav button {
-  min-height: 42px;
-  padding: 0 18px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
   text-align: left;
   border: 0;
-  border-left: 4px solid transparent;
-  background: transparent;
-  color: #e6edf5;
+  border-radius: 7px;
+  background: #0758d7;
+  color: #fff;
   font: inherit;
   font-size: var(--gestion-font-control);
   font-weight: 800;
@@ -173,128 +171,94 @@ body,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-}
-
-.gestion-nav-item > button i {
-  width: 18px;
-  color: #9fb7cf;
-  font-size: 17px;
-  font-style: normal;
-  line-height: 1;
-  text-align: center;
-}
-
-.gestion-nav-item.group > button > span {
-  display: flex;
-  align-items: center;
   gap: 9px;
 }
 
-.gestion-nav-item > button > span svg,
-.gestion-nav .gestion-nav-children button svg,
-.gestion-nav-results button svg {
+.gestion-nav-item > button > span {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 10px;
+}
+
+.gestion-nav-item > button > span svg {
   flex: 0 0 auto;
-}
-
-.gestion-nav-item.group > button.selected {
-  border-left-color: #27c5f3;
-  background: #104477;
-  color: #fff;
-}
-
-.gestion-nav-item.group > button,
-.gestion-nav-item.direct > button.gestion-nav-standard {
-  border-top: 1px solid rgba(184, 215, 242, 0.2);
-  background: #0a315f;
-}
-
-.gestion-nav-item.direct + .gestion-nav-item.direct > button.gestion-nav-destination {
-  border-top: 1px solid rgba(184, 215, 242, 0.28);
 }
 
 .gestion-nav-children {
   display: grid;
-  padding: 0 0 5px;
-  background: #041d3f;
-  box-shadow: inset 0 1px rgba(141, 197, 245, 0.2), inset 0 -1px rgba(141, 197, 245, 0.2);
+  gap: 4px;
+  padding: 0 3px 3px;
 }
 
-.gestion-nav .gestion-nav-children button {
-  border-left-width: 3px;
-  color: #cbd7e4;
+.gestion-nav .gestion-nav-children button.gestion-nav-child,
+.gestion-nav-results button.gestion-nav-result {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #fff;
+  color: #173558;
   font-size: var(--gestion-font-body);
-  font-weight: 750;
+  font-weight: 500;
 }
 
-.gestion-nav .gestion-nav-children button.gestion-nav-destination {
-  min-height: 68px;
-  padding: 8px 14px;
+.gestion-nav .gestion-nav-children button.gestion-nav-child {
+  padding-left: 38px;
+  font-size: var(--gestion-font-control);
 }
 
-.gestion-nav .gestion-nav-children button + button {
-  border-top: 1px solid rgba(141, 197, 245, 0.13);
-}
-
-.gestion-nav nav button.gestion-nav-destination {
-  min-height: 68px;
+.gestion-nav-item.direct > button.gestion-nav-destination {
+  min-height: 94px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 8px 14px;
+  gap: 7px;
+  padding: 10px 12px;
+  background: #064ab8;
   text-align: center;
   line-height: 1.2;
 }
 
 .gestion-nav-item.direct > button.gestion-nav-destination > span {
-  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-}
-
-.gestion-nav nav button.gestion-nav-standard {
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.gestion-nav-item.direct > button.gestion-nav-standard > span {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.gestion-nav .gestion-nav-children button.gestion-nav-standard {
-  padding: 0 14px 0 32px;
-}
-
-.gestion-nav-destination-label {
-  display: block;
-  width: 100%;
-  text-align: center;
-}
-
-.gestion-nav .gestion-nav-children button.selected {
-  border-left-color: #8dc5f5;
-  background: #fff;
-  color: var(--gestion-navy);
+  gap: 7px;
 }
 
 .gestion-nav nav button:hover,
 .gestion-nav nav button:focus-visible {
-  background: #154a7f;
+  background: #0445ab;
 }
 
-.gestion-nav nav button.selected {
-  border-left-color: #7db4e8;
-  background: #fff;
-  color: var(--gestion-navy);
+.gestion-nav nav button.selected:not(.gestion-nav-child):not(.gestion-nav-result) {
+  background: #03409f;
+  color: #fff;
+}
+
+.gestion-nav .gestion-nav-children button.gestion-nav-child:hover,
+.gestion-nav .gestion-nav-children button.gestion-nav-child:focus-visible,
+.gestion-nav-results button.gestion-nav-result:hover,
+.gestion-nav-results button.gestion-nav-result:focus-visible,
+.gestion-nav .gestion-nav-children button.gestion-nav-child.selected,
+.gestion-nav-results button.gestion-nav-result.selected {
+  background: #f8fbff;
+  color: #0065fe;
+}
+
+.gestion-nav nav button:focus-visible {
+  outline: 2px solid #fff !important;
+  outline-offset: -3px !important;
+}
+
+.gestion-nav .gestion-nav-children button.gestion-nav-child:focus-visible,
+.gestion-nav-results button.gestion-nav-result:focus-visible {
+  outline-color: #0065fe !important;
 }
 
 .gestion-nav-resizer {
@@ -896,33 +860,34 @@ body,
 .gestion-nav-search {
   position: relative;
   display: grid;
-  padding: 10px 12px 4px;
+  padding: 5px 10px 8px;
 }
 
 .gestion-nav-search label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .gestion-nav-search input {
   width: 100%;
-  min-height: 34px;
-  padding: 0 54px 0 10px;
-  border: 1px solid #496681;
-  background: #041d3f;
-  color: #fff;
+  min-height: 36px;
+  padding: 0 58px 0 12px;
+  border: 1px solid #c7dcff;
+  border-radius: 6px;
+  background: #edf4ff;
+  color: #173558;
   font: inherit;
 }
-.gestion-nav-search input::placeholder { color: #b8c6d5; }
-.gestion-nav-search input:focus-visible { outline: 2px solid #8dc5f5; outline-offset: 1px; }
+.gestion-nav-search input::placeholder { color: #526d91; }
+.gestion-nav-search input:focus-visible { outline: 2px solid #0065fe !important; outline-offset: -3px !important; }
 .gestion-nav-search kbd {
   position: absolute;
-  right: 19px;
-  top: 19px;
-  color: #b8c6d5;
+  right: 20px;
+  top: 16px;
+  color: #526d91;
   font: inherit;
   font-size: 10px;
   pointer-events: none;
 }
 
-.gestion-nav-results { display: grid; }
-.gestion-nav-results p { margin: 12px 18px; color: #b8c6d5; font-size: var(--gestion-font-body); }
+.gestion-nav-results { display: grid; gap: 4px; }
+.gestion-nav-results p { margin: 12px 8px; color: #fff; font-size: var(--gestion-font-body); }
 .gestion-group-unlock-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; background: rgb(2 16 35 / 46%); }
 .gestion-group-unlock-dialog { width: min(100%, 440px); border: 1px solid #03162f; background: #fff; color: var(--gestion-text); box-shadow: 0 14px 34px rgb(2 16 35 / 30%); }
 .gestion-group-unlock-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 15px; background: var(--gestion-navy); color: #fff; }

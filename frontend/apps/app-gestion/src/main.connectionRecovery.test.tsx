@@ -6,7 +6,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("react-dom/client", () => ({ createRoot: vi.fn(() => ({ render: vi.fn() })) }));
 vi.mock("./GestionLoginScreen", () => ({ default: () => <section aria-label="gestion login">Login</section> }));
-vi.mock("./ServerTerminalSetupScreen", () => ({ ServerTerminalSetupScreen: () => <section aria-label="gestion setup">Setup</section> }));
+vi.mock("./ServerTerminalSetupScreen", () => ({ ServerTerminalSetupScreen: ({ locale, onLocaleChange, onConfigureConnection }: {
+  locale: string; onLocaleChange: (locale: "en") => void; onConfigureConnection: () => void;
+}) => <section aria-label="gestion setup" data-locale={locale}>Setup
+  <button onClick={() => onLocaleChange("en")}>English</button>
+  <button onClick={onConfigureConnection}>Configure connection</button>
+</section> }));
+vi.mock("../../../packages/app-common/src/components/TerminalConnectionScreen", () => ({ TerminalConnectionScreen: ({ locale, onLocaleChange, onBack }: {
+  locale: string; onLocaleChange: (locale: "zh") => void; onBack: () => void;
+}) => <section aria-label="terminal connection" data-locale={locale}>
+  <button onClick={() => onLocaleChange("zh")}>中文</button>
+  <button onClick={onBack}>Back to setup</button>
+</section> }));
 
 import { App } from "./main";
 
@@ -16,6 +27,22 @@ afterEach(() => {
 });
 
 describe("APP GESTIÓN startup connection recovery", () => {
+  it("keeps the language while moving between connection and installation setup without reloading identity", async () => {
+    const load = vi.fn().mockResolvedValue({ ok: true, identity: null });
+    window.tpvDesktop = {
+      terminalIdentity: { load, save: vi.fn() }, backendConnection: {},
+    } as unknown as Window["tpvDesktop"];
+    render(<App />);
+    expect(await screen.findByLabelText("gestion setup")).toHaveAttribute("data-locale", "es");
+    fireEvent.click(screen.getByRole("button", { name: "English" }));
+    fireEvent.click(screen.getByRole("button", { name: "Configure connection" }));
+    expect(screen.getByLabelText("terminal connection")).toHaveAttribute("data-locale", "en");
+    fireEvent.click(screen.getByRole("button", { name: "中文" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to setup" }));
+    expect(screen.getByLabelText("gestion setup")).toHaveAttribute("data-locale", "zh");
+    expect(load).toHaveBeenCalledOnce();
+  });
+
   it("reloads the saved terminal after a successful retry and returns to login", async () => {
     const load = vi.fn().mockResolvedValueOnce({ ok: true, identity: null })
       .mockResolvedValue({ ok: true, identity: {

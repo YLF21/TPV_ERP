@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 describe("GestionShell", () => {
-  it("centers navigable destinations except Control fiscal without changing group headers", () => {
+  it("keeps icons on main categories and compact text-only destinations", () => {
     render(
       <GestionShell
         session={session}
@@ -45,25 +45,26 @@ describe("GestionShell", () => {
     const groupHeader = screen.getByRole("button", { name: "Documentos cliente" });
 
     expect(directDestination).toHaveClass("gestion-nav-destination");
-    expect(directDestination.querySelector("svg")).toHaveAttribute("width", "20");
+    expect(directDestination.querySelector("svg")).toHaveAttribute("width", "24");
     expect(fiscalDestination).not.toHaveClass("gestion-nav-destination");
     expect(fiscalDestination).toHaveClass("gestion-nav-standard");
-    expect(fiscalDestination.querySelector("svg")).toHaveAttribute("width", "16");
+    expect(fiscalDestination.querySelector("svg")).toHaveAttribute("width", "20");
     expect(groupHeader).not.toHaveClass("gestion-nav-destination");
-    expect(groupHeader.querySelector("svg")).toHaveAttribute("width", "16");
+    expect(groupHeader.querySelector("svg")).toHaveAttribute("width", "20");
 
     fireEvent.click(groupHeader);
     const childDestination = screen.getByRole("button", { name: "Tickets" });
-    expect(childDestination).toHaveClass("gestion-nav-destination");
-    expect(childDestination.querySelector("svg")).toHaveAttribute("width", "20");
-    expect(childDestination.querySelector(".gestion-nav-destination-label")).toHaveTextContent("Tickets");
+    expect(childDestination).toHaveClass("gestion-nav-child");
+    expect(childDestination.querySelector("svg")).toBeNull();
+    expect(childDestination).toHaveTextContent("Tickets");
 
     fireEvent.change(screen.getByRole("searchbox", { name: "gestion.navigationSearch" }), {
       target: { value: "control fiscal" }
     });
     const fiscalSearchResult = screen.getByRole("button", { name: "Control fiscal" });
-    expect(fiscalSearchResult).toHaveClass("gestion-nav-standard");
+    expect(fiscalSearchResult).toHaveClass("gestion-nav-result");
     expect(fiscalSearchResult).not.toHaveClass("gestion-nav-destination");
+    expect(fiscalSearchResult.querySelector("svg")).toBeNull();
   });
 
   it("resizes the navigation with an accessible keyboard separator and persists the user preference", () => {
@@ -80,12 +81,12 @@ describe("GestionShell", () => {
 
     const separator = screen.getByRole("separator", { name: "gestion.navigationResize" });
     const shell = separator.closest(".gestion-screen");
-    expect(separator).toHaveAttribute("aria-valuenow", "238");
+    expect(separator).toHaveAttribute("aria-valuenow", "300");
 
     fireEvent.keyDown(separator, { key: "ArrowRight" });
-    expect(separator).toHaveAttribute("aria-valuenow", "254");
-    expect(shell).toHaveStyle({ "--gestion-navigation-width": "254px" });
-    expect(window.localStorage.getItem("tpv-erp:gestion-navigation-width:ADMIN")).toBe("254");
+    expect(separator).toHaveAttribute("aria-valuenow", "316");
+    expect(shell).toHaveStyle({ "--gestion-navigation-width": "316px" });
+    expect(window.localStorage.getItem("tpv-erp:gestion-navigation-width:ADMIN")).toBe("316");
 
     fireEvent.keyDown(separator, { key: "Home" });
     expect(separator).toHaveAttribute("aria-valuenow", "210");

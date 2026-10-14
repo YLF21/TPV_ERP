@@ -3,10 +3,12 @@ package com.tpverp.backend.licensing;
 import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.installation.Installation;
+import com.tpverp.backend.installation.InitialAdminPasswordState;
 import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.installation.CommercialBootstrapService;
 import com.tpverp.backend.licensing.application.CommercialProfile;
 import com.tpverp.backend.licensing.application.LicenseValidationException;
+import com.tpverp.backend.licensing.application.InitialSetupException;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CompanyRepository;
@@ -51,6 +53,7 @@ public class LicenseSaasLinkService {
     private final AuditService auditService;
     private final JdbcTemplate jdbc;
     private final CommercialBootstrapService commercialBootstrap;
+    private final InitialAdminPasswordState initialAdmin;
 
     public LicenseSaasLinkService(
             InstallationRepository installations,
@@ -66,7 +69,8 @@ public class LicenseSaasLinkService {
             Clock clock,
             AuditService auditService,
             JdbcTemplate jdbc,
-            CommercialBootstrapService commercialBootstrap) {
+            CommercialBootstrapService commercialBootstrap,
+            InitialAdminPasswordState initialAdmin) {
         this.installations = installations;
         this.companies = companies;
         this.stores = stores;
@@ -81,6 +85,7 @@ public class LicenseSaasLinkService {
         this.auditService = auditService;
         this.jdbc = jdbc;
         this.commercialBootstrap = commercialBootstrap;
+        this.initialAdmin = initialAdmin;
     }
 
     @Transactional
@@ -99,11 +104,29 @@ public class LicenseSaasLinkService {
 
     @Transactional
     public synchronized LicenseSaasLinkResult bootstrapEmptyDatabase(String pairingCode) {
+        lockInitialProvisioning();
         if (!businessDatabaseIsEmpty()) {
             throw new LicenseValidationException(
                     "El aprovisionamiento inicial solo esta permitido con la base vacia");
         }
         return link(pairingCode, Optional.empty());
+    }
+
+    @Transactional
+    public synchronized LicenseSaasLinkResult bootstrapInitialDatabase(String pairingCode) {
+        lockInitialProvisioning();
+        if (!businessDatabaseIsEmpty()) {
+            throw new InitialSetupException(InitialSetupException.Reason.INITIAL_SETUP_NOT_EMPTY);
+        }
+        if (!initialAdmin.isRequired()) {
+            throw new InitialSetupException(InitialSetupException.Reason.INITIAL_ADMIN_SETUP_UNAVAILABLE);
+        }
+        return link(pairingCode, Optional.empty());
+    }
+
+    private void lockInitialProvisioning() {
+        // Shared by both bootstrap routes; PostgreSQL holds this lock through commit.
+        jdbc.queryForList("select id from instalacion order by id for update");
     }
 
     private boolean businessDatabaseIsEmpty() {

@@ -20,6 +20,7 @@ public class InstallationStatusService {
     private final Clock clock;
     private final boolean unlicensedDevelopmentAccessEnabled;
     private final LicenseSaasCacheAuthenticator cacheAuthenticator;
+    private final InitialAdminPasswordState initialAdmin;
 
     public InstallationStatusService(
             InstallationRepository instalacionRepository,
@@ -27,13 +28,15 @@ public class InstallationStatusService {
             CompanyRepository empresaRepository,
             Clock clock,
             boolean unlicensedDevelopmentAccessEnabled,
-            LicenseSaasCacheAuthenticator cacheAuthenticator) {
+            LicenseSaasCacheAuthenticator cacheAuthenticator,
+            InitialAdminPasswordState initialAdmin) {
         this.instalacionRepository = instalacionRepository;
         this.licenciaRepository = licenciaRepository;
         this.empresaRepository = empresaRepository;
         this.clock = clock;
         this.unlicensedDevelopmentAccessEnabled = unlicensedDevelopmentAccessEnabled;
         this.cacheAuthenticator = cacheAuthenticator;
+        this.initialAdmin = initialAdmin;
     }
 
     @Transactional(readOnly = true)
@@ -85,7 +88,8 @@ public class InstallationStatusService {
                 installation.getDemoHasta(),
                 mode,
                 activeLicense == null ? null : activeLicense.getReferencia(),
-                organizationProvisioned);
+                organizationProvisioned,
+                initialAdmin.isRequired());
     }
 
     @Transactional(readOnly = true)
@@ -116,7 +120,12 @@ public class InstallationStatusService {
             Instant demoUntil,
             OperationalMode mode,
             String activeLicenseReference,
-            boolean organizationProvisioned) {
+            boolean organizationProvisioned,
+            boolean initialAdminPasswordChangeRequired) {
+        public InstallationStatus(UUID id, String reference, Instant createdAt, Instant demoUntil,
+                OperationalMode mode, String activeLicenseReference, boolean organizationProvisioned) {
+            this(id, reference, createdAt, demoUntil, mode, activeLicenseReference, organizationProvisioned, false);
+        }
     }
 
     public record LicenseRequest(String id, String reference, String publicKey) {

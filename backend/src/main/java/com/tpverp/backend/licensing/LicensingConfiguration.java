@@ -149,7 +149,8 @@ class LicensingConfiguration {
             Clock clock,
             AuditService auditService,
             JdbcTemplate jdbcTemplate,
-            CommercialBootstrapService commercialBootstrap) {
+            CommercialBootstrapService commercialBootstrap,
+            com.tpverp.backend.installation.InitialAdminPasswordState initialAdmin) {
         return new LicenseSaasLinkService(
                 instalacionRepository,
                 empresaRepository,
@@ -164,7 +165,8 @@ class LicensingConfiguration {
                 clock,
                 auditService,
                 jdbcTemplate,
-                commercialBootstrap);
+                commercialBootstrap,
+                initialAdmin);
     }
 
     @Bean

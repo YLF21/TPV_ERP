@@ -60,6 +60,8 @@ class LicenseSaasLinkServiceTest {
     private final JdbcTemplate jdbc = org.mockito.Mockito.mock(JdbcTemplate.class);
     private final CommercialBootstrapService commercialBootstrap =
             org.mockito.Mockito.mock(CommercialBootstrapService.class);
+    private final com.tpverp.backend.installation.InitialAdminPasswordState initialAdmin =
+            org.mockito.Mockito.mock(com.tpverp.backend.installation.InitialAdminPasswordState.class);
     private final LicenseSaasLinkService service = new LicenseSaasLinkService(
             installations,
             companies,
@@ -74,7 +76,8 @@ class LicenseSaasLinkServiceTest {
             Clock.fixed(NOW, ZoneOffset.UTC),
             audit,
             jdbc,
-            commercialBootstrap);
+            commercialBootstrap,
+            initialAdmin);
 
     @BeforeEach
     void recoveryCredentialExistsBeforeEachAttempt() {
@@ -145,8 +148,9 @@ class LicenseSaasLinkServiceTest {
         order.verify(credentials).clearLinkRecoveryToken();
     }
 
-    @Test
-    void vinculaInstalacionNuevaCreandoEmpresaYTiendaDesdeSaas() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void vinculaInstalacionNuevaCreandoEmpresaYTiendaDesdeSaas(boolean initialRoute) {
         var installation = installation();
         var saasCompanyId = UUID.randomUUID();
         var saasStoreId = UUID.randomUUID();
@@ -157,7 +161,13 @@ class LicenseSaasLinkServiceTest {
         when(passwordEncoder.encode(any())).thenReturn("server-hash");
         when(terminals.save(any(Terminal.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        LicenseSaasLinkResult result = service.bootstrapEmptyDatabase("ABC123");
+        when(initialAdmin.isRequired()).thenReturn(true);
+        LicenseSaasLinkResult result = initialRoute
+                ? service.bootstrapInitialDatabase("ABC123") : service.bootstrapEmptyDatabase("ABC123");
+        var lockOrder = inOrder(jdbc, companies, client);
+        lockOrder.verify(jdbc).queryForList("select id from instalacion order by id for update");
+        lockOrder.verify(companies).count();
+        lockOrder.verify(client).link(any(), eq("recovery-token"));
 
         var request = ArgumentCaptor.forClass(LicenseSaasLinkRequest.class);
         verify(client).link(request.capture(), eq("recovery-token"));
@@ -189,6 +199,20 @@ class LicenseSaasLinkServiceTest {
         var saved = ArgumentCaptor.forClass(License.class);
         verify(licenses).save(saved.capture());
         assertThat(saved.getValue().getReferencia()).isEqualTo("LIC-SAAS-1");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"company", "store", "license", "terminal", "admin"})
+    void initialRouteRejectsExistingDataOrChangedAdminBeforeCallingSaas(String existing) {
+        when(companies.count()).thenReturn("company".equals(existing) ? 1L : 0L);
+        when(stores.count()).thenReturn("store".equals(existing) ? 1L : 0L);
+        when(licenses.count()).thenReturn("license".equals(existing) ? 1L : 0L);
+        when(terminals.count()).thenReturn("terminal".equals(existing) ? 1L : 0L);
+        when(initialAdmin.isRequired()).thenReturn(!"admin".equals(existing));
+        assertThatThrownBy(() -> service.bootstrapInitialDatabase("ABC123"))
+                .isInstanceOf(com.tpverp.backend.licensing.application.LicenseValidationException.class);
+        verify(client, never()).link(any(), any());
+        verify(credentials, never()).getOrCreateLinkRecoveryToken();
     }
 
     @Test

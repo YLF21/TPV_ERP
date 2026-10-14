@@ -26,6 +26,7 @@ class InstallationStatusServiceTest {
     private final InstallationRepository installations = org.mockito.Mockito.mock(InstallationRepository.class);
     private final LicenseRepository licenses = org.mockito.Mockito.mock(LicenseRepository.class);
     private final CompanyRepository companies = org.mockito.Mockito.mock(CompanyRepository.class);
+    private final InitialAdminPasswordState initialAdmin = org.mockito.Mockito.mock(InitialAdminPasswordState.class);
     private final LicenseSaasCacheAuthenticator cacheAuthenticator =
             org.mockito.Mockito.mock(LicenseSaasCacheAuthenticator.class);
 
@@ -40,6 +41,17 @@ class InstallationStatusServiceTest {
         assertThat(status.mode()).isEqualTo(OperationalMode.UNLINKED);
         assertThat(status.activeLicenseReference()).isNull();
         assertThat(status.organizationProvisioned()).isFalse();
+        assertThat(status.initialAdminPasswordChangeRequired()).isFalse();
+    }
+
+    @Test
+    void reportsPendingInitialPasswordAfterOrganizationWasProvisioned() {
+        when(installations.findAll()).thenReturn(List.of(installation()));
+        when(companies.count()).thenReturn(1L);
+        when(initialAdmin.isRequired()).thenReturn(true);
+        var status = serviceAt("2026-06-20T00:00:00Z", false).status();
+        assertThat(status.organizationProvisioned()).isTrue();
+        assertThat(status.initialAdminPasswordChangeRequired()).isTrue();
     }
 
     @Test
@@ -184,7 +196,8 @@ class InstallationStatusServiceTest {
                 companies,
                 Clock.fixed(Instant.parse(now), ZoneOffset.UTC),
                 unlicensedDevelopmentAccessEnabled,
-                cacheAuthenticator);
+                cacheAuthenticator,
+                initialAdmin);
     }
 
     private static Installation installation() {

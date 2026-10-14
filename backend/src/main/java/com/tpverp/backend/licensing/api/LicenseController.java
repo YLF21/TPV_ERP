@@ -75,6 +75,12 @@ public class LicenseController {
         return LinkSaasResponse.from(saasLink.bootstrapEmptyDatabase(request.pairingCode()));
     }
 
+    @PostMapping("/link-saas/bootstrap-initial")
+    public LinkSaasResponse bootstrapInitialDatabase(
+            @Valid @RequestBody BootstrapLinkSaasRequest request) {
+        return LinkSaasResponse.from(saasLink.bootstrapInitialDatabase(request.pairingCode()));
+    }
+
     @PostMapping("/validate-saas")
     @PreAuthorize("hasRole('ADMIN')")
     @RequireGestionGroup(GestionGroup.CONFIGURACION)

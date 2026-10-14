@@ -552,7 +552,7 @@ function AppContent({ localePreference, recoveryEpoch }: { localePreference: Ret
           onLocaleChange={handleLocaleChange} onLogin={handleLogin}
           onConfigureConnection={() => setScreen("connection")} />;
       }
-      return <TerminalConnectionScreen locale={locale} identity={null}
+      return <TerminalConnectionScreen locale={locale} onLocaleChange={handleLocaleChange} identity={null}
         onReady={(identity) => { setTerminalContext(identity); setOfflineTerminalContext(null); setScreen("home"); }}
         onBack={offlineTerminalContext ? () => setScreen("home") : undefined} />;
     }
@@ -586,7 +586,7 @@ function AppContent({ localePreference, recoveryEpoch }: { localePreference: Ret
 
   if (screen === "connection" && window.tpvDesktop?.backendConnection && terminalContext
       && (!session || hasPermission(session, "CONFIGURACION_TERMINAL"))) {
-    return <TerminalConnectionScreen locale={locale} identity={terminalContext} onReady={setTerminalContext}
+    return <TerminalConnectionScreen locale={locale} onLocaleChange={handleLocaleChange} identity={terminalContext} onReady={setTerminalContext}
       onBack={() => setScreen("home")}
       settingsShell={session ? {
         app: "venta", session, terminalContext,

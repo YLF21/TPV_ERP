@@ -102,13 +102,15 @@ class InstallationBootstrapConfiguration {
 			Clock clock,
 			@Value("${tpv.dev.unlicensed-access-enabled:false}")
 			boolean unlicensedDevelopmentAccessEnabled,
-			LicenseSaasCacheAuthenticator cacheAuthenticator) {
+			LicenseSaasCacheAuthenticator cacheAuthenticator,
+			InitialAdminPasswordState initialAdmin) {
 		return new InstallationStatusService(
 				instalacionRepository,
 				licenciaRepository,
 				empresaRepository,
 				clock,
 				unlicensedDevelopmentAccessEnabled,
-				cacheAuthenticator);
+				cacheAuthenticator,
+				initialAdmin);
 	}
 }

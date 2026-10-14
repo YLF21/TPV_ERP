@@ -46,6 +46,7 @@ class SecurityConfiguration {
 				.authorizeHttpRequests(authorize -> authorize
 						.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/v1/fiscal/export-jobs/download").permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/v1/licenses/link-saas/bootstrap-initial").permitAll()
 						.requestMatchers(
 								"/actuator/metrics",
 								"/actuator/metrics/**",

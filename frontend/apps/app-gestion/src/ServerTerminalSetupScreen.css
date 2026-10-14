@@ -1,0 +1,153 @@
+.login-screen.server-setup-screen {
+  align-items: safe center;
+}
+
+.server-setup-screen .login-panel {
+  margin-top: 0;
+}
+
+.server-setup-screen .login-panel-heading {
+  display: grid;
+  gap: 10px;
+}
+
+.server-setup-screen .login-panel-heading h1 {
+  margin: 0;
+  color: #222;
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+.server-setup-screen .login-panel-heading span {
+  color: #5d6b78;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.server-setup-screen .server-setup-connection,
+.server-setup-screen .server-setup-license {
+  min-width: 0;
+  border: 1px solid #d7e0ea;
+  border-radius: 6px;
+  background: #f3f6fb;
+}
+
+.server-setup-screen .server-setup-connection {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+}
+
+.server-setup-screen .server-setup-connection > div,
+.server-setup-screen .server-setup-connection > strong,
+.server-setup-screen .server-setup-connection.online > button,
+.server-setup-screen .server-setup-connection.checking > button {
+  grid-column: 1 / -1;
+}
+
+.server-setup-screen .server-setup-connection code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.server-setup-screen .server-setup-connection > button {
+  grid-column: auto;
+  justify-self: stretch;
+  font-size: 13px;
+  box-shadow: none;
+}
+
+.server-setup-screen .server-setup-license header strong {
+  color: #07254f;
+}
+
+.server-setup-screen .server-setup-license header span,
+.server-setup-screen .server-setup-license > small {
+  color: #5d6b78;
+}
+
+.server-setup-screen .server-setup-note {
+  text-align: center;
+}
+
+.server-setup-screen > .report-footer-context {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.server-setup-screen > .report-footer-context > span {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+@media (max-height: 1080px) {
+  .server-setup-screen .login-panel {
+    gap: 14px !important;
+    padding: 20px 32px !important;
+  }
+
+  .server-setup-screen .login-panel-heading {
+    margin-bottom: 0 !important;
+  }
+
+  .server-setup-screen .login-panel label,
+  .server-setup-screen .login-panel .login-input-wrap input {
+    font-size: 20px !important;
+    line-height: 24px;
+  }
+
+  .server-setup-screen .login-input-wrap {
+    height: 48px;
+  }
+
+  .server-setup-screen .login-panel .login-submit {
+    height: 58px !important;
+    min-height: 58px !important;
+    font-size: 20px !important;
+  }
+}
+
+.server-setup-screen .server-setup-connection,
+.server-setup-screen .server-setup-license,
+.server-setup-screen .server-setup-license header,
+.server-setup-screen .server-setup-wait {
+  display: grid;
+  gap: 10px;
+}
+
+.server-setup-screen .server-setup-license,
+.server-setup-screen .server-setup-wait {
+  padding: 14px;
+}
+
+.server-setup-screen .server-setup-license header span,
+.server-setup-screen .server-setup-wait span {
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.server-setup-screen .server-setup-wait {
+  min-height: 120px;
+  align-content: center;
+  text-align: center;
+  color: #07254f;
+  border: 1px solid #d7e0ea;
+  border-radius: 6px;
+  background: #f3f6fb;
+}
+
+@media (max-width: 600px) {
+  .server-setup-screen .login-panel {
+    padding: 18px !important;
+  }
+
+  .server-setup-screen .login-panel label,
+  .server-setup-screen .login-panel .login-input-wrap input {
+    font-size: 16px !important;
+  }
+
+  .server-setup-screen .login-submit {
+    white-space: normal;
+  }
+}

@@ -400,6 +400,26 @@ public class ApiExceptionHandler {
         return systemProblem(HttpStatus.UNPROCESSABLE_CONTENT, SystemErrorCode.INVALID_LICENSE, request);
     }
 
+    @ExceptionHandler(com.tpverp.backend.licensing.application.InitialSetupException.class)
+    ProblemDetail initialSetupUnavailable(
+            com.tpverp.backend.licensing.application.InitialSetupException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var detail = switch (exception.reason()) {
+            case INITIAL_SETUP_NOT_EMPTY -> switch (language) {
+                case EN -> "This installation already contains business data";
+                case ZH -> "此安装已包含业务数据";
+                default -> "Esta instalación ya contiene datos de negocio";
+            };
+            case INITIAL_ADMIN_SETUP_UNAVAILABLE -> switch (language) {
+                case EN -> "Sign in with the current administrator credentials to continue setup";
+                case ZH -> "请使用当前管理员凭据登录以继续设置";
+                default -> "Accede con las credenciales actuales del administrador para continuar la configuración";
+            };
+        };
+        return problem(HttpStatus.CONFLICT, exception.reason().name(), detail, language, request);
+    }
+
     @ExceptionHandler(TicketNotFoundException.class)
     ProblemDetail ticketNotFound(
             TicketNotFoundException exception,
