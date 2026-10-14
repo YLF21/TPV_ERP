@@ -33,6 +33,7 @@ const technicalVisibleLiterals = new Set([
   "48 h",
   "Ctrl K"
 ]);
+const translationKeySetters = new Set(["setErrorKey", "setExportErrorKey"]);
 
 function auditedFiles() {
   const gestionFiles = readdirSync(gestionSourceDirectory)
@@ -44,14 +45,8 @@ function auditedFiles() {
   ];
 }
 
-function visibleLiterals(fileName: string) {
-  const source = ts.createSourceFile(
-    fileName,
-    readFileSync(fileName, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX
-  );
+function visibleLiterals(source: ts.SourceFile) {
+  const fileName = source.fileName;
   const findings: string[] = [];
   const visibleAttributes = new Set(["aria-label", "title", "placeholder", "alt"]);
   const stateSetters = new Set(["setStatus", "setError", "setFormError", "setConfirmationError"]);
@@ -96,26 +91,20 @@ function visibleLiterals(fileName: string) {
   return findings;
 }
 
-function literalTranslationKeys(fileName: string) {
-  const source = ts.createSourceFile(
-    fileName,
-    readFileSync(fileName, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX
-  );
+function literalTranslationKeys(source: ts.SourceFile) {
   const keys: string[] = [];
 
   function visit(node: ts.Node) {
     if (
       ts.isCallExpression(node)
       && ts.isIdentifier(node.expression)
-      && node.expression.text === "t"
+      && (node.expression.text === "t" || translationKeySetters.has(node.expression.text))
       && node.arguments.length > 0
       && (
         ts.isStringLiteral(node.arguments[0])
         || ts.isNoSubstitutionTemplateLiteral(node.arguments[0])
       )
+      && node.arguments[0].text.trim()
     ) {
       keys.push(node.arguments[0].text);
     }
@@ -126,18 +115,35 @@ function literalTranslationKeys(fileName: string) {
   return keys;
 }
 
+function sourceFile(fileName: string) {
+  return ts.createSourceFile(fileName, readFileSync(fileName, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+}
+
+function missingTranslations(keys: string[]) {
+  return (["es", "en", "zh"] as const).flatMap((locale) => (
+    keys
+      .filter((key) => messages[locale][key] === undefined)
+      .map((key) => `${locale}:${key}`)
+  ));
+}
+
 describe("APP GESTIÓN i18n guard", () => {
   it("does not allow new visible literals outside the translation catalog", () => {
-    expect(auditedFiles().flatMap(visibleLiterals)).toEqual([]);
+    expect(auditedFiles().flatMap((fileName) => visibleLiterals(sourceFile(fileName)))).toEqual([]);
   });
 
   it("resolves every literal translation key in Spanish, English and Chinese", () => {
-    const keys = [...new Set(auditedFiles().flatMap(literalTranslationKeys))];
-    const missing = (["es", "en", "zh"] as const).flatMap((locale) => (
-      keys
-        .filter((key) => messages[locale][key] === undefined)
-        .map((key) => `${locale}:${key}`)
-    ));
-    expect(missing).toEqual([]);
+    const keys = [...new Set(auditedFiles().flatMap((fileName) => literalTranslationKeys(sourceFile(fileName))))];
+    expect(missingTranslations(keys)).toEqual([]);
+  });
+
+  it("checks translation keys stored in state against every locale", () => {
+    const sample = ts.createSourceFile("sample.tsx", 'setErrorKey("gestion.serverSetup.offline"); setErrorKey("gestion.serverSetup.missingKey"); setError("Visible literal")', ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    expect(missingTranslations(literalTranslationKeys(sample))).toEqual([
+      "es:gestion.serverSetup.missingKey",
+      "en:gestion.serverSetup.missingKey",
+      "zh:gestion.serverSetup.missingKey"
+    ]);
+    expect(visibleLiterals(sample)).toEqual(["sample.tsx:1 setError: Visible literal"]);
   });
 });

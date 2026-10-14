@@ -113,6 +113,10 @@ class AuthenticationServiceTest {
 		when(passwordEncoder.matches("0000", "password-hash")).thenReturn(true);
 
 		var result = service().installationLogin("admin", "0000");
+		var lockOrder = org.mockito.Mockito.inOrder(usuarioRepository, sesionRepository);
+		lockOrder.verify(usuarioRepository).lockGlobalAdmin();
+		lockOrder.verify(usuarioRepository).findGlobalByUserName("ADMIN");
+		lockOrder.verify(sesionRepository).save(any());
 
 		assertThat(result.accessToken()).isNotBlank();
 		assertThat(result.mustChangePassword()).isTrue();
@@ -127,15 +131,40 @@ class AuthenticationServiceTest {
 		var user = new UserAccount(null, "ADMIN", "old-hash", role);
 		user.requirePasswordChange();
 		var session = new UserSession(user, null, "token-hash", Instant.parse("2026-06-08T09:00:00Z"));
+		var otherSession = new UserSession(user, null, "other-token-hash", Instant.parse("2026-06-08T09:01:00Z"));
 		when(sesionRepository.findByTokenHashAndRevocadaEnIsNull(any())).thenReturn(Optional.of(session));
+		when(sesionRepository.findByUsuarioIdAndRevocadaEnIsNull(user.getId()))
+				.thenReturn(java.util.List.of(session, otherSession));
 		when(passwordEncoder.matches("0000", "old-hash")).thenReturn(true);
 		when(passwordEncoder.encode("1234")).thenReturn("new-hash");
 
 		var result = service().changeInstallationPassword("token", "0000", "1234");
+		var lockOrder = org.mockito.Mockito.inOrder(usuarioRepository, sesionRepository);
+		lockOrder.verify(usuarioRepository).lockGlobalAdmin();
+		lockOrder.verify(sesionRepository).findByTokenHashAndRevocadaEnIsNull(any());
 
 		assertThat(result.mustChangePassword()).isFalse();
 		assertThat(user.mustChangePassword()).isFalse();
 		assertThat(user.getPasswordHash()).isEqualTo("new-hash");
+		assertThat(session.isActiva()).isFalse();
+		assertThat(otherSession.isActiva()).isFalse();
+		var replacement = ArgumentCaptor.forClass(UserSession.class);
+		verify(sesionRepository).save(replacement.capture());
+		assertThat(replacement.getValue().isActiva()).isTrue();
+	}
+
+	@Test
+	void initialPasswordCannotBeReusedToUnlockTheAccount() {
+		var user = new UserAccount(null, "ADMIN", "initial-hash", new Role(null, "ADMIN"));
+		user.requirePasswordChange();
+		var session = new UserSession(user, null, "token-hash", Instant.parse("2026-06-08T09:00:00Z"));
+		when(sesionRepository.findByTokenHashAndRevocadaEnIsNull(any())).thenReturn(Optional.of(session));
+		when(passwordEncoder.matches("0000", "initial-hash")).thenReturn(true);
+		assertThatThrownBy(() -> service().changeInstallationPassword("token", "0000", "0000"))
+				.isInstanceOf(IllegalArgumentException.class).hasMessageContaining("distinta");
+		assertThat(user.mustChangePassword()).isTrue();
+		assertThat(session.isActiva()).isTrue();
+		verify(sesionRepository, org.mockito.Mockito.never()).save(any());
 	}
 
 	@Test
@@ -150,6 +179,7 @@ class AuthenticationServiceTest {
 		when(passwordEncoder.encode("1234")).thenReturn("new-hash");
 
 		service().changePassword("token", "0000", "1234");
+		verify(usuarioRepository, org.mockito.Mockito.never()).lockGlobalAdmin();
 
 		assertThat(user.getPasswordHash()).isEqualTo("new-hash");
 		assertThat(user.getAuthVersion()).isEqualTo(1);

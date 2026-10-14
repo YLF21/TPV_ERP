@@ -2,6 +2,7 @@ import type { LocaleCode } from "../types";
 
 const catalogs: Record<LocaleCode, Record<string, string>> = {
   es: {
+    "gestion.navigationTitle": "GESTIÓN",
     "gestion.navigation.group.overview": "Resumen",
     "gestion.navigation.group.controlAlerts": "Alertas de control",
     "gestion.navigation.group.cash": "Caja",
@@ -69,6 +70,7 @@ const catalogs: Record<LocaleCode, Record<string, string>> = {
     "gestion.navigationResize": "Reajustar anchura del menú",
   },
   en: {
+    "gestion.navigationTitle": "MANAGEMENT",
     "gestion.navigation.group.overview": "Summary",
     "gestion.navigation.group.controlAlerts": "Control alerts",
     "gestion.navigation.group.cash": "Cash",
@@ -136,6 +138,7 @@ const catalogs: Record<LocaleCode, Record<string, string>> = {
     "gestion.navigationResize": "Resize menu width",
   },
   zh: {
+    "gestion.navigationTitle": "管理",
     "gestion.navigation.group.overview": "概览",
     "gestion.navigation.group.controlAlerts": "控制警报",
     "gestion.navigation.group.cash": "收银",

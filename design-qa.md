@@ -800,3 +800,88 @@ final result: passed
 - Validación completa posterior: 293 archivos y 3257 pruebas frontend correctas (287,58 s). Las 96 pruebas SaaS, auditoría SaaS, TypeScript y compilaciones de Venta/Gestión/SaaS pasan.
 
 final result: passed
+
+# Barra lateral azul de GESTIÓN — 2026-10-12
+
+- Referencia visual: `C:/Users/YLF/Desktop/imagenes erp/图片_20261012110725_1811_7.jpg`, 1702 × 956 px.
+- Implementación: `frontend/output/playwright/gestion-sidebar-final-1702.png`, 1702 × 956 px; viewport CSS 1702 × 956, deviceScaleFactor 1. Sin escalado ni distorsión de la referencia.
+- Estado comparado: español, Documentos cliente desplegado; el resultado conserva la selección de Facturas de venta. El encabezado y el contenido fuera de la barra lateral están fuera del alcance del rediseño.
+- Vista previa: `http://127.0.0.1:5174/.codex-tmp/sidebar-review.html`. Monta GestionShell y el registro reales con una sesión ficticia y contenido vacío. No realiza escrituras en la tienda ni valida sesión o datos de negocio.
+- Comparación completa: referencia y captura final abiertas conjuntamente. Referencia de composición conservada: dos accesos grandes, categorías horizontales con icono/flecha y subcategorías blancas compactas. Las diferencias de título, iconos reales, radio, separaciones y altura de marca responden al encargo y al estilo actual del ERP.
+- Comparación enfocada: `frontend/output/playwright/gestion-sidebar-reference-detail.png` (309 × 910 px, recorte x=0, y=46 de la referencia) y `frontend/output/playwright/gestion-sidebar-final-detail.png` (300 × 917 px) abiertas conjuntamente. Se excluye la cabecera superior; no se reescala. La anchura es ajustable y el título se reduce a GESTIÓN.
+
+## Superficies de fidelidad y revisión
+
+- Tipografía: familia actual del ERP conservada; categorías principales en negrita y subcategorías de 14 px/500, sin iconos y con sangría de 38 px. Título GESTIÓN; MANAGEMENT y 管理 comprobados en el navegador.
+- Espaciado: tarjetas de Resumen/Alertas de 94 px, categorías de 44 px, filas de subcategoría de al menos 36 px. Radio exterior 8 px y controles de 6–7 px. Menú con scroll independiente, sin desbordamiento horizontal a 1702 × 956 ni 1366 × 720.
+- Colores: fondo lateral medido `rgb(0,101,254)`, correspondiente a #0065FE. Subcategoría seleccionada azul sobre #f8fbff, contraste 4,71:1. Categorías principales blancas sobre #0758d7, contraste 6,20:1. Foco azul en superficies claras y blanco en categorías oscuras.
+- Activos: 11 iconos principales Phosphor existentes, cero iconos en subcategorías; no se sustituyen activos por círculos ni dibujos. El logo original se conserva y se añadió a la vista previa como favicon para corregir el 404 inicial.
+- Contenido: etiquetas y orden provienen del registro actual; se mantienen traducciones ES/EN/ZH y destinos/permisos actuales. El texto del buscador pertenece al producto existente.
+
+## Historial de comparación
+
+1. Primera captura `frontend/output/playwright/gestion-sidebar-initial-1702.png`: [P2] las filas hijas tenían sangría insuficiente y texto demasiado pesado frente a la referencia; [P2] el azul sobre #e6f0ff tenía contraste de 4,26:1 y el foco en controles claros no se distinguía suficientemente. Resultado pendiente de ajustes.
+2. Corrección: sangría de 38 px, texto 14 px/500, fondo #f8fbff y focos específicos que prevalecen sobre el estilo compartido. Se conservó el comportamiento de los botones.
+3. Evidencia posterior: capturas finales completa/detalle comparadas con la referencia y `frontend/output/playwright/gestion-sidebar-keyboard-focus-final.png` verificada a 1366 × 720. El foco medido es #0065FE con outline-offset -3 px; el contraste seleccionado es 4,71:1. Sin hallazgos P0/P1/P2 pendientes.
+
+## Interacciones y validación
+
+- Caja se expande y cierra el grupo anterior; selección de Tickets y Facturas de venta comprobada.
+- Ctrl+K enfoca el buscador; búsqueda de Tickets produce el destino real sin icono y el clic limpia el texto de búsqueda.
+- Separador accesible: ArrowRight cambia 300 → 316 px y persiste 316; ArrowLeft devuelve 300 px.
+- Idiomas ES/EN/ZH probados; sin desbordamiento y cero iconos hijos. Captura china `frontend/output/playwright/gestion-sidebar-zh.png` inspeccionada, sin caracteres ausentes.
+- Consola revisada: un 404 inicial del favicon de la vista previa corregido; sin nuevos errores de aplicación tras la recarga.
+- TypeScript y build completos de GESTIÓN, 10 pruebas focales de shell/navegación y nueva compilación Vite tras los ajustes CSS correctos. No se repiten las pruebas funcionales porque el código funcional no cambió después de su resultado válido.
+- El navegador integrado no estaba disponible; Playwright utilizado después de la autorización explícita del usuario. Vista previa local conservada abierta.
+
+final result: passed
+
+# Configurar terminal servidor — 2026-10-14
+
+- Reutiliza `DesktopLoginScreen.css`: fondo `#e8edf6`, logo de GESTIÓN, tarjeta blanca con radio 16/12 px, campos con iconos y acción principal `#0065FE`. Ajustes propios limitados a `.server-setup-screen`.
+- Conserva los estados del servidor, reintento, configurar conexión, validación de contraseña, licencia SaaS y callbacks de instalación. Versión real mostrada en el pie derecho.
+- Revisión visual con Playwright en 1920×1080 y 1366×768; estados conectado/desconectado y textos ES/EN/ZH. Formulario desplazable en ventanas bajas, sin desbordamiento horizontal y con acción final accesible.
+- Datos ficticios aislados en `server-setup-review.html`: visibilidad de contraseña, campo de nueva contraseña, rechazo de formato inválido y continuación válida comprobados sin llamadas a la instalación real.
+- 24 pruebas existentes de `ServerTerminalSetupScreen` y `LoginScreen` correctas; TypeScript y build de GESTIÓN correctos. Vite recompilado tras el ajuste final del CSS.
+- Capturas: `frontend/output/playwright/server-setup-online-1920.png`, `server-setup-offline-1366.png`, `server-setup-en-1366.png`, `server-setup-zh-1366.png` y `server-setup-zh-bottom-1366.png`. Comparación con `server-setup-login-reference-1920.png`.
+- El navegador integrado no está disponible para páginas locales. La comprobación utiliza Playwright autorizado, con Chromium instalado y perfil dedicado en F:.
+
+## Conexión antes del emparejamiento
+
+- Durante la comprobación y sin conexión solo se muestra el bloque del backend. Credenciales, código SaaS, acción de configurar y nota de almacenamiento aparecen únicamente con conexión confirmada y `organizationProvisioned === false`.
+- Una instalación ya preparada continúa por el callback existente, sin solicitar otro emparejamiento. Durante el reintento vuelven a ocultarse los campos hasta confirmar el estado.
+- Seis pruebas del flujo correctas: espera de conexión y estado mediante respuestas diferidas, instalación preparada, desconexión, reintentos hacia ambos estados y bootstrap existente. TypeScript y build correctos tras el cambio.
+- Vista previa `server-setup-review.html?mode=retry`: empieza desconectada y simula conexión al pulsar «Reintentar». Capturas `server-setup-connection-first-1366.png` y `server-setup-pairing-after-connect-1366.png`; comprobado cero campos iniciales y tres tras conectar una instalación sin preparar.
+
+final result: passed
+
+## Emparejamiento antes del acceso ADMIN — 2026-10-14
+
+- El servidor conectado muestra `LOCAL` o la IP resuelta por el transporte real de Electron/Vite. Se consulta `/__tpv/backend-address`; nunca se presenta `/api/v1` ni la dirección del renderer como IP del backend. Sin conexión se mantienen configurar conexión y reintentar, sin campos de alta.
+- En instalaciones nuevas se introduce únicamente el código SaaS. La operación utiliza `bootstrap-initial`; transcurridos dos segundos muestra una pantalla de espera y bloquea dobles envíos. Al finalizar autentica automáticamente el ADMIN inicial con `0000` y exige contraseña nueva y confirmación antes de continuar por el flujo existente del terminal.
+- El acceso inicial se mantiene como sesión de instalación, sin inventar identidad o sesión operativa de terminal. No se guardan contraseñas ni tokens en preferencias; al finalizar o desmontar se revocan las sesiones temporales. Una instalación configurada conserva el acceso existente y no prueba `0000`.
+- El backend permite únicamente el POST público de alta, con BD empresarial vacía y ADMIN protegido, activo y todavía inicial. Ambas rutas de bootstrap comparten bloqueo de instalación hasta commit. La contraseña nueva debe diferir de la actual; revoca todas las sesiones anteriores y serializa el acceso ADMIN y el cambio con `FOR NO KEY UPDATE`, sin cambios de esquema.
+- El estado de instalación permite retomar el cambio obligatorio después de un emparejamiento cuya respuesta se perdió. La recuperación manual vuelve a pedir credenciales vigentes si se pierde la respuesta del cambio antes de aprovisionar; no conserva una sesión ya revocada ni da por válida una contraseña sin autenticar.
+- Validación backend: 72 pruebas iniciales correctas y 55 pruebas afectadas/seguridad correctas después del cierre de concurrencia, sin fallos ni omisiones. Incluye dos casos de bloqueo de bootstrap hasta commit, cuatro casos JPA de acceso/cambio inicial en ambos órdenes y aprovisionamiento comercial con migraciones en esquemas aislados de PostgreSQL 18. El clúster temporal en loopback se detuvo al terminar; no se modificó la tienda demo.
+- Validación frontend: 20 pruebas del asistente, cinco del helper de dirección y 16 del resolver de Electron/Vite correctas. TypeScript y build de GESTIÓN correctos tras el ajuste final; presupuestos de Gestión dentro del límite (JS 432162/600000 y CSS 447881/520000 bytes). `git diff --check` correcto.
+- Playwright autorizado sobre respuestas ficticias: LOCAL, IP remota, ES/EN/ZH, código inválido conservado, desconexión/reintento, espera automática, cambio obligatorio, rechazo de `0000` y de confirmación distinta, continuación válida y recuperación tras emparejar. Sin desbordamiento horizontal a 1366×768; espera con radio 6 px. No se consumieron códigos SaaS reales ni se cambiaron credenciales de la instalación activa.
+- Capturas: `frontend/output/playwright/server-setup-code-first-1366.png`, `server-setup-change-password-1366.png`, `server-setup-waiting-1366.png`, `server-setup-remote-es-1366.png`, `server-setup-remote-en-1366.png`, `server-setup-remote-zh-1366.png`, `server-setup-resume-password-zh-1366.png` y `server-setup-offline-code-flow-1366.png`. Vista previa: `http://127.0.0.1:5174/.codex-tmp/server-setup-review.html?mode=online`.
+
+final result: passed
+
+## Idiomas durante conexión y vinculación — 2026-10-14
+
+- Selector ES/EN/ZH disponible antes de iniciar sesión en la conexión independiente de Venta/Gestión y durante el alta SaaS, espera y cambio inicial de contraseña. Conserva el patrón visual del acceso actual y selección `#0065FE`. La conexión integrada en Configuración utiliza su cabecera existente, sin duplicar el selector.
+- El idioma se comparte entre las páginas del asistente. Cambiarlo conserva los campos y operaciones pendientes; no vuelve a cargar la identidad ni repite solicitudes. Los errores se guardan como claves y se traducen al render, incluidos avisos visibles y respuestas de una operación iniciada en otro idioma.
+- Menú accesible: selección marcada, navegación por flechas/Home/End, cierre al seleccionar, salir con Tab, pulsar fuera o Escape; Escape devuelve el foco al botón.
+- 53 pruebas focales correctas: 29 de conexión, 22 del alta y dos de integración/recuperación de Gestión. TypeScript y compilaciones de Venta/Gestión correctos; presupuestos dentro de los límites, sin añadir CSS global; `git diff --check` correcto. Se reutilizan las validaciones backend del flujo anterior, cuyo código no cambia.
+- Playwright con datos ficticios confirma selección azul `rgb(0,101,254)`, conservación del código e IP al traducir y navegar, vinculación pendiente en inglés, espera en chino y cambio de contraseña en inglés. Sin desbordamiento horizontal a 1366×768 y foco restaurado al cerrar con Escape. Capturas: `frontend/output/playwright/setup-language-menu-1366.png`, `connection-language-zh-1366.png`, `linking-pending-language-en-1366.png`, `setup-wait-language-zh-1366.png` y `setup-password-language-en-1366.png`.
+
+final result: passed
+
+## PR #224: control de traducciones — 2026-10-14
+
+- Los dos jobs frontend de la primera ejecución fallaron por el mismo guard: interpretaba las claves guardadas en `setError` como texto visible sin traducir. El asistente explicita ahora `errorKey/setErrorKey`; el guard valida los setters de claves contra los catálogos ES/EN/ZH y mantiene el rechazo de literales visibles en los setters anteriores. La prueba añade un caso de clave ausente para evitar que la corrección oculte traducciones pendientes.
+- 25 pruebas focales correctas (22 del asistente y tres del guard), typecheck de Gestión y `git diff --check` correctos. Se conserva el comportamiento visual y la traducción de avisos al cambiar de idioma.
+
+final result: passed

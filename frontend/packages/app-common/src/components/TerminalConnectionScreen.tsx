@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode, TerminalContext } from "../types";
 import { SaleSettingsShell, type SaleSettingsShellProps } from "./SaleSettingsShell";
+import { EntryLanguagePicker } from "./EntryLanguagePicker";
 import "./TerminalConnectionScreen.css";
 
 type Bridge = NonNullable<NonNullable<Window["tpvDesktop"]>["backendConnection"]>;
@@ -36,9 +37,10 @@ function splitAddress(value?: string) {
   } catch { return { host: "", port: "" }; }
 }
 
-export function TerminalConnectionScreen({ locale, identity, onReady, onBack, settingsShell }: {
+export function TerminalConnectionScreen({ locale, identity, onReady, onBack, onLocaleChange, settingsShell }: {
   locale: LocaleCode; identity: TerminalContext | null;
   onReady: (identity: TerminalContext) => void; onBack?: () => void;
+  onLocaleChange?: (locale: LocaleCode) => void;
   settingsShell?: Omit<SaleSettingsShellProps, "locale" | "active" | "heading" | "subtitle" | "children" | "navigationDisabled">;
 }) {
   const t = createTranslator(locale);
@@ -121,8 +123,7 @@ export function TerminalConnectionScreen({ locale, identity, onReady, onBack, se
       LICENSE_REQUIRED: "INSTALLATION_NOT_READY",
     } as Record<string, string>)[result.code] || result.code;
     const key = `terminalLink.error.${normalized}`;
-    const translated = t(key);
-    setError(translated === key ? t("terminalLink.error") : translated);
+    setError(t(key) === key ? "terminalLink.error" : key);
   }
   async function loadShared(initial = false) {
     if (!bridge || loadRunning.current || busyRef.current || refreshRunning.current) return;
@@ -155,13 +156,13 @@ export function TerminalConnectionScreen({ locale, identity, onReady, onBack, se
       if (initial && !identity && !result.configuration && !result.pendingRequest && !result.linkedIdentity) {
         window.setTimeout(() => { if (mounted.current && generation === loadGeneration.current) void discover(); }, 0);
       }
-    } catch { if (mounted.current && generation === loadGeneration.current) setError(t("terminalLink.error")); }
+    } catch { if (mounted.current && generation === loadGeneration.current) setError("terminalLink.error"); }
     finally { loadRunning.current = false; }
   }
 
   useEffect(() => {
     mounted.current = true;
-    if (!bridge) { setError(t("terminalLink.error")); return; }
+    if (!bridge) { setError("terminalLink.error"); return; }
     void loadShared(true);
     return () => { mounted.current = false; loadGeneration.current++; };
   }, [bridge, identity]);
@@ -191,7 +192,7 @@ export function TerminalConnectionScreen({ locale, identity, onReady, onBack, se
       if (!mounted.current) return;
       if (result.ok) setServers(result.servers);
       else showError(result);
-    } catch { if (mounted.current) setError(t("terminalLink.error")); }
+    } catch { if (mounted.current) setError("terminalLink.error"); }
     finally { actionBusy(false); }
   }
   async function check() {
@@ -214,7 +215,7 @@ export function TerminalConnectionScreen({ locale, identity, onReady, onBack, se
         && (result.localServer ? slot.code === "001" : slot.status === "FREE")
         && (slot.code !== "001" || result.localServer));
       setCode(current => free.some(slot => slot.code === current) ? current : free[0]?.code ?? "");
-    } catch { if (mounted.current) setError(t("terminalLink.error")); }
+    } catch { if (mounted.current) setError("terminalLink.error"); }
     finally { actionBusy(false); }
   }
   async function requestLink() {
@@ -244,7 +245,7 @@ export function TerminalConnectionScreen({ locale, identity, onReady, onBack, se
       setRestartRequired(!!result.restartRequired);
       reportReady(result.link.status === "ACTIVE" ? result.identity : null, !!result.restartRequired);
       activeLinked = result.link.status === "ACTIVE";
-    } catch { if (mounted.current) setError(t("terminalLink.error")); }
+    } catch { if (mounted.current) setError("terminalLink.error"); }
     finally { actionBusy(false); if (activeLinked && mounted.current) void loadShared(); }
   }
   async function refresh() {
@@ -259,7 +260,7 @@ export function TerminalConnectionScreen({ locale, identity, onReady, onBack, se
       pendingRef.current = result.link.status === "PENDING";
       setRestartRequired(!!result.restartRequired);
       reportReady(result.link.status === "ACTIVE" ? result.identity : null, !!result.restartRequired);
-    } catch { if (mounted.current) setError(t("terminalLink.error")); }
+    } catch { if (mounted.current) setError("terminalLink.error"); }
     finally { refreshRunning.current = false; }
   }
   async function cancel() {
@@ -270,7 +271,7 @@ export function TerminalConnectionScreen({ locale, identity, onReady, onBack, se
       if (!mounted.current) return;
       if (result.ok) { setLink(null); setPendingRequest(null); pendingRef.current = false; setProbe(null); }
       else showError(result);
-    } catch { if (mounted.current) setError(t("terminalLink.error")); }
+    } catch { if (mounted.current) setError("terminalLink.error"); }
     finally { actionBusy(false); }
   }
   async function saveAddress() {
@@ -284,14 +285,14 @@ export function TerminalConnectionScreen({ locale, identity, onReady, onBack, se
       if (!mounted.current) return;
       if (result.ok) setRestartRequired(result.restartRequired);
       else showError(result);
-    } catch { if (mounted.current) setError(t("terminalLink.error")); }
+    } catch { if (mounted.current) setError("terminalLink.error"); }
     finally { actionBusy(false); }
   }
   async function restart() {
     if (!bridge || busyRef.current || loadRunning.current || refreshRunning.current) return;
     actionBusy(true); setError("");
     try { const result = await bridge.restart(); if (mounted.current && !result.ok) showError(result); }
-    catch { if (mounted.current) setError(t("terminalLink.error")); }
+    catch { if (mounted.current) setError("terminalLink.error"); }
     finally { actionBusy(false); }
   }
   const available = probe?.server.slots.filter(slot => !slot.outOfQuota
@@ -365,12 +366,15 @@ export function TerminalConnectionScreen({ locale, identity, onReady, onBack, se
     {(identity || linkedInstallation || pendingRequest) && probe?.sameInstallation && <div className="terminal-link-toolbar"><button type="button" disabled={busy || restartRequired} onClick={() => void saveAddress()}>{t("terminalLink.saveAddress")}</button></div>}
     {identity && restartRequired && <button type="button" disabled={busy} onClick={() => void restart()}>{t("terminalLink.restart")}</button>}
     {!identity && restartRequired && <button type="button" disabled={busy} onClick={() => void restart()}>{t("terminalLink.restart")}</button>}
-    {error && <p role="alert" className="terminal-link-error">{error}</p>}
+    {error && <p role="alert" className="terminal-link-error">{t(error) === error ? t("terminalLink.error") : t(error)}</p>}
   </section>;
   return settingsShell ? <SaleSettingsShell {...settingsShell} locale={locale} active="connection"
     heading={t("terminalLink.title")}
     subtitle={t(identity || linkedInstallation ? "terminalLink.addressHelp" : "terminalLink.setup")}
     navigationDisabled={busy || restartRequired}>
     {panel}
-  </SaleSettingsShell> : <main className="settings-screen terminal-link-screen">{panel}</main>;
+  </SaleSettingsShell> : <main className="settings-screen terminal-link-screen">
+    {onLocaleChange && <EntryLanguagePicker locale={locale} onLocaleChange={onLocaleChange} />}
+    {panel}
+  </main>;
 }

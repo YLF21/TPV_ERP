@@ -218,9 +218,9 @@ function AppContent({ locale, setLocale, recoveryEpoch }: { locale: LocaleCode; 
 
   if (terminalContext === null) {
     return setupMode === "connection" && window.tpvDesktop?.backendConnection
-      ? <TerminalConnectionScreen locale={locale} identity={null} onReady={setTerminalContext}
+      ? <TerminalConnectionScreen locale={locale} onLocaleChange={setLocale} identity={null} onReady={setTerminalContext}
           onBack={() => setSetupMode("organization")} />
-      : <ServerTerminalSetupScreen locale={locale} onOrganizationReady={() => setSetupMode("connection")}
+      : <ServerTerminalSetupScreen locale={locale} onLocaleChange={setLocale} onOrganizationReady={() => setSetupMode("connection")}
           onConfigureConnection={() => setSetupMode("connection")} />;
   }
 

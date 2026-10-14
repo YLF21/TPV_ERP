@@ -46,6 +46,7 @@ public class AuthenticationService {
 	@Transactional
 	// Permite al ADMIN global entrar antes de que existan tienda y terminal.
 	public LoginResult installationLogin(String userName, String password) {
+		lockInitialAdmin(userName);
 		var user = usuarioRepository.findGlobalByUserName(normalize(userName))
 				.filter(value -> value.isProtegido() && value.isActivo())
 				.orElseThrow(AuthenticationFailedException::new);
@@ -58,6 +59,7 @@ public class AuthenticationService {
 	@Transactional
 	// Sustituye la contrasena temporal inicial y emite una sesion ya desbloqueada.
 	public LoginResult changeInstallationPassword(String accessToken, String currentPassword, String newPassword) {
+		usuarioRepository.lockGlobalAdmin();
 		var session = sesionRepository.findByTokenHashAndRevocadaEnIsNull(hash(accessToken))
 				.filter(value -> value.getTerminal() == null)
 				.orElseThrow(AuthenticationFailedException::new);
@@ -69,8 +71,17 @@ public class AuthenticationService {
 			throw new AuthenticationFailedException();
 		}
 		requireNumericPassword(newPassword);
+		if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+			throw new IllegalArgumentException("La nueva contrasena debe ser distinta de la actual");
+		}
 		user.cambiarPassword(passwordEncoder.encode(newPassword));
-		session.revocar(user, "INITIAL_PASSWORD_CHANGED", Instant.now(clock));
+		var now = Instant.now(clock);
+		for (var previous : sesionRepository.findByUsuarioIdAndRevocadaEnIsNull(user.getId())) {
+			previous.revocar(user, "INITIAL_PASSWORD_CHANGED", now);
+		}
+		if (session.isActiva()) {
+			session.revocar(user, "INITIAL_PASSWORD_CHANGED", now);
+		}
 		return createSession(user, null);
 	}
 
@@ -90,6 +101,7 @@ public class AuthenticationService {
 			String userName,
 			String password,
 			InetAddress clientAddress) {
+		lockInitialAdmin(userName);
 		var terminal = terminalRepository.findForAuthentication(terminalId)
 				.orElseThrow(AuthenticationFailedException::new);
 		if (!passwordEncoder.matches(
@@ -215,6 +227,13 @@ public class AuthenticationService {
 
 	private String normalize(String value) {
 		return value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+	}
+
+	private void lockInitialAdmin(String userName) {
+		if ("ADMIN".equals(normalize(userName))) {
+			// Always first, before account/session/terminal reads; held until transaction commit.
+			usuarioRepository.lockGlobalAdmin();
+		}
 	}
 
 	private void requireNumericPassword(String value) {

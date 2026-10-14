@@ -38,7 +38,7 @@ function usesCenteredDestinationLayout(item: GestionNavigationItem) {
   return item.lock !== "FISCAL";
 }
 
-const DEFAULT_NAVIGATION_WIDTH = 238;
+const DEFAULT_NAVIGATION_WIDTH = 300;
 const MIN_NAVIGATION_WIDTH = 210;
 const MAX_NAVIGATION_WIDTH = 420;
 const NAVIGATION_WIDTH_STEP = 16;
@@ -175,8 +175,7 @@ export function GestionShell({
     >
       <aside className="gestion-nav">
         <div className="gestion-nav-brand">
-          <h1>{t("gestion.title")}</h1>
-          <p>{t("gestion.subtitle")}</p>
+          <h1>{t("gestion.navigationTitle")}</h1>
         </div>
         <div className="gestion-nav-search">
           <label htmlFor="gestion-navigation-search">{t("gestion.navigationSearch")}</label>
@@ -199,23 +198,20 @@ export function GestionShell({
         <nav aria-label={t("gestion.navigation") }>
           {normalizedQuery ? (
             <div className="gestion-nav-results" aria-live="polite">
-              {matchingDestinations.map((item) => {
-                const centeredDestination = usesCenteredDestinationLayout(item);
-                return (
-                  <button
-                    type="button"
-                    key={item.key}
-                    className={`${centeredDestination ? "gestion-nav-destination" : "gestion-nav-standard"}${item.key === activeKey ? " selected" : ""}`}
-                    onClick={() => {
-                      setNavigationQuery("");
-                      openDestination(item);
-                    }}
-                  >
-                    {item.icon && <item.icon size={centeredDestination ? 20 : 16} weight={item.key === activeKey ? "fill" : "regular"} aria-hidden="true" />}
-                    <span className={centeredDestination ? "gestion-nav-destination-label" : undefined}>{item.pathLabel}</span>
-                  </button>
-                );
-              })}
+              {matchingDestinations.map((item) => (
+                <button
+                  type="button"
+                  key={item.key}
+                  className={`gestion-nav-result${item.key === activeKey ? " selected" : ""}`}
+                  aria-current={item.key === activeKey ? "page" : undefined}
+                  onClick={() => {
+                    setNavigationQuery("");
+                    openDestination(item);
+                  }}
+                >
+                  <span>{item.pathLabel}</span>
+                </button>
+              ))}
               {matchingDestinations.length === 0 && <p>{t("gestion.navigationSearchEmpty")}</p>}
             </div>
           ) : navigation.map((item) => {
@@ -247,7 +243,7 @@ export function GestionShell({
                   }}
                 >
                   <span>
-                    {item.icon && <item.icon size={hasChildren || !centeredDestination ? 16 : 20} weight={item.key === activeKey || groupActive ? "fill" : "regular"} aria-hidden="true" />}
+                    {item.icon && <item.icon size={centeredDestination ? 24 : 20} weight={item.key === activeKey || groupActive ? "fill" : "regular"} aria-hidden="true" />}
                     {item.label}
                   </span>
                   {hasChildren && (groupOpen
@@ -256,21 +252,17 @@ export function GestionShell({
                 </button>
                 {hasChildren && groupOpen && (
                   <div className="gestion-nav-children">
-                    {item.children?.map((child) => {
-                      const centeredChild = usesCenteredDestinationLayout(child);
-                      return (
-                        <button
-                          type="button"
-                          key={child.key}
-                          className={`${centeredChild ? "gestion-nav-destination" : "gestion-nav-standard"}${child.key === activeKey ? " selected" : ""}`}
-                          aria-current={child.key === activeKey ? "page" : undefined}
-                          onClick={() => openDestination(child)}
-                        >
-                          {child.icon && <child.icon size={centeredChild ? 20 : 16} weight={child.key === activeKey ? "fill" : "regular"} aria-hidden="true" />}
-                          <span className={centeredChild ? "gestion-nav-destination-label" : undefined}>{child.label}</span>
-                        </button>
-                      );
-                    })}
+                    {item.children?.map((child) => (
+                      <button
+                        type="button"
+                        key={child.key}
+                        className={`gestion-nav-child${child.key === activeKey ? " selected" : ""}`}
+                        aria-current={child.key === activeKey ? "page" : undefined}
+                        onClick={() => openDestination(child)}
+                      >
+                        <span>{child.label}</span>
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
