@@ -1,3 +1,4 @@
+import "./GestionAccentColors.css";
 import { lazy, StrictMode, Suspense, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { useMemo } from "react";

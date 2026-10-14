@@ -885,3 +885,78 @@ final result: passed
 - 25 pruebas focales correctas (22 del asistente y tres del guard), typecheck de Gestión y `git diff --check` correctos. Se conserva el comportamiento visual y la traducción de avisos al cambiar de idioma.
 
 final result: passed
+
+## Resumen de Gestión: azul #0065FE — 2026-10-14
+
+- Rama `codex/gestion-dashboard-blue` creada desde `backend/main` actualizado, commit `682aa2c5`. Reutiliza el checkout aislado de Gestión y conserva el material local; el checkout principal y el propietario de `main` no se modifican.
+- Cambios de producto limitados a `gestion-dashboard.css`: acento `--gd-blue: #0065FE`, acción Personalizar, periodos seleccionados, casillas, selectores de vistas/métricas y bordes de selección/foco. La serie actual de barras, líneas, puntos y leyendas utiliza el mismo azul, incluidas las barras de productos y ventas por horas. Se conservan las series anteriores y los colores semánticos de negativos.
+- Playwright con `GestionDashboard` real y datos ficticios en memoria: estilos computados `rgb(0,101,254)` en Este mes, Personalizar, casilla Comparar, barras de tendencia, productos y horas, y vista seleccionada. El periodo seleccionado mantiene el azul al pasar el puntero. Se comprueba apertura/cancelación de Personalizar, selección de otro periodo y desactivación/reactivación de comparación; la serie anterior vuelve a mostrarse. Sin llamadas a datos de la tienda ni escrituras reales.
+- Compilación Vite de Gestión, presupuestos y `git diff --check` correctos. No se modifican TypeScript ni comportamiento de datos, por lo que no se añaden pruebas unitarias para reproducir reglas CSS.
+- Capturas `frontend/output/playwright/dashboard-blue-1920.png`, `dashboard-blue-customize-1920.png` y `dashboard-blue-1366.png`; esta última sin desbordamiento horizontal. Vista previa ignorada por Git: `http://127.0.0.1:5174/.codex-tmp/dashboard-blue-review.html`.
+
+final result: passed
+
+## Cabecera de Gestión: logo compartido con Venta — 2026-10-14
+
+- `AppFrame` muestra el wordmark existente de esPOS mediante `AppBrand` cuando el título corresponde a Gestión. Sustituye el icono de aplicación y el texto de marca de la cabecera; conserva la etiqueta accesible traducida y el contexto de empresa a su derecha. El cambio alcanza las pantallas que utilizan el marco común de Gestión.
+- 11 pruebas existentes de AppFrame/control de traducciones, TypeScript, build de Gestión, presupuestos y `git diff --check` correctos. No se añaden pruebas que reproduzcan el cambio de markup.
+- Playwright comprueba un único wordmark de 94×30 px y ausencia del antiguo icono/texto en el contenedor, empresa visible y cabecera sin desbordamiento a 1366×768. Inspección de `frontend/output/playwright/gestion-header-wordmark-detail.png` y captura completa `gestion-header-wordmark-1366.png` con datos ficticios.
+
+final result: passed
+
+## Todas las ventanas de Gestión: acento #0065FE — 2026-10-14
+
+- `GestionAccentColors.css` se carga exclusivamente desde Gestión y se limita a `html[data-app="gestion"]` y al medio pantalla. Incluye diálogos y menús fuera del contenedor principal. La capa se declara en el HTML antes de los estilos compartidos para mantener la precedencia también cuando la compilación separa el CSS en chunks.
+- Acciones principales de crear, editar, guardar, exportar, imprimir, vincular y reintentar utilizan el azul exacto; también pestañas, opciones seleccionadas, navegación activa, casillas, radios y foco. La selección de filas conserva texto oscuro y estados legibles sobre fondo claro con indicador #0065FE. La elección de caducidad de vales usa el mismo acento sin modificar sus avisos.
+- Se conservan acciones destructivas/cancelación en rojo, controles desactivados, cabeceras marino, promociones expiradas y colores de validación de importaciones. No se modifican las hojas de Venta ni la impresión, ni reglas, permisos o textos del producto.
+- Playwright con componentes reales y respuestas ficticias comprueba Usuarios, creación de almacén, selector compartido y confirmación portalled al body. Confirma `rgb(0,101,254)` en acciones/opciones, cancelación `rgb(180,35,24)`, cabeceras marino y filas legibles con indicador azul. La traducción ES/EN/ZH conserva el acento; End/Enter cambia idioma y devuelve el foco al selector. Sin escrituras ni consultas a datos de la tienda.
+- Comprobación adicional sobre las hojas compiladas: confirmación, pestaña, casilla y fila; al emular impresión o retirar el marcador de Gestión recuperan el estilo anterior. Resumen real sin desbordamiento horizontal a 1366×768, con los periodos, selectores y casillas en azul.
+- TypeScript/build de Gestión, compilación final Vite, presupuestos y `git diff --check` correctos. Presupuestos máximos de Gestión: JS 432162/600000 y CSS 447881/520000 bytes; el CSS generado de Venta conserva su tamaño previo. Se reutilizan las pruebas funcionales anteriores, sin añadir pruebas unitarias que reproduzcan estilos.
+- Capturas locales: `frontend/output/playwright/gestion-accents-users.png`, `gestion-accents-confirm.png`, `gestion-accents-warehouse.png` y `gestion-accents-dashboard-1366.png`. Las vistas y diagnósticos generados se mantienen fuera de los cambios de producto.
+
+final result: passed
+
+## Categorías de alertas: selección delineada — 2026-10-14
+
+- La franja `.gestion-control-type-strip` sustituye el relleno azul por fondo gris claro #eef1f4, texto/icono #0065FE y contorno interior de 2 px. El estilo se mantiene al pasar el puntero sin alterar tamaños ni la selección funcional; las categorías sin seleccionar conservan su apariencia.
+- Compilación Vite y `git diff --check` correctos. Playwright sobre `ControlAlertsScreen` real con datos ficticios verifica Todos, cambio a Eliminación completa de carrito y hover. Tras la corrección de fondo gris, confirma `rgb(238,241,244)` y conserva texto y borde `rgb(0,101,254)`. Captura local `frontend/output/playwright/control-alert-outline-selected.png`.
+
+final result: passed
+
+## Configurar reglas: ventana ERP compartida — 2026-10-14
+
+- El gestor de reglas utiliza `filter-dialog erp-classic-window`: cabecera marino común, título y cierre blancos, esquinas de 6 px y botón Añadir regla con el acento #0065FE. El cuerpo mantiene sus márgenes y el desplazamiento independiente de las tarjetas; la cabecera permanece fija. Se conservan datos, acciones, estados y traducciones existentes.
+- TypeScript/build de Gestión, presupuestos y cinco pruebas existentes de reglas/preferencias correctos. Playwright con componentes reales y datos ficticios confirma cabecera `rgb(10,42,82)`, título/cierre blancos, 14 tarjetas desplazables y ausencia de desbordamiento a 1366 y 1024 px. Añadir regla abre su editor correctamente. Captura local `frontend/output/playwright/control-rules-window-1366.png`.
+
+final result: passed
+
+## Configurar reglas: tarjetas y activación — 2026-10-14
+
+- Añadir nueva regla se muestra como última tarjeta blanca del grid. Cada regla tiene borde gris oscuro completo de 1 px, esquinas de 6 px y estado en la esquina superior derecha: activa en verde, inactiva en rojo; las no configuradas conservan su estado informativo gris. Se retiran las acciones activar/desactivar y ver alertas de los pies.
+- Doble clic o Enter en una tarjeta configurada abre sus alertas mediante el flujo existente. El pie conserva Configurar; un doble clic sobre ese botón no activa la navegación de la tarjeta. El editor sustituye la casilla de activación por un botón de ancho completo, verde/rojo, con `aria-pressed`; modifica el borrador y se persiste al Guardar, conservando permisos, parámetros y validaciones.
+- 68 pruebas de ControlAlertsScreen y tres del control de traducciones correctas. Cubren alta desde la última tarjeta, retirada de acciones, doble clic/Enter, configuración de reglas aún no añadidas y guardado activo/inactivo sin cambios inmediatos al pulsar el toggle. TypeScript/build, presupuestos y `git diff --check` correctos.
+- Playwright con datos ficticios confirma los cuatro bordes grises iguales, posición final de la tarjeta de alta, estados verde/rojo y ambos colores del botón de activación. Sin desbordamiento a 1366 px y con traducciones EN/ZH a 1024 px. El doble clic cierra el gestor y aplica el tipo a la lista de alertas. Sin escrituras reales a la tienda.
+- Capturas locales: `frontend/output/playwright/control-rules-cards-1366.png`, `control-rules-add-card.png`, `control-rule-toggle-active.png` y `control-rule-toggle-inactive.png`.
+
+final result: passed
+
+## Configurar regla: estado y eliminación — 2026-10-14
+
+- La barra de activación muestra únicamente «Regla activa» o «Regla inactiva», centrado y traducido ES/EN/ZH. En las reglas existentes, Eliminar regla queda a la izquierda de Guardar, en la misma fila, con borde y texto rojos y fondo blanco. Las reglas nuevas no muestran eliminación.
+- La eliminación requiere confirmación dentro de la aplicación; cancelar no realiza solicitudes. Durante la operación se bloquean envíos y cierre del editor; si falla se muestra el error y se conserva el formulario. Al completarse se actualiza el catálogo y se cierra el editor.
+- El backend retira lógicamente la configuración mediante DELETE con versión esperada, permisos de gestión y aislamiento por tienda. La migración V273 conserva las reglas, versiones, eventos y alertas históricos; volver a añadir el mismo tipo reutiliza su identificador y registra una nueva versión. Se mantienen las restricciones de no eliminación y de historial inmutable.
+- Validación: 77 pruebas focales frontend y 73 backend correctas; cinco comprobaciones adicionales con PostgreSQL real verifican retirada, restauración, historial, concurrencia y migraciones con datos existentes. TypeScript/build de Gestión, presupuestos y `git diff --check` correctos. El clúster PostgreSQL aislado quedó detenido, sin modificar la tienda demo ni parar las aplicaciones.
+- Playwright con el componente real y respuestas ficticias confirma ambos textos exactos, botón rojo sin relleno a la izquierda de Guardar, cancelación sin DELETE y eliminación con versión seguida de catálogo sin configurar, conservando el contador histórico. Captura local: `frontend/output/playwright/control-rule-delete-editor.png`. No se elimina ninguna regla real durante la comprobación visual.
+
+final result: passed
+
+## Reglas eliminadas e iconos de tarjetas — 2026-10-14
+
+- El grid muestra únicamente reglas configuradas, tanto activas como inactivas. Una regla eliminada desaparece y su tipo queda disponible desde la última tarjeta «Añadir nueva regla». Tras volver a añadirla, reaparece con sus contadores históricos conservados.
+- Después de confirmar la eliminación en el servidor se actualizan también las reglas y el catálogo locales, antes de recargar. Si falla esa recarga, la tarjeta eliminada no vuelve a mostrarse; se mantiene el error con reintento y se bloquean las acciones que dependen de un catálogo actualizado.
+- Iconos de reglas de 32 px, sin borde ni fondo propio, con la paleta existente por tipo: azul #0065FE, rojo para descuentos, ámbar para caja y gris azulado para eliminaciones. El selector de nuevas reglas y el editor comparten los colores e iconos de 28 px; la tarjeta de alta utiliza un signo más de 36 px. Se conservan bordes grises completos y esquinas redondeadas de las tarjetas.
+- 76 pruebas de ControlAlertsScreen y tres del control de traducciones correctas; cubren eliminación, alta posterior, regla inactiva, cancelación, error de DELETE y recarga fallida después de DELETE confirmado. TypeScript/build de Gestión, presupuestos y `git diff --check` correctos. No se modifica el backend en este ajuste.
+- Playwright sobre respuestas ficticias comprueba desaparición, alta y activación posterior, contadores 2/2 conservados, iconos transparentes sin borde y tamaños de 32/28 px. Sin desbordamiento en español a 1366 px ni en inglés/chino a 1024 px. Sin cambios en reglas reales ni interrupciones de las aplicaciones.
+- Capturas locales: `frontend/output/playwright/control-rules-colored-icons-1366.png`, `control-rule-card-removed.png`, `control-rule-add-colored-icons.png`, `control-rule-card-restored.png`, `control-rules-colored-icons-en-1024.png` y `control-rules-colored-icons-zh-1024.png`.
+
+final result: passed

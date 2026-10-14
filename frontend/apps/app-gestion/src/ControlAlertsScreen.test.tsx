@@ -9,7 +9,7 @@ vi.mock("./controlAlertsApi", async (original) => ({
   ...await original<typeof import("./controlAlertsApi")>(),
   loadControlAlertGroups: vi.fn(), loadControlAlerts: vi.fn(), loadControlAlertAssignees: vi.fn(),
   loadControlAlert: vi.fn(), transitionControlAlert: vi.fn(), updateControlAlertWork: vi.fn(), loadRelatedDocument: vi.fn(),
-  loadControlRuleCatalog: vi.fn(), loadControlRules: vi.fn(), saveControlRule: vi.fn(), setControlRuleActive: vi.fn(),
+  loadControlRuleCatalog: vi.fn(), loadControlRules: vi.fn(), saveControlRule: vi.fn(), setControlRuleActive: vi.fn(), deleteControlRule: vi.fn(),
   loadControlAlertViewPreference: vi.fn(), saveControlAlertViewPreference: vi.fn()
 }));
 
@@ -78,6 +78,7 @@ beforeEach(() => {
   vi.mocked(api.loadControlRules).mockResolvedValue([rule]);
   vi.mocked(api.saveControlRule).mockResolvedValue({ ...rule, id: "rule-2", type: "MANUAL_DISCOUNT_OVER_PERCENT", active: false, configuration: { thresholdPercent: .29 } });
   vi.mocked(api.setControlRuleActive).mockResolvedValue({ ...rule, active: false, version: 1 });
+  vi.mocked(api.deleteControlRule).mockResolvedValue(undefined);
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 404 })));
 });
 afterEach(() => { cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
@@ -486,16 +487,20 @@ describe("control alert timeline", () => {
 });
 
 describe("rules and user preferences", () => {
-  it("opens existing rule configuration from the modal and accepts a two-decimal threshold", async () => {
+  it("opens the new-rule picker from the last grid card and accepts a two-decimal threshold", async () => {
     renderScreen(managerPermissions);
     await loaded();
     fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.configureRules" }));
     const manager = await screen.findByRole("dialog", { name: "gestion.controlAlerts.configureRules" });
     await waitFor(() => expect(api.loadControlRuleCatalog).toHaveBeenCalled());
-    const add = within(manager).getAllByRole("button", { name: "gestion.controlRules.add" })[0];
+    const add = within(manager).getByRole("button", { name: "gestion.controlRules.addNew" });
     await waitFor(() => expect(add.hasAttribute("disabled")).toBe(false));
+    expect(add.classList.contains("gestion-rule-add-card")).toBe(true);
+    expect(add.parentElement?.lastElementChild).toBe(add);
+    expect(within(manager.querySelector("header")!).queryByRole("button", { name: "gestion.controlRules.add" })).toBeNull();
     fireEvent.click(add);
     const editor = await screen.findByRole("dialog", { name: "gestion.controlRules.add" });
+    expect(within(editor).queryByRole("button", { name: "gestion.controlRules.deleteRule" })).toBeNull();
     fireEvent.click(within(editor).getByRole("button", { name: /Manual discount/ }));
     fireEvent.change(within(editor).getByRole("spinbutton", { name: "gestion.controlRules.threshold" }), { target: { value: "0.29" } });
     fireEvent.click(within(editor).getByRole("button", { name: "common.save" }));
@@ -510,9 +515,202 @@ describe("rules and user preferences", () => {
     const manager = await screen.findByRole("dialog", { name: "gestion.controlAlerts.configureRules" });
     expect(await within(manager).findByText("gestion.controlAlerts.rulesLoadError")).not.toBeNull();
     expect(within(manager).queryByText("gestion.controlRules.allConfigured")).toBeNull();
-    expect(within(manager).getAllByRole("button", { name: "gestion.controlRules.add" })[0].hasAttribute("disabled")).toBe(true);
+    const add = within(manager).queryByRole("button", { name: "gestion.controlRules.addNew" });
+    expect(add === null || add.hasAttribute("disabled")).toBe(true);
     fireEvent.click(within(manager).getByRole("button", { name: "gestion.controlAlerts.retry" }));
     await waitFor(() => expect(within(manager).queryByText("gestion.controlAlerts.rulesLoadError")).toBeNull());
+    expect(within(manager).getByRole("button", { name: "gestion.controlRules.addNew" }).hasAttribute("disabled")).toBe(false);
+  });
+
+  it("keeps card actions limited to configuration and opens alerts on double click or Enter", async () => {
+    renderScreen(managerPermissions);
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.configureRules" }));
+    let manager = await screen.findByRole("dialog", { name: "gestion.controlAlerts.configureRules" });
+    await within(manager).findByRole("button", { name: "gestion.controlRules.addNew" });
+    const cards = manager.querySelectorAll(".gestion-rule-card");
+    const configured = [...cards].find((card) => card.textContent?.includes("Ticket cancelled")) as HTMLElement;
+    expect(configured).toBeTruthy();
+    expect([...cards].some((card) => card.textContent?.includes("Manual discount"))).toBe(false);
+    expect(within(configured).getByRole("button", { name: "gestion.controlRules.configure" })).not.toBeNull();
+    expect(within(configured).queryByRole("button", { name: "gestion.controlAlerts.openList" })).toBeNull();
+    expect(within(configured).queryByRole("button", { name: "gestion.controlRules.activate" })).toBeNull();
+    expect(within(configured).queryByRole("button", { name: "gestion.controlRules.deactivate" })).toBeNull();
+    fireEvent.click(within(manager).getByRole("button", { name: "gestion.controlRules.addNew" }));
+    const newRuleEditor = await screen.findByRole("dialog", { name: "gestion.controlRules.add" });
+    expect(within(newRuleEditor).getByRole("button", { name: /Manual discount/ })).not.toBeNull();
+    fireEvent.click(within(newRuleEditor).getByRole("button", { name: "common.close" }));
+    fireEvent.doubleClick(configured);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "gestion.controlAlerts.configureRules" })).toBeNull());
+    await waitFor(() => expect(api.loadControlAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ type: "TICKET_CANCELLED" }), "manager-token", expect.any(AbortSignal)));
+
+    fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.configureRules" }));
+    manager = await screen.findByRole("dialog", { name: "gestion.controlAlerts.configureRules" });
+    const card = [...manager.querySelectorAll(".gestion-rule-card")].find((entry) => entry.textContent?.includes("Ticket cancelled")) as HTMLElement;
+    card.focus();
+    fireEvent.keyDown(card, { key: "Enter" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "gestion.controlAlerts.configureRules" })).toBeNull());
+    expect(api.setControlRuleActive).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("saves an existing rule as active=%s only after Save", async (active) => {
+    vi.mocked(api.loadControlRules).mockResolvedValue([{ ...rule, active: !active }]);
+    renderScreen(managerPermissions);
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.configureRules" }));
+    const manager = await screen.findByRole("dialog", { name: "gestion.controlAlerts.configureRules" });
+    await within(manager).findByRole("button", { name: "gestion.controlRules.addNew" });
+    const configured = [...manager.querySelectorAll(".gestion-rule-card")].find((card) => card.textContent?.includes("Ticket cancelled")) as HTMLElement;
+    const configure = within(configured).getByRole("button", { name: "gestion.controlRules.configure" });
+    fireEvent.click(configure);
+    const editor = await screen.findByRole("dialog", { name: "gestion.controlRules.edit" });
+    const toggle = within(editor).getByRole("button", { name: `gestion.controlRules.${active ? "inactiveRule" : "activeRule"}` });
+    expect(toggle.classList.contains("gestion-rule-active-toggle")).toBe(true);
+    expect(toggle.getAttribute("aria-pressed")).toBe(String(!active));
+    expect(toggle.textContent).toBe(`gestion.controlRules.${active ? "inactiveRule" : "activeRule"}`);
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-pressed")).toBe(String(active));
+    expect(toggle.textContent).toBe(`gestion.controlRules.${active ? "activeRule" : "inactiveRule"}`);
+    expect(within(editor).getByRole("button", { name: `gestion.controlRules.${active ? "activeRule" : "inactiveRule"}` })).toBe(toggle);
+    expect(api.saveControlRule).not.toHaveBeenCalled();
+    expect(api.setControlRuleActive).not.toHaveBeenCalled();
+    fireEvent.click(within(editor).getByRole("button", { name: "common.save" }));
+    await waitFor(() => expect(api.saveControlRule).toHaveBeenCalledWith({ type: "TICKET_CANCELLED", active, configuration: {} }, expect.objectContaining({ id: "rule-1" }), "manager-token"));
+    expect(api.setControlRuleActive).not.toHaveBeenCalled();
+  });
+
+  it("keeps an inactive configured rule visible as a card", async () => {
+    vi.mocked(api.loadControlAlertGroups).mockResolvedValue([{ ...group, active: false }]);
+    vi.mocked(api.loadControlRules).mockResolvedValue([{ ...rule, active: false }]);
+    renderScreen(managerPermissions);
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.configureRules" }));
+    const manager = await screen.findByRole("dialog", { name: "gestion.controlAlerts.configureRules" });
+    await within(manager).findByRole("button", { name: "gestion.controlRules.addNew" });
+    const card = [...manager.querySelectorAll(".gestion-rule-card")].find((entry) => entry.textContent?.includes("Ticket cancelled")) as HTMLElement;
+    expect(card).toBeTruthy();
+    expect(card.textContent).toContain("gestion.controlRules.inactive");
+    expect(within(card).getByRole("button", { name: "gestion.controlRules.configure" })).not.toBeNull();
+  });
+
+  it.each(["es", "en", "zh"] as const)("translates the new-rule card in %s", (locale) => {
+    expect(createTranslator(locale)("gestion.controlRules.addNew")).toBe({ es: "Añadir nueva regla", en: "Add new rule", zh: "添加新规则" }[locale]);
+  });
+
+  it.each(["es", "en", "zh"] as const)("translates the rule state and delete flow in %s", (locale) => {
+    const t = createTranslator(locale);
+    expect(t("gestion.controlRules.activeRule")).toBe({ es: "Regla activa", en: "Active rule", zh: "规则已启用" }[locale]);
+    expect(t("gestion.controlRules.inactiveRule")).toBe({ es: "Regla inactiva", en: "Inactive rule", zh: "规则已停用" }[locale]);
+    for (const key of ["deleteRule", "confirmDeleteTitle", "confirmDeleteMessage", "deleteError"]) {
+      expect(t(`gestion.controlRules.${key}`)).not.toBe(`gestion.controlRules.${key}`);
+    }
+  });
+
+  it("cancels deletion, then removes the rule card and restores it through Add New while retaining historical alerts", async () => {
+    let configured = true;
+    vi.mocked(api.loadControlRuleCatalog).mockImplementation(async () => catalog.map((item) => item.type === rule.type
+      ? { ...item, configured, ruleId: configured ? "rule-1" : undefined }
+      : item));
+    vi.mocked(api.loadControlRules).mockImplementation(async () => configured ? [rule] : []);
+    vi.mocked(api.deleteControlRule).mockImplementation(async () => { configured = false; });
+    vi.mocked(api.saveControlRule).mockImplementation(async (draft) => {
+      configured = true;
+      return { ...rule, ...draft };
+    });
+    renderScreen(managerPermissions);
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.configureRules" }));
+    const manager = await screen.findByRole("dialog", { name: "gestion.controlAlerts.configureRules" });
+    await within(manager).findByRole("button", { name: "gestion.controlRules.addNew" });
+    const ruleCard = [...manager.querySelectorAll(".gestion-rule-card")].find((card) => card.textContent?.includes("Ticket cancelled")) as HTMLElement;
+    fireEvent.click(within(ruleCard).getByRole("button", { name: "gestion.controlRules.configure" }));
+    const editor = await screen.findByRole("dialog", { name: "gestion.controlRules.edit" });
+    const remove = within(editor).getByRole("button", { name: "gestion.controlRules.deleteRule" });
+    fireEvent.click(remove);
+    let confirmation = await screen.findByRole("alertdialog", { name: "gestion.controlRules.confirmDeleteTitle" });
+    expect(within(confirmation).getByText("gestion.controlRules.confirmDeleteMessage")).not.toBeNull();
+    expect(api.deleteControlRule).not.toHaveBeenCalled();
+    fireEvent.click(within(confirmation).getByRole("button", { name: "common.cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog", { name: "gestion.controlRules.confirmDeleteTitle" })).toBeNull());
+    expect(api.deleteControlRule).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "gestion.controlRules.edit" })).toBe(editor);
+
+    fireEvent.click(remove);
+    confirmation = await screen.findByRole("alertdialog", { name: "gestion.controlRules.confirmDeleteTitle" });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "gestion.controlRules.deleteRule" }));
+    await waitFor(() => expect(api.deleteControlRule).toHaveBeenCalledWith(expect.objectContaining({ id: "rule-1", version: 0 }), "manager-token"));
+    await waitFor(() => expect(api.loadControlRules).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "gestion.controlRules.edit" })).toBeNull());
+    await waitFor(() => expect([...manager.querySelectorAll(".gestion-rule-card")].some((card) => card.textContent?.includes("Ticket cancelled"))).toBe(false));
+    expect(screen.getByRole("row", { name: /T-100/ })).not.toBeNull();
+
+    const add = within(manager).getByRole("button", { name: "gestion.controlRules.addNew" });
+    expect(add.parentElement?.lastElementChild).toBe(add);
+    fireEvent.click(add);
+    const newEditor = await screen.findByRole("dialog", { name: "gestion.controlRules.add" });
+    fireEvent.click(within(newEditor).getByRole("button", { name: /Ticket cancelled/ }));
+    expect(within(newEditor).queryByRole("button", { name: "gestion.controlRules.deleteRule" })).toBeNull();
+    fireEvent.click(within(newEditor).getByRole("button", { name: "common.save" }));
+    await waitFor(() => expect(api.saveControlRule).toHaveBeenCalledWith({ type: "TICKET_CANCELLED", active: false, configuration: {} }, null, "manager-token"));
+    await waitFor(() => expect([...manager.querySelectorAll(".gestion-rule-card")].some((card) => card.textContent?.includes("Ticket cancelled"))).toBe(true));
+    expect(screen.getByRole("row", { name: /T-100/ })).not.toBeNull();
+  });
+
+  it("keeps the editor and historical alert available when deletion fails", async () => {
+    vi.mocked(api.deleteControlRule).mockRejectedValueOnce(new Error("offline"));
+    renderScreen(managerPermissions);
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.configureRules" }));
+    const manager = await screen.findByRole("dialog", { name: "gestion.controlAlerts.configureRules" });
+    await within(manager).findByRole("button", { name: "gestion.controlRules.addNew" });
+    const configured = [...manager.querySelectorAll(".gestion-rule-card")].find((card) => card.textContent?.includes("Ticket cancelled")) as HTMLElement;
+    fireEvent.click(within(configured).getByRole("button", { name: "gestion.controlRules.configure" }));
+    const editor = await screen.findByRole("dialog", { name: "gestion.controlRules.edit" });
+    fireEvent.click(within(editor).getByRole("button", { name: "gestion.controlRules.deleteRule" }));
+    const confirmation = await screen.findByRole("alertdialog", { name: "gestion.controlRules.confirmDeleteTitle" });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "gestion.controlRules.deleteRule" }));
+    expect(await within(confirmation).findByText("gestion.controlRules.deleteError")).not.toBeNull();
+    expect(screen.getByRole("dialog", { name: "gestion.controlRules.edit" })).toBe(editor);
+    expect(screen.getByRole("row", { name: /T-100/ })).not.toBeNull();
+    expect(api.loadControlRules).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a successfully deleted rule absent when the following rule refresh fails", async () => {
+    vi.mocked(api.loadControlRules).mockResolvedValueOnce([rule]).mockRejectedValueOnce(new Error("offline"));
+    renderScreen(managerPermissions);
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.configureRules" }));
+    const manager = await screen.findByRole("dialog", { name: "gestion.controlAlerts.configureRules" });
+    await within(manager).findByRole("button", { name: "gestion.controlRules.addNew" });
+    const card = [...manager.querySelectorAll(".gestion-rule-card")].find((entry) => entry.textContent?.includes("Ticket cancelled")) as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: "gestion.controlRules.configure" }));
+    const editor = await screen.findByRole("dialog", { name: "gestion.controlRules.edit" });
+    fireEvent.click(within(editor).getByRole("button", { name: "gestion.controlRules.deleteRule" }));
+    const confirmation = await screen.findByRole("alertdialog", { name: "gestion.controlRules.confirmDeleteTitle" });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "gestion.controlRules.deleteRule" }));
+
+    await waitFor(() => expect(api.deleteControlRule).toHaveBeenCalledWith(expect.objectContaining({ id: "rule-1" }), "manager-token"));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "gestion.controlRules.edit" })).toBeNull());
+    expect(await within(manager).findByText("gestion.controlAlerts.rulesLoadError")).not.toBeNull();
+    expect([...manager.querySelectorAll(".gestion-rule-card")].some((entry) => entry.textContent?.includes("Ticket cancelled"))).toBe(false);
+    expect(within(manager).getByRole("button", { name: "gestion.controlRules.addNew" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("row", { name: /T-100/ })).not.toBeNull();
+  });
+
+  it("keeps retired rules out of the card grid while offering their type in Add New", async () => {
+    vi.mocked(api.loadControlRuleCatalog).mockResolvedValue([{ ...catalog[0], configured: false, ruleId: undefined }]);
+    vi.mocked(api.loadControlRules).mockResolvedValue([]);
+    renderScreen(managerPermissions);
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.configureRules" }));
+    const manager = await screen.findByRole("dialog", { name: "gestion.controlAlerts.configureRules" });
+    await within(manager).findByRole("button", { name: "gestion.controlRules.addNew" });
+    expect([...manager.querySelectorAll(".gestion-rule-card")].some((entry) => entry.textContent?.includes("Ticket cancelled"))).toBe(false);
+    expect(screen.getByRole("row", { name: /T-100/ })).not.toBeNull();
+    fireEvent.click(within(manager).getByRole("button", { name: "gestion.controlRules.addNew" }));
+    const editor = await screen.findByRole("dialog", { name: "gestion.controlRules.add" });
+    expect(within(editor).getByRole("button", { name: /Ticket cancelled/ })).not.toBeNull();
+    expect(within(editor).queryByRole("button", { name: "gestion.controlRules.deleteRule" })).toBeNull();
   });
 
   it("persists a customized view through the user API and only applies it after save", async () => {

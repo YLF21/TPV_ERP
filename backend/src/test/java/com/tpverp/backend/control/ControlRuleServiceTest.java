@@ -15,7 +15,11 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.NoSuchElementException;
 import java.util.UUID;
+import org.mockito.ArgumentCaptor;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -101,8 +105,9 @@ class ControlRuleServiceTest {
 
     @Test
     void rejectsDuplicateRuleBeforePersisting() {
-        when(rules.existsByStoreIdAndType(store.getId(), ControlAlertType.TICKET_CANCELLED))
-                .thenReturn(true);
+        var existing = rule();
+        when(rules.findByStoreIdAndType(store.getId(), ControlAlertType.TICKET_CANCELLED))
+                .thenReturn(Optional.of(existing));
 
         assertThatThrownBy(() -> service.create(
                 new ControlRuleService.CreateRuleRequest(
@@ -131,5 +136,128 @@ class ControlRuleServiceTest {
 
     private static UsernamePasswordAuthenticationToken authentication() {
         return new UsernamePasswordAuthenticationToken("ADMIN", "token");
+    }
+
+    @Test
+    void retirementDisablesRuleAndAppendsSnapshotWithActorWithoutDeletingAnything() {
+        var rule = persistedRule();
+        var original = new ControlRuleVersion(rule);
+        service.retire(rule.getId(), rule.getVersion(), authentication());
+
+        assertThat(rule.isRetired()).isTrue();
+        assertThat(rule.isActive()).isFalse();
+        assertThat(rule.getRuleVersion()).isEqualTo(2);
+        assertThat(original.isActive()).isTrue();
+        assertThat(original.isRetired()).isFalse();
+        var snapshot = ArgumentCaptor.forClass(ControlRuleVersion.class);
+        verify(versions).save(snapshot.capture());
+        assertThat(snapshot.getValue().getRuleId()).isEqualTo(rule.getId());
+        assertThat(snapshot.getValue().getRuleVersion()).isEqualTo(2);
+        assertThat(snapshot.getValue().isRetired()).isTrue();
+        assertThat(snapshot.getValue().isActive()).isFalse();
+        assertThat(snapshot.getValue().getChangedBy()).isEqualTo(user.getId());
+        assertThat(snapshot.getValue().getChangedAt()).isEqualTo(NOW);
+        verify(rules, never()).delete(org.mockito.ArgumentMatchers.any());
+        verify(rules, never()).deleteById(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void retiredRuleDisappearsFromConfigurationButKeepsVersionHistory() {
+        var rule = persistedRule();
+        rule.retire(user.getId(), NOW);
+        when(rules.findAllByStoreIdOrderByTypeAsc(store.getId())).thenReturn(List.of(rule));
+        when(versions.findAllByRuleIdOrderByRuleVersionDesc(rule.getId()))
+                .thenReturn(List.of(new ControlRuleVersion(rule)));
+
+        assertThat(service.list()).isEmpty();
+        assertThat(service.catalog()).filteredOn(item -> item.type() == rule.getType())
+                .singleElement().satisfies(item -> {
+                    assertThat(item.configured()).isFalse();
+                    assertThat(item.ruleId()).isNull();
+                });
+        assertThat(service.versions(rule.getId())).singleElement()
+                .satisfies(item -> assertThat(item.retired()).isTrue());
+        assertThatThrownBy(() -> service.get(rule.getId())).isInstanceOf(NoSuchElementException.class);
+        assertThatThrownBy(() -> service.update(rule.getId(), new ControlRuleService.UpdateRuleRequest(
+                true, Map.of(), rule.getVersion()), authentication())).isInstanceOf(NoSuchElementException.class);
+        verify(rules, never()).saveAndFlush(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void addingRetiredTypeReusesIdentityAndAppendsNextVersion() {
+        var rule = persistedRule();
+        rule.retire(user.getId(), NOW.minusSeconds(10));
+        when(rules.findByStoreIdAndType(store.getId(), rule.getType())).thenReturn(Optional.of(rule));
+
+        var result = service.create(new ControlRuleService.CreateRuleRequest(
+                rule.getType(), true, Map.of()), authentication());
+
+        assertThat(result.id()).isEqualTo(rule.getId());
+        assertThat(result.ruleVersion()).isEqualTo(3);
+        assertThat(result.active()).isTrue();
+        assertThat(rule.isRetired()).isFalse();
+        var snapshot = ArgumentCaptor.forClass(ControlRuleVersion.class);
+        verify(versions).save(snapshot.capture());
+        assertThat(snapshot.getValue().getRuleVersion()).isEqualTo(3);
+        assertThat(snapshot.getValue().isRetired()).isFalse();
+    }
+
+    @Test
+    void retirementRejectsMissingOrStaleVersionBeforeMutation() {
+        var rule = persistedRule();
+        assertThatThrownBy(() -> service.retire(rule.getId(), null, authentication()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.retire(rule.getId(), rule.getVersion() + 1, authentication()))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("Conflicto de version");
+        assertThat(rule.isActive()).isTrue();
+        assertThat(rule.isRetired()).isFalse();
+        verify(rules, never()).saveAndFlush(org.mockito.ArgumentMatchers.any());
+        org.mockito.Mockito.verifyNoInteractions(versions);
+    }
+
+    @Test
+    void concurrentRetirementFailsWithoutAppendingVersion() {
+        var rule = persistedRule();
+        when(rules.saveAndFlush(rule)).thenThrow(new ObjectOptimisticLockingFailureException(
+                ControlRule.class, rule.getId()));
+        assertThatThrownBy(() -> service.retire(rule.getId(), rule.getVersion(), authentication()))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("Conflicto de version");
+        org.mockito.Mockito.verifyNoInteractions(versions);
+    }
+
+    @Test
+    void concurrentRestoreFailsWithoutAppendingVersion() {
+        var rule = persistedRule();
+        rule.retire(user.getId(), NOW);
+        when(rules.findByStoreIdAndType(store.getId(), rule.getType())).thenReturn(Optional.of(rule));
+        when(rules.saveAndFlush(rule)).thenThrow(new ObjectOptimisticLockingFailureException(
+                ControlRule.class, rule.getId()));
+        assertThatThrownBy(() -> service.create(new ControlRuleService.CreateRuleRequest(
+                rule.getType(), true, Map.of()), authentication()))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("Conflicto de version");
+        org.mockito.Mockito.verifyNoInteractions(versions);
+    }
+
+    @Test
+    void rejectsRuleOutsideCurrentStoreBeforeRetirementOrHistoryRead() {
+        var id = UUID.randomUUID();
+        when(rules.findByIdAndStoreId(id, store.getId())).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.retire(id, 0L, authentication()))
+                .isInstanceOf(NoSuchElementException.class);
+        assertThatThrownBy(() -> service.versions(id)).isInstanceOf(NoSuchElementException.class);
+        verify(rules, never()).saveAndFlush(org.mockito.ArgumentMatchers.any());
+        org.mockito.Mockito.verifyNoInteractions(versions);
+    }
+
+    private ControlRule rule() {
+        return new ControlRule(store.getId(), ControlAlertType.TICKET_CANCELLED, true,
+                Map.of(), user.getId(), NOW.minusSeconds(60));
+    }
+
+    private ControlRule persistedRule() {
+        var rule = rule();
+        when(rules.findByIdAndStoreId(rule.getId(), store.getId())).thenReturn(Optional.of(rule));
+        when(rules.saveAndFlush(rule)).thenReturn(rule);
+        return rule;
     }
 }

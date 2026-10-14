@@ -23,6 +23,7 @@ public class ControlRuleVersion {
     @Enumerated(EnumType.STRING) @Column(name = "tipo", nullable = false, length = 48) private ControlAlertType type;
     @Column(name = "nombre", nullable = false, length = 160) private String name;
     @Column(name = "activa", nullable = false) private boolean active;
+    @Column(name = "retirada", nullable = false) private boolean retired;
     @JdbcTypeCode(SqlTypes.JSON) @Column(name = "configuracion", nullable = false, columnDefinition = "jsonb")
     private Map<String, Object> configuration;
     @Column(name = "cambiado_por", nullable = false) private UUID changedBy;
@@ -39,6 +40,7 @@ public class ControlRuleVersion {
         this.type = rule.getType();
         this.name = rule.getName();
         this.active = rule.isActive();
+        this.retired = rule.isRetired();
         this.configuration = rule.getConfiguration();
         this.changedBy = rule.getUpdatedBy();
         this.changedAt = rule.getUpdatedAt();
@@ -50,6 +52,7 @@ public class ControlRuleVersion {
     public ControlAlertType getType() { return type; }
     public String getName() { return name; }
     public boolean isActive() { return active; }
+    public boolean isRetired() { return retired; }
     public Map<String, Object> getConfiguration() { return Map.copyOf(configuration); }
     public UUID getChangedBy() { return changedBy; }
     public Instant getChangedAt() { return changedAt; }

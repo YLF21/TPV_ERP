@@ -29,6 +29,8 @@ public class ControlRule {
     private String name;
     @Column(name = "activa", nullable = false)
     private boolean active;
+    @Column(name = "retirada", nullable = false)
+    private boolean retired;
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "configuracion", nullable = false, columnDefinition = "jsonb")
     private Map<String, Object> configuration;
@@ -73,6 +75,7 @@ public class ControlRule {
             Map<String, Object> configuration,
             UUID userId,
             Instant now) {
+        if (retired) throw new IllegalStateException("La regla de control esta retirada");
         this.name = type.systemName();
         this.active = active;
         this.configuration = ControlRuleConfiguration.normalize(type, configuration);
@@ -81,11 +84,24 @@ public class ControlRule {
         this.ruleVersion++;
     }
 
+    public void retire(UUID userId, Instant now) {
+        update(false, configuration, userId, now);
+        this.retired = true;
+    }
+
+    public void restore(boolean active, Map<String, Object> configuration, UUID userId, Instant now) {
+        if (!retired) throw new IllegalStateException("La regla de control ya esta configurada");
+        var normalized = ControlRuleConfiguration.normalize(type, configuration);
+        this.retired = false;
+        update(active, normalized, userId, now);
+    }
+
     public UUID getId() { return id; }
     public UUID getStoreId() { return storeId; }
     public ControlAlertType getType() { return type; }
     public String getName() { return name; }
     public boolean isActive() { return active; }
+    public boolean isRetired() { return retired; }
     public Map<String, Object> getConfiguration() { return Map.copyOf(configuration); }
     public int getRuleVersion() { return ruleVersion; }
     public UUID getCreatedBy() { return createdBy; }

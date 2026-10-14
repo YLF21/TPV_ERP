@@ -6,6 +6,7 @@ import { useOutsidePointerDown } from "./useOutsidePointerDown";
 import { SaasConnectionStatus } from "./SaasConnectionStatus";
 import { useScreenConnectionStatus } from "./useScreenConnectionStatus";
 import { AppLogo } from "./AppLogo";
+import { AppBrand } from "./AppBrand";
 import { DesktopHeaderContext } from "./DesktopHeaderContext";
 import { validStoreInternalCode } from "../storeInternalCode";
 import { TerminalFooterInfo } from "./TerminalFooterInfo";
@@ -42,9 +43,10 @@ export function AppFrame({ titleKey, locale, session, terminalContext, onLocaleC
     <div className="app-frame">
       <header className="app-titlebar">
         <strong className="app-titlebar-brand">
-          {titleKey === "gestion.title" && <AppLogo app="gestion" />}
-          {titleKey === "venta.title" && <AppLogo app="venta" />}
-          {t(titleKey)}
+          {titleKey === "gestion.title" ? <AppBrand app="venta" label={t(titleKey)} /> : <>
+            {titleKey === "venta.title" && <AppLogo app="venta" />}
+            {t(titleKey)}
+          </>}
         </strong>
         {terminalContext && <DesktopHeaderContext terminalContext={terminalContext} inline />}
         <div className="app-titlebar-status">
