@@ -1,0 +1,201 @@
+/* Gestión alone owns this accent, including menus/dialogs portalled to body.
+   index.html declares the layer before bundled shared CSS, whose chunk order
+   can differ from development. Important declarations override legacy desktop
+   skins without changing structural navy headers or semantic status colours. */
+@layer gestion-accents {
+  @media screen {
+    html[data-app="gestion"] {
+      --gestion-accent: #0065FE;
+      --gestion-accent-soft: #e5efff;
+    }
+
+    html[data-app="gestion"] :where(.erp-classic-tables, .gestion-classic-tables) {
+      --erp-table-focus: var(--gestion-accent) !important;
+      --erp-table-selected: var(--gestion-accent-soft) !important;
+    }
+
+    /* Existing primary actions, plus legacy actions with no primary class. */
+    html[data-app="gestion"] :where(
+      button.primary,
+      button.primary-button,
+      button.gestion-primary-button,
+      button.erp-dialog-action-confirm,
+      .login-submit,
+      .backend-recovery-retry,
+      .stock-add-product-button,
+      .stock-detail-edit-button,
+      .stock-screen .stock-export-button,
+      .promotion-screen .promotion-primary-button,
+      .report-action-button,
+      .report-toolbar button,
+      .report-screen .report-output-actions > button,
+      .gestion-alert-work-editor button,
+      .gestion-warehouse-header-actions button:first-child,
+      .gestion-warehouse-dialog-content button[type="submit"],
+      .gestion-verifactu-primary-action,
+      .gestion-fiscal-mode-control button[type="submit"],
+      .gestion-verifactu-export-options > button,
+      .gestion-license-pairing button,
+      .gestion-document-template-create button,
+      .gestion-ticket-style-selector button,
+      .warehouse-document-transfer .warehouse-document-context-bar .warehouse-document-product-search button,
+      .gestion-warehouse-operations button[type="submit"]:not(.gestion-warehouse-adjustments-table button),
+      .gestion-stock-count-detail > header button:last-child,
+      .gestion-control-dialog-theme .gestion-alert-actions button:first-child,
+      .gestion-control-timeline .gestion-alert-actions button:first-child,
+      .gestion-adjustment-screen .gestion-warehouse-adjustment-dialog button[type="submit"],
+      .gestion-cash-alerts-filters > button,
+      .gestion-cash-alert-detail > button,
+      .gestion-cash-policy .settings-cash-policy-card > button
+    ):not(:where(.danger, .warning, .destructive, .erp-dialog-action-cancel, .shutdown-yes)):not(:disabled) {
+      border-color: var(--gestion-accent) !important;
+      background: var(--gestion-accent) !important;
+      color: #fff !important;
+    }
+
+    /* Selected buttons keep the same accent on hover; disabled primary actions,
+       dimensions and shortcut separators retain their existing skins. */
+    html[data-app="gestion"] :where(
+      button.selected,
+      button.active,
+      button.is-selected,
+      button[aria-selected="true"],
+      button[aria-pressed="true"],
+      button[aria-current="page"],
+      select option:checked:not(:disabled),
+      .erp-select__option[aria-selected="true"],
+      .erp-multi-select__option[aria-selected="true"],
+      .filter-popover button.selected,
+      .product-select-popover button.selected,
+      .adjustment-product-dropdown button[aria-selected="true"],
+      .inventory-product-search [role="option"][aria-selected="true"]
+    ):not(:where(.danger, .warning, .destructive, .erp-dialog-action-cancel, .shutdown-yes, .expired, .gestion-rule-active-toggle,
+      .shared-excel-review *, .shared-excel-frozen-table *)) {
+      border-color: var(--gestion-accent) !important;
+      background: var(--gestion-accent) !important;
+      color: #fff !important;
+    }
+
+    /* Control-alert categories use an outlined selection, including hover. */
+    html[data-app="gestion"] .gestion-control-type-strip > button.selected {
+      background: #eef1f4 !important;
+      color: var(--gestion-accent) !important;
+      box-shadow: inset 0 0 0 2px var(--gestion-accent) !important;
+    }
+
+    html[data-app="gestion"] .gestion-control-type-strip > button.selected > svg {
+      color: inherit !important;
+    }
+
+    html[data-app="gestion"] :where(
+      .erp-select__option[aria-selected="true"],
+      .erp-multi-select__option[aria-selected="true"],
+      .party-address-picker__list > button[aria-selected="true"]
+    ) :where(span, small, strong) {
+      color: inherit !important;
+    }
+
+    /* The sidebar itself is blue, so retain a visible active boundary. */
+    html[data-app="gestion"] .gestion-nav :where(button[aria-current="page"]) {
+      box-shadow: inset 0 0 0 2px #ffffffb3 !important;
+    }
+
+    html[data-app="gestion"] :where(input[type="checkbox"], input[type="radio"]) {
+      accent-color: var(--gestion-accent) !important;
+    }
+
+    html[data-app="gestion"] :where(button, input, select, textarea, [tabindex]):focus-visible {
+      outline-color: var(--gestion-accent) !important;
+    }
+
+    html[data-app="gestion"] :where(
+      .gestion-nav button,
+      .warehouse-document-transfer .warehouse-document-product-search button
+    ):focus-visible {
+      outline-color: #fff !important;
+    }
+
+    /* Data rows keep their signed amounts and status badges readable. Their
+       selection uses the accent at the edge, with a matching pale background. */
+    html[data-app="gestion"] :where(
+      [role="row"].selected,
+      [role="row"][aria-selected="true"],
+      .gestion-alert-row.selected,
+      .gestion-security-row.selected,
+      .gestion-warehouse-row.selected,
+      .gestion-voucher-row.selected,
+      .gestion-cash-closure-row.selected,
+      .gestion-cash-alert-row.selected,
+      .gestion-cash-activity-row.selected,
+      .gestion-rule-list > button.selected,
+      .gestion-role-list > div:not(.erp-filter-applied) > button.selected,
+      .gestion-stock-count-items > button.selected,
+      .gestion-terminal-list > button.selected,
+      .gestion-family-tree-item.is-selected,
+      .representative-management-row.selected,
+      .stock-row.selected,
+      .party-directory-row.selected,
+      .customer-documents-row.selected,
+      .promotion-row.selected:not(.expired),
+      .promotion-list-row.selected:not(.expired),
+      .stock-promotion-list-row.selected:not(.expired),
+      .bulk-edit-row:not(.bulk-edit-head):has(> .bulk-check input:checked)
+    ):not(:where(.head, .header, .stock-row-head, .gestion-alert-row-head, .gestion-alert-day, .expired,
+      .shared-excel-review *, .shared-excel-frozen-table *)) {
+      --erp-table-row-bg: var(--gestion-accent-soft) !important;
+      --erp-promotion-row-bg: var(--gestion-accent-soft) !important;
+      --gestion-classic-row-background: var(--gestion-accent-soft) !important;
+      border-color: var(--gestion-accent) !important;
+      background: var(--gestion-accent-soft) !important;
+      color: var(--erp-table-text, #172e4c) !important;
+      box-shadow: inset 3px 0 var(--gestion-accent) !important;
+    }
+
+    html[data-app="gestion"] :where(
+      .erp-classic-tables table:not(.shared-excel-frozen-table table, .shared-excel-review table),
+      .report-table,
+      .gestion-warehouse-transfer-table
+    ) tbody > tr:is(.selected, [aria-selected="true"]):not(.expired) {
+      background: var(--gestion-accent-soft) !important;
+      color: var(--erp-table-text, #172e4c) !important;
+    }
+
+    html[data-app="gestion"] :where(
+      .erp-classic-tables table:not(.shared-excel-frozen-table table, .shared-excel-review table),
+      .report-table,
+      .gestion-warehouse-transfer-table
+    ) tbody > tr:is(.selected, [aria-selected="true"]):not(.expired) > td {
+      background: var(--gestion-accent-soft) !important;
+    }
+
+    html[data-app="gestion"] :where(
+      .erp-classic-tables table:not(.shared-excel-frozen-table table, .shared-excel-review table),
+      .report-table,
+      .gestion-warehouse-transfer-table
+    ) tbody > tr:is(.selected, [aria-selected="true"]):not(.expired) > td:first-child {
+      box-shadow: inset 3px 0 var(--gestion-accent) !important;
+    }
+
+    /* Voucher expiry is a choice, independent of the amber explanatory accent. */
+    html[data-app="gestion"] .gestion-voucher-mode-option.selected {
+      border-color: var(--gestion-accent) !important;
+      box-shadow: inset 4px 0 var(--gestion-accent) !important;
+    }
+
+    html[data-app="gestion"] .gestion-voucher-mode-option.selected .gestion-voucher-mode-marker {
+      border-color: var(--gestion-accent) !important;
+    }
+
+    html[data-app="gestion"] .gestion-voucher-mode-option.selected .gestion-voucher-mode-marker::after {
+      background: var(--gestion-accent) !important;
+    }
+
+    html[data-app="gestion"] :where(
+      .erp-select__option[data-active="true"]:not([aria-selected="true"]),
+      .party-address-picker__list > button[data-active="true"]:not([aria-selected="true"])
+    ) {
+      background: var(--gestion-accent-soft) !important;
+      color: var(--gestion-accent) !important;
+    }
+  }
+}

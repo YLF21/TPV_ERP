@@ -136,6 +136,13 @@ class ControlAlertServiceTest {
             assertThat(group.supported()).isTrue();
         });
         verify(alerts).countByRuleAndStatus(storeId, from, to);
+
+        rule.retire(UUID.randomUUID(), NOW);
+        assertThat(service.countsByRule(from, to)).singleElement().satisfies(group -> {
+            assertThat(group.ruleId()).isEqualTo(rule.getId());
+            assertThat(group.total()).isEqualTo(4);
+            assertThat(group.active()).isFalse();
+        });
     }
 
     @Test

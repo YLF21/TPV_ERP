@@ -363,3 +363,10 @@ export function setControlRuleActive(rule: ControlRule, active: boolean, token?:
     body: { active, configuration: rule.configuration, version: rule.version }
   });
 }
+
+export function deleteControlRule(rule: ControlRule, token?: string) {
+  return apiRequest<void>(`/control/rules/${encodeURIComponent(rule.id)}?version=${encodeURIComponent(String(rule.version))}`, {
+    method: "DELETE",
+    token
+  });
+}

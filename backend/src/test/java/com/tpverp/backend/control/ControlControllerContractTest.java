@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 class ControlControllerContractTest {
 
     @Test
-    void exposesSecuredGestionEndpointsWithoutDelete() throws Exception {
+    void exposesSecuredGestionEndpointsAndOnlyAllowsRuleRetirement() throws Exception {
         assertThat(ControlRuleController.class.getAnnotation(RequestMapping.class).value())
                 .containsExactly("/api/v1/control/rules");
         assertThat(ControlAlertController.class.getAnnotation(RequestMapping.class).value())
@@ -23,8 +23,9 @@ class ControlControllerContractTest {
                 .contains("APP_GESTION_ACCESS", "CONTROL_RULES_MANAGE");
         assertThat(ControlAlertController.class.getAnnotation(PreAuthorize.class).value())
                 .contains("APP_GESTION_ACCESS", "CONTROL_ALERTS_READ", "CONTROL_ALERTS_MANAGE");
-        assertThat(Arrays.stream(ControlRuleController.class.getDeclaredMethods()))
-                .noneMatch(method -> method.isAnnotationPresent(DeleteMapping.class));
+        Method retirement = ControlRuleController.class.getDeclaredMethod(
+                "retire", UUID.class, Long.class, org.springframework.security.core.Authentication.class);
+        assertThat(retirement.getAnnotation(DeleteMapping.class).value()).containsExactly("/{id}");
         assertThat(Arrays.stream(ControlAlertController.class.getDeclaredMethods()))
                 .noneMatch(method -> method.isAnnotationPresent(DeleteMapping.class));
 

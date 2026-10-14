@@ -1068,10 +1068,10 @@ body,
   min-height: 205px;
   display: grid;
   grid-template-rows: auto minmax(72px, 1fr) auto;
-  border: 1px solid #9eabb6;
-  border-top: 3px solid var(--gestion-navy);
-  border-radius: 3px;
+  border: 1px solid #68737e;
+  border-radius: 6px;
   background: #fff;
+  overflow: hidden;
   box-shadow: 0 2px 7px rgba(12, 31, 51, .08);
   outline: 0;
 }
@@ -1081,31 +1081,33 @@ body,
 }
 
 .gestion-rule-card.unsupported {
-  border-top-color: #88929a;
   background: #f3f4f5;
   box-shadow: none;
 }
 
-.gestion-rule-card.unconfigured:not(.unsupported) { border-top-color: #bb7b25; }
-
 .gestion-rule-card > header {
   display: grid;
-  grid-template-columns: 37px minmax(0, 1fr);
+  grid-template-columns: 37px minmax(0, 1fr) auto;
+  align-items: start;
   gap: 9px;
   padding: 11px 12px 9px;
   border-bottom: 1px solid #d6dde2;
 }
 
 .gestion-rule-card-index {
-  height: 31px;
+  height: 36px;
   display: grid;
   place-items: center;
-  border: 1px solid #8595a3;
-  background: #e6ebef;
-  color: #35506a;
-  font-size: var(--gestion-font-label);
-  font-weight: 950;
+  border: 0;
+  background: transparent;
+  color: #0065FE;
 }
+
+:is(.gestion-rule-card-index, .gestion-rule-name-with-icon).discount > svg { color: #c91325; }
+:is(.gestion-rule-card-index, .gestion-rule-name-with-icon).price > svg,
+:is(.gestion-rule-card-index, .gestion-rule-name-with-icon).other > svg { color: #0065FE; }
+:is(.gestion-rule-card-index, .gestion-rule-name-with-icon).cleared > svg { color: #778aa0; }
+:is(.gestion-rule-card-index, .gestion-rule-name-with-icon).cash > svg { color: #a16513; }
 
 .gestion-rule-card h3 {
   margin: 0 0 5px;
@@ -1123,11 +1125,15 @@ body,
   font-weight: 950;
   letter-spacing: .045em;
   text-transform: uppercase;
+  max-width: 100px;
+  justify-self: end;
+  text-align: right;
 }
 
 .gestion-rule-state::before {
   width: 7px;
   height: 7px;
+  flex: 0 0 7px;
   border-radius: 50%;
   background: #929aa1;
   content: "";
@@ -1135,7 +1141,8 @@ body,
 
 .gestion-rule-state.active { color: #22603c; }
 .gestion-rule-state.active::before { background: #2c7a4e; }
-.gestion-rule-state.inactive::before { background: #aa6b21; }
+.gestion-rule-state.inactive { color: #b42318; }
+.gestion-rule-state.inactive::before { background: #b42318; }
 .gestion-rule-state.unsupported::before { background: #777f86; }
 
 .gestion-rule-card-counts {
@@ -1179,8 +1186,27 @@ body,
 
 .gestion-rule-card > footer > div { display: flex; gap: 5px; }
 .gestion-rule-card button { min-height: 29px; padding: 0 8px; }
-.gestion-rule-card button.quiet { border-color: transparent; background: transparent; color: var(--gestion-muted); }
 .gestion-rule-parameter { color: #4a5b6a; font-size: var(--gestion-font-label); font-weight: 850; }
+
+.gestion-rule-overview > button.gestion-rule-add-card {
+  min-height: 205px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid #68737e;
+  border-radius: 6px;
+  background: #fff;
+  color: #0065FE;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.gestion-rule-overview > button.gestion-rule-add-card:hover:not(:disabled) { border-color: #0065FE; }
+.gestion-rule-overview > button.gestion-rule-add-card:disabled { opacity: .55; cursor: not-allowed; }
 
 .gestion-control-overview-state {
   min-height: 230px;
@@ -1520,8 +1546,25 @@ button:disabled { cursor: default; opacity: .48; }
 .gestion-rule-system-name span { color: var(--gestion-muted); font-size: var(--gestion-font-micro); font-weight: 900; text-transform: uppercase; }
 .gestion-rule-system-name strong { color: var(--gestion-navy); font-size: 14px; }
 .gestion-rule-system-name small { color: var(--gestion-muted); font-size: var(--gestion-font-label); }
-.gestion-rule-active-control { grid-template-columns: auto 1fr !important; align-items: center; width: fit-content; text-transform: none !important; }
-.gestion-rule-active-control input { width: 16px; height: 16px; }
+.gestion-rule-form > button.gestion-rule-active-toggle {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid #22603c;
+  border-radius: 6px;
+  background: #22603c;
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.gestion-rule-form > button.gestion-rule-active-toggle.is-inactive { border-color: #b42318; background: #b42318; }
+.gestion-rule-form > button.gestion-rule-active-toggle:disabled { opacity: .55; cursor: wait; }
 .gestion-rule-list { min-height: 0; padding: 12px; overflow: auto; border-right: 1px solid #aeb9c3; background: #eef1f4; }
 .gestion-rule-list-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; color: var(--gestion-navy); }
 .gestion-rule-list > button { width: 100%; min-height: 56px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #b3bdc6; border-bottom: 0; background: #fff; color: var(--gestion-text); font: inherit; font-size: var(--gestion-font-body); text-align: left; cursor: pointer; }
@@ -1537,6 +1580,12 @@ button:disabled { cursor: default; opacity: .48; }
 .gestion-rule-form h3 { margin: 0 0 5px; color: var(--gestion-navy); font-size: 18px; }
 .gestion-rule-no-config { padding: 10px; border: 1px solid #c6ced5; background: #f5f7f8; color: var(--gestion-muted); font-size: var(--gestion-font-body); }
 .gestion-rule-form-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 10px; }
+.gestion-rule-form-actions > button.gestion-rule-delete-button {
+  margin-inline-end: auto;
+  border: 1px solid #b42318;
+  background: #fff;
+  color: #b42318;
+}
 
 .gestion-document-dialog { grid-template-rows: auto auto minmax(180px, 1fr) auto; }
 .gestion-document-dialog > header > div span { color: #b8c9d9; font-size: var(--gestion-font-micro); font-weight: 900; text-transform: uppercase; }
@@ -5831,6 +5880,8 @@ button.gestion-voucher-row.selected { box-shadow: inset 4px 0 0 #1d5f92; backgro
 .gestion-control-inline-state.error { color: #8a3030; border-color: #e0bfbf; background: #fff4f4; }
 .gestion-control-inline-state button { min-height: 29px; padding: 3px 9px; border: 1px solid currentColor; border-radius: 2px; background: #fff; color: inherit; font: inherit; cursor: pointer; }
 .gestion-control-rules-manager { width: min(1200px, 94vw); max-height: 88vh; display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid #9fb8cf; border-radius: 4px; background: #f4f7fa; overflow: hidden; }
+.gestion-control-rules-manager.filter-dialog.erp-classic-window { width: min(1200px, 94vw); max-height: 88vh; gap: 0; }
+.gestion-control-rules-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px; overflow: hidden; }
 .gestion-control-rules-manager > header, .gestion-control-preferences > header { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding-bottom: 10px; border-bottom: 1px solid #c4d2df; }
 .gestion-control-rules-manager > header h2, .gestion-control-preferences > header h2 { margin: 0; font-size: 20px; }
 .gestion-control-rules-manager > header > div { display: flex; align-items: center; gap: 10px; }

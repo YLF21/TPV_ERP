@@ -1,10 +1,12 @@
 import { X } from "@phosphor-icons/react";
 import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
+import { ErpConfirmDialog } from "../../../packages/app-common/src/components/ErpConfirmDialog";
+import "../../../packages/app-common/src/components/ErpClassicWindow.css";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
-import { ArrowClockwise, ArrowRight, BellRinging, CashRegister, FileText, Gear, ListBullets, MinusCircle, Package, Percent, SlidersHorizontal, Tag, Trash } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowRight, BellRinging, CashRegister, FileText, Gear, ListBullets, MinusCircle, Package, Percent, Plus, SlidersHorizontal, Tag, Trash } from "@phosphor-icons/react";
 import { classifyApiFailure, useTableLayoutPreference, TableLayoutHeaderCell, tableLayoutGridTemplate, visibleTableColumns, type LocaleCode, type TableColumnDefinition, type UserSession } from "@tpverp/app-common";
 import {
   controlAlertPriorities,
@@ -22,7 +24,7 @@ import {
   loadControlRules,
   loadRelatedDocument,
   saveControlRule,
-  setControlRuleActive,
+  deleteControlRule,
   transitionControlAlert,
   updateControlAlertWork,
   type ControlAlert,
@@ -212,21 +214,6 @@ function ControlAlertsWorkspace({ session, t, locale = "es" }: ControlAlertsScre
     setRange(next);
   }
 
-  async function toggleRule(tile: RuleTile) {
-    if (!tile.rule || !tile.supported || !canManageRules || rulesLoading) return;
-    setRulesLoading(true);
-    setRulesError(false);
-    try {
-      const updated = await setControlRuleActive(tile.rule, !tile.rule.active, token);
-      setRules((current) => current.map((rule) => rule.id === updated.id ? updated : rule));
-      setGroups((current) => current.map((group) => group.ruleId === updated.id ? { ...group, active: updated.active } : group));
-    } catch {
-      setRulesError(true);
-    } finally {
-      setRulesLoading(false);
-    }
-  }
-
   return (
     <section className={`gestion-workspace gestion-control-workspace gestion-control-timeline ${view.compact ? "compact-view" : ""}`}>
       <header className="gestion-dashboard-toolbar gestion-control-toolbar">
@@ -258,16 +245,21 @@ function ControlAlertsWorkspace({ session, t, locale = "es" }: ControlAlertsScre
         defaultRange={rangeForPeriod(view.defaultPeriod, storeTimezone)} onResetRange={() => changeRange(rangeForPeriod(view.defaultPeriod, storeTimezone))}
         refreshKey={refreshKey} view={view} timeZone={storeTimezone} onChanged={() => setRefreshKey((value) => value + 1)}
         onFiltersChange={changeMetricsFilters} onSortChange={(sortDirection) => void saveView({ ...view, sortDirection }, false)} preferenceSaving={preferenceSaving || !preferenceLoaded} /> : <div className="gestion-alert-list-state">{t("common.loading")}</div>}
-      {rulesOpen && <div className="gestion-modal-backdrop" role="presentation"><section className="gestion-control-rules-manager" role="dialog" aria-modal="true" aria-labelledby="control-rules-manager-title">
+      {rulesOpen && <div className="gestion-modal-backdrop" role="presentation"><section className="gestion-control-rules-manager filter-dialog erp-classic-window" role="dialog" aria-modal="true" aria-labelledby="control-rules-manager-title">
         <header className="erp-window-header"><h2 id="control-rules-manager-title">{t("gestion.controlAlerts.configureRules")}</h2><div>
-          <button type="button" disabled={rulesLoading || rulesError} onClick={() => setEditorType(null)}>{t("gestion.controlRules.add")}</button>
-          <WindowCloseButton type="button" onLight aria-label={t("common.close")} onClick={() => setRulesOpen(false)} ><X size={20} /></WindowCloseButton>
+          <WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setRulesOpen(false)} />
         </div></header>
-        {rulesError && <div className="gestion-control-inline-state error" role="alert">{t("gestion.controlAlerts.rulesLoadError")}<button type="button" onClick={() => void refreshRules()}>{t("gestion.controlAlerts.retry")}</button></div>}
-        <RuleOverview tiles={tiles} loading={rulesLoading} error={false} canManage={!rulesError} t={t}
-          onOpen={(tile) => { setActiveType(tile.type); setRulesOpen(false); }} onEdit={(tile) => setEditorType(tile.type)} onToggle={(tile) => void toggleRule(tile)} onRetry={() => void refreshRules()} />
+        <div className="gestion-control-rules-body">
+          {rulesError && <div className="gestion-control-inline-state error" role="alert">{t("gestion.controlAlerts.rulesLoadError")}<button type="button" onClick={() => void refreshRules()}>{t("gestion.controlAlerts.retry")}</button></div>}
+          <RuleOverview tiles={tiles} loading={rulesLoading} error={false} canManage={!rulesError} t={t}
+            onOpen={(tile) => { setActiveType(tile.type); setRulesOpen(false); }} onEdit={(tile) => setEditorType(tile.type)} onAdd={() => setEditorType(null)} onRetry={() => void refreshRules()} />
+        </div>
       </section></div>}
       {editorType !== undefined && <RuleConfigurationDialog token={token} t={t} initialType={editorType} catalog={catalog} rules={rules}
+        onDeleted={(deleted) => {
+          setRules((current) => current.filter((rule) => rule.id !== deleted.id));
+          setCatalog((current) => current.map((item) => item.type === deleted.type ? { ...item, configured: false, ruleId: undefined } : item));
+        }}
         onClose={() => setEditorType(undefined)} onSaved={async () => { await refreshRules(); setRefreshKey((value) => value + 1); setEditorType(undefined); }} />}
       {preferencesOpen && <div className="gestion-modal-backdrop" role="presentation"><section className="gestion-control-preferences" role="dialog" aria-modal="true" aria-labelledby="control-preferences-title">
         <header><h2 id="control-preferences-title">{t("gestion.controlAlerts.personalize")}</h2><WindowCloseButton type="button" onLight aria-label={t("common.close")} onClick={() => setPreferencesOpen(false)} ><X size={20} /></WindowCloseButton></header>
@@ -336,7 +328,7 @@ function DateRangeToolbar({
   );
 }
 
-function RuleOverview({ tiles, loading, error, canManage, t, onOpen, onEdit, onToggle, onRetry }: {
+function RuleOverview({ tiles, loading, error, canManage, t, onOpen, onEdit, onAdd, onRetry }: {
   tiles: RuleTile[];
   loading: boolean;
   error: boolean;
@@ -344,7 +336,7 @@ function RuleOverview({ tiles, loading, error, canManage, t, onOpen, onEdit, onT
   t: Translator;
   onOpen: (tile: RuleTile) => void;
   onEdit: (tile: RuleTile) => void;
-  onToggle: (tile: RuleTile) => void;
+  onAdd: () => void;
   onRetry: () => void;
 }) {
   if (loading) return <div className="gestion-control-overview-state">{t("common.loading")}</div>;
@@ -356,12 +348,11 @@ function RuleOverview({ tiles, loading, error, canManage, t, onOpen, onEdit, onT
       </div>
     </div>
   );
-  if (tiles.length === 0) return <div className="gestion-control-overview-state">{t("gestion.controlRules.empty")}</div>;
 
   return (
     <section className="gestion-rule-overview" aria-label={t("gestion.controlAlerts.ruleBlocks")}>
-      {tiles.map((tile) => {
-        const configured = Boolean(tile.ruleId ?? tile.group?.ruleId);
+      {tiles.filter((tile) => tile.configured).map((tile) => {
+        const configured = tile.configured;
         const canOpen = configured;
         const parameter = ruleParameterText(tile.parameterKind, tile.group?.configuration ?? tile.rule?.configuration ?? tile.defaultConfiguration, t);
         return (
@@ -369,25 +360,26 @@ function RuleOverview({ tiles, loading, error, canManage, t, onOpen, onEdit, onT
             key={tile.type}
             className={`gestion-rule-card ${tile.supported ? "" : "unsupported"} ${configured ? "configured" : "unconfigured"}`}
             tabIndex={canOpen ? 0 : -1}
-            onDoubleClick={() => canOpen && onOpen(tile)}
+            onDoubleClick={(event) => {
+              if (event.target instanceof Element && event.target.closest("button")) return;
+              if (canOpen) onOpen(tile);
+            }}
             onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
               if (event.key === "Enter" && event.target === event.currentTarget && canOpen) onOpen(tile);
             }}
           >
             <header>
-              <div className={`gestion-rule-card-index ${alertTypeClass(tile.type)}`} aria-hidden="true"><AlertTypeIcon type={tile.type} /></div>
-              <div>
-                <h3>{ruleDisplayName(tile.type, tile.name, t)}</h3>
-                <span className={`gestion-rule-state ${!tile.supported ? "unsupported" : tile.active ? "active" : configured ? "inactive" : "unconfigured"}`}>
-                  {!tile.supported
-                    ? t("gestion.controlRules.unavailable")
-                    : tile.active
-                      ? t("gestion.controlRules.active")
-                      : configured
-                        ? t("gestion.controlRules.inactive")
-                        : t("gestion.controlRules.unconfigured")}
-                </span>
-              </div>
+              <div className={`gestion-rule-card-index ${alertTypeClass(tile.type)}`} aria-hidden="true"><AlertTypeIcon type={tile.type} size={32} /></div>
+              <h3>{ruleDisplayName(tile.type, tile.name, t)}</h3>
+              <span className={`gestion-rule-state ${!tile.supported ? "unsupported" : configured && tile.active ? "active" : configured ? "inactive" : "unconfigured"}`}>
+                {!tile.supported
+                  ? t("gestion.controlRules.unavailable")
+                  : configured && tile.active
+                    ? t("gestion.controlRules.active")
+                    : configured
+                      ? t("gestion.controlRules.inactive")
+                      : t("gestion.controlRules.unconfigured")}
+              </span>
             </header>
 
             {configured ? (
@@ -404,19 +396,9 @@ function RuleOverview({ tiles, loading, error, canManage, t, onOpen, onEdit, onT
             <footer>
               <span className="gestion-rule-parameter">{parameter || t("gestion.controlRules.noParameter")}</span>
               <div>
-                {canManage && configured && tile.supported && (
-                  <button type="button" className="quiet" onClick={(event) => { event.stopPropagation(); onToggle(tile); }}>
-                    {t(`gestion.controlRules.${tile.active ? "deactivate" : "activate"}`)}
-                  </button>
-                )}
                 {canManage && tile.supported && (
                   <button type="button" onClick={(event) => { event.stopPropagation(); onEdit(tile); }}>
-                    {configured ? t("gestion.controlRules.configure") : t("gestion.controlRules.add")}
-                  </button>
-                )}
-                {configured && (
-                  <button type="button" className="primary" onClick={(event) => { event.stopPropagation(); onOpen(tile); }}>
-                    {t("gestion.controlAlerts.openList")}
+                    {t("gestion.controlRules.configure")}
                   </button>
                 )}
               </div>
@@ -424,6 +406,10 @@ function RuleOverview({ tiles, loading, error, canManage, t, onOpen, onEdit, onT
           </article>
         );
       })}
+      <button type="button" className="gestion-rule-add-card" disabled={!canManage} onClick={onAdd}>
+        <Plus size={36} aria-hidden="true" />
+        <span>{t("gestion.controlRules.addNew")}</span>
+      </button>
     </section>
   );
 }
@@ -916,7 +902,7 @@ function AlertEvidence({ alert, t, locale, timeZone }: { alert: ControlAlert; t:
   </section>;
 }
 
-function RuleConfigurationDialog({ token, t, initialType, catalog, rules, onClose, onSaved }: {
+function RuleConfigurationDialog({ token, t, initialType, catalog, rules, onClose, onSaved, onDeleted }: {
   token?: string;
   t: Translator;
   initialType: ControlAlertType | null;
@@ -924,6 +910,7 @@ function RuleConfigurationDialog({ token, t, initialType, catalog, rules, onClos
   rules: ControlRule[];
   onClose: () => void;
   onSaved: () => void | Promise<void>;
+  onDeleted: (rule: ControlRule) => void;
 }) {
   const [selectedType, setSelectedType] = useState<ControlAlertType | null>(initialType);
   const item = catalog.find((entry) => entry.type === selectedType) ?? null;
@@ -931,6 +918,8 @@ function RuleConfigurationDialog({ token, t, initialType, catalog, rules, onClos
   const [draft, setDraft] = useState<ControlRuleDraft | null>(() => item ? draftFrom(item, existing) : null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(false);
+  const [deleteRequested, setDeleteRequested] = useState(false);
+  const [deleteFailed, setDeleteFailed] = useState(false);
   const absent = catalog.filter((entry) => !entry.configured);
 
   useEffect(() => {
@@ -959,10 +948,27 @@ function RuleConfigurationDialog({ token, t, initialType, catalog, rules, onClos
     }
   }
 
+  async function removeRule() {
+    if (!existing || saving) return;
+    setSaving(true);
+    setDeleteFailed(false);
+    try {
+      await deleteControlRule(existing, token);
+      onDeleted(existing);
+      await onSaved();
+      setDeleteRequested(false);
+      onClose();
+    } catch {
+      setDeleteFailed(true);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="gestion-modal-backdrop" role="presentation">
       <section className={`gestion-rules-dialog compact ${!item && absent.length === 0 ? "empty" : ""}`} role="dialog" aria-modal="true" aria-labelledby="control-rules-title">
-        <header><h2 id="control-rules-title">{existing ? t("gestion.controlRules.edit") : t("gestion.controlRules.add")}</h2><WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose} >×</WindowCloseButton></header>
+        <header><h2 id="control-rules-title">{existing ? t("gestion.controlRules.edit") : t("gestion.controlRules.add")}</h2><WindowCloseButton type="button" aria-label={t("common.close")} disabled={saving} onClick={onClose} >×</WindowCloseButton></header>
         {!item ? (
           <div className="gestion-rule-catalog-picker">
             {absent.length === 0 ? (
@@ -976,7 +982,7 @@ function RuleConfigurationDialog({ token, t, initialType, catalog, rules, onClos
                 <div>
                   {absent.map((entry) => (
                     <button type="button" key={entry.type} disabled={!entry.supported} onClick={() => choose(entry)}>
-                      <strong className="gestion-rule-name-with-icon"><AlertTypeIcon type={entry.type} size={22} />{ruleDisplayName(entry.type, entry.name, t)}</strong>
+                      <strong className={`gestion-rule-name-with-icon ${alertTypeClass(entry.type)}`}><AlertTypeIcon type={entry.type} size={28} />{ruleDisplayName(entry.type, entry.name, t)}</strong>
                       <span>{entry.supported ? ruleParameterText(entry.parameterKind, entry.defaultConfiguration, t) || t("gestion.controlRules.noParameter") : t("gestion.controlRules.unavailable")}</span>
                     </button>
                   ))}
@@ -986,7 +992,7 @@ function RuleConfigurationDialog({ token, t, initialType, catalog, rules, onClos
           </div>
         ) : (
           <form className="gestion-rule-form" onSubmit={submit}>
-            <div className="gestion-rule-system-name"><span>{t("gestion.controlRules.systemRule")}</span><strong className="gestion-rule-name-with-icon"><AlertTypeIcon type={item.type} size={25} />{ruleDisplayName(item.type, item.name, t)}</strong><small>{t("gestion.controlRules.systemNameLocked")}</small></div>
+            <div className="gestion-rule-system-name"><span>{t("gestion.controlRules.systemRule")}</span><strong className={`gestion-rule-name-with-icon ${alertTypeClass(item.type)}`}><AlertTypeIcon type={item.type} size={28} />{ruleDisplayName(item.type, item.name, t)}</strong><small>{t("gestion.controlRules.systemNameLocked")}</small></div>
             {item.parameterKind === "PERCENTAGE" && draft && (
               <label><span>{t("gestion.controlRules.threshold")}</span><input type="number" min="0" max="100" step="0.01" required value={String(draft.configuration.thresholdPercent ?? "")} onChange={(event) => setDraft({ ...draft, configuration: { thresholdPercent: event.target.value === "" ? undefined : Number(event.target.value) } })} /></label>
             )}
@@ -994,12 +1000,26 @@ function RuleConfigurationDialog({ token, t, initialType, catalog, rules, onClos
               <label><span>{t("gestion.controlRules.minimumCount")}</span><input type="number" min="2" max="999" step="1" required value={String(draft.configuration.minimumCount ?? "")} onChange={(event) => setDraft({ ...draft, configuration: { minimumCount: event.target.value === "" ? undefined : Number(event.target.value) } })} /></label>
             )}
             {item.parameterKind === "NONE" && <p className="gestion-rule-no-config">{t("gestion.controlRules.noConfig")}</p>}
-            {draft && <label className="gestion-rule-active-control"><input type="checkbox" checked={draft.active} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} /><span>{t("gestion.controlRules.activeRule")}</span></label>}
+            {draft && <button type="button" className={`gestion-rule-active-toggle ${draft.active ? "is-active" : "is-inactive"}`}
+              aria-pressed={draft.active} disabled={saving}
+              onClick={() => setDraft({ ...draft, active: !draft.active })}>
+              {t(`gestion.controlRules.${draft.active ? "activeRule" : "inactiveRule"}`)}
+            </button>}
             {error && <p className="gestion-inline-error">{t("gestion.controlRules.error")}</p>}
-            <div className="gestion-rule-form-actions erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.cancel")}</DialogDismissButton><button type="submit" className="primary erp-dialog-action-confirm" disabled={saving}>{saving ? t("common.loading") : t("common.save")}</button></div>
+            <div className="gestion-rule-form-actions erp-dialog-actions-row">
+              {existing && <button type="button" className="danger gestion-rule-delete-button" disabled={saving}
+                onClick={() => { setDeleteFailed(false); setDeleteRequested(true); }}>{t("gestion.controlRules.deleteRule")}</button>}
+              <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={saving} onClick={onClose}>{t("common.cancel")}</DialogDismissButton>
+              <button type="submit" className="primary erp-dialog-action-confirm" disabled={saving}>{saving ? t("common.loading") : t("common.save")}</button>
+            </div>
           </form>
         )}
       </section>
+      {deleteRequested && existing && <ErpConfirmDialog
+        title={t("gestion.controlRules.confirmDeleteTitle")} message={t("gestion.controlRules.confirmDeleteMessage")}
+        confirmLabel={t("gestion.controlRules.deleteRule")} cancelLabel={t("common.cancel")} busy={saving}
+        errorMessage={deleteFailed ? t("gestion.controlRules.deleteError") : undefined}
+        onConfirm={() => void removeRule()} onCancel={() => { if (!saving) setDeleteRequested(false); }} />}
     </div>
   );
 }

@@ -38,13 +38,14 @@ public class ControlRuleService {
     @Transactional(readOnly = true)
     public List<RuleView> list() {
         return rules.findAllByStoreIdOrderByTypeAsc(organization.currentStore().getId())
-                .stream().map(ControlRuleService::view).toList();
+                .stream().filter(rule -> !rule.isRetired()).map(ControlRuleService::view).toList();
     }
 
     @Transactional(readOnly = true)
     public List<RuleCatalogView> catalog() {
         var storeId = organization.currentStore().getId();
-        var configured = rules.findAllByStoreIdOrderByTypeAsc(storeId);
+        var configured = rules.findAllByStoreIdOrderByTypeAsc(storeId).stream()
+                .filter(rule -> !rule.isRetired()).toList();
         var configuredTypes = configured.stream().map(ControlRule::getType)
                 .collect(java.util.stream.Collectors.toCollection(() -> EnumSet.noneOf(ControlAlertType.class)));
         var ruleIds = configured.stream().collect(java.util.stream.Collectors.toMap(
@@ -58,7 +59,7 @@ public class ControlRuleService {
 
     @Transactional(readOnly = true)
     public RuleView get(UUID id) {
-        return view(find(id));
+        return view(findConfigured(id));
     }
 
     @Transactional(readOnly = true)
@@ -68,7 +69,7 @@ public class ControlRuleService {
                 .map(version -> new RuleVersionView(
                         version.getRuleVersion(), version.getType(), version.getName(),
                         version.isActive(), version.getConfiguration(),
-                        version.getChangedBy(), version.getChangedAt()))
+                        version.getChangedBy(), version.getChangedAt(), version.isRetired()))
                 .toList();
     }
 
@@ -76,19 +77,25 @@ public class ControlRuleService {
     public RuleView create(CreateRuleRequest request, Authentication authentication) {
         requireSupported(request.type());
         var storeId = organization.currentStore().getId();
-        if (rules.existsByStoreIdAndType(storeId, request.type())) {
+        var existing = rules.findByStoreIdAndType(storeId, request.type());
+        if (existing.isPresent() && !existing.get().isRetired()) {
             throw duplicateRule(request.type());
         }
         var user = organization.currentUser(authentication);
         var now = clock.instant();
-        var rule = new ControlRule(
+        var rule = existing.orElseGet(() -> new ControlRule(
                 storeId, request.type(),
-                request.active(), request.configuration(), user.getId(), now);
+                request.active(), request.configuration(), user.getId(), now));
+        if (existing.isPresent()) {
+            rule.restore(request.active(), request.configuration(), user.getId(), now);
+        }
         final ControlRule saved;
         try {
             saved = rules.saveAndFlush(rule);
         } catch (DataIntegrityViolationException exception) {
             throw duplicateRule(request.type());
+        } catch (ObjectOptimisticLockingFailureException | OptimisticLockException exception) {
+            throw staleVersion(rule.getId(), rule.getVersion(), null);
         }
         versions.save(new ControlRuleVersion(saved));
         return view(saved);
@@ -96,7 +103,7 @@ public class ControlRuleService {
 
     @Transactional
     public RuleView update(UUID id, UpdateRuleRequest request, Authentication authentication) {
-        var rule = find(id);
+        var rule = findConfigured(id);
         requireVersion(rule, request.version());
         if (request.active()) requireSupported(rule.getType());
         var user = organization.currentUser(authentication);
@@ -108,6 +115,26 @@ public class ControlRuleService {
         } catch (ObjectOptimisticLockingFailureException | OptimisticLockException exception) {
             throw staleVersion(rule.getId(), request.version(), null);
         }
+    }
+
+    @Transactional
+    public void retire(UUID id, Long expectedVersion, Authentication authentication) {
+        var rule = findConfigured(id);
+        requireVersion(rule, expectedVersion);
+        var user = organization.currentUser(authentication);
+        rule.retire(user.getId(), clock.instant());
+        try {
+            var saved = rules.saveAndFlush(rule);
+            versions.save(new ControlRuleVersion(saved));
+        } catch (ObjectOptimisticLockingFailureException | OptimisticLockException exception) {
+            throw staleVersion(rule.getId(), expectedVersion, null);
+        }
+    }
+
+    private ControlRule findConfigured(UUID id) {
+        var rule = find(id);
+        if (rule.isRetired()) throw new NoSuchElementException("Regla de control no encontrada");
+        return rule;
     }
 
     private ControlRule find(UUID id) {
@@ -177,7 +204,8 @@ public class ControlRuleService {
             boolean active,
             Map<String, Object> configuration,
             UUID changedBy,
-            Instant changedAt) {
+            Instant changedAt,
+            boolean retired) {
     }
 
     public record RuleCatalogView(
