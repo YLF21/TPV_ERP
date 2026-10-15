@@ -20,7 +20,7 @@ class DemoRequestServiceTest {
     @Test
     void normalizesAndPersistsARealRequest() {
         DemoRequestRepository repository = mock(DemoRequestRepository.class);
-        DemoRequestService service = new DemoRequestService(repository, Clock.fixed(NOW, ZoneOffset.UTC));
+        DemoRequestService service = service(repository);
 
         DemoRequestReceipt receipt = service.submit(new CreateDemoRequest(
                 DemoProduct.APP_SAAS,
@@ -65,7 +65,7 @@ class DemoRequestServiceTest {
     @Test
     void silentlyDiscardsARequestThatFillsTheHoneypot() {
         DemoRequestRepository repository = mock(DemoRequestRepository.class);
-        DemoRequestService service = new DemoRequestService(repository, Clock.fixed(NOW, ZoneOffset.UTC));
+        DemoRequestService service = service(repository);
 
         DemoRequestReceipt receipt = service.submit(new CreateDemoRequest(
                 DemoProduct.APP_VENTA, null, "Bot", "Bot Company", "bot@example.com",
@@ -79,7 +79,7 @@ class DemoRequestServiceTest {
     @Test
     void persistsTheEntireSelectionInCanonicalOrderWithoutLosingAnyProduct() {
         DemoRequestRepository repository = mock(DemoRequestRepository.class);
-        DemoRequestService service = new DemoRequestService(repository, Clock.fixed(NOW, ZoneOffset.UTC));
+        DemoRequestService service = service(repository);
 
         service.submit(new CreateDemoRequest(
                 DemoProduct.APP_VENTA,
@@ -97,7 +97,7 @@ class DemoRequestServiceTest {
     @Test
     void derivesTheCompatibleSummaryWhenOnlyProductsAreProvided() {
         DemoRequestRepository repository = mock(DemoRequestRepository.class);
-        DemoRequestService service = new DemoRequestService(repository, Clock.fixed(NOW, ZoneOffset.UTC));
+        DemoRequestService service = service(repository);
 
         service.submit(new CreateDemoRequest(null, List.of(DemoProduct.APP_SAAS, DemoProduct.APP_GESTION),
                 "Laura", "Mercado Centro", "laura@example.com", null, null, "es", true, "",
@@ -112,10 +112,15 @@ class DemoRequestServiceTest {
     @Test
     void readsOnlyTheBoundedAdministrativeInbox() {
         DemoRequestRepository repository = mock(DemoRequestRepository.class);
-        DemoRequestService service = new DemoRequestService(repository, Clock.fixed(NOW, ZoneOffset.UTC));
+        DemoRequestService service = service(repository);
         when(repository.findLatest(DemoRequestService.ADMIN_INBOX_LIMIT)).thenReturn(List.of());
 
         assertThat(service.latest()).isEmpty();
         verify(repository).findLatest(100);
+    }
+
+    private static DemoRequestService service(DemoRequestRepository repository) {
+        return new DemoRequestService(repository, Clock.fixed(NOW, ZoneOffset.UTC),
+                mock(com.tpverp.saas.admin.AdminAuditService.class), 120);
     }
 }

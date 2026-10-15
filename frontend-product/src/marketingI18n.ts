@@ -21,9 +21,9 @@ const content = {
       titleAccent: "Controla todo tu negocio.",
       lead: "TPV, gestión y almacén trabajando como uno.",
       body: "Reduce tareas duplicadas, conoce el stock real y dirige una o varias tiendas con una visión central.",
-      checks: ["Operativa local sin interrupciones", "Crecimiento modular", "Control y trazabilidad"],
+      checks: ["Venta local en tienda", "Crecimiento modular", "Control y trazabilidad"],
       benefits: [
-        ["Venta sin interrupciones", "La caja sigue respondiendo en el día a día."],
+        ["Venta local", "La sincronización y los servicios externos necesitan conexión."],
         ["Stock bajo control", "Existencias y movimientos conectados por tienda."],
         ["Decisiones con contexto", "Ventas e informes reunidos en una visión central."],
         ["Equipo acompañado", "Soporte para implantar, operar y crecer."]
@@ -62,16 +62,16 @@ const content = {
       ]
     },
     apps: {
-      kicker: "Aplicaciones TPV ERP",
+      kicker: "Aplicaciones esPOS",
       title: "Cada equipo, su herramienta.",
       accent: "Todo el negocio, conectado.",
       body: "Mostrador, administración, almacén y dirección trabajan con interfaces claras sin perder una única fuente de información.",
       detailLabels: ["Ideal para", "Trabaja con"],
       items: [
-        ["APP Venta", "Tu punto de venta", "Cobros ágiles, caja, tickets, facturas, devoluciones y ventas pendientes en una interfaz preparada para el mostrador.", ["Efectivo, tarjeta y transferencia", "Atajos de teclado", "Operativa local"], "Mostradores con venta rápida", "Tickets, caja, facturación y devoluciones"],
-        ["APP Gestión", "El control de tu negocio", "Productos, clientes, proveedores, promociones, almacenes e informes conectados con cada venta.", ["Stock e informes", "Importación Excel", "Roles y permisos"], "Gerencia y administración", "Catálogo, compras, clientes e informes"],
-        ["APP PDA", "Movilidad en almacén", "Recepciones, inventarios, reposición y consulta de producto desde dispositivos vinculados de forma segura.", ["Inventarios", "Comprobaciones", "Reposición"], "Equipos de almacén", "Recepción, inventario, ubicación y reposición"],
-        ["APP SaaS", "Tu negocio en la nube", "Visión central de tiendas, licencias, ventas, existencias, facturación y soporte desde cualquier lugar.", ["Multi-tienda", "Sincronización", "Portal cliente"], "Dirección y redes de tiendas", "Sucursales, licencias, ventas y soporte"]
+        ["esPOS Venta", "Tu punto de venta", "Cobros ágiles, caja, tickets, facturas, devoluciones y ventas pendientes en una interfaz preparada para el mostrador.", ["Efectivo, tarjeta y transferencia", "Atajos de teclado", "Operativa local"], "Mostradores con venta rápida", "Tickets, caja, facturación y devoluciones"],
+        ["esPOS Gestión", "El control de tu negocio", "Productos, clientes, proveedores, promociones, almacenes e informes conectados con cada venta.", ["Stock e informes", "Importación Excel", "Roles y permisos"], "Gerencia y administración", "Catálogo, compras, clientes e informes"],
+        ["esPOS PDA", "Movilidad en almacén", "Recepciones, inventarios, reposición y consulta de producto desde dispositivos vinculados de forma segura.", ["Inventarios", "Comprobaciones", "Reposición"], "Equipos de almacén", "Recepción, inventario, ubicación y reposición"],
+        ["esPOS SaaS", "Tu negocio en la nube", "Portal cliente para consultar documentos y stock recibidos de tus tiendas, licencias, facturas del servicio y soporte, según permisos.", ["Multi-tienda", "Sincronización", "Portal cliente"], "Dirección y redes de tiendas", "Tiendas autorizadas, documentos y servicio"]
       ]
     },
     downloads: {
@@ -88,17 +88,17 @@ const content = {
       requestSetup: "Solicitar instalación",
       requirementsLabel: "Requisitos de instalación",
       requirements: [
-        ["APP Venta", "Windows 64 bits, un puesto de caja compatible y configuración inicial de la tienda."],
-        ["APP Gestión", "Windows 64 bits, acceso autorizado al negocio y conexión para la sincronización."]
+        ["esPOS Venta", "Windows 64 bits, puesto compatible y acceso al servicio de la tienda configurado."],
+        ["esPOS Gestión", "Windows 64 bits, acceso al servicio de tienda y permisos de administración configurados."]
       ],
       publishedLabel: "Publicación verificada",
       checksumHelp: "Compara el SHA-256 publicado con el archivo descargado para comprobar que está completo y no se ha modificado.",
       safety: "Las aplicaciones de escritorio se publican únicamente con firma y comprobación SHA-256.",
       items: [
-        ["Windows 64 bits", "Instalador de escritorio", "APP Venta se instala en el puesto de caja y se configura para la operativa de la tienda."],
-        ["Windows 64 bits", "Instalador de escritorio", "APP Gestión se instala en los equipos de administración vinculados al negocio."],
-        ["Navegador en dispositivo móvil", "Acceso configurado durante la implantación", "APP PDA funciona como aplicación web vinculada a la instalación; no dispone de APK público."],
-        ["Navegador web", "Acceso habilitado para clientes", "APP SaaS se entrega como servicio web configurado para cada organización; no requiere instalador."]
+        ["Windows 64 bits", "Instalador de escritorio", "esPOS Venta se instala en el puesto de caja y se configura para la operativa de la tienda."],
+        ["Windows 64 bits", "Instalador de escritorio", "esPOS Gestión se instala en los equipos de administración vinculados al negocio."],
+        ["Navegador en dispositivo móvil", "Acceso configurado durante la implantación", "esPOS PDA funciona como aplicación web vinculada a la instalación; no dispone de APK público."],
+        ["Navegador web", "Acceso habilitado para clientes", "esPOS SaaS se entrega como servicio web configurado para cada organización; no requiere instalador."]
       ]
     },
     tour: {
@@ -119,13 +119,13 @@ const content = {
       deliveryLabel: "Cómo se utiliza",
       previewNote: "Interfaz real · Datos de demostración",
       previewAlts: [
-        "APP Venta: ticket con productos y total de venta de demostración",
-        "APP Gestión: panel de ventas e informes con datos de demostración",
-        "APP PDA: herramientas de almacén en un dispositivo móvil de demostración",
-        "APP SaaS: panel central de tiendas con datos de demostración"
+        "esPOS Venta: ticket con productos y total de venta de demostración",
+        "esPOS Gestión: panel de ventas e informes con datos de demostración",
+        "esPOS PDA: herramientas de almacén en un dispositivo móvil de demostración",
+        "esPOS SaaS: panel central de tiendas con datos de demostración"
       ],
       stepBodies: [
-        ["Combina las formas de pago habituales dentro del flujo de venta.", "Usa accesos rápidos para mantener el ritmo en el mostrador.", "La caja conserva su capacidad de trabajo local durante la operativa diaria."],
+        ["Combina las formas de pago habituales dentro del flujo de venta.", "Usa accesos rápidos para mantener el ritmo en el mostrador.", "La caja trabaja con la instalación local y necesita acceso al servicio de la tienda."],
         ["Consulta existencias e informes desde el entorno de administración.", "Importa y exporta información con Excel para reducir tareas repetidas.", "Organiza el acceso mediante usuarios, roles y permisos."],
         ["Prepara y registra inventarios desde el dispositivo vinculado.", "Comprueba cantidades y movimientos mientras trabajas en el almacén.", "Consulta productos y apoya las tareas de reposición desde el dispositivo."],
         ["Reúne la visión de varias tiendas desde un entorno central.", "Mantiene conectada la información operativa entre tienda y gestión central.", "Ofrece un espacio web para licencias, actividad y soporte del cliente."]
@@ -254,19 +254,19 @@ const content = {
       title: "Sigue vendiendo en local.",
       accent: "Decide con visión central.",
       body: "Combina continuidad operativa en tienda con control multi-tienda, sincronización y acceso central para la dirección.",
-      headers: ["Capacidad", "TPV tradicional", "Solo nube", "TPV ERP"],
+      headers: ["Capacidad", "Enfoque local", "Enfoque cloud", "esPOS"],
       rows: [
-        ["Operación en tienda sin internet", "Limitada", "Depende de conexión", "Sí, con operación local"],
-        ["Visión central multi-tienda", "No habitual", "Incluida", "Incluida con sincronización"],
-        ["Venta, gestión y almacén", "Herramientas separadas", "Según proveedor", "Un ecosistema conectado"],
-        ["Dispositivos de almacén", "Integración adicional", "Según proveedor", "APP PDA integrada"],
-        ["Control del dato operativo", "Solo local", "Solo nube", "Local y central"],
-        ["Copias de seguridad", "Proceso manual", "Incluidas según plan", "Automáticas y centralizadas"],
-        ["Crecimiento a nuevas tiendas", "Configuración independiente", "Nueva suscripción", "Modular y escalable"],
-        ["Usuarios y permisos", "Control básico", "Según proveedor", "Roles y permisos integrados"],
-        ["Fiscalidad y trazabilidad", "Actualizaciones externas", "Según servicio", "Preparado para VeriFactu"]
+        ["Conectividad en tienda", "Según instalación y funciones", "Según servicio y modo offline", "Servicio de tienda; nube con conexión"],
+        ["Visión central multi-tienda", "Requiere conexión central", "Según servicio contratado", "Con SaaS y sincronización"],
+        ["Venta, gestión y almacén", "Según módulos e integraciones", "Según módulos e integraciones", "Aplicaciones conectadas según configuración"],
+        ["Dispositivos de almacén", "Según compatibilidad", "Según compatibilidad", "PDA vinculada a la instalación"],
+        ["Control del dato operativo", "Según arquitectura", "Según arquitectura", "Operación local y consulta central"],
+        ["Copias de seguridad", "Según política de respaldo", "Según política del servicio", "Configuración revisada en la implantación"],
+        ["Crecimiento a nuevas tiendas", "Según licencias y configuración", "Según plan y configuración", "Módulos según necesidades"],
+        ["Usuarios y permisos", "Según producto", "Según producto", "Roles y permisos configurables"],
+        ["Fiscalidad y trazabilidad", "Según producto y configuración", "Según servicio y configuración", "Flujos fiscales según implantación"]
       ],
-      note: "Comparación general por enfoque tecnológico. Las capacidades concretas dependen de la configuración y los módulos contratados."
+      note: "Orientación por arquitectura, no una evaluación de proveedores concretos. Otros productos pueden combinar estos enfoques. La sincronización y los servicios externos requieren internet; alcance y módulos se confirman en cada implantación."
     },
     growth: {
       proof: {
@@ -278,13 +278,13 @@ const content = {
           ["Local + nube", "continuidad y visión central"]
         ],
         testimonialQuote: "Escenario ilustrativo: el equipo de caja vende con rapidez, almacén actualiza existencias y dirección consulta el negocio sin pedir los mismos datos dos veces.",
-        testimonialAuthor: "Ejemplo de uso de TPV ERP",
+        testimonialAuthor: "Ejemplo de uso de esPOS",
         testimonialRole: "Escenario orientativo, no testimonio de un cliente real"
       },
       sectors: {
         kicker: "Pensado para tu sector",
         title: "Una base común, adaptada a cada forma de vender",
-        body: "Elige un tipo de negocio para ver cómo TPV ERP conecta las tareas que más importan en su día a día.",
+        body: "Elige un tipo de negocio para ver cómo esPOS conecta las tareas que más importan en su día a día.",
         selectorLabel: "Selecciona tu tipo de negocio",
         items: [
           ["retail", "Comercio minorista", "Vende con agilidad y conserva el control", "Conecta mostrador, catálogo, clientes y caja para que cada operación deje la información preparada para la gestión.", ["Cobros y devoluciones ágiles", "Promociones y fidelización", "Cierre de caja trazable"]],
@@ -295,16 +295,31 @@ const content = {
       },
     },
     contact: {
-      kicker: "Contacta con nuestro equipo",
+      kicker: "Contacta con nosotros por WeChat",
       title: "Cuéntanos cómo trabajas.",
       accent: "Te enseñamos cómo mejorarlo.",
-      body: "Dinos cuántas tiendas tienes, cómo vendes y qué quieres controlar mejor. Prepararemos una demostración enfocada en tu operativa real.",
+      body: "Escríbenos por WeChat y cuéntanos cómo trabajas. También puedes usar el formulario para solicitar una demostración adaptada a tu negocio.",
+      wechat: {
+        title: "Hablemos por WeChat",
+        body: "Cuéntanos sobre tu negocio, resuelve tus dudas y solicita una demo de esPOS.",
+        accountLabel: "Cuenta",
+        idLabel: "ID de WeChat",
+        copy: "Copiar ID",
+        copied: "ID copiado",
+        copyError: "No se ha podido copiar. Selecciona el ID y cópialo manualmente.",
+        hint: "Escanea el código QR con WeChat o copia el ID para buscarnos. También puedes utilizar el formulario.",
+        qrAlt: "Código QR de WeChat de esPOS - LEAFY TECH",
+        viewQr: "Ver QR ampliado",
+        qrTitle: "Añádenos en WeChat",
+        qrHint: "Escanea este código con WeChat para añadir esPOS - LEAFY TECH a tus contactos.",
+        closeQr: "Cerrar código QR"
+      },
       groupLabel: "Selecciona las aplicaciones que te interesan",
       trustLabel: "Cómo preparamos la demostración",
       trust: [["Sin compromiso", "Explora sin presiones."], ["Demo adaptada", "A tu negocio y objetivos."], ["Respuesta cercana", "Te acompañamos."]],
       formTag: "Solicita tu demo",
       formTitle: "Cuéntanos un poco más sobre tu negocio",
-      formBody: "Te mostraremos cómo TPV ERP puede ayudarte con tus objetivos.",
+      formBody: "Te mostraremos cómo esPOS puede ayudarte con tus objetivos.",
       product: "Aplicaciones de interés",
       fullPackage: "Paquete completo",
       fullPackageHint: "Incluye Venta, Gestión, PDA y SaaS",
@@ -319,22 +334,41 @@ const content = {
       casePlaceholder: "Número de tiendas, sector y qué te gustaría mejorar…",
       submit: "Quiero una demo",
       submitting: "Enviando solicitud…",
-      success: "Solicitud recibida. Nuestro equipo se pondrá en contacto contigo.",
+      success: "Solicitud registrada. Conserva la referencia para consultar su seguimiento con nuestro equipo.",
       error: "No hemos podido enviar la solicitud. Revisa la conexión e inténtalo de nuevo.",
-      consent: "Acepto que TPV ERP use estos datos para responder a mi solicitud.",
+      delivery: {
+        checking: "Comprobando el servicio de solicitudes…",
+        available: "Servicio de solicitudes disponible. También puedes hablar con nosotros por WeChat.",
+        unavailable: "El formulario no está disponible en este momento. Puedes contactar por WeChat; no se ha enviado ninguna solicitud.",
+        retryAvailability: "Comprobar disponibilidad",
+        retrySubmit: "Reintentar solicitud",
+        viaWechat: "Contactar por WeChat",
+        receiptLabel: "Referencia de la solicitud",
+        fieldRequired: "Completa este campo.",
+        emailInvalid: "Introduce un correo electrónico válido.",
+        tooLong: "Máximo {max} caracteres.",
+        validation: "Revisa los campos indicados. Tus datos siguen en el formulario.",
+        conflict: "La referencia del envío no coincide con esta solicitud. Revisa los datos y vuelve a intentarlo.",
+        rateLimited: "Se han realizado demasiados intentos. Espera unos minutos antes de reintentar o contacta por WeChat.",
+        timeout: "No hemos podido confirmar la recepción a tiempo. Reintenta con los mismos datos para evitar duplicados.",
+        network: "No hemos podido confirmar la recepción. Revisa la conexión y reintenta con los mismos datos, o contacta por WeChat.",
+        unavailableError: "El servicio no puede atender la solicitud ahora. Tus datos siguen en este formulario para que puedas reintentar.",
+        invalidReceipt: "El servicio no ha devuelto una confirmación válida. No podemos confirmar la recepción; reintenta con los mismos datos o consulta por WeChat."
+      },
+      consent: "Acepto que esPOS use estos datos para responder a mi solicitud.",
       dataUse: "Usaremos tus datos únicamente para atender esta solicitud comercial.",
       faqAction: "Resolver dudas antes de solicitar la demo",
       faqClose: "Cerrar preguntas frecuentes",
       faqLabel: "Antes de decidir",
       faqTitle: "Dudas habituales, respuestas claras",
-      faqHint: "Selecciona una pregunta para conocer cómo encaja TPV ERP en tu operativa.",
+      faqHint: "Selecciona una pregunta para conocer cómo encaja esPOS en tu operativa.",
       faqItems: [
-        ["¿La tienda puede seguir vendiendo sin internet?", "Sí. La venta, la caja y la operativa diaria se ejecutan en local. Cuando vuelve la conexión, la información se sincroniza con la gestión central."],
-        ["¿Cómo se controla un negocio con varias tiendas?", "APP SaaS ofrece una visión central de tiendas, licencias, ventas, existencias y facturación, mientras cada tienda mantiene su operativa local."],
+        ["¿La tienda puede seguir vendiendo sin internet?", "Venta necesita acceso al servicio de la tienda, aunque se instale en el mismo ordenador o en la red local. Si ese servicio no responde, la operativa se bloquea y se ofrece recuperar el trabajo pendiente tras reconectar. La sincronización central y los servicios externos necesitan su conexión; el alcance ante un corte de internet se valida con la configuración de tu tienda."],
+        ["¿Cómo se controla un negocio con varias tiendas?", "esPOS SaaS ofrece una visión central de tiendas, licencias, ventas, existencias y facturación, mientras cada tienda mantiene su operativa local."],
         ["¿El sistema está preparado para VeriFactu?", "El sistema está preparado para trabajar con flujos de VeriFactu e incluye permisos, auditoría, copias de seguridad y trazabilidad. La configuración concreta se revisa para cada implantación."],
-        ["¿Puedo trasladar datos desde Excel?", "APP Gestión permite importar y exportar información mediante Excel. El alcance de la migración se revisa antes de la puesta en marcha."],
+        ["¿Puedo trasladar datos desde Excel?", "esPOS Gestión permite importar y exportar información mediante Excel. El alcance de la migración se revisa antes de la puesta en marcha."],
         ["¿Qué soporte tendré durante la implantación?", "El equipo acompaña la configuración, la puesta en marcha y las dudas de uso. El alcance y el canal se concretan para cada implantación."],
-        ["¿Qué aplicación necesita cada equipo?", "APP Venta cubre la caja; APP Gestión, la administración; APP PDA, el almacén; y APP SaaS, la visión central y multi-tienda."]
+        ["¿Qué aplicación necesita cada equipo?", "esPOS Venta cubre la caja; esPOS Gestión, la administración; esPOS PDA, el almacén; y esPOS SaaS, la visión central y multi-tienda."]
       ]
     }
   },
@@ -358,9 +392,9 @@ const content = {
       titleAccent: "Control your whole business.",
       lead: "POS, management and inventory working as one.",
       body: "Reduce duplicate work, know your real stock and manage one or several stores from a central view.",
-      checks: ["Uninterrupted local operation", "Modular growth", "Control and traceability"],
+      checks: ["Local in-store sales", "Modular growth", "Control and traceability"],
       benefits: [
-        ["Uninterrupted sales", "Checkout keeps responding throughout the day."],
+        ["Local sales", "Synchronisation and external services require a connection."],
         ["Stock under control", "Inventory and movements connected by store."],
         ["Decisions with context", "Sales and reports together in one central view."],
         ["A supported team", "Help to implement, operate and grow."]
@@ -399,16 +433,16 @@ const content = {
       ]
     },
     apps: {
-      kicker: "TPV ERP applications",
+      kicker: "esPOS applications",
       title: "The right tool for every team.",
       accent: "One connected business.",
       body: "Counter, administration, warehouse and management get focused interfaces while sharing one source of information.",
       detailLabels: ["Best for", "Works with"],
       items: [
-        ["Sales App", "Your point of sale", "Fast payments, checkout, receipts, invoices, returns and pending sales in an interface built for the counter.", ["Cash, card and bank transfer", "Keyboard shortcuts", "Local operation"], "Fast-paced sales counters", "Receipts, checkout, billing and returns"],
-        ["Management App", "Control your business", "Products, customers, suppliers, promotions, warehouses and reports connected to every sale.", ["Stock and reports", "Excel import", "Roles and permissions"], "Managers and administration", "Catalogue, purchasing, customers and reports"],
-        ["PDA App", "Mobile warehouse work", "Receipts, inventory, replenishment and product lookup from securely linked devices.", ["Inventory", "Checks", "Replenishment"], "Warehouse teams", "Receiving, inventory, locations and replenishment"],
-        ["SaaS App", "Your business in the cloud", "A central view of stores, licences, sales, stock, billing and support from anywhere.", ["Multi-store", "Synchronisation", "Customer portal"], "Management and store networks", "Branches, licences, sales and support"]
+        ["esPOS Sales", "Your point of sale", "Fast payments, checkout, receipts, invoices, returns and pending sales in an interface built for the counter.", ["Cash, card and bank transfer", "Keyboard shortcuts", "Local operation"], "Fast-paced sales counters", "Receipts, checkout, billing and returns"],
+        ["esPOS Management", "Control your business", "Products, customers, suppliers, promotions, warehouses and reports connected to every sale.", ["Stock and reports", "Excel import", "Roles and permissions"], "Managers and administration", "Catalogue, purchasing, customers and reports"],
+        ["esPOS PDA", "Mobile warehouse work", "Receipts, inventory, replenishment and product lookup from securely linked devices.", ["Inventory", "Checks", "Replenishment"], "Warehouse teams", "Receiving, inventory, locations and replenishment"],
+        ["esPOS SaaS", "Your business in the cloud", "A customer portal to view documents and stock received from your stores, licences, service invoices and support, according to permissions.", ["Multi-store", "Synchronisation", "Customer portal"], "Management and store networks", "Authorized stores, documents and service"]
       ]
     },
     downloads: {
@@ -425,17 +459,17 @@ const content = {
       requestSetup: "Request installation",
       requirementsLabel: "Installation requirements",
       requirements: [
-        ["Sales App", "64-bit Windows, a compatible checkout terminal and initial store configuration."],
-        ["Management App", "64-bit Windows, authorized business access and a connection for synchronization."]
+        ["esPOS Sales", "64-bit Windows, a compatible terminal and access to the configured store service."],
+        ["esPOS Management", "64-bit Windows, store service access and configured administration permissions."]
       ],
       publishedLabel: "Verified release",
       checksumHelp: "Compare the published SHA-256 with the downloaded file to confirm it is complete and has not been modified.",
       safety: "Desktop applications are published only after signature and SHA-256 verification.",
       items: [
-        ["Windows 64-bit", "Desktop installer", "APP Sales is installed at checkout and configured for the store's operation."],
-        ["Windows 64-bit", "Desktop installer", "APP Management is installed on administration computers connected to the business."],
-        ["Browser on a mobile device", "Access configured during rollout", "APP PDA is a web app linked to the installation; there is no public APK."],
-        ["Web browser", "Access enabled for customers", "APP SaaS is delivered as a web service configured for each organization; no installer is required."]
+        ["Windows 64-bit", "Desktop installer", "esPOS Sales is installed at checkout and configured for the store's operation."],
+        ["Windows 64-bit", "Desktop installer", "esPOS Management is installed on administration computers connected to the business."],
+        ["Browser on a mobile device", "Access configured during rollout", "esPOS PDA is a web app linked to the installation; there is no public APK."],
+        ["Web browser", "Access enabled for customers", "esPOS SaaS is delivered as a web service configured for each organization; no installer is required."]
       ]
     },
     tour: {
@@ -456,13 +490,13 @@ const content = {
       deliveryLabel: "How to use it",
       previewNote: "Real interface · Demo data",
       previewAlts: [
-        "Sales App: receipt with products and a demo sale total",
-        "Management App: sales dashboard and reports with demo data",
-        "PDA App: warehouse tools on a demo mobile device",
-        "SaaS App: central store dashboard with demo data"
+        "esPOS Sales: receipt with products and a demo sale total",
+        "esPOS Management: sales dashboard and reports with demo data",
+        "esPOS PDA: warehouse tools on a demo mobile device",
+        "esPOS SaaS: central store dashboard with demo data"
       ],
       stepBodies: [
-        ["Combine common payment methods within the sales flow.", "Use quick access controls to keep checkout moving.", "Checkout keeps its local working capability during daily operations."],
+        ["Combine common payment methods within the sales flow.", "Use quick access controls to keep checkout moving.", "Checkout works with the local installation and needs access to the store service."],
         ["Review stock and reports from the administration environment.", "Import and export information with Excel to reduce repetitive work.", "Organize access with users, roles and permissions."],
         ["Prepare and record inventory counts from the linked device.", "Check quantities and movements while working in the warehouse.", "Look up products and support replenishment work from the device."],
         ["Bring multiple stores into one central view.", "Keep operational information connected between the store and central management.", "Provide a web space for customer licences, activity and support."]
@@ -591,19 +625,19 @@ const content = {
       title: "Keep selling locally.",
       accent: "Decide with a central view.",
       body: "Combine operational continuity in store with multi-store control, synchronisation and central access for management.",
-      headers: ["Capability", "Traditional POS", "Cloud only", "TPV ERP"],
+      headers: ["Capability", "Local approach", "Cloud approach", "esPOS"],
       rows: [
-        ["In-store operation without internet", "Limited", "Connection dependent", "Yes, with local operation"],
-        ["Central multi-store view", "Uncommon", "Included", "Included with synchronisation"],
-        ["Sales, management and warehouse", "Separate tools", "Depends on provider", "One connected ecosystem"],
-        ["Warehouse devices", "Extra integration", "Depends on provider", "Integrated PDA App"],
-        ["Operational data control", "Local only", "Cloud only", "Local and central"],
-        ["Backups", "Manual process", "Included depending on plan", "Automatic and centralised"],
-        ["Adding new stores", "Independent setup", "New subscription", "Modular and scalable"],
-        ["Users and permissions", "Basic control", "Depends on provider", "Integrated roles and permissions"],
-        ["Tax and traceability", "External updates", "Depends on service", "Ready for VeriFactu"]
+        ["In-store connectivity", "Depends on installation and features", "Depends on service and offline mode", "Store service; cloud needs a connection"],
+        ["Central multi-store view", "Requires a central connection", "Depends on the service", "With SaaS and synchronisation"],
+        ["Sales, management and warehouse", "Depends on modules and integrations", "Depends on modules and integrations", "Connected apps according to configuration"],
+        ["Warehouse devices", "Depends on compatibility", "Depends on compatibility", "PDA linked to the installation"],
+        ["Operational data control", "Depends on architecture", "Depends on architecture", "Local operation and central view"],
+        ["Backups", "Depends on backup policy", "Depends on service policy", "Configuration reviewed during setup"],
+        ["Adding new stores", "Depends on licensing and setup", "Depends on plan and setup", "Modules to suit needs"],
+        ["Users and permissions", "Depends on the product", "Depends on the product", "Configurable roles and permissions"],
+        ["Tax and traceability", "Depends on product and setup", "Depends on service and setup", "Tax workflows according to setup"]
       ],
-      note: "A general comparison by technology approach. Specific capabilities depend on configuration and contracted modules."
+      note: "Architecture guidance, not an assessment of specific providers. Other products may combine these approaches. Synchronisation and external services require internet; scope and modules are confirmed for each implementation."
     },
     growth: {
       proof: {
@@ -615,13 +649,13 @@ const content = {
           ["Local + cloud", "continuity and central visibility"]
         ],
         testimonialQuote: "Illustrative scenario: checkout keeps sales moving, the warehouse updates stock, and management sees the business without asking teams for the same information twice.",
-        testimonialAuthor: "TPV ERP usage example",
+        testimonialAuthor: "esPOS usage example",
         testimonialRole: "Illustrative scenario, not a real customer testimonial"
       },
       sectors: {
         kicker: "Designed for your industry",
         title: "One shared foundation, adapted to the way you sell",
-        body: "Choose a business type to see how TPV ERP connects the tasks that matter most in its daily operation.",
+        body: "Choose a business type to see how esPOS connects the tasks that matter most in its daily operation.",
         selectorLabel: "Select your business type",
         items: [
           ["retail", "Retail", "Sell quickly and stay in control", "Connect the counter, catalogue, customers and checkout so every operation leaves information ready for management.", ["Fast payments and returns", "Promotions and loyalty", "Traceable cash closing"]],
@@ -632,16 +666,31 @@ const content = {
       },
     },
     contact: {
-      kicker: "Talk to our team",
+      kicker: "Contact us on WeChat",
       title: "Tell us how you work.",
       accent: "We will show you how to improve it.",
-      body: "Tell us how many stores you run, how you sell and what you want to control better. We will tailor the demo to your real operation.",
+      body: "Message us on WeChat and tell us how you work. You can also use the form to request a demo tailored to your business.",
+      wechat: {
+        title: "Let's talk on WeChat",
+        body: "Tell us about your business, ask your questions and request an esPOS demo.",
+        accountLabel: "Account",
+        idLabel: "WeChat ID",
+        copy: "Copy ID",
+        copied: "ID copied",
+        copyError: "The ID could not be copied. Select it and copy it manually.",
+        hint: "Scan the QR code with WeChat or copy the ID to find us. You can also use the form.",
+        qrAlt: "WeChat QR code for esPOS - LEAFY TECH",
+        viewQr: "View larger QR code",
+        qrTitle: "Add us on WeChat",
+        qrHint: "Scan this code with WeChat to add esPOS - LEAFY TECH to your contacts.",
+        closeQr: "Close QR code"
+      },
       groupLabel: "Select the applications you are interested in",
       trustLabel: "How we prepare your demo",
       trust: [["No commitment", "Explore without pressure."], ["Tailored demo", "Built around your goals."], ["Personal response", "We support you."]],
       formTag: "Request your demo",
       formTitle: "Tell us a little more about your business",
-      formBody: "We will show you how TPV ERP can support your goals.",
+      formBody: "We will show you how esPOS can support your goals.",
       product: "Applications of interest",
       fullPackage: "Complete package",
       fullPackageHint: "Includes Sales, Management, PDA and SaaS",
@@ -656,22 +705,41 @@ const content = {
       casePlaceholder: "Number of stores, industry and what you would like to improve…",
       submit: "Request my demo",
       submitting: "Sending request…",
-      success: "Request received. Our team will get in touch with you.",
+      success: "Request registered. Keep the reference to ask our team about its progress.",
       error: "We could not send your request. Check your connection and try again.",
-      consent: "I agree that TPV ERP may use these details to respond to my request.",
+      delivery: {
+        checking: "Checking the request service…",
+        available: "The request service is available. You can also contact us on WeChat.",
+        unavailable: "The form is currently unavailable. You can contact us on WeChat; no request has been sent.",
+        retryAvailability: "Check availability",
+        retrySubmit: "Retry request",
+        viaWechat: "Contact on WeChat",
+        receiptLabel: "Request reference",
+        fieldRequired: "Complete this field.",
+        emailInvalid: "Enter a valid email address.",
+        tooLong: "Maximum {max} characters.",
+        validation: "Check the highlighted fields. Your details remain in the form.",
+        conflict: "The submission reference does not match this request. Review your details and try again.",
+        rateLimited: "Too many attempts. Wait a few minutes before retrying or contact us on WeChat.",
+        timeout: "We could not confirm receipt in time. Retry with the same details to avoid duplicates.",
+        network: "We could not confirm receipt. Check your connection and retry with the same details, or contact us on WeChat.",
+        unavailableError: "The service cannot process the request right now. Your details remain in this form so you can retry.",
+        invalidReceipt: "The service did not return a valid confirmation. We cannot confirm receipt; retry with the same details or ask us on WeChat."
+      },
+      consent: "I agree that esPOS may use these details to respond to my request.",
       dataUse: "We will use your details only to handle this sales request.",
       faqAction: "Answer questions before requesting a demo",
       faqClose: "Close frequently asked questions",
       faqLabel: "Before you decide",
       faqTitle: "Common questions, clear answers",
-      faqHint: "Choose a question to see how TPV ERP fits your operation.",
+      faqHint: "Choose a question to see how esPOS fits your operation.",
       faqItems: [
-        ["Can the store keep selling without internet?", "Yes. Sales, checkout and daily operations run locally. When the connection returns, information synchronizes with central management."],
-        ["How are multiple stores managed?", "APP SaaS provides a central view of stores, licences, sales, stock and billing, while each location keeps its local operation."],
+        ["Can the store keep selling without internet?", "Sales needs access to the store service, even when it runs on the same computer or local network. If that service is unavailable, operations are blocked and pending work can be recovered after reconnecting. Central synchronisation and external services need their connection; the scope during an internet outage is checked against your store configuration."],
+        ["How are multiple stores managed?", "esPOS SaaS provides a central view of stores, licences, sales, stock and billing, while each location keeps its local operation."],
         ["Is the system ready for VeriFactu?", "The system is prepared for VeriFactu flows and includes permissions, auditing, backups and operation traceability. The specific setup is reviewed for each deployment."],
-        ["Can I move data from Excel?", "APP Management supports importing and exporting information with Excel. The migration scope is reviewed before go-live."],
+        ["Can I move data from Excel?", "esPOS Management supports importing and exporting information with Excel. The migration scope is reviewed before go-live."],
         ["What support is available during rollout?", "The team assists with setup, go-live and usage questions. The support scope and channel are agreed for each implementation."],
-        ["Which app does each team need?", "APP Sales covers checkout; APP Management, administration; APP PDA, warehouse work; and APP SaaS, central and multi-store visibility."]
+        ["Which app does each team need?", "esPOS Sales covers checkout; esPOS Management, administration; esPOS PDA, warehouse work; and esPOS SaaS, central and multi-store visibility."]
       ]
     }
   },
@@ -695,9 +763,9 @@ const content = {
       titleAccent: "全面掌控业务。",
       lead: "收银、管理与库存协同工作。",
       body: "减少重复工作，掌握真实库存，并通过中央视图管理一家或多家门店。",
-      checks: ["本地运营不中断", "模块化扩展", "操作全程可追溯"],
+      checks: ["门店本地销售", "模块化扩展", "操作全程可追溯"],
       benefits: [
-        ["销售不中断", "收银台在日常运营中持续快速响应。"],
+        ["本地销售", "同步和外部服务需要网络连接。"],
         ["库存尽在掌控", "各门店库存与流转信息保持连接。"],
         ["决策更有依据", "销售与报表汇集到中央视图。"],
         ["团队获得支持", "从实施、运营到扩展全程协助。"]
@@ -736,16 +804,16 @@ const content = {
       ]
     },
     apps: {
-      kicker: "TPV ERP 应用",
+      kicker: "esPOS 应用",
       title: "每个团队都有合适工具。",
       accent: "整个业务保持互联。",
       body: "柜台、行政、仓库与管理层使用专注界面，同时共享同一信息来源。",
       detailLabels: ["适合", "覆盖业务"],
       items: [
-        ["销售应用", "您的销售终端", "快速收款、收银、小票、发票、退货与挂单，专为柜台操作设计。", ["现金、刷卡与转账", "键盘快捷键", "本地运行"], "高频销售柜台", "小票、收银、开票与退货"],
-        ["管理应用", "掌控业务", "商品、客户、供应商、促销、仓库与报表连接每一笔销售。", ["库存与报表", "Excel 导入", "角色与权限"], "管理层与行政人员", "商品、采购、客户与报表"],
-        ["PDA 应用", "移动仓库作业", "通过安全连接的设备完成收货、盘点、补货与商品查询。", ["盘点", "核查", "补货"], "仓库团队", "收货、盘点、库位与补货"],
-        ["SaaS 应用", "云端业务", "随时查看门店、许可证、销售、库存、账单与支持。", ["多门店", "同步", "客户门户"], "管理层与连锁门店", "分店、许可证、销售与支持"]
+        ["esPOS 销售", "您的销售终端", "快速收款、收银、小票、发票、退货与挂单，专为柜台操作设计。", ["现金、刷卡与转账", "键盘快捷键", "本地运行"], "高频销售柜台", "小票、收银、开票与退货"],
+        ["esPOS 管理", "掌控业务", "商品、客户、供应商、促销、仓库与报表连接每一笔销售。", ["库存与报表", "Excel 导入", "角色与权限"], "管理层与行政人员", "商品、采购、客户与报表"],
+        ["esPOS PDA", "移动仓库作业", "通过安全连接的设备完成收货、盘点、补货与商品查询。", ["盘点", "核查", "补货"], "仓库团队", "收货、盘点、库位与补货"],
+        ["esPOS SaaS", "云端业务", "客户门户可按权限查看门店同步的单据与库存，以及许可证、服务账单和支持。", ["多门店", "同步", "客户门户"], "管理层与连锁门店", "已授权门店、单据与服务"]
       ]
     },
     downloads: {
@@ -762,17 +830,17 @@ const content = {
       requestSetup: "申请安装",
       requirementsLabel: "安装要求",
       requirements: [
-        ["销售应用", "64 位 Windows、兼容的收银终端，以及门店初始配置。"],
-        ["管理应用", "64 位 Windows、已授权的业务访问权限，以及用于同步的网络连接。"]
+        ["esPOS 销售", "64 位 Windows、兼容终端，以及连接已配置门店服务的条件。"],
+        ["esPOS 管理", "64 位 Windows、连接门店服务的条件，以及已配置的管理权限。"]
       ],
       publishedLabel: "已验证发布",
       checksumHelp: "将公布的 SHA-256 与下载文件进行比较，以确认文件完整且未被修改。",
       safety: "桌面应用仅在完成签名和 SHA-256 校验后发布。",
       items: [
-        ["Windows 64 位", "桌面安装程序", "APP Venta 安装在收银终端，并根据门店运营进行配置。"],
-        ["Windows 64 位", "桌面安装程序", "APP Gestión 安装在与业务相连的管理电脑上。"],
-        ["移动设备浏览器", "实施期间配置访问", "APP PDA 是与系统相连的网页应用，目前没有公开 APK。"],
-        ["网页浏览器", "为客户开通访问", "APP SaaS 作为按组织配置的网页服务交付，无需安装程序。"]
+        ["Windows 64 位", "桌面安装程序", "esPOS 销售安装在收银终端，并根据门店运营进行配置。"],
+        ["Windows 64 位", "桌面安装程序", "esPOS 管理安装在与业务相连的管理电脑上。"],
+        ["移动设备浏览器", "实施期间配置访问", "esPOS PDA 是与系统相连的网页应用，目前没有公开 APK。"],
+        ["网页浏览器", "为客户开通访问", "esPOS SaaS 作为按组织配置的网页服务交付，无需安装程序。"]
       ]
     },
     tour: {
@@ -793,13 +861,13 @@ const content = {
       deliveryLabel: "使用方式",
       previewNote: "真实界面 · 演示数据",
       previewAlts: [
-        "销售应用：包含商品与销售总额的演示小票",
-        "管理应用：使用演示数据的销售与报表仪表盘",
-        "PDA 应用：移动设备上的仓库工具演示",
-        "SaaS 应用：使用演示数据的门店中央仪表盘"
+        "esPOS 销售：包含商品与销售总额的演示小票",
+        "esPOS 管理：使用演示数据的销售与报表仪表盘",
+        "esPOS PDA：移动设备上的仓库工具演示",
+        "esPOS SaaS：使用演示数据的门店中央仪表盘"
       ],
       stepBodies: [
-        ["在销售流程中组合常用付款方式。", "通过快捷操作保持收银台的工作节奏。", "收银台在日常运营中保留本地工作能力。"],
+        ["在销售流程中组合常用付款方式。", "通过快捷操作保持收银台的工作节奏。", "收银依托本地安装环境运行，需要能够连接门店服务。"],
         ["从管理环境查看库存和报表。", "通过 Excel 导入和导出信息，减少重复工作。", "通过用户、角色和权限组织访问。"],
         ["在已连接设备上准备并记录库存盘点。", "在仓库作业时核对数量和移动记录。", "通过设备查询商品并支持补货任务。"],
         ["在中央视图中汇总多家门店。", "保持门店与中央管理之间的运营信息连接。", "为客户提供许可证、运营活动和支持的网页空间。"]
@@ -928,19 +996,19 @@ const content = {
       title: "门店继续本地销售。",
       accent: "管理层集中决策。",
       body: "结合门店运营连续性、多门店控制、同步能力与管理层的中央访问。",
-      headers: ["能力", "传统 POS", "纯云端", "TPV ERP"],
+      headers: ["能力", "本地架构", "云端架构", "esPOS"],
       rows: [
-        ["断网时门店运营", "受限", "依赖网络", "支持本地运营"],
-        ["多门店中央视图", "不常见", "包含", "同步后统一查看"],
-        ["销售、管理与仓库", "工具分散", "取决于供应商", "一个互联生态"],
-        ["仓库设备", "需要额外集成", "取决于供应商", "集成 PDA 应用"],
-        ["运营数据控制", "仅本地", "仅云端", "本地与中央"],
-        ["数据备份", "手动处理", "取决于套餐", "自动且集中管理"],
-        ["新增门店", "独立配置", "新增订阅", "模块化且可扩展"],
-        ["用户与权限", "基础控制", "取决于供应商", "集成角色与权限"],
-        ["税务与追溯", "外部更新", "取决于服务", "支持 VeriFactu"]
+        ["门店连接要求", "取决于安装方式和功能", "取决于服务和离线模式", "需连接门店服务；云端需联网"],
+        ["多门店中央视图", "需要中央连接", "取决于所选服务", "通过 SaaS 和同步实现"],
+        ["销售、管理与仓库", "取决于模块和集成", "取决于模块和集成", "按配置连接各应用"],
+        ["仓库设备", "取决于兼容性", "取决于兼容性", "PDA 与安装环境绑定"],
+        ["运营数据控制", "取决于架构", "取决于架构", "本地操作与中央查看"],
+        ["数据备份", "取决于备份策略", "取决于服务策略", "实施时确认备份配置"],
+        ["新增门店", "取决于许可和配置", "取决于套餐和配置", "按需配置模块"],
+        ["用户与权限", "取决于产品", "取决于产品", "可配置角色与权限"],
+        ["税务与追溯", "取决于产品和配置", "取决于服务和配置", "按实施配置税务流程"]
       ],
-      note: "这是按技术方式进行的一般比较。具体能力取决于配置及所选模块。"
+      note: "这是架构选择说明，并非对具体供应商的评估；其他产品也可能结合这些方式。同步和外部服务需要联网，具体范围与模块需在实施时确认。"
     },
     growth: {
       proof: {
@@ -952,13 +1020,13 @@ const content = {
           ["本地 + 云端", "兼顾连续运营与集中视图"]
         ],
         testimonialQuote: "示例场景：收银团队保持销售节奏，仓库及时更新库存，管理层无需重复索取相同数据即可了解业务。",
-        testimonialAuthor: "TPV ERP 使用示例",
+        testimonialAuthor: "esPOS 使用示例",
         testimonialRole: "仅为说明性场景，并非真实客户评价"
       },
       sectors: {
         kicker: "为您的行业而设计",
         title: "共享同一基础，适配不同销售方式",
-        body: "选择一种业务类型，了解 TPV ERP 如何连接日常运营中最重要的任务。",
+        body: "选择一种业务类型，了解 esPOS 如何连接日常运营中最重要的任务。",
         selectorLabel: "选择您的业务类型",
         items: [
           ["retail", "零售门店", "快速销售，同时保持全面掌控", "连接柜台、商品目录、客户与收银，让每次操作都为后续管理准备好准确信息。", ["快速收款与退货", "促销与会员管理", "可追溯的收银结算"]],
@@ -969,16 +1037,31 @@ const content = {
       },
     },
     contact: {
-      kicker: "联系我们的团队",
+      kicker: "通过微信联系我们",
       title: "告诉我们您的工作方式。",
       accent: "我们展示如何改善。",
-      body: "告诉我们门店数量、销售方式以及希望加强的控制，我们会根据真实运营准备演示。",
+      body: "通过微信告诉我们您的工作方式，也可以填写表单，申请适合您业务的产品演示。",
+      wechat: {
+        title: "微信聊一聊",
+        body: "介绍您的业务，咨询产品问题，申请 esPOS 演示。",
+        accountLabel: "账号",
+        idLabel: "微信号",
+        copy: "复制微信号",
+        copied: "微信号已复制",
+        copyError: "复制失败，请选中微信号并手动复制。",
+        hint: "使用微信扫描二维码，或复制微信号搜索我们。您也可以填写表单。",
+        qrAlt: "esPOS - LEAFY TECH 的微信二维码",
+        viewQr: "查看大图二维码",
+        qrTitle: "添加我们的微信",
+        qrHint: "使用微信扫描此二维码，将 esPOS - LEAFY TECH 添加到您的联系人。",
+        closeQr: "关闭二维码"
+      },
       groupLabel: "选择一个或多个感兴趣的应用",
       trustLabel: "我们如何准备演示",
       trust: [["无任何承诺", "轻松了解，无压力。"], ["定制演示", "围绕您的业务目标。"], ["贴心响应", "全程陪伴。"]],
       formTag: "申请演示",
       formTitle: "请介绍一下您的业务",
-      formBody: "我们将展示 TPV ERP 如何帮助您实现目标。",
+      formBody: "我们将展示 esPOS 如何帮助您实现目标。",
       product: "感兴趣的应用",
       fullPackage: "完整套装",
       fullPackageHint: "包含销售、管理、PDA 和 SaaS 应用",
@@ -993,22 +1076,41 @@ const content = {
       casePlaceholder: "门店数量、行业以及希望改善的方面…",
       submit: "申请演示",
       submitting: "正在发送申请…",
-      success: "申请已收到。我们的团队将与您联系。",
+      success: "申请已登记。请保留参考编号，以便向团队查询处理进度。",
       error: "申请发送失败。请检查网络后重试。",
-      consent: "我同意 TPV ERP 使用这些信息回复我的申请。",
+      delivery: {
+        checking: "正在检查申请服务…",
+        available: "申请服务可用。您也可以通过微信联系我们。",
+        unavailable: "表单目前不可用。您可以通过微信联系我们，尚未发送任何申请。",
+        retryAvailability: "检查服务状态",
+        retrySubmit: "重试申请",
+        viaWechat: "通过微信联系",
+        receiptLabel: "申请参考编号",
+        fieldRequired: "请填写此项。",
+        emailInvalid: "请输入有效的电子邮箱。",
+        tooLong: "最多 {max} 个字符。",
+        validation: "请检查标记的字段。您填写的信息仍保留在表单中。",
+        conflict: "发送参考编号与此申请不一致。请检查信息后重试。",
+        rateLimited: "尝试次数过多。请稍等几分钟后重试，或通过微信联系。",
+        timeout: "未能及时确认是否收到申请。请使用相同信息重试以避免重复登记。",
+        network: "无法确认是否收到申请。请检查网络并使用相同信息重试，或通过微信联系。",
+        unavailableError: "服务暂时无法处理申请。您填写的信息仍保留在此表单中，方便重试。",
+        invalidReceipt: "服务未返回有效确认，无法确认是否已收到。请使用相同信息重试，或通过微信咨询。"
+      },
+      consent: "我同意 esPOS 使用这些信息回复我的申请。",
       dataUse: "我们只会使用这些信息处理本次商业咨询。",
       faqAction: "申请演示前查看常见问题",
       faqClose: "关闭常见问题",
       faqLabel: "决策之前",
       faqTitle: "常见问题，清晰解答",
-      faqHint: "选择一个问题，了解 TPV ERP 如何适配您的业务流程。",
+      faqHint: "选择一个问题，了解 esPOS 如何适配您的业务流程。",
       faqItems: [
-        ["没有网络时门店还能继续销售吗？", "可以。销售、收银和日常操作在门店本地运行。网络恢复后，信息会与中央管理端同步。"],
-        ["多家门店如何统一管理？", "APP SaaS 集中展示门店、许可证、销售、库存和开票信息，同时每家门店保留本地运营能力。"],
+        ["没有网络时门店还能继续销售吗？", "销售需要连接门店服务，即使该服务安装在同一台电脑或局域网中。如果服务无法响应，操作会被阻止，重新连接后可恢复待处理工作。中央同步和外部服务需要相应连接；互联网中断时的可用范围需结合门店实际配置确认。"],
+        ["多家门店如何统一管理？", "esPOS SaaS 集中展示门店、许可证、销售、库存和开票信息，同时每家门店保留本地运营能力。"],
         ["系统是否已为 VeriFactu 做好准备？", "系统已为 VeriFactu 相关流程做好准备，并包含权限、审计、备份和操作追踪。具体配置会根据每次实施情况进行确认。"],
-        ["可以从 Excel 迁移数据吗？", "APP Gestión 支持通过 Excel 导入和导出信息。上线前会确认迁移范围，以便正确整理数据。"],
+        ["可以从 Excel 迁移数据吗？", "esPOS 管理支持通过 Excel 导入和导出信息。上线前会确认迁移范围，以便正确整理数据。"],
         ["实施期间可以获得哪些支持？", "团队会协助配置、上线和日常使用问题。每次实施都会明确支持范围和沟通渠道。"],
-        ["每个团队需要哪款应用？", "APP Venta 用于收银，APP Gestión 用于管理，APP PDA 用于仓库作业，APP SaaS 用于中央和多门店视图。"]
+        ["每个团队需要哪款应用？", "esPOS 销售用于收银，esPOS 管理用于管理，esPOS PDA 用于仓库作业，esPOS SaaS 用于中央和多门店视图。"]
       ]
     }
   }

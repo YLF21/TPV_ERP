@@ -171,9 +171,10 @@ describe("Stock product editing", () => {
 
 it("uses F9 for safe retirement in product management instead of exporting Excel", async () => {
   mockProductEditing();
-  render(<StockScreen app="gestion" locale="es" allowSafeRetirement
+  // Wait for loaded rows and their keyboard handler before sending F9.
+  await act(async () => { render(<StockScreen app="gestion" locale="es" allowSafeRetirement
     session={{ username:"demo", displayName:"DEMO", permissions:["ADMIN"], accessToken:"test-token" }}
-    terminalContext={{storeName:"Test",terminalCode:"TEST"}} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    terminalContext={{storeName:"Test",terminalCode:"TEST"}} onBack={vi.fn()} onLocaleChange={vi.fn()} />); });
   await screen.findByText("Cafe de prueba");
   expect(screen.getByRole("button",{name:"Añadir producto F8"})).toBeTruthy();
   expect(screen.getByRole("button",{name:"Modificar producto F7"})).toBeTruthy();

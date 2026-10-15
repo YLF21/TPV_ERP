@@ -1,0 +1,15 @@
+{
+  "expectedHtmlPages": 19,
+  "limits": {
+    "totalBytes": 3500000,
+    "javascriptBytes": 470000,
+    "javascriptGzipBytes": 145000,
+    "cssBytes": 115000,
+    "cssGzipBytes": 24000,
+    "initialJavascriptGzipBytes": 135000,
+    "initialCssGzipBytes": 24000,
+    "htmlBytesPerPage": 180000,
+    "largestAssetBytes": 400000,
+    "warnAssetBytes": 300000
+  }
+}

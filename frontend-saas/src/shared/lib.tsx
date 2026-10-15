@@ -46,7 +46,7 @@ export function licenseStatusPresentation(
   return { label: t("valid"), tone: "ok" };
 }
 
-export const VALID_VIEWS: View[] = ["dashboard", "companies", "stores", "create-license", "failures", "access", "integrations", "licenses", "sync", "fiscal", "fiscal-policy", "users", "audit", "support", "health", "billing", "outbox", "reports"];
+export const VALID_VIEWS: View[] = ["dashboard", "companies", "stores", "create-license", "failures", "access", "integrations", "licenses", "sync", "fiscal", "fiscal-policy", "users", "audit", "support", "health", "billing", "outbox", "reports", "demo-requests"];
 
 export function readViewFromLocation(): View {
   const candidate = window.location.hash.replace(/^#\/?/, "").split("/")[0] as View;
@@ -79,6 +79,7 @@ export function viewTitle(view: View, t: (key: string) => string) {
     billing: t("billing"),
     outbox: t("outboxRecovery"),
     reports: t("reports"),
+    "demo-requests": t("demoRequests"),
     audit: t("audit")
   }[view];
 }

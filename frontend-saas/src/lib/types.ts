@@ -18,6 +18,29 @@ export type Credentials = {
   mode: "admin" | "tenant";
 };
 
+export type DemoRequestStatus = "NEW" | "CONTACTED" | "CLOSED";
+export type DemoProduct = "APP_VENTA" | "APP_GESTION" | "APP_PDA" | "APP_SAAS";
+export type DemoRequest = {
+  id: string;
+  product: DemoProduct;
+  products: DemoProduct[];
+  name: string;
+  company: string;
+  email: string;
+  phone: string | null;
+  message: string | null;
+  locale: string;
+  landingPath: string | null;
+  referrer: string | null;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  status: DemoRequestStatus;
+  privacyAcceptedAt: string;
+  createdAt: string;
+};
+export type DemoRequestPage = { items: DemoRequest[]; total: number; page: number; size: number };
+
 export type LoginCredentials = {
   username: string;
   password: string;

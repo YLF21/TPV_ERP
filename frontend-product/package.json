@@ -5,8 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite --configLoader runner",
-    "build": "tsc -p tsconfig.app.json --noEmit --incremental false && tsc -p tsconfig.node.json --noEmit --incremental false && vite build --configLoader runner",
+    "build": "tsc -p tsconfig.app.json --noEmit --incremental false && tsc -p tsconfig.node.json --noEmit --incremental false && vite build --configLoader runner && node scripts/prerender.mjs && node scripts/performance-budget.mjs",
     "preview": "vite preview --configLoader runner",
+    "test:contract": "node --experimental-transform-types --test e2e/demo-requests.contract.test.mjs",
+    "test:guides": "node --experimental-transform-types --test e2e/application-guides.contract.test.mjs",
+    "test:render": "node --test e2e/application-explorer.render.test.mjs",
+    "test:a11y": "node --test e2e/marketing-accessibility.test.mjs",
+    "test:seo": "node --test e2e/seo.contract.test.mjs",
+    "test:campaign": "node --experimental-transform-types --test e2e/marketing-campaign.test.mjs",
+    "test:navigation": "node --test e2e/marketing-navigation.test.mjs",
+    "test:performance": "node --test e2e/performance-budget.test.mjs",
+    "test:images": "node --test e2e/marketing-images.test.mjs",
+    "optimize:images": "node scripts/optimize-marketing-images.mjs",
+    "check:performance": "node scripts/performance-budget.mjs",
     "test:e2e": "npm run build && node e2e/product-smoke.mjs"
   },
   "dependencies": {

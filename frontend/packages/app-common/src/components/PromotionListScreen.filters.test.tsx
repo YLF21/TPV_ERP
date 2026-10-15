@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -77,14 +77,15 @@ describe("Promotion list filters and detail", () => {
 
   it("checks detail actions after opening Más acciones", async () => {
     const t = createTranslator("es");
-    render(<PromotionListScreen {...props} app="gestion" locale="es" />);
+    // Finish the initial selection effect before opening its action menu.
+    await act(async () => { render(<PromotionListScreen {...props} app="gestion" locale="es" />); });
     await screen.findByRole("button", { name: "Pack café" });
 
     fireEvent.click(screen.getByRole("button", { name: t("promotion.action.more") }));
     expect(screen.getByRole("button", { name: t("promotion.action.duplicate") })).toBeEnabled();
     expect(screen.getByRole("button", { name: t("promotion.action.delete") })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Agua" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Agua" })); });
     fireEvent.click(screen.getByRole("button", { name: t("promotion.action.more") }));
     expect(screen.getByRole("button", { name: t("promotion.action.delete") })).toBeEnabled();
   });
