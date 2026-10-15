@@ -188,7 +188,10 @@ try {
   console.log("License table E2E: keyboard move, drag reorder, hide, resize and per-user persistence passed.");
 
   const globalRefresh = holdGlobalRefresh();
+  const refreshedList = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/admin/license-workspace");
   await page.getByRole("button", { name: "Actualizar", exact: true }).click(); await globalRefresh.requested;
+  // Independent directories refresh even while the dashboard is still pending.
+  await refreshedList;
   licenseRows[0].maxWindows = 6; // Simulate a change after the list was loaded.
   failDetail(true);
   await table.locator("tbody tr").first().dblclick();
@@ -204,8 +207,8 @@ try {
   await modal.getByLabel("Terminales PDA", { exact: true }).fill("2");
   const detailPath = `/api/v1/admin/license-workspace/${licenseRows[0].id}`;
   const detailReads = calls.filter(call => call.path === detailPath && call.method === "GET").length;
-  const refreshedList = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/admin/license-workspace");
-  globalRefresh.release(); await refreshedList;
+  const refreshedDashboard = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/admin/licenses");
+  globalRefresh.release(); await refreshedDashboard;
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   assert.equal(await modal.getByLabel("Terminales Windows", { exact: true }).inputValue(), "4", "A delayed global refresh must preserve the open license draft");
   assert.equal(await modal.getByLabel("Terminales PDA", { exact: true }).inputValue(), "2");
