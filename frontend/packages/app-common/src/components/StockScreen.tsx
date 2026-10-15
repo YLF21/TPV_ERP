@@ -2780,6 +2780,8 @@ export function StockScreen({
       ? `minmax(${column.width}px, 1fr)` : `${column.width}px`).join(" ")
   };
   const managementProductActions = app === "gestion" && allowSafeRetirement && selectedView === "stock.current";
+  const detailProductCreation = app === "gestion" && allowSafeRetirement && canManageProducts;
+  const informationTabShortcut = detailProductCreation ? "F8" : "F5";
   const selectedStockRow = visibleRows[selectedStockIndex] ?? visibleRows[0] ?? null;
   const detailStockRows = detailRow ? allStockRows.filter((row) => row.productId === detailRow.productId) : [];
   const topSalesRanks = useMemo(() => new Map(topSalesRows.map((row, index) => [row, index + 1])), [topSalesRows]);
@@ -3004,10 +3006,13 @@ export function StockScreen({
           && (event.target as HTMLElement | null)?.closest("input, textarea, select, button, [role='combobox']")) {
         return;
       }
-      if (app === "gestion" && allowSafeRetirement && ["F8", "F9"].includes(event.key)) {
+      if ((detailProductCreation && [STOCK_CREATE_PRODUCT_SHORTCUT, "F8"].includes(event.key))
+          || (app === "gestion" && allowSafeRetirement && event.key === "F9")) {
         if (event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+        if (document.querySelector('[aria-modal="true"]:not(.stock-detail-overlay)')) return;
         event.preventDefault();
-        if (event.key === "F8" && canManageProducts) { setEditingProduct(null); setProductCreateOpen(true); }
+        if (event.key === STOCK_CREATE_PRODUCT_SHORTCUT) { setEditingProduct(null); setProductCreateOpen(true); }
+        if (event.key === "F8") setDetailTab("stock");
         if (event.key === "F9") openProductRetirement(row);
         return;
       }
@@ -3032,7 +3037,7 @@ export function StockScreen({
     }
     window.addEventListener("keydown", handleDetailKey);
     return () => window.removeEventListener("keydown", handleDetailKey);
-  }, [app, allowSafeRetirement, session.permissions, canManageProducts, detailRow, detailTab, productCreateOpen]);
+  }, [app, allowSafeRetirement, session.permissions, canManageProducts, detailProductCreation, detailRow, detailTab, productCreateOpen]);
 
   stockExportShortcutRef.current = () => { void exportStockExcel(); };
 
@@ -3054,7 +3059,8 @@ export function StockScreen({
   }, [detailRow, selectedView, session.accessToken, stockExportBusy, managementProductActions]);
 
   useEffect(() => {
-    if (app !== "venta" || !canManageProducts || partyDirectory || selectedView === "stock.bulkEdit" || selectedView === "stock.promotions" || productCreateOpen) return;
+    if (app === "pda" || !canManageProducts || partyDirectory || selectedView === "stock.bulkEdit"
+        || (app === "venta" && selectedView === "stock.promotions") || productCreateOpen) return;
     function handleAddProductShortcut(event: globalThis.KeyboardEvent) {
       if (event.defaultPrevented || event.key !== STOCK_CREATE_PRODUCT_SHORTCUT || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
       if (document.querySelector('[aria-modal="true"]')) return;
@@ -3070,10 +3076,9 @@ export function StockScreen({
   useEffect(() => {
     if (!managementProductActions) return;
     const handler = (event: globalThis.KeyboardEvent) => {
-      if (event.defaultPrevented || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || !["F8", "F9", "F7"].includes(event.key)) return;
+      if (event.defaultPrevented || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || !["F9", "F7"].includes(event.key)) return;
       if (document.querySelector('[aria-modal="true"]') || productCreateOpen || retirementRow || detailRow) return;
       event.preventDefault();
-      if (event.key === "F8" && canManageProducts) { setEditingProduct(null); setProductCreateOpen(true); }
       if (event.key === "F9") openProductRetirement(selectedStockRow);
       if (event.key === "F7") openStockDetail(selectedStockRow, "edit");
     };
@@ -3292,6 +3297,8 @@ export function StockScreen({
     // Column controls (including their portal menu) own their keyboard actions.
     if (event.defaultPrevented || (event.target instanceof Element
       && event.target.closest('[role="columnheader"], [role="menu"]'))) return;
+    // The visible add-product action owns F5, including when the table retains focus.
+    if (event.key === STOCK_CREATE_PRODUCT_SHORTCUT && app !== "pda" && canManageProducts) return;
     if (selectedView === "stock.topSales") {
       return;
     }
@@ -7627,14 +7634,14 @@ export function StockScreen({
               </div>
               {managementProductActions ? <div className="management-record-actions">
                 {canManageProducts && <button type="button" aria-keyshortcuts="F7" disabled={!selectedStockRow} onClick={() => openStockDetail(selectedStockRow, "edit")}><ShortcutButtonLabel label={t("product.edit.title")} shortcut={t("safeManagement.shortcut.modify")} /></button>}
-                {canManageProducts && <button type="button" aria-keyshortcuts="F8" onClick={() => { setEditingProduct(null); setProductCreateOpen(true); }}><ShortcutButtonLabel label={t("product.create.button")} shortcut={t("safeManagement.shortcut.add")} /></button>}
+                {canManageProducts && <button type="button" aria-keyshortcuts={STOCK_CREATE_PRODUCT_SHORTCUT} onClick={() => { setEditingProduct(null); setProductCreateOpen(true); }}><ShortcutButtonLabel label={t("product.create.button")} shortcut={STOCK_CREATE_PRODUCT_SHORTCUT} /></button>}
                 {session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!selectedStockRow || selectedStockRow.code === "0"} onClick={() => openProductRetirement(selectedStockRow)}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut={t("safeManagement.shortcut.retire")} /></button>}
               </div> : canManageProducts && !(app === "venta" && selectedView === "stock.promotions") && (
                 <button
                   type="button"
                   className="stock-add-product-button"
-                  aria-keyshortcuts={app === "venta" ? STOCK_CREATE_PRODUCT_SHORTCUT : undefined}
-                  title={app === "venta" ? `${t("product.create.button")} (${STOCK_CREATE_PRODUCT_SHORTCUT})` : undefined}
+                  aria-keyshortcuts={app !== "pda" ? STOCK_CREATE_PRODUCT_SHORTCUT : undefined}
+                  title={app !== "pda" ? `${t("product.create.button")} (${STOCK_CREATE_PRODUCT_SHORTCUT})` : undefined}
                   onClick={() => {
                     setEditingProduct(null);
                     setProductCreateOpen(true);
@@ -7644,7 +7651,7 @@ export function StockScreen({
                     <Plus size={18} weight="bold" aria-hidden="true" />
                     {t("product.create.button")}
                     <kbd aria-hidden="true">{STOCK_CREATE_PRODUCT_SHORTCUT}</kbd>
-                  </> : t("product.create.button")}
+                  </> : app === "gestion" ? <ShortcutButtonLabel label={t("product.create.button")} shortcut={STOCK_CREATE_PRODUCT_SHORTCUT} /> : t("product.create.button")}
                 </button>
               )}
             </header>
@@ -8190,8 +8197,8 @@ export function StockScreen({
                   setDetailTab(nextTab);
                   event.currentTarget.querySelector<HTMLButtonElement>(`#stock-detail-tab-${nextTab}`)?.focus();
                 }}>
-                <button type="button" role="tab" id="stock-detail-tab-stock" aria-controls="stock-detail-panel" aria-selected={detailTab === "stock"} tabIndex={detailTab === "stock" ? 0 : -1} className={detailTab === "stock" ? "selected" : ""} onClick={() => setDetailTab("stock")}>
-                  {app === "pda" ? t("stock.detail.stockTab") : <ShortcutButtonLabel label={t("stock.detail.stockTab")} shortcut="F5" />}
+                <button type="button" role="tab" id="stock-detail-tab-stock" aria-controls="stock-detail-panel" aria-keyshortcuts={app !== "pda" ? informationTabShortcut : undefined} aria-selected={detailTab === "stock"} tabIndex={detailTab === "stock" ? 0 : -1} className={detailTab === "stock" ? "selected" : ""} onClick={() => setDetailTab("stock")}>
+                  {app === "pda" ? t("stock.detail.stockTab") : <ShortcutButtonLabel label={t("stock.detail.stockTab").replace(/ F5$/, "")} shortcut={informationTabShortcut} />}
                 </button>
                 <button type="button" role="tab" id="stock-detail-tab-sales" aria-controls="stock-detail-panel" aria-selected={detailTab === "sales"} tabIndex={detailTab === "sales" ? 0 : -1} className={detailTab === "sales" ? "selected" : ""} onClick={() => setDetailTab("sales")}>
                   {app === "pda" ? t("stock.detail.salesTab") : <ShortcutButtonLabel label={t("stock.detail.salesTab")} shortcut="F6" />}
@@ -8210,7 +8217,7 @@ export function StockScreen({
                   {app === "pda" ? t("stock.detail.editTab") : <ShortcutButtonLabel label={app === "gestion" && allowSafeRetirement ? t("product.edit.title") : t("stock.detail.editTab")} shortcut="F7" />}
                 </button>
               )}
-              {app === "gestion" && allowSafeRetirement && canManageProducts && <button type="button" className="stock-detail-edit-button" aria-keyshortcuts="F8" onClick={() => { setEditingProduct(null); setProductCreateOpen(true); }}><ShortcutButtonLabel label={t("product.create.button")} shortcut={t("safeManagement.shortcut.add")} /></button>}
+              {detailProductCreation && <button type="button" className="stock-detail-edit-button" aria-keyshortcuts={STOCK_CREATE_PRODUCT_SHORTCUT} onClick={() => { setEditingProduct(null); setProductCreateOpen(true); }}><ShortcutButtonLabel label={t("product.create.button")} shortcut={STOCK_CREATE_PRODUCT_SHORTCUT} /></button>}
               {allowSafeRetirement && session.permissions.includes("ADMIN") && (
                 <button
                   type="button"

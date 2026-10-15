@@ -143,8 +143,8 @@ export function WarehouseScreen({
 
   return (
     <main data-warehouse-heading={app === "gestion" && embedded && section !== "goodsCheck" ? "unified" : undefined} className={embedded
-      ? "stock-screen work-screen warehouse-screen gestion-embedded-module"
-      : "stock-screen work-screen warehouse-screen"}
+      ? `stock-screen work-screen warehouse-screen gestion-embedded-module${app === "gestion" ? " gestion-warehouse-screen" : ""}`
+      : `stock-screen work-screen warehouse-screen${app === "gestion" ? " gestion-warehouse-screen" : ""}`}
     >
       {!embedded && <SessionTopControls
         locale={locale}
@@ -188,12 +188,12 @@ export function WarehouseScreen({
         </aside>}
 
         <section className="stock-list work-panel" aria-label={t(titleKey)}>
-          <header className="work-panel-heading stock-panel-heading">
+          {(app !== "gestion" || !canManage || section === "goodsCheck") && <header className="work-panel-heading stock-panel-heading">
             <div>
               <h2>{t(titleKey)}</h2>
               <span>{t(subtitleKey)}</span>
             </div>
-          </header>
+          </header>}
           {!canManage ? (
             <div className="stock-empty-state">{t("warehouseScreen.noAccess")}</div>
           ) : section === "goodsCheck" ? (
@@ -208,6 +208,7 @@ export function WarehouseScreen({
           ) : section === "purchaseDeliveryNotes" || section === "purchaseInvoices" ? (
             <WarehouseOperationsPanel
               mode="input"
+              heading={app === "gestion" ? { title: t(titleKey), subtitle: t(subtitleKey) } : undefined}
               documentType={section === "purchaseInvoices" ? "FACTURA_ENTRADA" : "ALBARAN_ENTRADA"}
               app={app}
               username={session.username}
@@ -229,6 +230,7 @@ export function WarehouseScreen({
           ) : (
             <WarehouseOperationsPanel
               mode={section}
+              heading={app === "gestion" ? { title: t(titleKey), subtitle: t(subtitleKey) } : undefined}
               documentType={section === "input" ? "ENTRADA_ALMACEN" : undefined}
               app={app}
               username={session.username}

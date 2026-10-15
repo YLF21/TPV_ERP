@@ -12,6 +12,9 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface WarehouseTransferDocumentRepository extends JpaRepository<WarehouseTransferDocument, UUID>,
         org.springframework.data.jpa.repository.JpaSpecificationExecutor<WarehouseTransferDocument> {
+    @Query("select min(value.createdAt) from WarehouseTransferDocument value where value.storeId = :storeId")
+    Instant findFirstReportCreatedAt(UUID storeId);
+
     @Query("""
             select value from WarehouseTransferDocument value
             where value.storeId = :storeId and (:status is null or value.status = :status)

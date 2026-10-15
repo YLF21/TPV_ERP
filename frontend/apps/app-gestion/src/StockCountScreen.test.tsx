@@ -15,7 +15,7 @@ vi.mock("../../../packages/app-common/src/api/client", async (importOriginal) =>
 vi.mock("./warehouseOperationsApi", async (importOriginal) => ({
   ...await importOriginal<typeof import("./warehouseOperationsApi")>(),
   loadStockCounts: vi.fn(), loadStockCount: vi.fn(),
-  createStockCount: vi.fn(), saveStockCountDraft: vi.fn(), cancelStockCount: vi.fn(), confirmStockCount: vi.fn()
+  createStockCount: vi.fn(), saveStockCountDraft: vi.fn(), cancelStockCount: vi.fn(), confirmStockCount: vi.fn(), exportStockCount: vi.fn()
 }));
 
 const warehouses: api.WarehouseOption[] = [{ id: "general", name: "GENERAL", active: true }];
@@ -37,6 +37,9 @@ describe("StockCountScreen", () => {
     vi.mocked(api.loadStockCounts).mockResolvedValue([summary]);
     vi.mocked(api.loadStockCount).mockResolvedValue(detail);
     vi.mocked(apiRequest).mockImplementation(async (path) => {
+      if (path === "/document-reports/date-options?report=stockCounts") return {
+        currentDate: "2026-09-24", earliestDate: "2025-01-01"
+      } as never;
       if (path === "/stock-counts/resources") return {
         products: [{ id: "coffee", code: "CAF", name: "Café", productType: "UNIT", active: true }], families: [], warehouses
       } as never;
@@ -81,7 +84,7 @@ describe("StockCountScreen", () => {
     expect(api.createStockCount).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("row", { name: /INV-2026-000001/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Consultar" }));
+    fireEvent.click(screen.getByRole("button", { name: "warehouseDocument.open" }));
     expect(await screen.findByRole("dialog", { name: "Documento de inventario" })).toHaveTextContent("INV-2026-000001");
     expect(api.loadStockCount).toHaveBeenCalledWith("inventory-1", "token");
   });
@@ -105,5 +108,78 @@ describe("StockCountScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Anular borrador" }));
     fireEvent.click(within(screen.getByRole("alertdialog", { name: "Anular borrador" })).getByRole("button", { name: "Anular borrador" }));
     await waitFor(() => expect(api.cancelStockCount).toHaveBeenCalledWith("inventory-1", "token"));
+  });
+
+  it("routes F5/F6/F7 through available inventory commands and blocks them in dialogs", async () => {
+    vi.stubGlobal("URL", class extends URL {
+      static createObjectURL = vi.fn(() => "blob:inventory");
+      static revokeObjectURL = vi.fn();
+    });
+    const download = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    vi.mocked(api.exportStockCount).mockResolvedValue(new Blob(["report"]));
+    render(<StockCountScreen session={session(["GESTION_ALMACEN"])} t={t} />);
+    const create = await screen.findByRole("button", { name: "Crear inventario" });
+    await waitFor(() => expect(create).toBeEnabled());
+    expect(create).toHaveAttribute("aria-keyshortcuts", "F5");
+    fireEvent.keyDown(window, { key: "F6" });
+    fireEvent.keyDown(window, { key: "F7" });
+    expect(api.exportStockCount).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("row", { name: /INV-2026-000001/ }));
+    fireEvent.keyDown(window, { key: "F6" });
+    await waitFor(() => expect(api.exportStockCount).toHaveBeenCalledWith("inventory-1", "xlsx", "token"));
+    await waitFor(() => expect(download).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(window, { key: "F7" });
+    await waitFor(() => expect(api.exportStockCount).toHaveBeenCalledWith("inventory-1", "pdf", "token"));
+    fireEvent.keyDown(window, { key: "F5" });
+    const editor = await screen.findByRole("dialog", { name: "Documento de inventario" });
+    fireEvent.keyDown(window, { key: "F6" });
+    expect(api.exportStockCount).toHaveBeenCalledTimes(2);
+    expect(api.createStockCount).not.toHaveBeenCalled();
+    fireEvent.click(within(editor).getByRole("button", { name: "Salir Esc" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Documento de inventario" })).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Anular borrador" }));
+    fireEvent.keyDown(window, { key: "F7" });
+    expect(api.exportStockCount).toHaveBeenCalledTimes(2);
+    expect(api.cancelStockCount).not.toHaveBeenCalled();
+    download.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it("filters inventory by the store-day presets and a custom range without preselecting a date", async () => {
+    vi.mocked(api.loadStockCounts).mockResolvedValue([summary,
+      { ...summary, id: "inventory-2", number: "INV-2026-000002", documentDate: "2026-09-23" },
+      { ...summary, id: "inventory-3", number: "INV-2026-000003", documentDate: "2026-08-01" }]);
+    render(<StockCountScreen session={session(["GESTION_ALMACEN"])} t={t} />);
+    const dock = await screen.findByRole("contentinfo", { name: "Periodo seleccionado" });
+    await waitFor(() => expect(within(dock).getByRole("button", { name: "Hoy" })).toBeEnabled());
+    expect(within(dock).getByRole("button", { name: "Hoy" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getAllByRole("row", { name: /INV-2026/ })).toHaveLength(3);
+    fireEvent.click(within(dock).getByRole("button", { name: "Hoy" }));
+    expect(screen.getAllByRole("row", { name: /INV-2026/ })).toHaveLength(1);
+    expect(screen.getByRole("row", { name: /INV-2026-000001/ })).toBeInTheDocument();
+    fireEvent.click(within(dock).getByRole("button", { name: "Ayer" }));
+    expect(screen.getByRole("row", { name: /INV-2026-000002/ })).toBeInTheDocument();
+    fireEvent.click(within(dock).getByRole("button", { name: "Periodo personalizado" }));
+    fireEvent.change(within(dock).getByLabelText("Desde"), { target: { value: "2026-08-01" } });
+    fireEvent.change(within(dock).getByLabelText("Hasta"), { target: { value: "2026-08-31" } });
+    fireEvent.click(within(dock).getByRole("button", { name: "Aplicar periodo" }));
+    expect(screen.getByRole("row", { name: /INV-2026-000003/ })).toBeInTheDocument();
+    expect(screen.queryByRole("row", { name: /INV-2026-000001/ })).not.toBeInTheDocument();
+  });
+
+  it("disables inventory date choices on metadata error and retries", async () => {
+    vi.mocked(apiRequest).mockImplementation(async (path) => {
+      if (path === "/document-reports/date-options?report=stockCounts") {
+        if (vi.mocked(apiRequest).mock.calls.filter(([value]) => value === path).length === 1) throw new Error("unavailable");
+        return { currentDate: "2026-09-24", earliestDate: "2025-01-01" } as never;
+      }
+      if (path === "/stock-counts/resources") return { warehouses } as never;
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    render(<StockCountScreen session={session(["GESTION_ALMACEN"])} t={t} />);
+    const dock = screen.getByRole("contentinfo", { name: "Periodo seleccionado" });
+    expect(within(dock).getByRole("button", { name: "Hoy" })).toBeDisabled();
+    fireEvent.click(await screen.findByRole("button", { name: "salesReport.retry" }));
+    await waitFor(() => expect(within(dock).getByRole("button", { name: "Hoy" })).toBeEnabled());
   });
 });
