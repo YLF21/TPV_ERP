@@ -6086,7 +6086,14 @@ export function StockScreen({
     );
   }
 
-  function renderBulkLeftActions() {
+  function renderBulkFilterButton() {
+    return <button type="button" className="stock-filter-button" aria-haspopup="dialog" onClick={() => void openBulkFilterDialog()}>
+      <img alt="" className="report-action-icon" src={stockFilterIcon} />
+      {t("salesReport.filter")}{activeBulkFilterCount > 0 ? ` (${activeBulkFilterCount})` : ""}
+    </button>;
+  }
+
+  function renderBulkLeftActions(includeFilter = true) {
     const priceTabs: StockBulkEditTab[] = ["salePrice", "memberPrice", "wholesalePrice", "offer"];
     return (
       <>
@@ -6094,10 +6101,7 @@ export function StockScreen({
           <button type="button" aria-haspopup="menu" aria-expanded={bulkFileOpen} onClick={toggleBulkFileMenu}>{t("stock.bulkEdit.file")}</button>
           {renderBulkFileMenu()}
         </div>
-        <button type="button" className="stock-filter-button" aria-haspopup="dialog" onClick={() => void openBulkFilterDialog()}>
-          <img alt="" className="report-action-icon" src={stockFilterIcon} />
-          {t("salesReport.filter")}{activeBulkFilterCount > 0 ? ` (${activeBulkFilterCount})` : ""}
-        </button>
+        {includeFilter && renderBulkFilterButton()}
         <button type="button" disabled={bulkBusy} onClick={() => handleBulkFileAction("stock.bulkEdit.saveList")}>
           {t("common.save")}
         </button>
@@ -7080,7 +7084,22 @@ export function StockScreen({
     return (
       <div className="bulk-edit-screen">
         <div className="bulk-edit-controls">
-        <div className="bulk-edit-toolbar">
+        <div className={`bulk-edit-toolbar${app === "gestion" ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
+          {app === "gestion" ? <>
+            <div className="gestion-toolbar-start">
+              <label className="report-search stock-top-sales-search">
+                <img alt="" src={stockSearchIcon} />
+                <input type="search" value={bulkSearchText} aria-label={t("stock.bulkEdit.searchList")}
+                  placeholder={t("stock.bulkEdit.searchList")} onChange={(event) => setBulkSearchText(event.target.value)} />
+              </label>
+              {renderBulkFilterButton()}
+            </div>
+            <div className="gestion-toolbar-end bulk-edit-actions gestion-toolbar-actions">
+              {renderBulkLeftActions(false)}
+              {renderBulkEditSelectedControl()}
+              {renderBulkQuickEditControl()}
+            </div>
+          </> : <>
           <div className="bulk-edit-actions">{renderBulkLeftActions()}</div>
           <div className="bulk-edit-search-actions">
             {app === "pda" && <div className="active-filter-summary bulk-active-filter-summary" aria-label={t("stock.filters.summary")}>
@@ -7099,6 +7118,7 @@ export function StockScreen({
               />
             </label>
           </div>
+          </>}
         </div>
         {app !== "pda" && <ErpFilterChips locale={locale} chips={bulkFilterChips()} onClear={() => {
           setBulkFilters({ ...emptyStockBulkFilterCriteria });
@@ -7324,10 +7344,15 @@ export function StockScreen({
     return items;
   }
 
+  function toolbarGroup(className: string, children: ReactNode) {
+    return app === "gestion" ? <div className={className}>{children}</div> : <>{children}</>;
+  }
+
   function renderInventoryToolbar() {
     return (
       <>
-      <div className="stock-toolbar">
+      <div className={`stock-toolbar${app === "gestion" ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
+        {toolbarGroup("gestion-toolbar-start", <>
         <div className="stock-search-stack">
           <div className="active-filter-summary" aria-label={t("stock.filters.summary")}>
             {(app !== "pda" ? activeInventorySummary().slice(-1) : activeInventorySummary()).map(renderFilterSummaryItem)}
@@ -7353,8 +7378,11 @@ export function StockScreen({
           <img alt="" className="report-action-icon" src={stockFilterIcon} />
           {t("salesReport.filter")}
         </button>
+        </>)}
+        {toolbarGroup("gestion-toolbar-end", <>
         {selectedView !== "stock.promotions" && <span className="stock-result-count" role="status">{t("stock.results").replace("{count}", String(visibleRows.length))}</span>}
         {renderStockExportButton()}
+        </>)}
       </div>
       {app !== "pda" && <ErpFilterChips locale={locale} chips={inventoryFilterChips()} onClear={clearAppliedInventoryFilters} />}
       </>
@@ -7366,7 +7394,7 @@ export function StockScreen({
     if (selectedView === "stock.promotions") {
       const unavailable = stockExportBusy || !session.accessToken || !stockDataCurrent
         || stockPromotionsLoading || stockPromotionsLoadFailed || !promotionExportContext;
-      return <div className="stock-promotion-export-actions">
+      return <div className={`stock-promotion-export-actions${app === "gestion" ? " gestion-toolbar-actions" : ""}`}>
         <button type="button" className="stock-export-button"
           aria-keyshortcuts={STOCK_EXPORT_SHORTCUT}
           title={`${t("stock.exportExcel.selectedPromotionHint")} (${STOCK_EXPORT_SHORTCUT})`}
@@ -7662,11 +7690,12 @@ export function StockScreen({
           ) : selectedView === "stock.topSales" ? (
             <>
               <div className="stock-inventory-controls">
-              <div className="stock-top-sales-toolbar">
+              <div className={`stock-top-sales-toolbar${app === "gestion" ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
+                {toolbarGroup("gestion-toolbar-start", <>
                 <div className="stock-search-stack">
-                  <div className="active-filter-summary" aria-label={t("stock.filters.summary")}>
-                    {(app !== "pda" ? activeTopSalesSummary().slice(0, 1) : activeTopSalesSummary()).map(renderFilterSummaryItem)}
-                  </div>
+                  {app === "pda" && <div className="active-filter-summary" aria-label={t("stock.filters.summary")}>
+                    {activeTopSalesSummary().map(renderFilterSummaryItem)}
+                  </div>}
                   <label className="report-search stock-top-sales-search">
                     <img alt="" src={stockSearchIcon} />
                     <input
@@ -7688,8 +7717,11 @@ export function StockScreen({
                   <img alt="" className="report-action-icon" src={stockFilterIcon} />
                   {t("salesReport.filter")}
                 </button>
+                </>)}
+                {toolbarGroup("gestion-toolbar-end", <>
                 <span className="stock-result-count" role="status">{t("stock.results").replace("{count}", String(visibleTopSalesRows.length))}</span>
                 {renderStockExportButton()}
+                </>)}
               </div>
               {renderStockExportNotice()}
               {app !== "pda" && <ErpFilterChips locale={locale} chips={topSalesFilterChips()} onClear={clearAppliedTopSalesFilters} />}

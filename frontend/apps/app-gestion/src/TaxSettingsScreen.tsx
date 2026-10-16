@@ -163,7 +163,7 @@ export function TaxSettingsScreen({ session, t, request = apiRequest }: {
           <h2>{t("gestion.taxes.title")}</h2>
           <p>{t("gestion.taxes.description")}</p>
         </div>
-        {canManage && <button type="button" className="primary" disabled={busy || Boolean(draft)} onClick={openNew}>{t("gestion.taxes.new")}</button>}
+        {canManage && <div className="gestion-toolbar-actions"><button type="button" className="primary" disabled={busy || Boolean(draft)} onClick={openNew}>{t("gestion.taxes.new")}</button></div>}
       </header>
 
       {error && <p className="gestion-taxes-message error" role="alert">{error}</p>}
@@ -176,7 +176,7 @@ export function TaxSettingsScreen({ session, t, request = apiRequest }: {
             <span>{t("gestion.taxes.percentage")}</span>
             <input autoFocus type="number" min="0" max="100" step="0.01" value={draft.percentage} disabled={busy || !canManage} onChange={(event) => setDraft({ ...draft, percentage: event.currentTarget.value })} />
           </label>
-          <div className="gestion-taxes-editor-actions">
+          <div className="gestion-taxes-editor-actions gestion-toolbar-actions">
             <button type="submit" className="primary" disabled={busy || !canManage}>{t("common.save")}</button>
             <button type="button" disabled={busy} onClick={() => setDraft(null)}>{t("common.cancel")}</button>
           </div>
@@ -197,7 +197,7 @@ export function TaxSettingsScreen({ session, t, request = apiRequest }: {
               <input type="checkbox" role="switch" checked={tax.active} disabled={!canManage || busy || tax.defaultTax} onChange={(event) => void setActive(tax, event.currentTarget.checked)} />
               <span>{t(tax.active ? "gestion.taxes.active" : "gestion.taxes.inactive")}</span>
             </label>
-            <div className="gestion-taxes-actions">
+            <div className="gestion-taxes-actions gestion-toolbar-actions">
               <button type="button" disabled={!canManage || busy} onClick={() => openEdit(tax)}>{t("gestion.taxes.edit")}</button>
               {!tax.defaultTax && <button type="button" disabled={!canManage || busy || !tax.active} onClick={() => void markDefault(tax)}>{t("gestion.taxes.makeDefault")}</button>}
               {!tax.defaultTax && <button type="button" className="danger" disabled={!canManage || busy} onClick={() => void remove(tax)}>{t("common.delete")}</button>}

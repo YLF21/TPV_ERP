@@ -17,6 +17,7 @@ import { CentralCustomerReuse } from "./CentralCustomerReuse";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
 import { ShortcutButtonLabel } from "./ShortcutButtonLabel";
+import { GestionSearchFrame } from "./GestionSearchFrame";
 import { customerDocumentType, customerIdentityFailure } from "./customerDocumentIdentity";
 import stockFilterIcon from "../assets/stock/filter.png";
 import "./PartyDirectoryFilters.css";
@@ -923,17 +924,18 @@ export function PartyDirectoryPanel({
     />}
     <header className="work-panel-heading stock-panel-heading party-directory-heading">
       <div><h2>{title}</h2><span>{t(`party.${kind}.subtitle`)}</span></div>
-      {classicWindow ? <div className="management-record-actions">
+      {classicWindow ? <div className={`management-record-actions${app === "gestion" ? " gestion-toolbar-actions" : ""}`}>
         {canWrite && <button type="button" aria-keyshortcuts="F7" disabled={!toolbarEntry} onClick={() => toolbarEntry && openEntry(toolbarEntry)}><ShortcutButtonLabel label={t(`party.${kind}.edit`)} shortcut="F7" /></button>}
         {canWrite && <button type="button" aria-keyshortcuts="F8" onClick={openNew}><ShortcutButtonLabel label={t(`party.${kind}.new`)} shortcut="F8" /></button>}
         {allowSafeRetirement && !isMember && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!toolbarEntry} onClick={retireToolbarEntry}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut={t("safeManagement.shortcut.retire")} /></button>}
       </div> : canWrite && <button type="button" className="stock-add-product-button" onClick={openNew}>{t(`party.${kind}.new`)}</button>}
     </header>
     {headerExtra}
-    <div className={`party-directory-toolbar${classicWindow ? " party-directory-toolbar--classic" : ""}${supportsFieldFilters ? " party-directory-toolbar--field-filters" : ""}`}>
+    <div className={`party-directory-toolbar${classicWindow ? " party-directory-toolbar--classic" : ""}${supportsFieldFilters ? " party-directory-toolbar--field-filters" : ""}${app === "gestion" ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
       {classicWindow && <label className="party-directory-search-label" htmlFor="party-management-search">{t("party.searchLabel")}</label>}
-      <input id={classicWindow ? "party-management-search" : undefined} ref={searchRef} aria-label={t("party.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("party.search")} />
-      <label className="party-directory-status-filter">
+      {app === "gestion" ? <GestionSearchFrame><input id={classicWindow ? "party-management-search" : undefined} ref={searchRef} aria-label={t("party.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("party.search")} /></GestionSearchFrame>
+        : <input id={classicWindow ? "party-management-search" : undefined} ref={searchRef} aria-label={t("party.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("party.search")} />}
+      <label className="party-directory-status-filter" data-filter-active={app === "gestion" && statusFilter !== "all"}>
         <span>{t("party.column.status")}</span>
         <ErpSelect
           className="erp-select--compact"

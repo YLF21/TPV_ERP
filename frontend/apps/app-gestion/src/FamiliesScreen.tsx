@@ -20,6 +20,7 @@ import {
   type UserSession,
 } from "@tpverp/app-common";
 import { ErpFilterChips, type ErpFilterChip } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { GestionSearchFrame } from "../../../packages/app-common/src/components/GestionSearchFrame";
 import {
   createFamily,
   createSubfamily,
@@ -2110,15 +2111,17 @@ export function FamiliesScreen({
             )}
             <label className="gestion-family-move-search">
               <span>{t("gestion.families.search")}</span>
-              <input
-                type="search"
-                ref={moveSearchRef}
-                role="searchbox"
-                aria-label={t("gestion.families.search")}
-                value={moveSearch}
-                onChange={(event) => changeMoveSearch(event.target.value)}
-                aria-controls="families-move-tree"
-              />
+              <GestionSearchFrame>
+                <input
+                  type="search"
+                  ref={moveSearchRef}
+                  role="searchbox"
+                  aria-label={t("gestion.families.search")}
+                  value={moveSearch}
+                  onChange={(event) => changeMoveSearch(event.target.value)}
+                  aria-controls="families-move-tree"
+                />
+              </GestionSearchFrame>
               <small>{t("product.family.searchHint")}</small>
               {Array.from(normalizeSearch(moveSearch.trim())).length === 1 && (
                 <small>{t("gestion.families.searchMinChars")}</small>

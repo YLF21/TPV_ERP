@@ -1,0 +1,303 @@
+/* Shared warehouse control skin. Only APP GESTIÓN opts into these surfaces. */
+@layer gestion-accents {
+  @media screen {
+    html[data-app="gestion"] {
+      --gestion-control-border: #68737e;
+      --gestion-control-background: #eef1f4;
+      --gestion-control-text: #092b53;
+      --gestion-filter-arrow: #12385f;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-table-search) {
+      box-sizing: border-box;
+      min-width: 0;
+      max-width: 100%;
+      padding: 8px 12px !important;
+      border: 1px solid #b5c3d2 !important;
+      border-radius: 6px !important;
+      background: #fff !important;
+      box-shadow: none !important;
+    }
+
+    html[data-app="gestion"] .gestion-filter-toolbar {
+      flex-wrap: wrap !important;
+      align-items: flex-end !important;
+      gap: 8px !important;
+    }
+
+    html[data-app="gestion"] .party-directory-toolbar.gestion-filter-toolbar {
+      display: grid !important;
+    }
+
+    html[data-app="gestion"] .party-directory-toolbar--classic > .gestion-search-frame {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    html[data-app="gestion"] .gestion-filter-toolbar > :is(label, .stock-history-filter-field) {
+      display: grid;
+      flex: 0 1 220px;
+      min-width: 0;
+      max-width: 100%;
+      gap: 5px;
+      margin: 0;
+    }
+
+    html[data-app="gestion"] .gestion-filter-toolbar > :is(label, .stock-history-filter-field) > span:not(.gestion-search-frame):not(.erp-search-frame) {
+      color: #5b7088;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-table-search) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select, .erp-select__trigger, .erp-multi-select__trigger) {
+      box-sizing: border-box;
+      min-width: 0;
+      min-height: 34px !important;
+      height: 34px !important;
+      padding-block: 0 !important;
+      border: 1px solid #aebfd0 !important;
+      border-radius: 4px !important;
+      background-color: #fff !important;
+      color: #12385f !important;
+      font-size: 12px !important;
+      box-shadow: none !important;
+    }
+
+    html[data-app="gestion"] .gestion-search-frame,
+    html[data-app="gestion"] .gestion-filter-toolbar :is(.erp-search-frame, .report-search) {
+      display: flex !important;
+      align-items: center;
+      box-sizing: border-box;
+      flex: 0 1 auto;
+      gap: 8px;
+      width: 100%;
+      min-width: 0;
+      height: 34px !important;
+      padding: 0 8px !important;
+      border: 1px solid #aebfd0 !important;
+      border-radius: 4px !important;
+      background: #fff !important;
+      box-shadow: none !important;
+    }
+
+    html[data-app="gestion"] :is(.gestion-search-frame, .gestion-filter-toolbar .erp-search-frame, .gestion-filter-toolbar .report-search) > :is(img, svg) {
+      position: static !important;
+      flex-shrink: 0;
+      order: -1;
+      width: 18px;
+      height: 18px;
+      object-fit: contain;
+    }
+
+    html[data-app="gestion"] :is(.gestion-search-frame, .gestion-filter-toolbar .erp-search-frame, .gestion-filter-toolbar .report-search) > input {
+      flex: 1 1 0;
+      width: 100%;
+      min-width: 0;
+      height: 100% !important;
+      min-height: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      background: transparent !important;
+      outline: none !important;
+      box-shadow: none !important;
+    }
+
+    html[data-app="gestion"] :is(.gestion-search-frame, .gestion-filter-toolbar .erp-search-frame, .gestion-filter-toolbar .report-search):focus-within {
+      border-color: #0065fe !important;
+      outline: 2px solid #0065fe;
+      outline-offset: 1px;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-table-search) .erp-select {
+      min-width: 0;
+      height: 34px !important;
+      border: 0 !important;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-table-search) .erp-select__trigger {
+      overflow: hidden;
+      padding: 0 !important;
+      grid-template-columns: minmax(0, 1fr) 42px !important;
+    }
+
+    html[data-app="gestion"] .gestion-filter-toolbar .promotion-status-filter > svg {
+      display: none;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-table-search) .erp-select__arrow {
+      display: grid !important;
+      width: 42px !important;
+      height: 100% !important;
+      min-height: 0 !important;
+      margin: 0 !important;
+      border-radius: 0 3px 3px 0;
+      background: var(--gestion-filter-arrow) !important;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-table-search) select {
+      appearance: none;
+      padding-inline: 10px 50px !important;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 20 20'%3E%3Cpath d='m4 7 6 6 6-6' fill='none' stroke='white' stroke-width='2.5'/%3E%3C/svg%3E"), linear-gradient(to left, var(--gestion-filter-arrow) 42px, transparent 42px) !important;
+      background-position: right 12px center, right center !important;
+      background-size: 18px 18px, 100% 100% !important;
+      background-repeat: no-repeat !important;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-table-search) :is([data-filter-active="true"], select:hover, select:focus-visible, .erp-select__trigger:hover, .erp-select__trigger:focus-visible, .erp-select__trigger[aria-expanded="true"]) {
+      --gestion-filter-arrow: #0065fe;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-table-search) :is(select, input:not([type="checkbox"]):not([type="radio"]), .erp-select__trigger, .erp-multi-select__trigger):focus-visible {
+      outline: 2px solid #0065fe;
+      outline-offset: 1px;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-table-search) :is(.erp-select__popover, .erp-multi-select__popover) {
+      border-radius: 6px !important;
+      box-shadow: none !important;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-table-search) :is(.erp-select__option, .erp-multi-select__option) {
+      border-radius: 4px !important;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-toolbar-actions, .gd-toolbar-actions, .gd-period-presets, .gd-config-footer, .gd-segmented, .erp-dialog-actions-row, .stock-detail-toolbar, .management-record-actions, .gestion-pagination) button:not(:where(.erp-select__trigger, .erp-select__option, .erp-multi-select__trigger, .erp-multi-select__option, .table-layout-sort-button, .table-layout-column-menu-button, .table-layout-header-action, .erp-window-close, .gestion-rule-active-toggle, .erp-filter-chip, .erp-filter-chip *, .erp-filter-clear, [role="menu"] *, .warning)) {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      box-sizing: border-box;
+      min-height: 34px !important;
+      padding: 0 10px;
+      border: 1px solid var(--gestion-control-border) !important;
+      border-radius: 4px !important;
+      background: var(--gestion-control-background) !important;
+      color: var(--gestion-control-text) !important;
+      font-size: 11px !important;
+      font-weight: 800;
+      line-height: 1.2;
+      text-shadow: none;
+      box-shadow: none !important;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-toolbar-actions, .gd-toolbar-actions, .gd-period-presets, .gd-config-footer, .gd-segmented, .erp-dialog-actions-row, .stock-detail-toolbar, .management-record-actions) button:not(:where(.erp-select__trigger, .erp-select__option, .erp-multi-select__trigger, .erp-multi-select__option, .erp-window-close, .gestion-rule-active-toggle, .danger, .destructive, .warning, [role="menu"] *, .erp-filter-chip *)):is(:hover, :focus-visible):not(:disabled) {
+      border-color: #0065fe !important;
+      outline-color: #0065fe !important;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-toolbar-actions, .gd-toolbar-actions, .gd-period-presets, .gd-segmented, .management-record-actions) button:is(.selected, .active, .is-selected, [aria-pressed="true"], [aria-selected="true"]):not(:where(.danger, .warning, .destructive, .gestion-rule-active-toggle, .erp-select__option, .erp-multi-select__option)) {
+      border-color: #0065fe !important;
+      background: #0065fe !important;
+      color: #fff !important;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-toolbar-actions, .gd-toolbar-actions, .gd-config-footer, .erp-dialog-actions-row, .management-record-actions) button:is(.primary, .primary-button, .gestion-primary-button, .promotion-primary-button, .erp-dialog-action-confirm, .gd-primary):not(:disabled),
+    html[data-app="gestion"] button.stock-add-product-button:not(:disabled) {
+      border-color: #0065fe !important;
+      background: #0065fe !important;
+      color: #fff !important;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-toolbar-actions, .erp-dialog-actions-row, .management-record-actions) button:is(.danger, .destructive, .erp-dialog-action-cancel.danger) {
+      border-color: #b4232e !important;
+      background: #fff !important;
+      color: #b4232e !important;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-toolbar-actions, .gd-toolbar-actions, .erp-dialog-actions-row, .management-record-actions) button:disabled {
+      cursor: not-allowed;
+      opacity: .5;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-toolbar-actions, .stock-detail-toolbar, .management-record-actions) button:has(> kbd) {
+      align-items: stretch !important;
+      gap: 0 !important;
+      padding: 0 !important;
+      white-space: nowrap;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-toolbar-actions, .stock-detail-toolbar, .management-record-actions) button:has(> kbd) > span {
+      display: inline-flex;
+      flex: 1 1 auto;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 0 8px;
+      color: inherit !important;
+      font: inherit;
+    }
+
+    html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-toolbar-actions, .stock-detail-toolbar, .management-record-actions) button > kbd {
+      font: inherit;
+      font-size: 9px;
+    }
+
+    html[data-app="gestion"] .report-date-range-filter {
+      box-sizing: border-box;
+      min-height: 48px;
+      border: 1px solid #aebfd0 !important;
+      border-radius: 6px !important;
+      background: #e8eef5 !important;
+      box-shadow: none !important;
+    }
+
+    html[data-app="gestion"] .report-date-range-filter :is(button, input, select) {
+      border-radius: 4px !important;
+      box-shadow: none !important;
+    }
+
+  }
+}
+
+@media screen {
+  html[data-app="gestion"] .gestion-toolbar-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  html[data-app="gestion"] .gestion-filter-toolbar > .gestion-toolbar-actions {
+    flex: 0 1 auto;
+    margin-left: auto;
+  }
+
+  html[data-app="gestion"] .gestion-filter-toolbar > :is(.stock-search-stack, .report-search, .promotion-list-search, .gestion-search-frame) {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+
+  html[data-app="gestion"] .gd-filters.gestion-filter-toolbar > label {
+    flex: 0 1 160px;
+  }
+
+  html[data-app="gestion"] .gd-filters.gestion-filter-toolbar > label:has(input[type="date"]) {
+    flex-basis: 140px;
+  }
+
+  html[data-app="gestion"] .gd-filters.gestion-filter-toolbar > .gd-warehouse {
+    flex-basis: 190px;
+  }
+
+  html[data-app="gestion"] .party-directory-toolbar > .gestion-search-frame {
+    width: 100%;
+    min-width: 0;
+  }
+
+  html[data-app="gestion"] .gestion-filter-toolbar .erp-filter-applied {
+    flex: 1 0 100%;
+  }
+
+  @media (max-width: 700px) {
+    html[data-app="gestion"] .gestion-filter-toolbar > :is(label, .stock-history-filter-field, .gestion-toolbar-actions) {
+      flex: 1 1 100%;
+      margin-left: 0;
+    }
+    html[data-app="gestion"] .gestion-filter-toolbar > .gestion-toolbar-actions {
+      justify-content: flex-start;
+    }
+  }
+}

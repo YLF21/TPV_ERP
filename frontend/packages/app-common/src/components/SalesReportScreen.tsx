@@ -2088,6 +2088,7 @@ export function SalesReportScreen({
   const isDailySalesReport = selectedReport === "salesReport.dailySales";
   const isSalesDocumentsReport = selectedReport === "salesReport.salesDocuments";
   const isCommercialDocumentReport = selectedReport === "salesReport.invoices" || selectedReport === "salesReport.deliveryNotes";
+  const periodSummaryInDateFilter = app !== "pda";
   const isSalesActivityReport = isDailySalesReport || isSalesDocumentsReport;
   const selectedDateRange: ReportDateRange = {
     from: filters.dateFrom, to: filters.dateTo, label: "",
@@ -3723,19 +3724,38 @@ export function SalesReportScreen({
     );
   }
 
-  function renderReportToolbar() {
-    const periodLabel = reportDateRangeLabel(selectedDateRange, locale);
-    const selectedDocumentCanPrint = canOpenDocumentPreview(selectedReportRow) && !reportDocumentPrinting;
+  function renderReportPeriod() {
+    return <div className="report-command-period">
+      <span>{t("salesReport.currentPeriod")}</span>
+      <strong>{reportDateRangeLabel(selectedDateRange, locale)}</strong>
+      <small>{formatFilterDate(filters.dateFrom, locale)} — {formatFilterDate(filters.dateTo, locale)}</small>
+    </div>;
+  }
 
-    return (
-      <header className="report-data-toolbar report-command-toolbar">
-        <div className="report-command-period">
-          <span>{t("salesReport.currentPeriod")}</span>
-          <strong>{periodLabel}</strong>
-          <small>{formatFilterDate(filters.dateFrom, locale)} — {formatFilterDate(filters.dateTo, locale)}</small>
-        </div>
-        <div className="report-output-cluster">
-          <div className="report-output-actions">
+  function renderReportToolbar() {
+    const selectedDocumentCanPrint = canOpenDocumentPreview(selectedReportRow) && !reportDocumentPrinting;
+    const searchField = (
+      <label className={`report-search${app !== "pda" ? " erp-search-frame" : ""}`} hidden={isDailySalesReport}>
+          <img alt="" src={searchIcon} />
+          <input
+            ref={reportSearchRef}
+            type="search"
+            value={reportSearch}
+            aria-label={t("salesReport.search")}
+            placeholder={t("salesReport.searchPlaceholder")}
+            onChange={(event) => updateReportSearch(event.target.value)}
+          />
+        </label>
+    );
+    const filterAction = (
+      <button type="button" onClick={openFilters}>
+            <img alt="" className="report-action-icon" src={filterIcon} />
+            {t("salesReport.filter")}
+          </button>
+    );
+    const outputActions = (
+      <div className="report-output-cluster">
+          <div className={`report-output-actions${app === "gestion" ? " gestion-toolbar-actions" : ""}`}>
             <button
               type="button"
               aria-keyshortcuts="F5"
@@ -3765,12 +3785,9 @@ export function SalesReportScreen({
             </button>
           </div>
         </div>
-        <div className="report-utility-actions">
-          <button type="button" onClick={openFilters}>
-            <img alt="" className="report-action-icon" src={filterIcon} />
-            {t("salesReport.filter")}
-          </button>
-          <div className="report-more-actions" ref={moreActionsRef}>
+    );
+    const moreActions = (
+      <div className="report-more-actions" ref={moreActionsRef}>
             <button
               type="button"
               aria-expanded={moreActionsOpen}
@@ -3880,24 +3897,28 @@ export function SalesReportScreen({
               </div>
             )}
           </div>
+    );
+
+    return app === "gestion" ? (
+      <header className="report-data-toolbar report-command-toolbar gestion-filter-toolbar gestion-toolbar-layout gestion-report-toolbar">
+        <div className="gestion-toolbar-start">{searchField}{filterAction}</div>
+        <div className="gestion-toolbar-end">
+          {outputActions}
+          <div className="report-utility-actions gestion-toolbar-actions">{moreActions}</div>
         </div>
-        <label className={`report-search${app !== "pda" ? " erp-search-frame" : ""}`} hidden={isDailySalesReport}>
-          <img alt="" src={searchIcon} />
-          <input
-            ref={reportSearchRef}
-            type="search"
-            value={reportSearch}
-            aria-label={t("salesReport.search")}
-            placeholder={t("salesReport.searchPlaceholder")}
-            onChange={(event) => updateReportSearch(event.target.value)}
-          />
-        </label>
+      </header>
+    ) : (
+      <header className="report-data-toolbar report-command-toolbar">
+        {!periodSummaryInDateFilter && renderReportPeriod()}
+        {outputActions}
+        <div className="report-utility-actions">{filterAction}{moreActions}</div>
+        {searchField}
       </header>
     );
   }
 
   return (
-    <main className={`${embedded ? "report-screen gestion-embedded-module" : "report-screen"}${app !== "pda" ? " report-screen--desktop" : ""} report-density-${reportOutputPreferences.density}`}>
+    <main data-period-summary={periodSummaryInDateFilter ? "footer" : undefined} className={`${embedded ? "report-screen gestion-embedded-module" : "report-screen"}${app !== "pda" ? " report-screen--desktop" : ""} report-density-${reportOutputPreferences.density}`}>
       {reportNotice && (
         <div
           className={`report-feedback ${reportNotice.kind}`}
@@ -4258,7 +4279,7 @@ export function SalesReportScreen({
               <ReportDateRangeFilter key={selectedReport} locale={locale}
                 today={dateOptions?.report === selectedReport ? dateOptions.currentDate : ""}
                 earliestDate={dateOptions?.report === selectedReport ? dateOptions.earliestDate : ""}
-                value={selectedDateRange} onChange={applyDateRange} />
+                value={selectedDateRange} onChange={applyDateRange} showSummary={periodSummaryInDateFilter} />
             </div>
           )}
         </section>

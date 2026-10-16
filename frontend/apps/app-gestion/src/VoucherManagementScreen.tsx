@@ -13,6 +13,8 @@ import {
 } from "@tpverp/app-common";
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { GestionSearchFrame } from "../../../packages/app-common/src/components/GestionSearchFrame";
+import { ReportDateRangeSummary } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
 import {
   loadVoucherDetail,
   loadVoucherPrintDocument,
@@ -211,17 +213,18 @@ export function VoucherManagementScreen({ locale, session, terminalContext, t }:
           <h2>{t("gestion.vouchers.title")}</h2>
           <p>{t("gestion.vouchers.subtitle")}</p>
         </div>
-        <button type="button" onClick={() => setReload((value) => value + 1)} disabled={loading}>{t("common.refresh")}</button>
+        <div className="gestion-toolbar-actions"><button type="button" onClick={() => setReload((value) => value + 1)} disabled={loading}>{t("common.refresh")}</button></div>
       </header>
 
       {message && <p className={`gestion-voucher-message ${message.kind}`} role={message.kind === "error" ? "alert" : "status"}>{message.text}</p>}
 
-      <form className="gestion-voucher-filters" onSubmit={applyFilters}>
-        <label className="query"><span>{t("gestion.vouchers.search")}</span><input type="search" value={draft.query} placeholder={t("gestion.vouchers.searchPlaceholder")} onChange={(event) => setDraft({ ...draft, query: event.target.value })} /></label>
-        <label><span>{t("gestion.vouchers.status")}</span><ErpSelect value={draft.status} options={statusOptions(t)} onChange={(status) => setDraft({ ...draft, status: status as VoucherFilters["status"] })} aria-label={t("gestion.vouchers.status")} /></label>
+      <form className="gestion-voucher-filters gestion-filter-toolbar" onSubmit={applyFilters}>
+        <label className="query"><span>{t("gestion.vouchers.search")}</span><GestionSearchFrame><input type="search" value={draft.query} placeholder={t("gestion.vouchers.searchPlaceholder")} onChange={(event) => setDraft({ ...draft, query: event.target.value })} /></GestionSearchFrame></label>
+        <label data-filter-active={Boolean(draft.status)}><span>{t("gestion.vouchers.status")}</span><ErpSelect value={draft.status} options={statusOptions(t)} onChange={(status) => setDraft({ ...draft, status: status as VoucherFilters["status"] })} aria-label={t("gestion.vouchers.status")} /></label>
         <label><span>{t("gestion.vouchers.from")}</span><input type="date" value={draft.from} max={draft.to || undefined} onChange={(event) => setDraft({ ...draft, from: event.target.value })} /></label>
         <label><span>{t("gestion.vouchers.to")}</span><input type="date" value={draft.to} min={draft.from || undefined} onChange={(event) => setDraft({ ...draft, to: event.target.value })} /></label>
-        <div><button type="button" onClick={clearFilters}>{t("gestion.vouchers.clear")}</button><button className="primary" type="submit">{t("gestion.vouchers.apply")}</button></div>
+        <ReportDateRangeSummary locale={locale} value={{ from: filters.from, to: filters.to, label: "" }} />
+        <div className="gestion-toolbar-actions"><button type="button" onClick={clearFilters}>{t("gestion.vouchers.clear")}</button><button className="primary" type="submit">{t("gestion.vouchers.apply")}</button></div>
       </form>
 
       <ErpFilterChips locale={locale} translate={t} onClear={clearFilters} chips={[

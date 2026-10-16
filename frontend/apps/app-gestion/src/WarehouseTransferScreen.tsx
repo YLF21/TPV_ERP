@@ -230,7 +230,7 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
     </header>
     {error && <p role="alert" className="gestion-warehouse-operations-message error">{error}</p>}
     {notice && <p role="status" className="gestion-warehouse-operations-message success">{notice}</p>}
-    <div className="stock-history-toolbar gestion-warehouse-transfer-toolbar gestion-warehouse-toolbar">
+    <div className="stock-history-toolbar gestion-warehouse-transfer-toolbar gestion-warehouse-toolbar gestion-toolbar-layout">
       <label><span>{t("warehouse.transfer.search")}</span>
         <WarehouseSearchFrame><input ref={searchRef} className="erp-search-input" type="search" maxLength={120} value={searchInput}
           placeholder={t("warehouse.transfer.searchPlaceholder")}
@@ -251,14 +251,14 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
           onChange={(value) => { setTargetFilter(value); }}
           options={[{ value: "", label: t("warehouse.count.all") },
             ...warehouses.map((item) => ({ value: item.id, label: item.name }))]} /></div>
-      <div className="warehouse-document-actions gestion-warehouse-transfer-actions gestion-warehouse-actions gestion-warehouse-list-actions">
-        <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.excel} disabled={!token || exporting} onClick={() => void exportList("xlsx")}><span><FileXls size={16} aria-hidden="true" />{t("warehouse.count.exportExcel")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.excel}</kbd></button>
-        <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.pdf} disabled={!token || exporting} onClick={() => void exportList("pdf")}><span><FilePdf size={16} aria-hidden="true" />{t("warehouse.count.exportPdf")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.pdf}</kbd></button>
+      <div className="warehouse-document-actions gestion-warehouse-transfer-actions gestion-warehouse-actions gestion-warehouse-list-actions gestion-toolbar-end">
         <button type="button" disabled={!resourcesReady || !selectedDocument || listLoading || searchInput.trim() !== searchFilter}
           onClick={() => selectedDocument && void openDocument(selectedDocument.id)}>
           <span><Eye size={16} aria-hidden="true" />{t("warehouseDocument.open")}</span></button>
         <button type="button" disabled={selectedDocument?.status !== "DRAFT" || cancelling || listLoading}
           onClick={() => void cancelSelectedDocument()}><span><Trash size={16} aria-hidden="true" />{t("warehouse.transfer.cancelDocument")}</span></button>
+        <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.excel} disabled={!token || exporting} onClick={() => void exportList("xlsx")}><span><FileXls size={16} aria-hidden="true" />{t("warehouse.count.exportExcel")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.excel}</kbd></button>
+        <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.pdf} disabled={!token || exporting} onClick={() => void exportList("pdf")}><span><FilePdf size={16} aria-hidden="true" />{t("warehouse.count.exportPdf")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.pdf}</kbd></button>
       </div>
     </div>
     <ErpFilterChips translate={t} focusRef={searchRef} className="gestion-warehouse-transfer-chips"

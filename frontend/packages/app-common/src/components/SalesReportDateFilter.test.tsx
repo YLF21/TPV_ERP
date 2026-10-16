@@ -206,7 +206,7 @@ describe("report quick date integration", () => {
     const { container } = mount(request);
     const storeQuery = "/document-reports/tickets?limit=500&dateFrom=2025-01-01&dateTo=2025-01-01";
     await waitFor(() => expect(request).toHaveBeenCalledWith(storeQuery, { token: "token" }));
-    expect(container.querySelector(".report-command-period strong")).toHaveTextContent("Hoy");
+    expect(container.querySelector(".report-date-range-summary")).toHaveTextContent("01/01/2025 — 01/01/2025");
     fireEvent.click(screen.getByRole("button", { name: "Ayer" }));
     await waitFor(() => expect(request).toHaveBeenCalledWith("/document-reports/tickets?limit=500&dateFrom=2024-12-31&dateTo=2024-12-31", { token: "token" }));
     request.mockClear();

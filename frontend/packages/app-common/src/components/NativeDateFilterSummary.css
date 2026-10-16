@@ -1,0 +1,25 @@
+/* Desktop date filter summaries follow the applied controls without shrinking them. */
+html:is([data-app="venta"], [data-app="gestion"]) .customer-documents-filters > .report-date-range-summary {
+  align-self: end;
+  margin-block: 2px;
+}
+
+html:is([data-app="venta"], [data-app="gestion"]) .ticket-management-toolbar > .report-date-range-summary,
+html:is([data-app="venta"], [data-app="gestion"]) .stock-product-sales-history-panel .stock-history-toolbar > .report-date-range-summary,
+html:is([data-app="venta"], [data-app="gestion"]) .customer-receivables-filters > .report-date-range-summary {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
+html:is([data-app="venta"], [data-app="gestion"]) .stock-product-sales-history-panel .stock-history-toolbar > .report-date-range-summary {
+  margin-top: 3px;
+}
+
+@media (max-width: 760px) {
+  html:is([data-app="venta"], [data-app="gestion"]) .ticket-management-toolbar > .report-date-range-summary,
+  html:is([data-app="venta"], [data-app="gestion"]) .stock-product-sales-history-panel .stock-history-toolbar > .report-date-range-summary,
+  html:is([data-app="venta"], [data-app="gestion"]) .customer-receivables-filters > .report-date-range-summary {
+    justify-self: start;
+    margin-left: 0;
+  }
+}

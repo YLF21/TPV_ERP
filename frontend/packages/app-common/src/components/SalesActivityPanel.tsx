@@ -14,7 +14,7 @@ import { ErpFilterChips } from "./ErpFilterChips";
 import { visibleTableColumns, type TableColumnDefinition } from "./tableLayoutPreferences";
 import { sortTableRows, useTableSortPreference } from "./tableSorting";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
-import { ReportDateRangeFilter, reportDateRangeLabel, type ReportDateRange as DateRange } from "./ReportDateRangeFilter";
+import { ReportDateRangeFilter, ReportDateRangeSummary, reportDateRangeLabel, type ReportDateRange as DateRange } from "./ReportDateRangeFilter";
 import "./SalesActivityPanel.css";
 import "./SalesReportClassicTables.css";
 
@@ -633,8 +633,7 @@ export function SalesActivityPanel({
   function outputActions(includeVisualization: boolean) {
     const outputReady = filterOptionsReady && !loading
       && (mode === "daily" ? daily != null : (viewMode === "DAY" ? dailyPage != null : page != null));
-    return <div className="sales-activity-toolbar__actions">
-      {includeVisualization && <>
+    const visualization = includeVisualization && <>
         <div className="sales-activity-visualization" role="group" aria-label={t("visualization")}>
           <button
             type="button"
@@ -653,7 +652,9 @@ export function SalesActivityPanel({
             {t("byDocument")}
           </button>
         </div>
-      </>}
+      </>;
+    return <div className={`sales-activity-toolbar__actions${app === "gestion" ? " gestion-toolbar-end" : ""}`}>
+      {app !== "gestion" && visualization}
       <div className="sales-activity-output-actions">
         <button type="button" aria-keyshortcuts="F5" title="F5" onClick={() => void executePrint()} disabled={busy || !outputReady}>
           <span><Printer size={16} weight="bold" aria-hidden="true" focusable="false" />{t("print")}</span><kbd aria-hidden="true">F5</kbd>
@@ -665,6 +666,7 @@ export function SalesActivityPanel({
           <span><FilePdf size={16} weight="bold" aria-hidden="true" focusable="false" />{t("pdf")}</span><kbd aria-hidden="true">F7</kbd>
         </button>
       </div>
+      {app === "gestion" && visualization}
     </div>;
   }
 
@@ -763,9 +765,10 @@ export function SalesActivityPanel({
 
   function dailyContent() {
     return <>
-      <div className="sales-activity-toolbar">
-        <label className="sales-activity-date"><span>{t("date")}</span><input type="date" disabled={!filterOptionsReady} max={today} value={dailyDate} onChange={(event) => setDailyDate(event.target.value)} /></label>
+      <div className={`sales-activity-toolbar${app === "gestion" ? " gestion-toolbar-layout" : ""}`}>
+        <label className={`sales-activity-date${app === "gestion" ? " gestion-toolbar-start" : ""}`}><span>{t("date")}</span><input type="date" disabled={!filterOptionsReady} max={today} value={dailyDate} onChange={(event) => setDailyDate(event.target.value)} /></label>
         {outputActions(false)}
+        {app !== "pda" && <ReportDateRangeSummary locale={locale} value={{ from: dailyDate, to: dailyDate, label: "" }} />}
       </div>
       {loading && <p className="sales-activity-state" role="status">{t("loading")}</p>}
       {(error || errorKey) && <div className="sales-activity-state sales-activity-state--error" role="alert"><span>{errorKey ? t(errorKey) : error}</span><button type="button" onClick={retry}>{t("retry")}</button></div>}
@@ -783,8 +786,8 @@ export function SalesActivityPanel({
   }
 
   function documentsContent() {
-    const toolbar = <div className="sales-activity-toolbar">
-        <div className="sales-documents-period"><span>{t("currentPeriod")}</span><strong>{rangeLabel(range)}</strong><small>{formatDate(range.from, locale)} — {formatDate(range.to, locale)}</small></div>
+    const toolbar = <div className={`sales-activity-toolbar${app === "gestion" ? " gestion-toolbar-layout" : ""}`}>
+        {app === "pda" && <div className="sales-documents-period"><span>{t("currentPeriod")}</span><strong>{rangeLabel(range)}</strong><small>{formatDate(range.from, locale)} — {formatDate(range.to, locale)}</small></div>}
         {outputActions(true)}
       </div>;
     const customPeriod = filterOptionsReady && (range.from !== today || range.to !== today);
@@ -852,7 +855,7 @@ export function SalesActivityPanel({
         {((viewMode === "DAY" ? dailyPage : page)?.hasMore) && <button className="sales-documents-load-more" type="button" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? t("loading") : t("loadMore")}</button>}
       </div>}
       <ReportDateRangeFilter locale={locale} today={today} earliestDate={earliestDate}
-        value={range} onChange={setRange} disabled={!filterOptionsReady} />
+        value={range} onChange={setRange} disabled={!filterOptionsReady} showSummary={app !== "pda"} />
     </div>;
   }
 

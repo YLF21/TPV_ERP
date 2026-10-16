@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { CaretDown, Gear } from "@phosphor-icons/react";
+import { ReportDateRangeSummary } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
 import { HourlyColumns } from "./HourlySalesColumns";
 import type { LocaleCode } from "@tpverp/app-common";
 import { loadHourlySales, validDashboardRange, type HourSales, type HourlySalesData, type HourlySalesScope, type SalesOverviewData } from "./dashboardModel";
@@ -116,7 +117,7 @@ export function HourlySalesWidget({ state, t, locale, display, token, warehouseI
     <div className="gd-hourly-settings-bar">
       <div className="gd-hourly-selection" title={`${metricLabels[metric]} · ${validWindow(currentRange) ? rangeLabel(from, to) : "—"}${wantsComparison && validWindow(comparisonRange) ? ` · ${t("gestion.dashboard.comparedWith")} ${rangeLabel(comparisonFrom, comparisonTo)}` : ""}`}>
         <strong>{metricLabels[metric]}</strong>
-        <span>{validWindow(currentRange) ? rangeLabel(from, to) : "—"}</span>
+        {!settingsOpen && <ReportDateRangeSummary locale={locale} value={{ from, to, label: "" }} />}
         {wantsComparison && validWindow(comparisonRange) && <span>{t("gestion.dashboard.comparedWith")} {rangeLabel(comparisonFrom, comparisonTo)}</span>}
       </div>
       <button type="button" ref={settingsButton} id={`${settingsId}-button`} className="gd-hourly-settings-button"
@@ -140,6 +141,7 @@ export function HourlySalesWidget({ state, t, locale, display, token, warehouseI
       <label className="gd-checkbox"><input type="checkbox" checked={sameWeekday} onChange={event => {
         setManualComparison(comparisonDay); setSameWeekday(event.target.checked);
       }} />{t("gestion.dashboard.sameWeekday")}</label>
+      <ReportDateRangeSummary locale={locale} value={{ from, to, label: "" }} />
     </div> : <>
       <div className="gd-hourly-toolbar">
         <label>{t("gestion.dashboard.from")}<input type="date" value={from} min="0001-01-01" max="9999-12-31" onChange={event => updatePeriod({ from: event.target.value })} /></label>
@@ -153,10 +155,12 @@ export function HourlySalesWidget({ state, t, locale, display, token, warehouseI
           <option value="CUSTOM">{t("gestion.dashboard.period.CUSTOM")}</option>
           <option value="NONE">{t("gestion.dashboard.noHourlyComparison")}</option>
         </select></label>
+        <ReportDateRangeSummary locale={locale} value={{ from, to, label: "" }} />
       </div>
       {periodComparisonMode !== "NONE" && <div className="gd-hourly-toolbar">
         <label>{t("gestion.dashboard.comparisonFrom")}<input type="date" value={comparisonFrom} min="0001-01-01" max="9999-12-31" onChange={event => updateComparison({ from: event.target.value })} /></label>
         <label>{t("gestion.dashboard.comparisonTo")}<input type="date" value={comparisonTo} min="0001-01-01" max="9999-12-31" onChange={event => updateComparison({ to: event.target.value })} /></label>
+        <ReportDateRangeSummary locale={locale} value={{ ...comparisonRange, label: "" }} />
       </div>}
       <p className="gd-widget-note">{t("gestion.dashboard.hourlyPeriodSum")}</p>
     </>}

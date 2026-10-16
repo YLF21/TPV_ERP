@@ -14,6 +14,7 @@ import "./MemberCategoriesScreen.css";
 import "../../../packages/app-common/src/components/ErpClassicTables.css";
 import "../../../packages/app-common/src/components/ErpClassicWindow.css";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { GestionSearchFrame } from "../../../packages/app-common/src/components/GestionSearchFrame";
 
 type Translate = (key: string) => string;
 type Request = typeof apiRequest;
@@ -191,10 +192,10 @@ export function MemberCategoriesScreen({ session, t, request = apiRequest }: {
       {canManage && <button type="button" className="stock-add-product-button" disabled={busy} onClick={openNew}>{t("gestion.memberCategories.new")}</button>}
     </header>
 
-    <div className="party-directory-toolbar party-directory-toolbar--classic">
+    <div className="party-directory-toolbar party-directory-toolbar--classic gestion-filter-toolbar">
       <label className="party-directory-search-label" htmlFor="member-category-search">{t("party.searchLabel")}</label>
-      <input id="member-category-search" aria-label={t("gestion.memberCategories.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("gestion.memberCategories.search")} />
-      <label className="party-directory-status-filter"><span>{t("party.status")}</span><ErpSelect className="erp-select--compact" value={filter} aria-label={t("party.status")} onChange={(value) => setFilter(value as StatusFilter)} options={["all", "active", "inactive"].map((value) => ({ value, label: t(value === "all" ? "gestion.memberCategories.filter.all" : `party.${value}`) }))} /></label>
+      <GestionSearchFrame><input id="member-category-search" aria-label={t("gestion.memberCategories.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("gestion.memberCategories.search")} /></GestionSearchFrame>
+      <label className="party-directory-status-filter" data-filter-active={filter !== "all"}><span>{t("party.status")}</span><ErpSelect className="erp-select--compact" value={filter} aria-label={t("party.status")} onChange={(value) => setFilter(value as StatusFilter)} options={["all", "active", "inactive"].map((value) => ({ value, label: t(value === "all" ? "gestion.memberCategories.filter.all" : `party.${value}`) }))} /></label>
       <span className="party-directory-result-count">{t("party.results").replace("{count}", String(visible.length))}</span>
     </div>
     <ErpFilterChips translate={t} chips={[

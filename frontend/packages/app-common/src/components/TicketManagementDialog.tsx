@@ -12,6 +12,8 @@ import {
   type ConfirmedTicketPrintSnapshot
 } from "../sale/ticketPrinting";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
+import { ReportDateRangeSummary } from "./ReportDateRangeFilter";
+import "./NativeDateFilterSummary.css";
 
 type TicketPayment = {
   id: string;
@@ -358,6 +360,7 @@ export function TicketManagementDialog({ token, locale, terminalContext, permiss
             <input aria-label={t("ticketManagement.filter.dateTo")} type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} />
           </label>
           <span className="ticket-management-count">{interpolate(t("ticketManagement.resultCount"), { count: filtered.length })}</span>
+          <ReportDateRangeSummary locale={locale} value={{ from: dateFrom, to: dateTo, label: "" }} />
         </div>
         <div className="ticket-management-layout">
           <aside className="ticket-management-list" aria-label={t("ticketManagement.listAria")}>

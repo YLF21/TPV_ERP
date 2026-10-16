@@ -25,6 +25,7 @@ import "./supplier-management-classic.css";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { ErpConfirmDialog } from "../../../packages/app-common/src/components/ErpConfirmDialog";
 import { ShortcutButtonLabel } from "../../../packages/app-common/src/components/ShortcutButtonLabel";
+import { GestionSearchFrame } from "../../../packages/app-common/src/components/GestionSearchFrame";
 
 type SupplierManagementScreenProps = {
   locale: LocaleCode;
@@ -423,17 +424,17 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
           <h2 id="representative-management-title">{t("safeManagement.representatives.title")}</h2>
           <span>{t("safeManagement.representatives.subtitle")}</span>
         </div>
-        <div className="management-record-actions">
+        <div className="management-record-actions gestion-toolbar-actions">
           <button type="button" aria-keyshortcuts="F7" disabled={!toolbarRepresentative || loading} onClick={() => toolbarRepresentative && openRepresentative(toolbarRepresentative)}><ShortcutButtonLabel label={t("safeManagement.representatives.edit")} shortcut={t("safeManagement.shortcut.modify")} /></button>
           <button type="button" aria-keyshortcuts="F8" onClick={openNew}><ShortcutButtonLabel label={t("safeManagement.representatives.new")} shortcut={t("safeManagement.shortcut.add")} /></button>
           <button type="button" aria-keyshortcuts="F9" className="safe-retirement-open" disabled={!toolbarRepresentative || loading} onClick={retireToolbarRepresentative}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut={t("safeManagement.shortcut.retire")} /></button>
         </div>
       </header>
       {headerExtra}
-      <div className="party-directory-toolbar party-directory-toolbar--classic">
+      <div className="party-directory-toolbar party-directory-toolbar--classic gestion-filter-toolbar">
         <label className="party-directory-search-label" htmlFor="representative-search">{t("party.searchLabel")}</label>
-        <input id="representative-search" type="search" aria-label={t("safeManagement.representatives.search")} placeholder={t("safeManagement.representatives.search")} value={query} onChange={(event) => setQuery(event.target.value)} />
-        <label className="party-directory-status-filter"><span>{t("party.column.status")}</span><ErpSelect
+        <GestionSearchFrame><input id="representative-search" type="search" aria-label={t("safeManagement.representatives.search")} placeholder={t("safeManagement.representatives.search")} value={query} onChange={(event) => setQuery(event.target.value)} /></GestionSearchFrame>
+        <label className="party-directory-status-filter" data-filter-active={activeFilter !== "all"}><span>{t("party.column.status")}</span><ErpSelect
           className="erp-select--compact"
           aria-label={t("safeManagement.representatives.column.status")}
           value={activeFilter}

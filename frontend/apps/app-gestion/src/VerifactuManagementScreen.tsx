@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ErpFilterChips, type ErpFilterChip } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { ReportDateRangeSummary } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
 import {
   ErpSelect,
   TableLayoutHeaderCell,
@@ -493,6 +494,7 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
               tableLayout={queueTableLayout}
               activeFilterCount={countActiveFilters(filters)}
               filterChips={queueFilterChips}
+              appliedFilters={filters}
               draftFilters={draftFilters}
               onDraftChange={setDraftFilters}
               onApply={applyFilters}
@@ -764,6 +766,7 @@ function QueueView({
   tableLayout,
   activeFilterCount,
   filterChips,
+  appliedFilters,
   draftFilters,
   onDraftChange,
   onApply,
@@ -784,6 +787,7 @@ function QueueView({
   tableLayout: ReturnType<typeof useTableLayoutPreference<QueueSortColumn>>;
   activeFilterCount: number;
   filterChips: ErpFilterChip[];
+  appliedFilters: VerifactuAdminSubmissionFilters;
   draftFilters: VerifactuAdminSubmissionFilters;
   onDraftChange: (filters: VerifactuAdminSubmissionFilters) => void;
   onApply: (event: FormEvent) => boolean;
@@ -833,7 +837,7 @@ function QueueView({
           <button type="submit" form="verifactu-queue-filters-form" className="primary erp-dialog-action-confirm">{t("verifactu.management.applyFilters")}</button>
         </>}
       >
-        <form id="verifactu-queue-filters-form" className="gestion-verifactu-filters" onSubmit={(event) => { if (onApply(event)) setFiltersOpen(false); }}>
+        <form id="verifactu-queue-filters-form" className="gestion-verifactu-filters gestion-filter-toolbar" onSubmit={(event) => { if (onApply(event)) setFiltersOpen(false); }}>
         <label>
           <span>{t("verifactu.management.dateFrom")}</span>
           <input
@@ -850,7 +854,8 @@ function QueueView({
             onChange={(event) => onDraftChange({ ...draftFilters, dateTo: event.target.value })}
           />
         </label>
-        <label>
+        <ReportDateRangeSummary locale={locale} value={{ from: appliedFilters.dateFrom, to: appliedFilters.dateTo, label: "" }} />
+        <label data-filter-active={Boolean(draftFilters.status)}>
           <span>{t("verifactu.management.status")}</span>
           <ErpSelect
             value={draftFilters.status}
@@ -859,7 +864,7 @@ function QueueView({
             onChange={(value) => onDraftChange({ ...draftFilters, status: value as VerifactuAdminSubmissionFilters["status"] })}
           />
         </label>
-        <label>
+        <label data-filter-active={Boolean(draftFilters.documentType)}>
           <span>{t("verifactu.management.documentType")}</span>
           <ErpSelect
             value={draftFilters.documentType}
@@ -868,7 +873,7 @@ function QueueView({
             onChange={(value) => onDraftChange({ ...draftFilters, documentType: value as VerifactuAdminSubmissionFilters["documentType"] })}
           />
         </label>
-        <label>
+        <label data-filter-active={Boolean(draftFilters.operation)}>
           <span>{t("verifactu.management.fiscalOperation")}</span>
           <ErpSelect
             value={draftFilters.operation}
@@ -895,7 +900,7 @@ function QueueView({
             <h3>{t("verifactu.management.queueTitle")}</h3>
             <span>{page.totalElements} {t("verifactu.management.records")}</span>
           </div>
-          <div className="fiscal-records-toolbar">
+          <div className="fiscal-records-toolbar gestion-filter-toolbar gestion-toolbar-layout gestion-native-filter-toolbar">
             {loading && <span className="gestion-verifactu-loading">{t("verifactu.management.updating")}</span>}
             <button
               type="button"

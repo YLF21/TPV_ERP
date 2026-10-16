@@ -421,3 +421,9 @@
     margin-left: 0;
   }
 }
+
+@media (max-width: 1100px) {
+  .report-screen[data-period-summary="footer"] .report-command-toolbar {
+    grid-template-areas: "utilities search" "output output";
+  }
+}
