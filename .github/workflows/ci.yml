@@ -109,7 +109,7 @@ jobs:
           print("Admin API and outbox permission contracts executed successfully")
       - name: Upload SaaS coverage
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: backend-saas-jacoco
           path: backend-saas/target/site/jacoco/
@@ -353,7 +353,7 @@ jobs:
             "$RESTORE_EVIDENCE" "$ROLLBACK_EVIDENCE" > release-evidence/recovery.txt
       - name: Upload release evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: saas-release-evidence
           path: release-evidence/
@@ -434,7 +434,7 @@ jobs:
           SAAS_E2E_USERNAME: ADMIN
           SAAS_E2E_PASSWORD: "0000"
         run: npm run test:e2e
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: saas-e2e-logs
@@ -469,7 +469,7 @@ jobs:
           npm audit --audit-level=high
           npm sbom --sbom-format=cyclonedx > ../frontend-saas.cdx.json
       - name: Upload dependency inventories
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: saas-sbom
           path: |
