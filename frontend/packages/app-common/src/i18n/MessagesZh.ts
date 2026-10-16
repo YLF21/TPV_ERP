@@ -1652,6 +1652,7 @@ export class MessagesZh {
     "salesReport.placeholder": "请选择一个选项以查看或准备报表。",
     "warehouseDocument.create": "创建单据",
     "warehouseDocument.view": "查看单据",
+    "warehouseDocument.open": "打开",
     "warehouseDocument.edit": "编辑草稿",
     "warehouseDocument.supplier": "供应商",
     "warehouseDocument.customer": "客户",

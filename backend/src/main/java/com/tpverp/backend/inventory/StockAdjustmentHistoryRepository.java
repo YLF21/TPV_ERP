@@ -1,5 +1,6 @@
 package com.tpverp.backend.inventory;
 
+import java.time.Instant;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -8,6 +9,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface StockAdjustmentHistoryRepository extends JpaRepository<StockAdjustmentHistory, UUID> {
+    @Query("select min(row.createdAt) from StockAdjustmentHistory row where row.storeId = :storeId")
+    Instant findFirstReportCreatedAt(UUID storeId);
+
     @Query("""
             select row from StockAdjustmentHistory row
             where row.storeId = :storeId

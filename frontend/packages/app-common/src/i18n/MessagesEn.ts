@@ -1656,6 +1656,7 @@ export class MessagesEn {
     "salesReport.placeholder": "Select an option to consult or prepare the report.",
     "warehouseDocument.create": "Create document",
     "warehouseDocument.view": "View document",
+    "warehouseDocument.open": "Open",
     "warehouseDocument.edit": "Edit draft",
     "warehouseDocument.supplier": "Supplier",
     "warehouseDocument.customer": "Customer",

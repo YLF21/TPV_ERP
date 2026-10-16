@@ -960,3 +960,151 @@ final result: passed
 - Capturas locales: `frontend/output/playwright/control-rules-colored-icons-1366.png`, `control-rule-card-removed.png`, `control-rule-add-colored-icons.png`, `control-rule-card-restored.png`, `control-rules-colored-icons-en-1024.png` y `control-rules-colored-icons-zh-1024.png`.
 
 final result: passed
+
+## Gestión: selección completa de cabeceras — 2026-10-15
+
+- El botón de ordenar deja de recibir el azul de las acciones y selecciones generales. El resaltado usa #2e5072 sobre la cabecera completa, desde un separador al siguiente, incluidos los márgenes y el espacio de las acciones N/C y menú. Se aplica al ordenar, pasar el puntero y enfocar con teclado; cubre `th`, cabeceras ARIA y `TableLayoutHeaderCell`, incluidos los botones de ordenación directos.
+- El cambio queda en `GestionAccentColors.css`, limitado a Gestión y al medio pantalla. Se conservan los separadores, las acciones principales #0065FE, los colores de estado y los datos; no cambia la lógica de ordenar, mover o redimensionar columnas.
+- Playwright con `CashCurrentBalancesScreen` real y cabeceras compartidas de informes verifica el fondo completo `rgb(46,80,114)`, botones de ordenación transparentes, cambio N/C, orden por teclado, movimiento por menú y aumento de ancho de 8 px con teclado. La selección persiste al retirar el puntero; las cabeceras no seleccionadas mantienen #12385F.
+- 14 pruebas existentes de cabeceras y caja correctas. TypeScript/build de Gestión, presupuestos y `git diff --check` correctos. Vista previa con respuestas ficticias, sin solicitudes al backend de la tienda ni escrituras reales.
+- Sin desbordamiento global a 1366 px en español ni a 1024 px en inglés/chino. Al retirar el marcador de Gestión o emular impresión se recuperan los fondos anteriores. Capturas: `frontend/output/playwright/gestion-full-column-header-1366.png`, `gestion-full-column-header-en-1024.png` y `gestion-full-column-header-zh-1024.png`.
+
+final result: passed
+
+## Gestión: albaranes y facturas de entrada con estilo Ticket — 2026-10-15
+
+- Las dos listas de entrada adoptan una barra superior blanca con esquinas de 6 px, periodo seleccionado, búsqueda y estado compactos. Crear, consultar/editar, eliminar, PDF y Excel conservan sus acciones e incorporan iconos; crear y exportar utilizan #0065FE. No se cambia el periodo inicial ni se añaden atajos.
+- La tabla conserva la cabecera marino a toda anchura, las funciones de ordenar, mover y redimensionar columnas y el desplazamiento local. El marco tiene esquinas redondeadas; el recuento queda debajo y el selector de fechas cierra la pantalla con fondo gris azulado y borde superior marino, como Ticket. Los indicadores de cabecera aparecen con puntero/foco; el orden activo permanece visible.
+- El cambio visual está limitado a Albaranes de entrada y Facturas de entrada de Gestión mediante una clase de opt-in. Su hoja se carga solo desde Gestión y en pantalla; Venta, PDA y la impresión conservan sus estilos. No se modifican permisos, exportaciones ni operaciones de stock.
+- 47 pruebas existentes de almacén y filtros y tres comprobaciones de traducciones correctas. TypeScript y compilaciones completas de Venta/Gestión correctos; recompilación final de estilos de Gestión, presupuestos de paquetes y `git diff --check` correctos. El presupuesto de CSS de Venta conserva su aviso previo dentro del límite.
+- Playwright sobre WarehouseScreen real con respuestas ficticias verifica ambas listas con datos y vacías, búsqueda, estado, fechas, ordenación, apertura de crear/consultar y habilitación de acciones para borrador/confirmada. Sin desbordamiento global en ES/EN a 1366 px con el espacio de barra lateral reservado, ni en ZH a 1024 px; la tabla mantiene su propio desplazamiento. Confirma esquinas de 6 px en pantalla y ausencia del estilo nuevo en Venta/impresión. Sin escrituras a la tienda real.
+- Capturas locales: `frontend/output/playwright/purchase-invoices-ticket-style-1680.png`, `purchase-delivery-ticket-style-empty-1366.png`, `purchase-invoice-ticket-style-en-1366.png` y `purchase-delivery-ticket-style-zh-1024.png`.
+
+final result: passed
+
+## Gestión: atajos de documentos de entrada — 2026-10-15
+
+- Crear documento muestra y ejecuta F5; Excel utiliza F6 y PDF F7 en ambas listas de entrada. Las teclas quedan centradas en el segmento derecho de cada botón, con separador y sin margen final adicional, reutilizando el estilo de atajos del escritorio. Los nombres accesibles conservan su texto traducido y se declaran las teclas con `aria-keyshortcuts`.
+- Los atajos activan los botones existentes y respetan permisos, ausencia de sesión, eliminación y exportación en curso. No actúan detrás del editor u otra ventana modal, con eventos repetidos/modificados/ya consumidos, ni desde Venta, PDA u otras listas de almacén de Gestión.
+- 12 pruebas focales nuevas y las 50 pruebas existentes de almacén, filtros y traducciones correctas. Compilaciones TypeScript/Vite de Venta y Gestión y presupuestos correctos; se conserva el aviso previo del CSS de Venta dentro del límite.
+- Playwright verifica F5 desde el buscador en albaranes y facturas con el editor real. Los tres segmentos miden 31 px, conservan el separador y llegan hasta el borde interior derecho. Sin desbordamiento global con el espacio de la barra lateral reservado a 1366 px, incluida la traducción china. Comprobación sobre respuestas ficticias, sin documentos ni exportaciones de la tienda real.
+- Capturas locales: `frontend/output/playwright/purchase-shortcuts-invoices-1680.png` y `purchase-shortcuts-delivery-zh-1366.png`.
+
+final result: passed
+
+## Gestión: F5 para añadir producto — 2026-10-15
+
+- Todos los botones de Añadir producto de Gestión muestran y ejecutan F5: Stock, Top ventas, Ofertas, Precio socio, Promociones y Sin descuento, además de la ficha administrable. La tecla se presenta separada a la derecha con el componente de atajos existente; el texto traducido conserva el color del botón.
+- En la ficha administrable, Información pasa a F8 para dejar F5 exclusivamente a Añadir producto. Historial F6, Modificar F7 y Retirar F9 mantienen su función. Cuando no existe la acción de añadir, Información conserva F5; también se mantiene la navegación previa de Venta/PDA.
+- Se evita que la tabla consuma F5 para abrir información antes de llegar a la acción de añadir. Funciona tanto desde la búsqueda como con el foco en la tabla, incluso si esta conserva el foco detrás de la ficha. Se respetan permisos, ventanas modales, eventos consumidos, repetición y modificadores; las pantallas sin botón de añadir no incorporan esa acción.
+- 31 pruebas focales de atajos y edición, más 73 pruebas de StockScreen, historial, promociones y traducciones correctas. Compilaciones TypeScript/Vite de Venta/Gestión y recompilación final de CSS de Gestión correctas. Presupuestos correctos; el CSS de Venta conserva su aviso previo dentro del límite.
+- Playwright sobre StockScreen real con datos ficticios verifica F5 en las seis vistas y en la ficha, F8 Información y los segmentos al borde derecho. Sin desbordamiento global a 1366 px en ES/EN ni a 1024 px en ZH, con etiquetas traducidas F5/F8 correctas. Sin creación de productos ni cambios en datos reales.
+- Capturas: `frontend/output/playwright/gestion-product-detail-shortcuts-1366.png`, `gestion-product-add-f5-offers-en-1366.png` y `gestion-product-detail-shortcuts-zh-1024.png`.
+
+final result: passed
+
+## Gestión: estilo y atajos de Almacén — 2026-10-15
+
+- Se extiende el estilo Ticket a Gestión de almacenes, entradas/salidas, traspasos, ajustes e inventarios; las listas de albaranes/facturas mantienen el mismo patrón. Barras blancas con borde y esquinas de 6 px, controles compactos de 34 px, iconos y botones de creación/exportación #0065FE. Las tablas mantienen la cabecera marino, los separadores y el desplazamiento local; los recuentos de documentos quedan debajo.
+- F5 activa la creación principal donde existe: almacén, documento, ajuste o inventario. F6/F7 ejecutan Excel/PDF donde están disponibles. Cada tecla queda separada en el lado derecho del botón. Un hook compartido dirige las teclas a los botones existentes y conserva sus estados deshabilitados, permisos y requisitos de selección; se bloquea en editores, confirmaciones, guardado o carga cuando corresponde.
+- Comprobación de mercancía conserva su flujo de iniciar comprobación/escaneo/cierre y adopta el estilo visual e icono en la acción principal; no incorpora una acción nueva de crear ni atajos destructivos. Se conservan F9/F10 en los editores que ya los utilizan. No se modifican APIs, cálculos, validaciones ni movimientos de stock, y los estilos nuevos se cargan exclusivamente en Gestión y en pantalla.
+- 120 pruebas focales de almacén, editores, filtros y traducciones correctas; se repitieron 54 tras unificar las teclas como constantes compartidas. Venta/PDA conservan sus acciones previas y los textos ES/EN/ZH siguen usando sus catálogos.
+- Playwright sobre componentes reales con respuestas ficticias comprueba F5 en las seis superficies de creación, listas llenas/vacías y marcos redondeados. Controles visibles a 1366 px con espacio para la barra lateral y a 1024 px en inglés/chino; inventarios y traspasos mantienen el desplazamiento dentro de su tabla. Sin operaciones ni escrituras en datos reales.
+- Capturas locales: `frontend/output/playwright/warehouse-input-style-1366.png`, `warehouse-output-style-1366.png`, `warehouse-management-style-1366.png`, `warehouse-transfer-style-1366.png`, `warehouse-adjustment-style-1366.png`, `warehouse-count-style-1366.png`, `warehouse-goods-style-1366.png` y variantes EN/ZH de 1024 px.
+- Compilaciones TypeScript/Vite de Venta y Gestión correctas, incluida la compilación final de Gestión tras los ajustes visuales. Presupuestos y `git diff --check` correctos; se conserva el aviso previo de CSS de Venta dentro del límite.
+
+final result: passed
+
+## Gestión: barra de periodos en Almacén — 2026-10-15
+
+- Entrada y salida de almacén, traspasos, ajustes e inventarios sustituyen los campos superiores Desde/Hasta por la barra inferior compartida con Ticket y las listas de compras: Hoy, Ayer, Semana actual, mes, trimestre, año y periodo personalizado. Fondo gris azulado, contorno redondeado y selección #0065FE; se conserva el estado inicial sin filtro de fecha.
+- Las fechas disponibles y el día actual proceden del backend con la zona horaria de la tienda. Se añaden las opciones de traspasos, ajustes e inventarios con consultas MIN por tienda y los permisos de lectura existentes. No se cambian las conversiones de las consultas, operaciones de stock ni contratos de exportación.
+- Se mantienen búsqueda, almacén, estado, paginación y etiquetas eliminables; limpiar una fecha desmarca el periodo rápido. Ante un fallo de metadatos, la barra queda deshabilitada, las filas siguen visibles y Reintentar recupera las opciones. Venta/PDA conservan sus filtros anteriores.
+- 96 pruebas frontend focales correctas tras adaptar los casos al nuevo selector, incluidas fechas, filtros, atajos, respuestas obsoletas/reintentos y traducciones. 46 pruebas del servicio backend correctas. Compilaciones TypeScript/Vite de Venta y Gestión, presupuestos y git diff --check correctos; se conserva el aviso previo del presupuesto CSS de Venta dentro del límite.
+- Playwright sobre componentes reales con respuestas ficticias verifica Hoy/Ayer/personalizado, azul exacto, reintento y aislamiento de Venta. Barra visible al pie a 1366x768 con el espacio lateral reservado, y sin desbordamiento global a 1024x768 en EN/ZH; a esa anchura los controles se distribuyen en dos filas. Capturas revisadas de entradas, traspasos, ajustes e inventarios, incluidas variantes EN/ZH. Sin escrituras en datos reales durante la comprobación visual.
+- Capturas: frontend/output/playwright/warehouse-input-datebar-1366.png, warehouse-output-datebar-1366.png, warehouse-transfer-datebar-1366.png, warehouse-adjustment-datebar-1366.png, warehouse-count-datebar-1366.png, warehouse-transfer-en-datebar-1024.png, warehouse-count-zh-datebar-1024.png y warehouse-adjustment-en-datebar-1024.png.
+- Backend recargado desde el script y perfil configurados de esta rama: arranque completo con inicialización de repositorios y health UP en 127.0.0.1:8080. No se ejecutó una prueba PostgreSQL independiente porque no está configurada una base de pruebas aislada.
+
+final result: passed
+
+## Gestión: crear junto al título de Almacén — 2026-10-15
+
+- Crear documento se sitúa a la derecha del título en Traspasos, Entrada/Salida almacén, Albaranes y Facturas de entrada. Crear inventario y Realizar ajuste utilizan la misma posición; Nuevo almacén conserva su cabecera con la alineación común. Se retira cada acción de su barra anterior, sin duplicados.
+- La cabecera compartida de documentos recibe título y subtítulo desde WarehouseScreen. El ámbito del atajo F5 abarca la cabecera y la barra de acciones; la navegación por teclado desde Estado puede continuar hacia Crear. Se conservan guardas, permisos, formularios, acciones de consulta/exportación y filtros de fecha. Venta/PDA mantienen su disposición anterior.
+- 87 pruebas focales existentes correctas entre listas, filtros, atajos, formularios y traducciones. Se adapta una espera asíncrona del test F5 para comprobar la aparición del diálogo. Compilaciones TypeScript/Vite de Venta/Gestión y presupuestos correctos; se conserva el aviso previo del CSS de Venta dentro del límite.
+- Playwright sobre los componentes reales con respuestas ficticias confirma una sola acción F5 por pantalla, apertura del formulario desde teclado, azul #0065FE y alineación superior exacta con el título. Sin desbordamiento global a 1366 px en ES ni a 1024 px con EN/ZH y espacio reservado para la barra lateral. Sin escrituras en datos reales.
+- Capturas en frontend/output/playwright/warehouse-*-create-heading-1366.png y warehouse-*-create-heading-1024.png, revisadas para Traspasos, Entrada y Albaranes; se mantienen visibles las barras inferiores de periodo.
+
+final result: passed
+
+## Gestión: Almacén sin sombras — 2026-10-15
+
+- Se eliminan las sombras decorativas de paneles, cabeceras de tabla y desplegables de Almacén. Los botones de cabecera pasan del borde nativo en relieve a un borde sólido de 1 px; conservan esquinas, colores, atajos y un contorno de foco visible de 2 px.
+- Playwright comprueba las cinco superficies principales con sombra calculada none y foco de teclado visible; también los selectores, menú de columnas y periodo personalizado. Captura revisada: frontend/output/playwright/warehouse-transfer-flat-1366.png. Compilación de Gestión, presupuestos y git diff --check correctos. Cambio solo CSS; se reutilizan las pruebas funcionales válidas del ajuste anterior.
+
+final result: passed
+
+## Gestión: acciones grises en Salida almacén — 2026-10-15
+
+- Cambio limitado a Salida almacén: los cuatro botones se ordenan en el DOM como Excel, PDF, Abrir y Eliminar. Todos utilizan contorno gris oscuro #68737E y fondo gris claro #EEF1F4, texto/iconos marino y sin sombras. Excel/PDF conservan F6/F7 separados. Abrir mantiene su nombre también para borradores, sin cambiar las reglas de consulta/edición o eliminación; se añade la traducción ES/EN/ZH independiente de Consultar documento.
+- El marcador de modo en el panel compartido permite acotar el estilo y orden a Gestión/Salida almacén. Playwright verifica los colores, la apertura del documento y el recorrido Tab Excel -> PDF -> Abrir -> Eliminar sobre un borrador. Sin desbordamiento a 1024 px en ES/EN/ZH. Captura revisada: frontend/output/playwright/warehouse-output-ordered-gray-actions-1366.png.
+- Las 42 pruebas existentes de documentos, filtros, exportación/atajos y traducciones pasan, así como las compilaciones TypeScript/Vite de Venta/Gestión. Presupuestos y git diff --check correctos; se conserva el aviso previo del CSS de Venta dentro del límite.
+
+final result: passed
+
+## Gestión: alineación y buscador en Salida almacén — 2026-10-15
+
+- Buscador, selector Estado y botones Excel/PDF/Abrir/Eliminar comparten altura de 34 px y la misma coordenada vertical en la barra. Se corrige el alto heredado de 40 px del contenedor del selector. En anchos estrechos la barra mantiene sus saltos de fila sin desbordamiento.
+- Buscar reutiliza la lupa PNG de Ticket a 18x18 px, con marco único redondeado y foco visible, conservando nombre accesible, búsqueda y Enter hacia Estado. Cambio acotado a Salida almacén de Gestión.
+- La flecha de Estado usa #12385F en reposo y #0065FE al abrir, enfocar o aplicar un estado distinto de Todos. Botón de 4 px de radio y menú de 6 px con opciones redondeadas, sin sombras; filtros y selección mantienen su comportamiento.
+- 39 pruebas existentes de documentos, filtros y atajos correctas. Playwright verifica alineación exacta, colores, apertura/selección, búsqueda y teclado; sin desbordamiento a 1024 px en EN/ZH. Capturas revisadas: frontend/output/playwright/warehouse-output-aligned-toolbar-1366.png y warehouse-output-status-open-1366.png. Compilaciones TypeScript/Vite de Venta/Gestión, recompilación final de CSS de Gestión y presupuestos correctos; se conserva el aviso previo del CSS de Venta dentro del límite.
+
+final result: passed
+
+## Gestión: estilo común de las barras de Almacén — 2026-10-15
+
+- Se extiende el patrón aprobado en Salida almacén a Entradas, Albaranes/Facturas de entrada, Traspasos e Inventarios: botones secundarios gris claro #EEF1F4, contorno gris oscuro #68737E, sin sombras, en orden real Excel F6, PDF F7, Abrir y Eliminar/Anular según la operación existente. Las anulaciones de traspasos/inventarios conservan su nombre y comportamiento; crear F5 permanece en la cabecera.
+- WarehouseSearchFrame reutiliza la lupa de Ticket en todos los buscadores principales de Almacén, incluidos Ajustes y Comprobación de mercancía. Se conservan labels, referencias, filtros y navegación por teclado. Almacenes mantiene sus acciones disponibles sin añadir controles nuevos.
+- Selectores compactos de 34 px, esquinas de 4 px y menú de 6 px; la flecha usa #12385F en reposo y #0065FE al abrir/enfocar. Estado muestra también el azul cuando hay un filtro aplicado. Se eliminan alturas de 40 px y bordes dobles heredados; búsqueda, estado y acciones se alinean dentro de cada fila y se distribuyen en más filas cuando falta espacio. Los botones de Inventarios se agrupan en el mismo marco de filtros.
+- 102 pruebas focales existentes correctas entre documentos, filtros, atajos, inventarios, traspasos, comprobación y traducciones; se repitieron los 7 casos de inventarios tras agrupar su barra. Compilaciones TypeScript/Vite de Venta/Gestión y compilación final de Gestión correctas, con presupuestos dentro de límite (aviso previo CSS de Venta conservado).
+- Playwright sobre componentes reales y respuestas ficticias verifica las seis listas con Estado: colores exactos, menús redondeados y orden de acciones. Revisión de capturas de Entrada, Traspasos, Inventarios, Ajustes y Comprobación de mercancía. Sin desbordamiento global a 1024 px en EN/ZH; una sola lupa por buscador y sin marcos/acciones nuevos en Venta. No se efectuaron operaciones sobre datos reales.
+- Capturas: frontend/output/playwright/warehouse-*-unified-toolbar-1366.png. El visor se recargó para reconocer el nuevo componente compartido; no fue necesario reiniciar backend ni modificar los perfiles de las aplicaciones.
+
+final result: passed
+
+## Gestión: flechas de ordenación de Almacén — 2026-10-16
+
+- La regla común de cabeceras alcanza también Ajustes de stock, Traspasos e Inventarios. Se elimina la excepción que forzaba sus flechas visibles permanentemente. Indicadores y menú de columna permanecen ocultos en reposo y aparecen al pasar el ratón, enfocar con teclado o mantener una ordenación/menú activos; los dispositivos táctiles conservan los indicadores visibles.
+- Playwright sobre componentes reales con datos ficticios comprueba las tres listas: opacidad 0 en reposo y 1 con ratón, foco y ordenación ascendente activa. Capturas warehouse-adjustment-sort-visibility-1366.png, warehouse-transfer-sort-visibility-1366.png y warehouse-count-sort-visibility-1366.png en frontend/output/playwright; revisada la de Inventarios.
+- Compilación de Gestión y presupuestos correctos. Cambio exclusivamente CSS; se reutilizan las pruebas funcionales válidas anteriores. Sin cambios en permisos, datos o funcionamiento de la ordenación.
+
+final result: passed
+## Gestión: texto completo en las cabeceras de tabla — 2026-10-16
+
+- Se corrige la reserva permanente de ancho por flechas y menús invisibles. Las cabeceras clásicas de Gestión aprovechan ese espacio en reposo y lo reservan al mostrar las herramientas, con foco de teclado o con ordenación activa. Se conservan los botones accesibles, las acciones reales de cabecera (N/C de cliente), las cabeceras de varios niveles y los anchos/redimensionado existentes. Venta/PDA quedan fuera por data-app.
+- Playwright reproduce antes del cambio los recortes innecesarios de Líneas y Total unidades (entrada/salida), Unidades (traspasos), Código de barras (ajustes) y Artículos (inventarios). Tras el cambio las seis listas revisadas no presentan títulos truncados en reposo a 1366 px. Inventarios también correcto a 1024 px en EN/ZH, sin desbordamiento global.
+- Comprobados ratón, foco, ordenación ascendente visible, menú de columna/Escape y separación real entre texto, flecha y menú. Caja e informes sin títulos truncados; el botón N/C continúa cambiando el modo y el redimensionado por teclado pasa de 250 a 258 px. Los recortes restantes de Productos responden a títulos más largos que el ancho real de sus columnas, no a huecos invisibles. Emulación táctil confirma herramientas visibles sin solapamiento; variables nuevas ausentes en Venta.
+- Capturas revisadas: frontend/output/playwright/warehouse-count-full-header-text-1366.png y gestion-table-header-text-review.png. Nueve pruebas existentes de TableLayoutHeaderCell correctas; compilación de Gestión, presupuestos y git diff --check correctos. No se modifican datos ni reglas de negocio.
+
+final result: passed
+## Gestión: barra de Traspasos en una fila — 2026-10-16
+
+- Búsqueda, Estado, Almacén de origen, Almacén de destino y acciones comparten una fila flexible cuando el ancho disponible lo permite. Se retira el salto obligatorio de las acciones; se conservan orden, atajos, colores, etiquetas y controles de 34 px. En ventanas estrechas se mantienen varias filas y la cuadrícula de filtros de dos/una columnas.
+- Playwright confirma los ocho controles a la misma coordenada vertical en 1920 px ES y 1600 px EN con espacio reservado para barra lateral. A 1024 px EN/ZH los filtros quedan en dos columnas y los botones en su fila, sin desbordamiento. La aplicación conserva su ancho mínimo global existente de 1024 px. Captura de 1920 revisada: frontend/output/playwright/warehouse-transfer-single-row-1920.png.
+- Cambio solo CSS de Traspasos; compilación de Gestión y presupuestos correctos. Se reutilizan las comprobaciones funcionales anteriores al no cambiar lógica ni JSX.
+
+final result: passed
+## Gestión: barra de Hacer inventario en una fila — 2026-10-16
+
+- Hacer inventario reutiliza la distribución flexible de Traspasos: búsqueda, Almacén, Estado y botones comparten una fila cuando caben. En anchos estrechos mantiene tres filtros en la fila superior y las acciones debajo; hasta 700 px conserva una columna. Sin cambios de orden, atajos, controles de 34 px ni comportamiento.
+- Playwright confirma una sola coordenada vertical para los siete controles a 1920 px ES y 1366 px ES/EN con espacio reservado para la barra lateral. A 1024 px EN/ZH se distribuyen en dos filas sin desbordamiento. Traspasos conserva su fila única a 1920 px y su distribución estrecha a 1024 px. Captura revisada: frontend/output/playwright/warehouse-count-single-row-1920.png.
+- Compilación de Gestión, presupuestos y git diff --check correctos. Cambio exclusivamente CSS; se reutilizan las comprobaciones funcionales anteriores.
+
+final result: passed
+## Gestión: filtros compactos de Ajustes de stock — 2026-10-16
+
+- Se conserva el recuadro exterior a todo el ancho. Solo los campos se compactan al margen izquierdo: Buscar ocupa 360 px y Almacén 250 px, con altura común de 34 px. Se adaptan al espacio disponible y conservan una columna en el breakpoint estrecho. Solo CSS; sin cambios en búsqueda o filtrado.
+- Playwright confirma campos de 360/250 px y el recuadro igual al ancho del contenedor en 1920/1366/1024 px, sin desbordamiento. Se conservan las comprobaciones anteriores de EN/ZH, introducir A001 y seleccionar GENERAL. Captura actual: frontend/output/playwright/warehouse-adjustment-full-frame-compact-filters-1920.png.
+- Compilación de Gestión, presupuestos y git diff --check correctos; se reutilizan las comprobaciones funcionales anteriores.
+
+final result: passed

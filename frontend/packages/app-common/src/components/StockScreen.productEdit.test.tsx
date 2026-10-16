@@ -56,9 +56,9 @@ function mockProductEditing(initialCursor: string | null = null) {
   };
 }
 
-async function openProduct(app: "venta" | "gestion", management = false) {
+async function openProduct(app: "venta" | "gestion", management = false, permissions: ("ADMIN" | "STOCK_READ")[] = ["ADMIN"]) {
   const { container } = render(<StockScreen app={app} locale="es" allowSafeRetirement={management}
-    session={{ username: "demo", displayName: "DEMO", permissions: ["ADMIN"], accessToken: "test-token" }}
+    session={{ username: "demo", displayName: "DEMO", permissions, accessToken: "test-token" }}
     terminalContext={{ storeName: "Tienda de prueba", terminalCode: "DEMO" }}
     onBack={vi.fn()} onLocaleChange={vi.fn()} />);
   await screen.findByText("Cafe de prueba");
@@ -176,20 +176,57 @@ it("uses F9 for safe retirement in product management instead of exporting Excel
     session={{ username:"demo", displayName:"DEMO", permissions:["ADMIN"], accessToken:"test-token" }}
     terminalContext={{storeName:"Test",terminalCode:"TEST"}} onBack={vi.fn()} onLocaleChange={vi.fn()} />); });
   await screen.findByText("Cafe de prueba");
-  expect(screen.getByRole("button",{name:"Añadir producto F8"})).toBeTruthy();
+  expect(screen.getByRole("button",{name:"Añadir producto F5"})).toBeTruthy();
   expect(screen.getByRole("button",{name:"Modificar producto F7"})).toBeTruthy();
   fireEvent.keyDown(window,{key:"F9"});
   await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/products/management/product-1/retirement-impact",expect.anything()));
   expect(vi.mocked(apiRequest).mock.calls.some(([path]) => path.includes("exports") || path.endsWith("/retire"))).toBe(false);
 });
 
-it("opens a new product with F8 from product information", async () => {
+it("opens a new product with F5 and moves Información to F8 in product management", async () => {
   mockProductEditing();
   const information = await openProduct("gestion", true);
   expect(within(information).getByRole("button", {name:"Modificar producto F7"})).toBeTruthy();
-  expect(within(information).getByRole("button", {name:"Añadir producto F8"})).toBeTruthy();
+  expect(within(information).getByRole("tab", {name:"Información F8"})).toBeTruthy();
+  expect(within(information).getByRole("tab", {name:"Historial de venta F6"})).toBeTruthy();
+  expect(within(information).getByRole("button", {name:"Añadir producto F5"})).toBeTruthy();
+  fireEvent.click(within(information).getByRole("tab", {name:"Historial de venta F6"}));
   fireEvent.keyDown(information, {key:"F8"});
+  expect(within(information).getByRole("tab", {name:"Información F8"}).getAttribute("aria-selected")).toBe("true");
+  const stockTable = document.querySelector<HTMLElement>(".stock-table")!;
+  stockTable.focus();
+  expect(document.activeElement).toBe(stockTable);
+  fireEvent.keyDown(stockTable, {key:"F5"});
   expect(await screen.findByRole("dialog", {name:"Añadir producto"})).toBeTruthy();
+});
+
+it("ignores modified or repeated F5 and an unrelated modal from product information", async () => {
+  mockProductEditing();
+  const information = await openProduct("gestion", true);
+  const externalModal = render(<div role="dialog" aria-modal="true">External modal</div>);
+
+  fireEvent.keyDown(information, {key:"F5"});
+  expect(screen.queryByRole("dialog", {name:"Añadir producto"})).toBeNull();
+  externalModal.unmount();
+
+  fireEvent.keyDown(information, {key:"F5", repeat:true});
+  fireEvent.keyDown(information, {key:"F5", ctrlKey:true});
+  fireEvent.keyDown(information, {key:"F5", altKey:true});
+  fireEvent.keyDown(information, {key:"F5", metaKey:true});
+  fireEvent.keyDown(information, {key:"F5", shiftKey:true});
+  expect(screen.queryByRole("dialog", {name:"Añadir producto"})).toBeNull();
+});
+
+it("keeps Información on F5 when creation is unavailable in management product details", async () => {
+  mockProductEditing();
+  const information = await openProduct("gestion", true, ["STOCK_READ"]);
+
+  expect(within(information).getByRole("tab", {name:"Información F5"})).toBeTruthy();
+  expect(within(information).queryByRole("button", {name:/Añadir producto/})).toBeNull();
+  fireEvent.click(within(information).getByRole("tab", {name:"Historial de venta F6"}));
+  fireEvent.keyDown(information, {key:"F5"});
+  expect(within(information).getByRole("tab", {name:"Información F5"}).getAttribute("aria-selected")).toBe("true");
+  expect(screen.queryByRole("dialog", {name:"Añadir producto"})).toBeNull();
 });
 it("opens retirement review with F9 from product information", async () => {
   mockProductEditing();

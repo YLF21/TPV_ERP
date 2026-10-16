@@ -3,9 +3,14 @@ import { DialogDismissButton } from "../../../packages/app-common/src/components
 import { AdjustmentProductSearch } from "./AdjustmentProductSearch";
 import { StockAdjustmentHistoryTable } from "./StockAdjustmentHistoryTable";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { UserSession } from "../../../packages/app-common/src/types";
+import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
 import { ErpSelect } from "../../../packages/app-common/src/components/ErpSelect";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { useWarehouseListShortcuts, WAREHOUSE_LIST_SHORTCUTS } from "../../../packages/app-common/src/components/useWarehouseListShortcuts";
+import { ReportDateRangeFilter, type ReportDateRange } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
+import { useReportDateOptions } from "../../../packages/app-common/src/components/useReportDateOptions";
+import { WarehouseSearchFrame } from "../../../packages/app-common/src/components/WarehouseSearchFrame";
+import { ArrowClockwise, FilePdf, FileXls, Plus } from "@phosphor-icons/react";
 import {
   activateModalFocusTrap,
   type ModalFocusRoot
@@ -40,6 +45,7 @@ type Props = {
   session: UserSession;
   mode: WarehouseOperationMode;
   t: (key: string) => string;
+  locale?: LocaleCode;
 };
 
 function errorMessage(error: unknown, fallback: string) {
@@ -65,7 +71,7 @@ function hasPermission(session: UserSession, permission: "STOCK_TRANSFER" | "STO
     || session.permissions.includes(permission);
 }
 
-export function WarehouseOperationsScreen({ session, mode, t }: Props) {
+export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: Props) {
   const token = session.accessToken ?? "";
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
@@ -87,6 +93,7 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
   const [adjustmentWarehouseFilter, setAdjustmentWarehouseFilter] = useState("");
   const [adjustmentFrom, setAdjustmentFrom] = useState("");
   const [adjustmentTo, setAdjustmentTo] = useState("");
+  const [adjustmentRange, setAdjustmentRange] = useState<ReportDateRange>({ from: "", to: "", label: "" });
   const adjustmentRequest = useRef(0);
   const [adjustmentPage, setAdjustmentPage] = useState(0);
   const [adjustmentRows, setAdjustmentRows] = useState<StockAdjustmentHistoryRow[]>([]);
@@ -104,6 +111,7 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
   const [countedValues, setCountedValues] = useState<Record<string, string>>({});
   const [confirmingCount, setConfirmingCount] = useState(false);
   const countConfirmDialogRef = useRef<HTMLElement>(null);
+  const screenRef = useRef<HTMLElement>(null);
 
   async function downloadCount(format: "pdf" | "xlsx") {
     if (!selectedCount) return;
@@ -143,6 +151,10 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
     : mode === "adjustment"
       ? hasPermission(session, "STOCK_ADJUST")
       : session.permissions.includes("ADMIN") || session.permissions.includes("GESTION_ALMACEN");
+  useWarehouseListShortcuts(screenRef, allowed && mode !== "transfer", loading || saving || adjustmentFormOpen || confirmingCount);
+  const { dateOptions, dateOptionsFailed, retryDateOptions } = useReportDateOptions(
+    "stockAdjustments", token, allowed && mode === "adjustment"
+  );
 
   const loadResources = useCallback(async () => {
     if (!allowed) return;
@@ -479,17 +491,22 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
   }, { positive: 0, negative: 0, net: 0 }) ?? { positive: 0, negative: 0, net: 0 };
 
   return (
-    <section data-warehouse-heading={mode === "adjustment" ? "unified" : undefined} className={`gestion-warehouse-operations ${mode === "adjustment" ? "gestion-adjustment-screen" : ""}`} aria-labelledby="warehouse-operation-title">
+    <section ref={screenRef} data-warehouse-heading={mode === "adjustment" ? "unified" : undefined} className={`gestion-warehouse-operations gestion-warehouse-screen ${mode === "adjustment" ? "gestion-adjustment-screen" : ""}`} aria-labelledby="warehouse-operation-title">
       {mode === "adjustment" && <div className="gestion-adjustment-module-title"><h1>{t("home.warehouse")}</h1></div>}
-      <header className="gestion-warehouse-operations-header">
+      <header className="gestion-warehouse-operations-header gestion-warehouse-titlebar">
         <div>
           {mode !== "adjustment" && <span>{t("warehouse.operations.section")}</span>}
           <h2 id="warehouse-operation-title">{t(titleKey)}</h2>
           <p>{t(`${titleKey}.subtitle`)}</p>
         </div>
+        <div className="gestion-warehouse-title-actions gestion-warehouse-actions">
+        {!loading && mode === "adjustment" && <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.create} disabled={saving} onClick={() => {
+          setProductId(""); setProductQuery(""); setAdjustmentFormOpen(true);
+        }}><span><Plus size={16} aria-hidden="true" />{t("warehouse.adjustment.perform")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.create}</kbd></button>}
         <button type="button" onClick={() => { void loadResources(); if (mode === "adjustment") void refreshAdjustments(); }} disabled={loading || saving}>
-          {t("warehouse.operations.refresh")}
+          <ArrowClockwise size={16} aria-hidden="true" />{t("warehouse.operations.refresh")}
         </button>
+        </div>
       </header>
 
       {error && <p className="gestion-warehouse-operations-message error" role="alert">{error}</p>}
@@ -509,20 +526,16 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
 
       {!loading && mode === "adjustment" && (
         <div className="gestion-warehouse-adjustments">
-          <div className="gestion-warehouse-adjustments-toolbar">
+          <div className="gestion-warehouse-adjustments-toolbar gestion-warehouse-toolbar">
             <label className="adjustment-search">{t("warehouse.management.search")}
-              <input type="search" placeholder={t("warehouse.adjustment.productSearch")} value={adjustmentSearch} onChange={(event) => {
+              <WarehouseSearchFrame><input className="erp-search-input" type="search" placeholder={t("warehouse.adjustment.productSearch")} value={adjustmentSearch} onChange={(event) => {
                 setAdjustmentSearch(event.target.value); setAdjustmentPage(0);
-              }} /></label>
+              }} /></WarehouseSearchFrame></label>
             <label>{t("warehouse.operations.warehouse")}
               <ErpSelect aria-label={t("warehouse.operations.warehouse")} value={adjustmentWarehouseFilter}
                 options={[{ value: "", label: t("warehouse.count.all") }, ...warehouses.map((item) => ({ value: item.id, label: item.name }))]}
                 onChange={(value) => { setAdjustmentWarehouseFilter(value); setAdjustmentPage(0); }} />
             </label>
-            <label>{t("warehouse.report.from")}<input type="date" value={adjustmentFrom} max={adjustmentTo || undefined}
-              onChange={(event) => { setAdjustmentFrom(event.target.value); setAdjustmentPage(0); }} /></label>
-            <label>{t("warehouse.report.to")}<input type="date" value={adjustmentTo} min={adjustmentFrom || undefined}
-              onChange={(event) => { setAdjustmentTo(event.target.value); setAdjustmentPage(0); }} /></label>
           </div>
           <ErpFilterChips translate={t} chips={[
             ...(adjustmentFrom ? [{ key: "from", label: t("warehouse.report.from"), value: adjustmentFrom,
@@ -535,9 +548,6 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
             ...(adjustmentSearch.trim() ? [{ key: "search", label: t("warehouse.management.search"),
               value: adjustmentSearch.trim(), onRemove: () => { setAdjustmentSearch(""); setAdjustmentPage(0); } }] : [])
           ]} onClear={() => { setAdjustmentFrom(""); setAdjustmentTo(""); setAdjustmentWarehouseFilter(""); setAdjustmentSearch(""); setAdjustmentPage(0); }} />
-          <div className="gestion-adjustment-actions"><button type="button" onClick={() => {
-            setProductId(""); setProductQuery(""); setAdjustmentFormOpen(true);
-          }}>{t("warehouse.adjustment.perform")}</button></div>
           <div className="gestion-warehouse-adjustments-table erp-classic-tables warehouse-classic-table">
             <StockAdjustmentHistoryTable rows={adjustmentRows} session={session} t={t} />
           </div>
@@ -546,6 +556,12 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
             <span>{adjustmentPage + 1}</span>
             <button type="button" disabled={!adjustmentHasMore} onClick={() => setAdjustmentPage(adjustmentPage + 1)}>{t("warehouse.adjustment.next")}</button>
           </div>
+          {dateOptionsFailed && <div className="report-date-options-error" role="alert">
+            <span>{t("salesReport.loadError")}</span><button type="button" onClick={retryDateOptions}>{t("salesReport.retry")}</button>
+          </div>}
+          <ReportDateRangeFilter locale={locale} today={dateOptions?.currentDate ?? ""} earliestDate={dateOptions?.earliestDate ?? ""}
+            value={{ from: adjustmentFrom, to: adjustmentTo, label: "", preset: adjustmentRange.from === adjustmentFrom && adjustmentRange.to === adjustmentTo ? adjustmentRange.preset : undefined }}
+            onChange={(range) => { setAdjustmentRange(range); setAdjustmentFrom(range.from); setAdjustmentTo(range.to); setAdjustmentPage(0); }} />
           {adjustmentFormOpen && <div className="gestion-modal-backdrop"><section className="gestion-security-dialog gestion-warehouse-adjustment-dialog"
             role="dialog" aria-modal="true" aria-labelledby="warehouse-adjustment-title">
             <header><h2 id="warehouse-adjustment-title">{t("warehouse.adjustment.perform")}</h2>
@@ -595,7 +611,7 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
           <section className="gestion-stock-count-detail" aria-label={t("warehouse.count.detail")}>
             {!selectedCount && <div className="gestion-security-state">{t("warehouse.count.select")}</div>}
             {selectedCount && <>
-              <header><div><strong>{selectedCount.number} · {warehouses.find((warehouse) => warehouse.id === selectedCount.warehouseId)?.name ?? selectedCount.warehouseId}</strong><span className={`gestion-stock-count-status ${selectedCount.status.toLowerCase()}`}>{t(`warehouse.count.status.${selectedCount.status}`)}</span></div><div><button type="button" onClick={() => void downloadCount("pdf")}>{t("warehouse.count.exportPdf")}</button><button type="button" onClick={() => void downloadCount("xlsx")}>{t("warehouse.count.exportExcel")}</button>{selectedCount.status === "DRAFT" && <><button type="button" disabled={saving} onClick={() => void changeCountStatus("cancel")}>{t("warehouse.count.cancel")}</button><button type="button" disabled={saving || selectedCount.lines.length === 0} onClick={() => void prepareCountConfirmation()}>{t("warehouse.count.confirm")}</button></>}</div></header>
+              <header><div><strong>{selectedCount.number} · {warehouses.find((warehouse) => warehouse.id === selectedCount.warehouseId)?.name ?? selectedCount.warehouseId}</strong><span className={`gestion-stock-count-status ${selectedCount.status.toLowerCase()}`}>{t(`warehouse.count.status.${selectedCount.status}`)}</span></div><div className="gestion-warehouse-toolbar gestion-warehouse-actions"><button type="button" className="gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.pdf} disabled={saving} onClick={() => void downloadCount("pdf")}><span><FilePdf size={16} aria-hidden="true" />{t("warehouse.count.exportPdf")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.pdf}</kbd></button><button type="button" className="gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.excel} disabled={saving} onClick={() => void downloadCount("xlsx")}><span><FileXls size={16} aria-hidden="true" />{t("warehouse.count.exportExcel")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.excel}</kbd></button>{selectedCount.status === "DRAFT" && <><button type="button" disabled={saving} onClick={() => void changeCountStatus("cancel")}>{t("warehouse.count.cancel")}</button><button type="button" disabled={saving || selectedCount.lines.length === 0} onClick={() => void prepareCountConfirmation()}>{t("warehouse.count.confirm")}</button></>}</div></header>
               <div className="gestion-stock-count-progress" aria-label={t("warehouse.count.progress")}>
                 <div><strong>{t("warehouse.count.progress")}</strong><span>{countedProducts} / {totalCountProducts} {t("warehouse.count.productsCounted")}</span></div>
                 <div className="gestion-stock-count-progress-track" aria-hidden="true"><span style={{ width: `${countProgress}%` }} /></div>

@@ -47,6 +47,20 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("WarehouseManagementScreen", () => {
+  it("opens creation with F5 only while the list is ready and no dialog is open", async () => {
+    render(<WarehouseManagementScreen session={session(["GESTION_ALMACEN"])} t={t} />);
+    fireEvent.keyDown(window, { key: "F5" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await screen.findByRole("region", { name: "warehouse.management.list" });
+    const command = screen.getByRole("button", { name: "warehouse.management.create" });
+    expect(command).toHaveAttribute("aria-keyshortcuts", "F5");
+    fireEvent.keyDown(window, { key: "F5" });
+    expect(screen.getByRole("dialog", { name: "warehouse.management.dialog.create" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "F5" });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(api.createManagedWarehouse).not.toHaveBeenCalled();
+  });
+
   it("keeps the API order, includes inactive warehouses and saves only after confirmation", async () => {
     const inactive = { ...secondary, id: "inactive", name: "ARCHIVO", active: false, displayOrder: 2, version: 4 };
     vi.mocked(api.loadManagedWarehouses).mockResolvedValue([secondary, general, inactive]);
