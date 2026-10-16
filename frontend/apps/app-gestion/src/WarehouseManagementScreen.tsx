@@ -2,8 +2,9 @@ import { WindowCloseButton } from "../../../packages/app-common/src/components/W
 import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError, userCanManageWarehouses, type UserSession } from "@tpverp/app-common";
-import { ArrowDown, ArrowUp, ArrowsLeftRight, Cube, Gear, MapPin, Note, Package, WarningCircle } from "@phosphor-icons/react";
+import { ArrowDown, ArrowUp, ArrowsLeftRight, Cube, Gear, MapPin, Note, Package, Plus, SortAscending, WarningCircle } from "@phosphor-icons/react";
 import { activateModalFocusTrap, type ModalFocusRoot } from "../../../packages/app-common/src/components/modalFocusTrap";
+import { useWarehouseListShortcuts, WAREHOUSE_LIST_SHORTCUTS } from "../../../packages/app-common/src/components/useWarehouseListShortcuts";
 import {
   applyWarehouseStockConfigurationToAll, createManagedWarehouse, deleteManagedWarehouse,
   loadGeneralStockConfiguration, loadManagedWarehouses, loadWarehouseOverview,
@@ -46,6 +47,8 @@ export function WarehouseManagementScreen({ session, t, locale = "es", onCreateD
   const [saving, setSaving] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const dialogRef = useRef<HTMLElement>(null);
+  const screenRef = useRef<HTMLElement>(null);
+  useWarehouseListShortcuts(screenRef, canManage, !!dialog || !!pending || loading || saving);
   const selected = warehouses.find((warehouse) => warehouse.id === selectedId) ?? null;
 
   useEffect(() => {
@@ -200,16 +203,16 @@ export function WarehouseManagementScreen({ session, t, locale = "es", onCreateD
   }
 
   if (!canManage) return <div className="gestion-security-state error" role="alert">{t("warehouse.management.noAccess")}</div>;
-  return <section className="gestion-warehouse-workspace" aria-labelledby="warehouse-management-title">
-    <header className="gestion-warehouse-header"><div><h2 id="warehouse-management-title">{t("warehouse.management.title")}</h2>
-      <p>{t("warehouse.management.subtitle")}</p></div><div className="gestion-warehouse-header-actions">
-      <button type="button" onClick={openCreate}>{t("warehouse.management.create")}</button>
-      <button type="button" disabled={loading || !!loadError || warehouses.length < 2} onClick={openOrder}>{t("warehouse.management.order")}</button>
-      <button type="button" disabled={!general} onClick={openGeneral}>{t("warehouse.management.generalSettings")}</button></div></header>
-    <div className="gestion-warehouse-document-actions">
-      {canCreateDocuments && <button type="button" onClick={() => onCreateDocument?.("input")}><ArrowDown size={18} aria-hidden="true" />{t("warehouse.management.createInput")}</button>}
-      {canCreateDocuments && <button type="button" onClick={() => onCreateDocument?.("output")}><ArrowUp size={18} aria-hidden="true" />{t("warehouse.management.createOutput")}</button>}
-      {canTransfer && <button type="button" onClick={() => onCreateDocument?.("transfer")}><ArrowsLeftRight size={18} aria-hidden="true" />{t("warehouse.management.createTransfer")}</button>}
+  return <section ref={screenRef} className="gestion-warehouse-workspace gestion-warehouse-screen" aria-labelledby="warehouse-management-title">
+    <header className="gestion-warehouse-header gestion-warehouse-titlebar"><div><h2 id="warehouse-management-title">{t("warehouse.management.title")}</h2>
+      <p>{t("warehouse.management.subtitle")}</p></div><div className="gestion-warehouse-header-actions gestion-warehouse-title-actions gestion-warehouse-actions">
+      <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.create} disabled={loading || !!loadError || saving} onClick={openCreate}><span><Plus size={16} aria-hidden="true" />{t("warehouse.management.create")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.create}</kbd></button>
+      <button type="button" disabled={loading || !!loadError || warehouses.length < 2} onClick={openOrder}><SortAscending size={16} aria-hidden="true" />{t("warehouse.management.order")}</button>
+      <button type="button" disabled={!general} onClick={openGeneral}><Gear size={16} aria-hidden="true" />{t("warehouse.management.generalSettings")}</button></div></header>
+    <div className="gestion-warehouse-document-actions gestion-warehouse-actions gestion-warehouse-list-actions">
+      {canCreateDocuments && <button type="button" onClick={() => onCreateDocument?.("input")}><ArrowDown size={16} aria-hidden="true" />{t("warehouse.management.createInput")}</button>}
+      {canCreateDocuments && <button type="button" onClick={() => onCreateDocument?.("output")}><ArrowUp size={16} aria-hidden="true" />{t("warehouse.management.createOutput")}</button>}
+      {canTransfer && <button type="button" onClick={() => onCreateDocument?.("transfer")}><ArrowsLeftRight size={16} aria-hidden="true" />{t("warehouse.management.createTransfer")}</button>}
     </div>
     {status && <p className="gestion-warehouse-operation-status" role="status">{status}</p>}
     {loading ? <div className="gestion-security-state">{t("common.loading")}</div> : loadError ?
@@ -236,7 +239,7 @@ export function WarehouseManagementScreen({ session, t, locale = "es", onCreateD
           <div className="gestion-warehouse-card-metrics">
             <div><span><Cube size={19} aria-hidden="true" />{t("warehouse.management.productsDistinct")}</span><strong>{data ? quantity(data.productCount) : "—"}</strong></div>
             <div><span><Package size={19} aria-hidden="true" />{t("warehouse.management.unitsTotal")}</span><strong>{data ? quantity(data.totalQuantity) : "—"}</strong></div></div>
-          <button type="button" onClick={() => void openWarehouse(warehouse)}>{t("warehouse.management.configure")}</button>
+          <button type="button" onClick={() => void openWarehouse(warehouse)}><Gear size={16} aria-hidden="true" />{t("warehouse.management.configure")}</button>
         </article>; })}
         {warehouses.length === 0 && <p className="gestion-security-state">{t("warehouse.management.empty")}</p>}
       </section>}

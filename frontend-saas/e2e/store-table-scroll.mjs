@@ -350,8 +350,14 @@ try {
   assert.equal(await create.evaluate(element => document.activeElement === element), true);
   assertListingGeometry(await measure(page), { width: 1366, height: 768 });
   holdDashboard = true;
+  const refreshedDirectory = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === "/api/v1/admin/stores" && url.searchParams.get("page") === "0" && url.searchParams.get("q") === "pareja";
+  });
   await page.getByRole("button", { name: "Actualizar", exact: true }).click();
   await dashboardRequested;
+  // The store directory must not wait for dashboard completion.
+  await refreshedDirectory;
   stores[0].name = "Tienda pareja ficha actual";
   await rows.first().dblclick();
   await modal.locator(".retry-error").waitFor();
@@ -371,11 +377,8 @@ try {
   assert.equal(await modal.getByRole("button", { name: "Cerrar", exact: true }).isDisabled(), true);
   assert.equal(await editForm.getByRole("button", { name: "Guardar", exact: true }).isDisabled(), true);
   const profileReads = calls.filter(call => call.path === "/api/v1/admin/stores/store-1" && call.method === "GET").length;
-  const refreshedDirectory = page.waitForResponse(response => {
-    const url = new URL(response.url());
-    return url.pathname === "/api/v1/admin/stores" && url.searchParams.get("page") === "0" && url.searchParams.get("q") === "pareja";
-  });
-  releaseDashboard(); await refreshedDirectory; await settle();
+  const refreshedDashboard = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/admin/licenses");
+  releaseDashboard(); await refreshedDashboard; await settle();
   assert.equal(await editForm.getByLabel("Nombre", { exact: true }).inputValue(), "Tienda pareja editada",
     "Completing an earlier global refresh must not discard the open store draft");
   assert.equal(await editForm.getByRole("button", { name: "Guardar", exact: true }).isDisabled(), true,

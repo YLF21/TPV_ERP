@@ -1,12 +1,17 @@
 import { sortTableRows, useTableSortPreference } from "../../../packages/app-common/src/components/tableSorting";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Eye, FilePdf, FileXls, Plus, Trash } from "@phosphor-icons/react";
 import type { LocaleCode, TerminalContext, UserSession } from "../../../packages/app-common/src/types";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { ErpSelect } from "../../../packages/app-common/src/components/ErpSelect";
+import { WarehouseSearchFrame } from "../../../packages/app-common/src/components/WarehouseSearchFrame";
+import { ReportDateRangeFilter, type ReportDateRange } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
+import { useReportDateOptions } from "../../../packages/app-common/src/components/useReportDateOptions";
 import { TableLayoutHeaderCell } from "../../../packages/app-common/src/components/TableLayoutHeaderCell";
 import { visibleTableColumns, type TableColumnDefinition } from "../../../packages/app-common/src/components/tableLayoutPreferences";
 import { useTableLayoutPreference } from "../../../packages/app-common/src/components/useTableLayoutPreference";
+import { useWarehouseListShortcuts, WAREHOUSE_LIST_SHORTCUTS } from "../../../packages/app-common/src/components/useWarehouseListShortcuts";
 import "../../../packages/app-common/src/components/ErpSearchField.css";
 import { WarehouseDocumentDialog, buildWarehouseDocumentCommand,
   type WarehouseDocumentDraft, type WarehouseDocumentView } from "../../../packages/app-common/src/components/WarehouseDocumentDialog";
@@ -47,6 +52,7 @@ export function transferEditorDocument(view: TransferDocumentView): WarehouseDoc
 }
 
 export function WarehouseTransferScreen({ session, t, createOnMount = false, locale = "es", terminalContext }: Props) {
+  const rootRef = useRef<HTMLElement>(null);
   const token = session.accessToken ?? "";
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [documents, setDocuments] = useState<TransferListItem[]>([]);
@@ -59,9 +65,12 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
   const [targetFilter, setTargetFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [quickRange, setQuickRange] = useState<ReportDateRange>({ from: "", to: "", label: "" });
+  const { dateOptions, dateOptionsFailed, retryDateOptions } = useReportDateOptions("warehouseTransfers", token);
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [editor, setEditor] = useState<WarehouseDocumentView | null>(null);
   const [editorOpen, setEditorOpen] = useState(createOnMount);
+  useWarehouseListShortcuts(rootRef, Boolean(token), editorOpen);
   const [products, setProducts] = useState<WarehouseImportProduct[]>([]);
   const [resourcesReady, setResourcesReady] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -212,19 +221,21 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
     } catch { setError(t("warehouse.report.exportError")); }
     finally { exportBusy.current = false; setExporting(false); }
   }
-  return <section data-warehouse-heading="unified" className="stock-sales-history-panel warehouse-operations-panel--classic gestion-warehouse-transfer-screen" aria-labelledby="warehouse-transfer-title">
+  return <section ref={rootRef} data-warehouse-heading="unified" className="stock-sales-history-panel warehouse-operations-panel--classic gestion-warehouse-transfer-screen gestion-warehouse-screen" aria-labelledby="warehouse-transfer-title">
     <div className="gestion-warehouse-transfer-module-title"><h1>{t("home.warehouse")}</h1></div>
-    <header className="gestion-warehouse-operations-header"><div>
+    <header className="gestion-warehouse-operations-header gestion-warehouse-titlebar"><div>
       <h2 id="warehouse-transfer-title">{t("warehouse.transfer.navigation")}</h2>
-      <p>{t("warehouse.transfer.title.subtitle")}</p></div></header>
+      <p>{t("warehouse.transfer.title.subtitle")}</p></div>
+      <div className="gestion-warehouse-title-actions gestion-warehouse-actions"><button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.create} disabled={!resourcesReady} onClick={newDocument}><span><Plus size={16} aria-hidden="true" />{t("warehouseDocument.create")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.create}</kbd></button></div>
+    </header>
     {error && <p role="alert" className="gestion-warehouse-operations-message error">{error}</p>}
     {notice && <p role="status" className="gestion-warehouse-operations-message success">{notice}</p>}
-    <div className="stock-history-toolbar gestion-warehouse-transfer-toolbar">
+    <div className="stock-history-toolbar gestion-warehouse-transfer-toolbar gestion-warehouse-toolbar">
       <label><span>{t("warehouse.transfer.search")}</span>
-        <input ref={searchRef} className="erp-search-input" type="search" maxLength={120} value={searchInput}
+        <WarehouseSearchFrame><input ref={searchRef} className="erp-search-input" type="search" maxLength={120} value={searchInput}
           placeholder={t("warehouse.transfer.searchPlaceholder")}
-          onChange={(event) => setSearchInput(event.target.value)} /></label>
-      <div className="stock-history-filter-field"><span>{t("warehouse.count.status")}</span>
+          onChange={(event) => setSearchInput(event.target.value)} /></WarehouseSearchFrame></label>
+      <div className="stock-history-filter-field gestion-warehouse-status-filter" data-filter-active={Boolean(statusFilter)}><span>{t("warehouse.count.status")}</span>
         <ErpSelect aria-label={t("warehouse.count.status")} value={statusFilter}
           onChange={(value) => { setStatusFilter(value as typeof statusFilter); }}
           options={[{ value: "", label: t("warehouse.count.all") },
@@ -240,21 +251,14 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
           onChange={(value) => { setTargetFilter(value); }}
           options={[{ value: "", label: t("warehouse.count.all") },
             ...warehouses.map((item) => ({ value: item.id, label: item.name }))]} /></div>
-      <label><span>{t("warehouse.report.from")}</span>
-        <input type="date" value={dateFrom} max={dateTo || undefined}
-          onChange={(event) => { setDateFrom(event.target.value); }} /></label>
-      <label><span>{t("warehouse.report.to")}</span>
-        <input type="date" value={dateTo} min={dateFrom || undefined}
-          onChange={(event) => { setDateTo(event.target.value); }} /></label>
-      <div className="warehouse-document-actions gestion-warehouse-transfer-actions">
-        <button type="button" disabled={!resourcesReady} onClick={newDocument}>{t("warehouseDocument.create")}</button>
+      <div className="warehouse-document-actions gestion-warehouse-transfer-actions gestion-warehouse-actions gestion-warehouse-list-actions">
+        <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.excel} disabled={!token || exporting} onClick={() => void exportList("xlsx")}><span><FileXls size={16} aria-hidden="true" />{t("warehouse.count.exportExcel")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.excel}</kbd></button>
+        <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.pdf} disabled={!token || exporting} onClick={() => void exportList("pdf")}><span><FilePdf size={16} aria-hidden="true" />{t("warehouse.count.exportPdf")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.pdf}</kbd></button>
         <button type="button" disabled={!resourcesReady || !selectedDocument || listLoading || searchInput.trim() !== searchFilter}
           onClick={() => selectedDocument && void openDocument(selectedDocument.id)}>
-          {t(selectedDocument?.status === "DRAFT" ? "warehouse.transfer.edit" : "warehouseDocument.view")}</button>
+          <span><Eye size={16} aria-hidden="true" />{t("warehouseDocument.open")}</span></button>
         <button type="button" disabled={selectedDocument?.status !== "DRAFT" || cancelling || listLoading}
-          onClick={() => void cancelSelectedDocument()}>{t("warehouse.transfer.cancelDocument")}</button>
-        <button type="button" disabled={!token || exporting} onClick={() => void exportList("pdf")}>{t("warehouse.count.exportPdf")}</button>
-        <button type="button" disabled={!token || exporting} onClick={() => void exportList("xlsx")}>{t("warehouse.count.exportExcel")}</button>
+          onClick={() => void cancelSelectedDocument()}><span><Trash size={16} aria-hidden="true" />{t("warehouse.transfer.cancelDocument")}</span></button>
       </div>
     </div>
     <ErpFilterChips translate={t} focusRef={searchRef} className="gestion-warehouse-transfer-chips"
@@ -326,6 +330,11 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
       onSaved={(saved) => { setEditor(saved); setNotice(t("warehouse.transfer.saved")); void loadDocuments(); }}
       onConfirmed={() => { setEditorOpen(false); setNotice(t("warehouse.transfer.completed"));
         void loadDocuments(); }} />, document.body)}
+
+    {dateOptionsFailed && <div className="report-date-options-error" role="alert"><span>{t("salesReport.loadError")}</span><button type="button" onClick={retryDateOptions}>{t("salesReport.retry")}</button></div>}
+    <ReportDateRangeFilter locale={locale} today={dateOptions?.currentDate ?? ""} earliestDate={dateOptions?.earliestDate ?? ""}
+      value={{ from: dateFrom, to: dateTo, label: "", preset: quickRange.from === dateFrom && quickRange.to === dateTo ? quickRange.preset : undefined }}
+      onChange={(range) => { setQuickRange(range); setDateFrom(range.from); setDateTo(range.to); }} />
 
   </section>;
 }

@@ -35,6 +35,11 @@ beforeEach(() => {
       }],
       hasMore: false,
     };
+    if (path.startsWith("/document-reports/date-options?report=topSales")) {
+      return { currentDate: "2026-10-15", earliestDate: "2026-01-01" };
+    }
+    if (path.startsWith("/stock/top-sales")) return [];
+    if (path === "/promotions") return [];
     if (path === "/warehouses") return [{ id: "warehouse-1", name: "GENERAL", defaultWarehouse: true, active: true }];
     if (path === "/families") return [{ id: "family-1", familyCode: "001", name: "Bebidas", defaultFamily: true }];
     if (path === "/taxes/selectable") return [{ id: "tax-1", percentage: "7", defaultTax: true }];
@@ -51,10 +56,11 @@ afterEach(() => {
 });
 
 async function renderStock(options: {
-  app?: "venta" | "gestion";
+  app?: "venta" | "gestion" | "pda";
   session?: UserSession;
-  initialView?: "stock.current" | "stock.bulkEdit";
+  initialView?: "stock.current" | "stock.topSales" | "stock.offers" | "stock.memberPrice" | "stock.promotions" | "stock.noDiscount" | "stock.bulkEdit";
   initialPartyDirectory?: "customers";
+  allowSafeRetirement?: boolean;
 } = {}) {
   const view = render(<StockScreen
     {...props}
@@ -62,11 +68,14 @@ async function renderStock(options: {
     session={options.session ?? baseSession}
     initialView={options.initialView}
     initialPartyDirectory={options.initialPartyDirectory}
+    allowSafeRetirement={options.allowSafeRetirement}
   />);
   if (options.initialPartyDirectory) {
     await screen.findByRole("heading", { name: "Clientes" });
   } else if (options.initialView === "stock.bulkEdit") {
     await screen.findByRole("button", { name: "Nuevo" });
+  } else if (options.app === "gestion") {
+    await screen.findByRole("button", { name: "Añadir producto F5" });
   } else {
     await screen.findByText("Café de prueba");
   }
@@ -92,7 +101,7 @@ describe("StockScreen F5 add-product shortcut", () => {
     expect(screen.queryByRole("button", { name: /Añadir producto/ })).toBeNull();
   });
 
-  it("keeps F5 on the product detail modal for switching to the Stock tab", async () => {
+  it("keeps F5 on the APP VENTA product detail modal for switching to the Stock tab", async () => {
     const { container } = await renderStock();
     fireEvent.doubleClick(container.querySelector("article.stock-row")!);
     const detail = await screen.findByRole("dialog", { name: "Información del producto" });
@@ -105,11 +114,52 @@ describe("StockScreen F5 add-product shortcut", () => {
     expect(screen.queryByRole("dialog", { name: "Añadir producto" })).toBeNull();
   });
 
-  it("does not open Añadir producto in APP GESTIÓN", async () => {
-    await renderStock({ app: "gestion" });
+  it.each([
+    "stock.current",
+    "stock.topSales",
+    "stock.offers",
+    "stock.memberPrice",
+    "stock.promotions",
+    "stock.noDiscount",
+  ] as const)("opens Añadir producto with F5 in APP GESTIÓN %s", async (initialView) => {
+    await renderStock({ app: "gestion", initialView, allowSafeRetirement: true });
 
     fireEvent.keyDown(window, { key: "F5" });
 
+    expect(await screen.findByRole("dialog", { name: "Añadir producto" })).toBeTruthy();
+  });
+
+  it("opens product creation with F5 when the APP GESTIÓN stock table has focus", async () => {
+    const { container } = await renderStock({ app: "gestion", allowSafeRetirement: true });
+    const table = container.querySelector<HTMLElement>(".stock-table")!;
+    table.focus();
+
+    fireEvent.keyDown(table, { key: "F5" });
+
+    expect(await screen.findByRole("dialog", { name: "Añadir producto" })).toBeTruthy();
+  });
+
+  it.each([
+    { repeat: true },
+    { ctrlKey: true },
+    { altKey: true },
+    { metaKey: true },
+    { shiftKey: true },
+  ])("ignores repeated or modified F5 in APP GESTIÓN", async (eventOptions) => {
+    await renderStock({ app: "gestion", allowSafeRetirement: true });
+
+    fireEvent.keyDown(window, { key: "F5", ...eventOptions });
+
+    expect(screen.queryByRole("dialog", { name: "Añadir producto" })).toBeNull();
+  });
+
+  it("keeps product creation out of APP PDA and leaves its button without F5", async () => {
+    await renderStock({ app: "pda" });
+    const addButton = screen.getByRole("button", { name: "Añadir producto" });
+
+    fireEvent.keyDown(window, { key: "F5" });
+
+    expect(addButton.getAttribute("aria-keyshortcuts")).not.toBe("F5");
     expect(screen.queryByRole("dialog", { name: "Añadir producto" })).toBeNull();
   });
 

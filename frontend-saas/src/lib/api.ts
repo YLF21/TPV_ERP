@@ -15,6 +15,9 @@ import type {
   CreateCompanyRequest,
   CreateCompanyResponse,
   Credentials,
+  DemoRequest,
+  DemoRequestPage,
+  DemoRequestStatus,
   LoginCredentials,
   CustomerHealth,
   DashboardData,
@@ -57,6 +60,8 @@ import type {
   OutboxFailurePage
 } from "./types";
 import { extractApiErrorMessage } from "./problem-detail.mjs";
+import { demoRequestPagePath } from "../features/marketing/demo-request-query.mjs";
+import { RequestDeadlineError, withinRequestDeadline } from "./request-deadline.mjs";
 
 const API_BASE = import.meta.env.VITE_SAAS_API_BASE_URL ?? "";
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -83,23 +88,17 @@ export class ApiError extends Error {
 
 export { extractApiErrorMessage };
 
-async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const externalSignal = init.signal;
-  const abortFromExternalSignal = () => controller.abort(externalSignal?.reason);
-  if (externalSignal?.aborted) controller.abort(externalSignal.reason);
-  else externalSignal?.addEventListener("abort", abortFromExternalSignal, { once: true });
-  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+async function fetchWithTimeout<T = Response>(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = REQUEST_TIMEOUT_MS, consume?: (response: Response) => Promise<T>): Promise<T> {
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    return await withinRequestDeadline(async signal => {
+      const response = await fetch(input, { ...init, signal });
+      return consume ? await consume(response) : response as T;
+    }, timeoutMs, init.signal);
   } catch (error) {
-    if (controller.signal.aborted && !externalSignal?.aborted) {
+    if (error instanceof RequestDeadlineError) {
       throw new ApiError(408, "La solicitud ha superado el tiempo de espera");
     }
     throw error;
-  } finally {
-    window.clearTimeout(timeout);
-    externalSignal?.removeEventListener("abort", abortFromExternalSignal);
   }
 }
 
@@ -169,7 +168,29 @@ export async function request<T>(credentials: Credentials, path: string, options
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }
 
+// The inbox keeps its deadline active through JSON/error body consumption.
+async function inboxRequest<T>(credentials: Credentials, path: string, options: RequestOptions = {}): Promise<T> {
+  return fetchWithTimeout(`${API_BASE}${path}`, {
+    method: options.method ?? "GET",
+    cache: "no-store",
+    headers: { Authorization: authHeader(credentials), Accept: "application/json", ...(options.body ? { "Content-Type": "application/json" } : {}) },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  }, REQUEST_TIMEOUT_MS, async response => {
+    if (response.status === 401) unauthorizedHandler?.(credentials);
+    const text = await response.text();
+    if (!response.ok) throw new ApiError(response.status, text || response.statusText || "Error de comunicacion");
+    if (!/\bapplication\/(?:[\w.+-]+\+)?json\b/i.test(response.headers.get("Content-Type") ?? "")) throw new ApiError(502, "Respuesta no valida");
+    return JSON.parse(text) as T;
+  });
+}
+
 export const api = {
+  demoRequests(credentials: Credentials, filters: { page: number; size: number; status?: DemoRequestStatus; query?: string }) {
+    return inboxRequest<DemoRequestPage>(credentials, demoRequestPagePath(filters));
+  },
+  updateDemoRequestStatus(credentials: Credentials, id: string, status: DemoRequestStatus, expectedStatus: DemoRequestStatus) {
+    return inboxRequest<DemoRequest>(credentials, `/api/v1/admin/demo-requests/${encodeURIComponent(id)}/status`, { method: "PUT", body: { status, expectedStatus } });
+  },
   tenantLogin(credentials: LoginCredentials) {
     return publicPost<LoginResponse>("/api/v1/auth/login", credentials);
   },

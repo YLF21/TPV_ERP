@@ -5,6 +5,11 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { WarehouseTransferScreen } from "./WarehouseTransferScreen";
 import * as api from "./warehouseOperationsApi";
 import type { UserSession } from "../../../packages/app-common/src/types";
+import { apiRequest } from "../../../packages/app-common/src/api/client";
+
+vi.mock("../../../packages/app-common/src/api/client", async (original) => ({
+  ...await original<typeof import("../../../packages/app-common/src/api/client")>(), apiRequest: vi.fn()
+}));
 
 vi.mock("./warehouseOperationsApi", async (original) => ({
   ...await original<typeof import("./warehouseOperationsApi")>(),
@@ -21,6 +26,12 @@ vi.mock("./warehouseOperationsApi", async (original) => ({
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  vi.mocked(apiRequest).mockImplementation(async (path) => {
+    if (path === "/document-reports/date-options?report=warehouseTransfers") return {
+      currentDate: "2026-09-24", earliestDate: "2025-01-01"
+    } as never;
+    throw new Error(`Unexpected request: ${path}`);
+  });
   vi.mocked(api.loadWarehouseOptions).mockResolvedValue([
     { id: "source", name: "ORIGEN", active: true },
     { id: "target", name: "DESTINO", active: true }
@@ -72,7 +83,7 @@ it("lists transfer documents like warehouse entries and opens the selected one",
   render(<WarehouseTransferScreen session={{ username: "admin", displayName: "Admin",
     accessToken: "token", permissions: ["GESTION_ALMACEN"] }} t={(key) => key} />);
   const row = await screen.findByRole("row", { name: /TRA-2026-000001/ });
-  expect(screen.getByRole("button", { name: "warehouseDocument.view" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "warehouseDocument.open" })).toBeDisabled();
   expect(within(row).getByText("Reposición")).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: /warehouse.transfer.lines/ })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: /warehouse.transfer.units/ })).toBeInTheDocument();
@@ -80,7 +91,7 @@ it("lists transfer documents like warehouse entries and opens the selected one",
   expect(within(row).getByText(/7[,.]5/)).toBeInTheDocument();
   fireEvent.click(row);
   expect(row).toHaveAttribute("aria-selected", "true");
-  fireEvent.click(screen.getByRole("button", { name: "warehouseDocument.view" }));
+  fireEvent.click(screen.getByRole("button", { name: "warehouseDocument.open" }));
   await waitFor(() => expect(api.loadTransferDocument).toHaveBeenCalledWith("transfer", "token"));
   expect(await screen.findByRole("dialog", { name: /TRA-2026-000001/ })).toBeInTheDocument();
 });
@@ -163,7 +174,11 @@ it("exports the complete filtered list as PDF and Excel independently of loaded 
   fireEvent.change(screen.getByRole("searchbox", { name: "warehouse.transfer.search" }), { target: { value: "TRA" } });
   fireEvent.click(screen.getByRole("button", { name: "warehouse.transfer.source" }));
   fireEvent.click(await screen.findByRole("option", { name: "ORIGEN" }));
-  fireEvent.change(screen.getByLabelText("warehouse.report.from"), { target: { value: "2026-09-01" } });
+  const dock = screen.getByRole("contentinfo", { name: "Periodo seleccionado" });
+  fireEvent.click(within(dock).getByRole("button", { name: "Periodo personalizado" }));
+  fireEvent.change(within(dock).getByLabelText("Desde"), { target: { value: "2026-09-01" } });
+  fireEvent.change(within(dock).getByLabelText("Hasta"), { target: { value: "2026-09-24" } });
+  fireEvent.click(within(dock).getByRole("button", { name: "Aplicar periodo" }));
   for (const [label, format] of [["warehouse.count.exportPdf", "pdf"], ["warehouse.count.exportExcel", "xlsx"]]) {
     const button = screen.getByRole("button", { name: label });
     await waitFor(() => expect(button).toBeEnabled());
@@ -173,6 +188,58 @@ it("exports the complete filtered list as PDF and Excel independently of loaded 
   }
   await waitFor(() => expect(download).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2), { timeout: 2000 });
+});
+
+it("routes F5/F6/F7 through transfer buttons and blocks shortcuts while exporting or editing", async () => {
+  vi.stubGlobal("URL", class extends URL {
+    static createObjectURL = vi.fn(() => "blob:transfer");
+    static revokeObjectURL = vi.fn();
+  });
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  let finishExport!: (value: Blob) => void;
+  vi.mocked(api.exportTransferList).mockImplementationOnce(() => new Promise((resolve) => { finishExport = resolve; }))
+    .mockResolvedValue(new Blob(["report"]));
+  render(<WarehouseTransferScreen session={listSession} t={(key) => key} />);
+  const create = screen.getByRole("button", { name: "warehouseDocument.create" });
+  await waitFor(() => expect(create).toBeEnabled());
+  expect(create).toHaveAttribute("aria-keyshortcuts", "F5");
+  fireEvent.keyDown(window, { key: "F6" });
+  await waitFor(() => expect(api.exportTransferList).toHaveBeenCalledWith("xlsx", expect.any(Object), "es", "token"));
+  fireEvent.keyDown(window, { key: "F7" });
+  expect(api.exportTransferList).toHaveBeenCalledTimes(1);
+  await act(async () => finishExport(new Blob(["report"])));
+  fireEvent.keyDown(window, { key: "F7" });
+  await waitFor(() => expect(api.exportTransferList).toHaveBeenLastCalledWith("pdf", expect.any(Object), "es", "token"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "warehouse.count.exportPdf" })).toBeEnabled());
+  fireEvent.keyDown(window, { key: "F5" });
+  expect(await screen.findByRole("dialog", { name: "warehouse.transfer.create" })).toBeInTheDocument();
+  fireEvent.keyDown(window, { key: "F6" });
+  expect(api.exportTransferList).toHaveBeenCalledTimes(2);
+  expect(api.saveTransferDocument).not.toHaveBeenCalled();
+});
+
+it("applies transfer periods to list requests and exports while retaining the other filters", async () => {
+  vi.stubGlobal("URL", class extends URL {
+    static createObjectURL = vi.fn(() => "blob:transfer");
+    static revokeObjectURL = vi.fn();
+  });
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  vi.mocked(api.exportTransferList).mockResolvedValue(new Blob(["report"]));
+  render(<WarehouseTransferScreen session={listSession} t={(key) => key} />);
+  const dock = await screen.findByRole("contentinfo", { name: "Periodo seleccionado" });
+  await waitFor(() => expect(within(dock).getByRole("button", { name: "Hoy" })).toBeEnabled());
+  expect(within(dock).getByRole("button", { name: "Hoy" })).toHaveAttribute("aria-pressed", "false");
+  fireEvent.click(screen.getByRole("button", { name: "warehouse.count.status" }));
+  fireEvent.click(screen.getByRole("option", { name: "warehouse.count.status.DRAFT" }));
+  fireEvent.click(within(dock).getByRole("button", { name: "Ayer" }));
+  await waitFor(() => expect(api.loadTransferDocuments).toHaveBeenLastCalledWith(0,
+    expect.objectContaining({ status: "DRAFT", dateFrom: "2026-09-23", dateTo: "2026-09-23" }), "token"));
+  fireEvent.change(within(dock).getByRole("combobox", { name: "Mes" }), { target: { value: "2026-08" } });
+  await waitFor(() => expect(api.loadTransferDocuments).toHaveBeenLastCalledWith(0,
+    expect.objectContaining({ status: "DRAFT", dateFrom: "2026-08-01", dateTo: "2026-08-31" }), "token"));
+  fireEvent.click(screen.getByRole("button", { name: "warehouse.count.exportExcel" }));
+  await waitFor(() => expect(api.exportTransferList).toHaveBeenLastCalledWith("xlsx",
+    expect.objectContaining({ status: "DRAFT", dateFrom: "2026-08-01", dateTo: "2026-08-31" }), "es", "token"));
 });
 
 it("appends on scroll without duplicate requests or rows and preserves selection", async () => {

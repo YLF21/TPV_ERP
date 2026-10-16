@@ -459,12 +459,15 @@ try {
   await until(async () => await activeCodes.getByRole("button", { name: "Actualizar códigos", exact: true }).isEnabled());
   const oldCodes = fixture.holdCodes();
   await activeCodes.getByRole("button", { name: "Actualizar códigos", exact: true }).click(); await oldCodes.requested;
+  // The independent refresh can start as soon as regeneration is confirmed,
+  // even when the dashboard fails. Hold it before issuing the POST.
+  const freshCodes = fixture.holdCodes();
   await activeStore.getByRole("button", { name: "Generar código de activación", exact: true }).click();
   await activeCodes.getByText("SYNTHETIC-NEW-BETA-3", { exact: true }).waitFor();
   assert.equal(await activeCodes.getByText("SYNTHETIC-NEW-BETA-2", { exact: true }).count(), 0,
     "Regeneration must immediately hide the previous code for the same license");
-  // Hold the queued fresh GET too, so the old response cannot be accidentally masked by its successor.
-  const freshCodes = fixture.holdCodes(); oldCodes.release(); await oldCodes.done; await freshCodes.requested;
+  // Deliver the stale response while its successor is still pending.
+  oldCodes.release(); await oldCodes.done; await freshCodes.requested;
   assert.equal(await activeCodes.getByText("SYNTHETIC-NEW-BETA-2", { exact: true }).count(), 0);
   assert.equal(await activeCodes.getByText("SYNTHETIC-NEW-BETA-3", { exact: true }).isVisible(), true,
     "A GET begun before the POST cannot hide the newly issued code");

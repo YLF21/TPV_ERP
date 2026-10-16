@@ -3,6 +3,50 @@
 /* APP GESTIÓN uses the same desktop table tokens as APP VENTA. Keep existing
    column templates, scroll containers, editor controls and semantic badges. */
 @media screen {
+  /* Invisible header tools must not consume the label's available width.
+     Retain real header actions (such as the customer name/code toggle) and
+     multi-level headings in their existing layout. */
+  html[data-app="gestion"] .erp-classic-tables .table-layout-header-cell:not(.bulk-pair-header):not(:has(.table-layout-header-action)) {
+    --gestion-sort-space: 0px;
+    --gestion-menu-space: 0px;
+  }
+  html[data-app="gestion"] .erp-classic-tables .table-layout-header-cell:not(.bulk-pair-header):not(:has(.table-layout-header-action)):is(:hover, :focus-within, :has(.table-layout-column-menu-button.is-open), :has(.table-layout-sort-button.is-active)) {
+    --gestion-sort-space: 17px;
+  }
+  html[data-app="gestion"] .erp-classic-tables .table-layout-header-cell.has-column-menu:not(.bulk-pair-header):not(:has(.table-layout-header-action)):is(:hover, :focus-within, :has(.table-layout-column-menu-button.is-open)) {
+    --gestion-menu-space: 27px;
+  }
+  html[data-app="gestion"] .erp-classic-tables .table-layout-header-cell:not(.bulk-pair-header):not(:has(.table-layout-header-action)) .table-layout-header-actions {
+    position: absolute !important;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%) !important;
+  }
+  html[data-app="gestion"] .erp-classic-tables .table-layout-header-cell:not(.bulk-pair-header):not(:has(.table-layout-header-action)) .table-layout-sort-button {
+    width: 100%;
+    padding-right: calc(2px + var(--gestion-sort-space) + var(--gestion-menu-space)) !important;
+    padding-left: 2px !important;
+  }
+  html[data-app="gestion"] .erp-classic-tables .table-layout-header-cell:not(.bulk-pair-header):not(:has(.table-layout-header-action)) .table-layout-sort-label {
+    flex: 1;
+    width: auto;
+  }
+  html[data-app="gestion"] .erp-classic-tables .table-layout-header-cell:not(.bulk-pair-header):not(:has(.table-layout-header-action)) .table-layout-sort-indicator {
+    position: absolute !important;
+    right: calc(2px + var(--gestion-menu-space));
+  }
+  html[data-app="gestion"] .erp-classic-tables .table-layout-header-cell:not(.bulk-pair-header):not(:has(.table-layout-header-action)) > .table-layout-header-controls > .table-layout-header-label {
+    padding-right: calc(2px + var(--gestion-menu-space)) !important;
+  }
+  @media (hover: none), (any-pointer: coarse) {
+    html[data-app="gestion"] .erp-classic-tables .table-layout-header-cell:not(.bulk-pair-header):not(:has(.table-layout-header-action)) {
+      --gestion-sort-space: 17px;
+    }
+    html[data-app="gestion"] .erp-classic-tables .table-layout-header-cell.has-column-menu:not(.bulk-pair-header):not(:has(.table-layout-header-action)) {
+      --gestion-menu-space: 27px;
+    }
+  }
+
   .gestion-classic-tables :is(table, [role="table"], [role="grid"],
     .gestion-warehouse-list, .gestion-payment-methods-panel, .gestion-taxes-table,
     .gestion-document-template-list, .gestion-operation-security-table) {

@@ -1,0 +1,18 @@
+.demo-inbox-filters { align-items: end; flex-wrap: wrap; }
+.demo-inbox-filters .demo-inbox-search { flex: 1 1 280px; }
+.demo-inbox-caption { text-align: left; padding: 8px 0; color: #42576e; font-size: 13px; }
+.demo-inbox td { overflow-wrap: anywhere; }
+.demo-request-dialog { max-width: 850px; }
+.demo-request-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; margin: 0 0 20px; }
+.demo-request-details div { min-width: 0; }
+.demo-request-details dt { font-size: 12px; color: #42576e; margin-bottom: 5px; }
+.demo-request-details dd { margin: 0; font-size: 14px; line-height: 1.5; color: #17324f; overflow-wrap: anywhere; }
+.demo-request-details .demo-request-message { grid-column: 1 / -1; }
+.demo-request-message dd { white-space: pre-wrap; padding: 12px; border: 1px solid #c7d5e3; background: #fff; }
+.demo-request-attribution { margin: 0 0 20px; border-top: 1px solid #c7d5e3; padding-top: 12px; }
+.demo-request-attribution summary { cursor: pointer; margin-bottom: 12px; font-size: 13px; }
+.demo-request-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+@media (max-width: 600px) {
+  .demo-request-details { grid-template-columns: minmax(0, 1fr); }
+  .demo-inbox-filters > button { min-height: 40px; }
+}

@@ -28,6 +28,7 @@ import { BillingView } from "../features/billing/BillingView";
 import { OutboxRecoveryView } from "../features/outbox/OutboxRecoveryView";
 import { ReportsView } from "../features/reports/ReportsView";
 import { AuditView } from "../features/audit/AuditView";
+import { DemoRequestsView } from "../features/marketing/DemoRequestsView";
 import { setActiveLocale } from "../i18n";
 import { appVersion } from "../lib/appVersion";
 
@@ -177,14 +178,17 @@ export default function App() {
     );
     setLoading(true);
     try {
-        const [dashboard, nextSession, stores] = await Promise.all([
+        // Permission-gated independent modules must not depend on dashboard health.
+        const nextSession = await api.session(activeCredentials);
+        if (!isCurrent()) return false;
+        setSession(nextSession);
+        setRefreshVersion(v => v + 1);
+        const [dashboard, stores] = await Promise.all([
           api.dashboard(activeCredentials),
-          api.session(activeCredentials),
           api.fiscalStatus(activeCredentials).catch(() => [] as FiscalStatusAdmin[])
         ]);
         if (!isCurrent()) return false;
-        setData(dashboard); setSession(nextSession); setSearchStores(stores); setNotice(null);
-        setRefreshVersion(v => v + 1);
+        setData(dashboard); setSearchStores(stores); setNotice(null);
         return true;
     } catch (error) {
       if (!isCurrent()) return false;
@@ -461,7 +465,10 @@ export default function App() {
 
         {notice && <div className={`notice ${notice.type}`} role={notice.type === "error" ? "alert" : "status"} aria-live={notice.type === "error" ? "assertive" : "polite"}>{notice.text}</div>}
 
-        {!visibleData ? (
+        {activeView === "demo-requests" ? (
+          session ? <DemoRequestsView credentials={credentials} permissions={permissions} />
+            : <EmptyState text={loading ? i18n.t("loadingSaas") : i18n.t("noLoadedData")} />
+        ) : !visibleData ? (
           <EmptyState text={loading ? i18n.t("loadingSaas") : i18n.t("noLoadedData")} />
         ) : (
           <>
