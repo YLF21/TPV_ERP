@@ -1,6 +1,7 @@
 package com.tpverp.backend.inventory;
 
 import jakarta.persistence.LockModeType;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -10,6 +11,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface StockCountRepository extends JpaRepository<StockCount, UUID> {
+    @Query("select min(value.documentDate) from StockCount value where value.storeId = :storeId")
+    LocalDate findFirstReportDate(UUID storeId);
+
     List<StockCount> findByStoreIdOrderByCreatedAtDesc(UUID storeId);
     List<StockCount> findByStoreIdAndStatusOrderByCreatedAtDesc(UUID storeId, StockCountStatus status);
     Optional<StockCount> findByIdAndStoreId(UUID id, UUID storeId);

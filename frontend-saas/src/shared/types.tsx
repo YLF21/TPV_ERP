@@ -3,7 +3,7 @@
 
 
 
-export type View = "dashboard" | "companies" | "stores" | "create-license" | "failures" | "access" | "integrations" | "licenses" | "sync" | "fiscal" | "fiscal-policy" | "users" | "audit" | "support" | "health" | "billing" | "outbox" | "reports";
+export type View = "dashboard" | "companies" | "stores" | "create-license" | "failures" | "access" | "integrations" | "licenses" | "sync" | "fiscal" | "fiscal-policy" | "users" | "audit" | "support" | "health" | "billing" | "outbox" | "reports" | "demo-requests";
 
 export type Notice = { type: "success" | "error"; text: string } | null;
 

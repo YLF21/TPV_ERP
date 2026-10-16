@@ -29,7 +29,7 @@ class DemoRequestControllerTest {
         DemoRequestService service = mock(DemoRequestService.class);
         UUID id = UUID.fromString("704802c5-47af-4f74-ae68-a90c56b8c3c6");
         Instant receivedAt = Instant.parse("2026-10-03T10:15:30Z");
-        when(service.submit(any())).thenReturn(new DemoRequestReceipt(id, receivedAt));
+        when(service.submit(any(), any(), any())).thenReturn(new DemoRequestReceipt(id, receivedAt));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new DemoRequestController(service))
                 .setControllerAdvice(new DemoRequestExceptionHandler()).build();
 
@@ -59,7 +59,7 @@ class DemoRequestControllerTest {
                 .andExpect(jsonPath("$.receivedAt").value("2026-10-03T10:15:30Z"));
 
         ArgumentCaptor<CreateDemoRequest> submitted = ArgumentCaptor.forClass(CreateDemoRequest.class);
-        verify(service).submit(submitted.capture());
+        verify(service).submit(submitted.capture(), any(), any());
         org.assertj.core.api.Assertions.assertThat(submitted.getValue()).satisfies(request -> {
             org.assertj.core.api.Assertions.assertThat(request.landingPath()).isEqualTo("/producto/contacto");
             org.assertj.core.api.Assertions.assertThat(request.referrer()).isEqualTo("https://search.example/");
@@ -90,13 +90,13 @@ class DemoRequestControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
-        verify(service, never()).submit(any());
+        verify(service, never()).submit(any(), any(), any());
     }
 
     @Test
     void keepsAcceptingExistingPayloadsWithoutAttribution() throws Exception {
         DemoRequestService service = mock(DemoRequestService.class);
-        when(service.submit(any())).thenReturn(new DemoRequestReceipt(
+        when(service.submit(any(), any(), any())).thenReturn(new DemoRequestReceipt(
                 UUID.fromString("704802c5-47af-4f74-ae68-a90c56b8c3c6"),
                 Instant.parse("2026-10-03T10:15:30Z")));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new DemoRequestController(service))
@@ -117,7 +117,7 @@ class DemoRequestControllerTest {
                 .andExpect(status().isCreated());
 
         ArgumentCaptor<CreateDemoRequest> submitted = ArgumentCaptor.forClass(CreateDemoRequest.class);
-        verify(service).submit(submitted.capture());
+        verify(service).submit(submitted.capture(), any(), any());
         org.assertj.core.api.Assertions.assertThat(submitted.getValue().landingPath()).isNull();
         org.assertj.core.api.Assertions.assertThat(submitted.getValue().utmCampaign()).isNull();
         org.assertj.core.api.Assertions.assertThat(submitted.getValue().selectedProducts())
@@ -177,12 +177,12 @@ class DemoRequestControllerTest {
                         .content(validPayload(selection)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-        verify(service, never()).submit(any());
+        verify(service, never()).submit(any(), any(), any());
     }
 
     private static CreateDemoRequest submitSelection(String selection) throws Exception {
         DemoRequestService service = mock(DemoRequestService.class);
-        when(service.submit(any())).thenReturn(new DemoRequestReceipt(UUID.randomUUID(), Instant.now()));
+        when(service.submit(any(), any(), any())).thenReturn(new DemoRequestReceipt(UUID.randomUUID(), Instant.now()));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new DemoRequestController(service))
                 .setControllerAdvice(new DemoRequestExceptionHandler()).build();
         mvc.perform(post("/api/v1/public/demo-requests")
@@ -190,7 +190,7 @@ class DemoRequestControllerTest {
                         .content(validPayload(selection)))
                 .andExpect(status().isCreated());
         ArgumentCaptor<CreateDemoRequest> submitted = ArgumentCaptor.forClass(CreateDemoRequest.class);
-        verify(service).submit(submitted.capture());
+        verify(service).submit(submitted.capture(), any(), any());
         return submitted.getValue();
     }
 
@@ -223,7 +223,7 @@ class DemoRequestControllerTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.detail").value("La solicitud contiene campos invalidos"));
 
-        verify(service, never()).submit(any());
+        verify(service, never()).submit(any(), any(), any());
     }
 
     @Test
@@ -256,7 +256,7 @@ class DemoRequestControllerTest {
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
-            verify(service, never()).submit(any());
+            verify(service, never()).submit(any(), any(), any());
         }
     }
 }

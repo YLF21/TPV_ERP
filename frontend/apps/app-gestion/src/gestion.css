@@ -6188,8 +6188,18 @@ button.gestion-voucher-row.selected { box-shadow: inset 4px 0 0 #1d5f92; backgro
   min-height: 28px; padding: 3px 8px; border: 1px solid #adc3d9; border-radius: 0;
   background: #fff; color: #173d64; font-size: 12px;
 }
-/* Keep sorting discoverable on all five warehouse list headers. */
-[data-warehouse-heading="unified"] .erp-classic-tables .table-layout-sort-indicator { opacity: 1 !important; }
+
+@media screen {
+  html[data-app="gestion"] .stock-screen .stock-add-product-button:has(> kbd) {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding-block: 0 !important;
+  }
+  html[data-app="gestion"] .stock-screen .stock-add-product-button > span {
+    color: inherit !important;
+  }
+}
 
 /* Shared heading geometry for product, customer and supplier management. */
 .gestion-safe-management {

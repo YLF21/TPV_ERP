@@ -4,8 +4,13 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserSession } from "../../../packages/app-common/src/types";
+import { apiRequest } from "../../../packages/app-common/src/api/client";
 import { WarehouseOperationsScreen } from "./WarehouseOperationsScreen";
 import * as api from "./warehouseOperationsApi";
+
+vi.mock("../../../packages/app-common/src/api/client", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../../packages/app-common/src/api/client")>(), apiRequest: vi.fn()
+}));
 
 vi.mock("./warehouseOperationsApi", async (importOriginal) => {
   const original = await importOriginal<typeof import("./warehouseOperationsApi")>();
@@ -23,7 +28,8 @@ vi.mock("./warehouseOperationsApi", async (importOriginal) => {
     createStockCount: vi.fn(),
     updateStockCountLine: vi.fn(),
     confirmStockCount: vi.fn(),
-    cancelStockCount: vi.fn()
+    cancelStockCount: vi.fn(),
+    exportStockCount: vi.fn()
   };
 });
 
@@ -66,6 +72,8 @@ describe("WarehouseOperationsScreen", () => {
   afterEach(cleanup);
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(apiRequest).mockImplementation(async (path) => String(path).startsWith("/document-reports/date-options")
+      ? { currentDate: "2026-10-15", earliestDate: "2026-01-01" } : []);
     vi.mocked(api.loadWarehouseOperationResources).mockResolvedValue(resources);
     vi.mocked(api.loadWarehouseOptions).mockResolvedValue(resources.warehouses);
     vi.mocked(api.loadStockAdjustmentHistory).mockResolvedValue({ items: [], nextCursor: null, hasMore: false });
@@ -79,6 +87,23 @@ describe("WarehouseOperationsScreen", () => {
     vi.mocked(api.createStockAdjustment).mockResolvedValue({
       productId: "coffee", warehouseId: "general", quantity: 8
     });
+  });
+
+  it("uses the store period bar for adjustment dates while preserving search and warehouse filters", async () => {
+    render(<WarehouseOperationsScreen session={session(["STOCK_ADJUST"])} mode="adjustment" t={t} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
+    expect(screen.queryByLabelText("warehouse.report.from")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "CAF" } });
+    fireEvent.click(screen.getByRole("button", { name: "warehouse.operations.warehouse" }));
+    fireEvent.click(screen.getByRole("option", { name: "GENERAL" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ayer" }));
+    await waitFor(() => expect(api.loadStockAdjustmentHistory).toHaveBeenLastCalledWith("token", expect.objectContaining({
+      page: 0, warehouseId: "general", search: "CAF", from: new Date("2026-10-14T00:00:00").toISOString(), to: new Date("2026-10-15T00:00:00").toISOString()
+    })));
+    fireEvent.click(screen.getByRole("button", { name: "filters.remove warehouse.report.from" }));
+    await waitFor(() => expect(api.loadStockAdjustmentHistory).toHaveBeenLastCalledWith("token", expect.objectContaining({ from: undefined, search: "CAF", warehouseId: "general" })));
+    expect(screen.getByRole("button", { name: "Ayer" })).toHaveAttribute("aria-pressed", "false");
+    expect(api.createStockAdjustment).not.toHaveBeenCalled();
   });
 
   it("validates distinct warehouses before creating a transfer", async () => {
@@ -123,12 +148,65 @@ describe("WarehouseOperationsScreen", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("warehouse.adjustment.completed");
   });
 
+  it("opens the adjustment form with F5 without changing stock and ignores F5 while it is open", async () => {
+    render(<WarehouseOperationsScreen session={session(["STOCK_ADJUST"])} mode="adjustment" t={t} />);
+    fireEvent.keyDown(window, { key: "F5" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const command = await screen.findByRole("button", { name: "warehouse.adjustment.perform" });
+    expect(command).toHaveAttribute("aria-keyshortcuts", "F5");
+    fireEvent.keyDown(window, { key: "F5" });
+    expect(await screen.findByRole("dialog", { name: "warehouse.adjustment.perform" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "F5" });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(api.createStockAdjustment).not.toHaveBeenCalled();
+  });
+
+  it("does not expose adjustment shortcuts without permission", () => {
+    render(<WarehouseOperationsScreen session={session([])} mode="adjustment" t={t} />);
+    fireEvent.keyDown(window, { key: "F5" });
+    expect(screen.queryByRole("button", { name: "warehouse.adjustment.perform" })).not.toBeInTheDocument();
+    expect(api.createStockAdjustment).not.toHaveBeenCalled();
+  });
+
+  it("routes F6 and F7 to the selected count's existing exports", async () => {
+    vi.mocked(api.loadStockCounts).mockResolvedValue([{ ...draftCount, lineCount: 1, totalDifference: 0 }]);
+    vi.mocked(api.loadStockCount).mockResolvedValue(draftCount);
+    vi.mocked(api.exportStockCount).mockResolvedValue(new Blob(["report"]));
+    const createDescriptor = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
+    const revokeDescriptor = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:report") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    try {
+      render(<WarehouseOperationsScreen session={session(["GESTION_ALMACEN"])} mode="count" t={t} />);
+      fireEvent.keyDown(window, { key: "F6" });
+      expect(api.exportStockCount).not.toHaveBeenCalled();
+      fireEvent.click(await screen.findByRole("button", { name: "GENERAL" }));
+      await screen.findByRole("button", { name: "warehouse.count.exportExcel" });
+      fireEvent.keyDown(window, { key: "F6" });
+      fireEvent.keyDown(window, { key: "F7" });
+      await waitFor(() => expect(api.exportStockCount).toHaveBeenCalledWith("count-1", "xlsx", "token"));
+      await waitFor(() => expect(api.exportStockCount).toHaveBeenCalledWith("count-1", "pdf", "token"));
+      expect(api.createStockCount).not.toHaveBeenCalled();
+      expect(api.confirmStockCount).not.toHaveBeenCalled();
+    } finally {
+      click.mockRestore();
+      if (createDescriptor) Object.defineProperty(URL, "createObjectURL", createDescriptor);
+      else Reflect.deleteProperty(URL, "createObjectURL");
+      if (revokeDescriptor) Object.defineProperty(URL, "revokeObjectURL", revokeDescriptor);
+      else Reflect.deleteProperty(URL, "revokeObjectURL");
+    }
+  });
+
   it("filters the full history by local date range and removes one tag independently", async () => {
     render(<WarehouseOperationsScreen session={session(["STOCK_ADJUST"])} mode="adjustment" t={t} />);
     const search = await screen.findByRole("searchbox", { name: "warehouse.management.search" });
     fireEvent.change(search, { target: { value: "CAF" } });
-    fireEvent.change(screen.getByLabelText("warehouse.report.from"), { target: { value: "2026-09-01" } });
-    fireEvent.change(screen.getByLabelText("warehouse.report.to"), { target: { value: "2026-09-23" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Periodo personalizado" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Periodo personalizado" }));
+    fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-09-01" } });
+    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-09-23" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar periodo" }));
     await waitFor(() => expect(api.loadStockAdjustmentHistory).toHaveBeenLastCalledWith("token", expect.objectContaining({
       search: "CAF", from: new Date("2026-09-01T00:00:00").toISOString(), to: new Date("2026-09-24T00:00:00").toISOString()
     })));

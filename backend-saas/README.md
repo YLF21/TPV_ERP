@@ -407,3 +407,70 @@ Antes de producción se registran y aprueban dos objetivos medidos:
 Cada trimestre se ensaya una restauración en infraestructura aislada, se anota
 duración, checksum, versión de imagen y resultado Flyway, y se revisan las
 copias caducadas conforme a la política de retención.
+
+## Captación comercial esPOS: recepción y bandeja (fase 1)
+
+La migración V78 conserva una clave de reintento junto a la solicitud. Debe
+aplicarse antes de publicar el frontend que comprueba disponibilidad.
+
+- `GET /api/v1/public/demo-requests/availability` devuelve `{ "available": true }`
+  únicamente si la tabla y sus columnas son accesibles. Es una comprobación
+  básica de lectura, no una garantía de escritura, envío de email ni atención.
+  Ante un fallo de base devuelve 503 sin detalles internos. El recibo del POST
+  es la confirmación de persistencia, salvo el descarte neutro del honeypot.
+- `POST /api/v1/public/demo-requests` mantiene el contrato anterior y admite
+  `Idempotency-Key: <UUID>` opcional. La misma clave con el mismo contenido
+  normalizado devuelve el mismo `{ id, receivedAt }`, incluso tras reiniciar.
+  La misma clave con contenido diferente devuelve 409 `IDEMPOTENCY_CONFLICT`.
+  El cliente debe conservar clave y contenido al reintentar una respuesta
+  perdida, y generar otra clave cuando el usuario cambie la solicitud.
+- Los errores controlados usan ProblemDetail con `code` y, cuando corresponde,
+  `fields: { "email": "INVALID" }`. Los códigos de campo son `REQUIRED`,
+  `TOO_LONG`, `INVALID` y `MUST_ACCEPT`, sin reflejar datos personales.
+  Un 429 usa `RATE_LIMITED` y `Retry-After`; un fallo de almacenamiento usa
+  503 `SERVICE_UNAVAILABLE`. Todas estas respuestas llevan `Cache-Control: no-store`.
+- `GET /api/v1/admin/demo-requests` conserva la lista de las últimas 100 para
+  compatibilidad. La bandeja completa usa `GET /api/v1/admin/demo-requests/page`
+  con `page` desde 0, `size` entre 1 y 100 (20 por defecto), `status` opcional
+  `NEW|CONTACTED|CLOSED` y `query` opcional de hasta 160 caracteres.
+  Responde `{ items, total, page, size }`, ordenado por fecha e ID descendentes.
+  Busca texto literal en nombre, empresa y email. Si `query` es una UUID
+  canónica, busca exclusivamente esa referencia exacta (manteniendo los filtros),
+  sin mezclar coincidencias del UUID en otros campos de contacto.
+  Leer exige el permiso existente `VIEW_ADMIN_DATA`.
+- `PUT /api/v1/admin/demo-requests/{id}/status` recibe
+  `{ "status": "CONTACTED", "expectedStatus": "NEW" }`. Exige el permiso
+  existente `MANAGE_OPERATIONS` y devuelve el registro actualizado. Si otro
+  operador cambió el estado esperado, devuelve 409 `STATUS_CONFLICT`; actualizar
+  la bandeja antes de volver a decidir. Repetir un cambio ya aplicado al mismo
+  destino devuelve el registro sin duplicar el evento de auditoría. La auditoría
+  conserva referencia, operador y estado, no el mensaje ni los datos de contacto.
+
+La bandeja es un circuito **manual**: un operador autorizado debe revisarla y
+marcar las solicitudes atendidas/cerradas. Esta fase no configura SMTP, webhooks
+ni notificaciones externas, y no promete que una solicitud guardada ya esté atendida.
+
+### Protección y despliegue
+
+El limitador en memoria admite por defecto 120 nuevas solicitudes por dirección
+remota en 10 minutos y 5 por email en una hora. Las claves son hashes salados
+por proceso: no conserva IP/email en claro ni los escribe en logs. La memoria
+se limita a 10 000 contadores y descarta los caducados. Los reintentos de una
+solicitud ya guardada con la misma clave no consumen la cuota de envíos.
+
+`tpv.saas.marketing.ip-request-limit` (1–10 000; por defecto 120) permite ajustar
+la cuota agregada cuando un proxy comparte dirección. No se confía ciegamente
+en `X-Forwarded-For`. En despliegues con proxy o varias instancias, configurar
+además un límite en el borde con una política explícita de proxies confiables;
+los contadores de esta protección local se reinician con el proceso y no son
+un limitador distribuido. Configurar CORS solo para los orígenes públicos reales.
+
+### Verificación aislada
+
+`mvn "-Dtest=DemoRequest*Test" test` ejecuta contrato, validación, permisos,
+cuotas, reintentos y pruebas PostgreSQL con todas las migraciones. El perfil
+`test` usa por defecto PostgreSQL desechable mediante Testcontainers (requiere
+Docker). Como alternativa, configurar `TPV_TEST_DB_URL`, `TPV_TEST_DB_DRIVER`,
+`TPV_TEST_DB_USERNAME` y `TPV_TEST_DB_PASSWORD` para una base **exclusiva de pruebas**;
+nunca apuntarlos a una base de operación. Cada ejecución crea un esquema aleatorio
+`marketing_test_*` y solo introduce contactos sintéticos, sin notificaciones.

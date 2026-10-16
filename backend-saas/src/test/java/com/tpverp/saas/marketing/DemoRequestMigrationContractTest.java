@@ -60,4 +60,18 @@ class DemoRequestMigrationContractTest {
                 .contains("cardinality(products) =")
                 .contains("product = products[1]");
     }
+
+    @Test
+    void retryMigrationEnforcesAPairedFingerprintAndPersistentUniqueKey() throws Exception {
+        String sql;
+        try (var input = new ClassPathResource(
+                "db/migration/V78__marketing_demo_request_idempotency.sql").getInputStream()) {
+            sql = new String(input.readAllBytes(), StandardCharsets.UTF_8).toLowerCase();
+        }
+        assertThat(sql).contains("idempotency_key uuid")
+                .contains("request_fingerprint varchar(64)")
+                .contains("request_fingerprint is not null")
+                .contains("create unique index uq_marketing_demo_request_idempotency")
+                .contains("created_at desc, id desc");
+    }
 }

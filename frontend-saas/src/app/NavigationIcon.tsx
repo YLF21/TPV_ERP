@@ -3,6 +3,7 @@ import type { View } from "../shared/types";
 const paths: Partial<Record<View, string>> = {
   dashboard: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
   reports: "M4 3v18h17M8 16v-5M13 16V7M18 16V4",
+  "demo-requests": "M3 4h18v14H8l-5 3V4ZM7 8h10M7 12h7",
   companies: "M4 21V5l8-2v18M12 9h8v12M2 21h20M7 8h2M7 12h2M7 16h2M15 13h2M15 17h2",
   stores: "M3 10v11h18V10M2 10l2-7h16l2 7M2 10c0 4 5 4 5 0 0 4 5 4 5 0 0 4 5 4 5 0 0 4 5 4 5 0M9 21v-6h6v6",
   licenses: "M4 4h16v16H4zM8 9h8M8 13h4M15 16l2 2 3-4",

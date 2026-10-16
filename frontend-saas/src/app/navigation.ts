@@ -14,6 +14,7 @@ export const navigation: {
   { view: "dashboard", label: "dashboard", group: "home" },
   { view: "reports", label: "reports", group: "home", permission: "VIEW_REPORTS", description: "reportsHelp" },
   { view: "companies", label: "companies", group: "clients", description: "companiesHelp" },
+  { view: "demo-requests", label: "demoRequests", group: "clients", permission: "VIEW_ADMIN_DATA" },
   { view: "stores", label: "stores", group: "clients" },
   { view: "licenses", label: "activeLicenses", group: "clients" },
   {

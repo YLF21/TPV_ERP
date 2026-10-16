@@ -5,6 +5,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
+import { Eye, FilePdf, FileXls, PencilSimple, Plus, Trash } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import {
@@ -20,7 +21,7 @@ import {
 import type { WarehouseImportProduct } from "./warehouseDocumentImport";
 import { ErpSelect } from "./ErpSelect";
 import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
-import { ReportDateRangeFilter, isValidReportDate, type ReportDateRange } from "./ReportDateRangeFilter";
+import { ReportDateRangeFilter, isValidReportDate, reportDateRangeLabel, type ReportDateRange } from "./ReportDateRangeFilter";
 import "./WarehouseClassicTables.css";
 import "./ErpSearchField.css";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
@@ -28,6 +29,9 @@ import { enterNavigationIntent } from "./keyboardNavigation";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import { sortTableRows, useTableSortPreference } from "./tableSorting";
+import { useWarehouseListShortcuts, WAREHOUSE_LIST_SHORTCUTS } from "./useWarehouseListShortcuts";
+import { useReportDateOptions } from "./useReportDateOptions";
+import { WarehouseSearchFrame } from "./WarehouseSearchFrame";
 
 export type {
   WarehouseCustomerOption,
@@ -83,6 +87,7 @@ export type WarehouseOperationsPanelProps = {
   terminalContext?: TerminalContext;
   defaultWarehouseId?: string;
   createOnMount?: boolean;
+  heading?: { title: string; subtitle: string };
   permissions?: WarehouseOperationsPanelPermissions;
   confirmDelete?: (document: WarehouseOperationView) => boolean | Promise<boolean>;
   onCreateDocument?: () => void | Promise<void>;
@@ -326,6 +331,7 @@ export function WarehouseOperationsPanel({
   terminalContext,
   defaultWarehouseId,
   createOnMount = false,
+  heading,
   permissions,
   confirmDelete,
   onCreateDocument,
@@ -347,24 +353,14 @@ export function WarehouseOperationsPanel({
   const [dateTo, setDateTo] = useState("");
   const purchasePeriodFilter = app === "gestion" && mode === "input"
     && (documentType === "FACTURA_ENTRADA" || documentType === "ALBARAN_ENTRADA");
+  const warehouseDesktopActions = app === "gestion";
   const [quickRange, setQuickRange] = useState<ReportDateRange>({ from: "", to: "", label: "" });
-  const [dateOptions, setDateOptions] = useState<{ currentDate: string; earliestDate: string } | null>(null);
-  const [dateOptionsFailed, setDateOptionsFailed] = useState(false);
-  const [dateOptionsReload, setDateOptionsReload] = useState(0);
-  useEffect(() => {
-    setDateOptions(null);
-    setDateOptionsFailed(false);
-    if (!purchasePeriodFilter || !token || !resolvedPermissions.read) return;
-    let cancelled = false;
-    const report = documentType === "FACTURA_ENTRADA" ? "inputInvoices" : "inputDeliveryNotes";
-    void apiRequest<{ currentDate: string; earliestDate: string }>(
-      `/document-reports/date-options?report=${report}`, { token }
-    ).then((value) => {
-      if (!isValidReportDate(value.currentDate) || !isValidReportDate(value.earliestDate)) throw new Error("Invalid date options");
-      if (!cancelled) setDateOptions(value);
-    }).catch(() => { if (!cancelled) setDateOptionsFailed(true); });
-    return () => { cancelled = true; };
-  }, [purchasePeriodFilter, documentType, token, resolvedPermissions.read, dateOptionsReload]);
+  const dateReport = mode === "output" ? "warehouseOutputs"
+    : documentType === "FACTURA_ENTRADA" ? "inputInvoices"
+      : documentType === "ALBARAN_ENTRADA" ? "inputDeliveryNotes" : "inputWarehouse";
+  const { dateOptions, dateOptionsFailed, retryDateOptions } = useReportDateOptions(
+    dateReport, token, warehouseDesktopActions && resolvedPermissions.read
+  );
   const [exportBusy, setExportBusy] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [dialogOpen, setDialogOpen] = useState(createOnMount);
@@ -373,10 +369,15 @@ export function WarehouseOperationsPanel({
   const [deleting, setDeleting] = useState(false);
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
   const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const onErrorRef = useRef(onError);
 
   const labels = warehouseOperationsLabels(t, mode, documentType);
+  const selectedPeriod = isValidReportDate(dateFrom) && isValidReportDate(dateTo)
+    ? reportDateRangeLabel({ from: dateFrom, to: dateTo, label: "",
+      preset: quickRange.from === dateFrom && quickRange.to === dateTo ? quickRange.preset : undefined }, locale)
+    : "—";
   const tableLayout = useTableLayoutPreference({
     app,
     username,
@@ -704,9 +705,46 @@ export function WarehouseOperationsPanel({
     }
   }
 
+  useWarehouseListShortcuts(panelRef, warehouseDesktopActions, dialogOpen);
+  const headingWithCreate = warehouseDesktopActions && heading;
+  const createAction = resolvedPermissions.create && <button type="button"
+    className={warehouseDesktopActions ? "primary gestion-warehouse-action--create gestion-warehouse-command" : undefined}
+    aria-keyshortcuts={warehouseDesktopActions ? WAREHOUSE_LIST_SHORTCUTS.create : undefined}
+    disabled={!token || deleting} onClick={openCreateDialog}>
+    {warehouseDesktopActions ? <><span><Plus size={16} weight="bold" aria-hidden="true" focusable="false" />{labels.create}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.create}</kbd></> : labels.create}
+  </button>;
+  const searchInput = <input
+    ref={searchRef}
+    className={app !== "pda" ? "erp-search-input" : undefined}
+    type="search"
+    value={query}
+    placeholder={labels.searchPlaceholder}
+    onChange={(event) => setQuery(event.target.value)}
+    onKeyDown={(event) => {
+      if (enterNavigationIntent(event.key, event) === "next") {
+        event.preventDefault();
+        toolbarRef.current?.querySelector<HTMLElement>(".erp-select__trigger:not(:disabled)")?.focus();
+      }
+    }}
+  />;
+  const pdfAction = <button type="button" className="primary gestion-warehouse-action--export gestion-warehouse-action--pdf"
+    aria-keyshortcuts="F7" disabled={exportBusy || !token} onClick={() => void exportReport("pdf")}>
+    <span><FilePdf size={16} weight="bold" aria-hidden="true" focusable="false" />PDF</span><kbd aria-hidden="true">F7</kbd>
+  </button>;
+  const excelAction = <button type="button" className="primary gestion-warehouse-action--export gestion-warehouse-action--excel"
+    aria-keyshortcuts="F6" disabled={exportBusy || !token} onClick={() => void exportReport("xlsx")}>
+    <span><FileXls size={16} weight="bold" aria-hidden="true" focusable="false" />Excel</span><kbd aria-hidden="true">F6</kbd>
+  </button>;
+  const exportActions = warehouseDesktopActions && session?.permissions.some((value) =>
+    ["ADMIN", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_CUENTAS"].includes(value))
+    && (purchasePeriodFilter || mode === "output" || !documentType || documentType === "ENTRADA_ALMACEN")
+    && <>{excelAction}{pdfAction}</>;
+
   return (
     <section
-      className={`stock-sales-history-panel${app !== "pda" ? " warehouse-operations-panel--classic" : ""}`}
+      ref={panelRef}
+      data-warehouse-operation={mode}
+      className={`stock-sales-history-panel${app !== "pda" ? " warehouse-operations-panel--classic" : ""}${warehouseDesktopActions ? " gestion-warehouse-documents" : ""}`}
       aria-label={labels.title}
       onKeyDown={(event) => {
         if (event.defaultPrevented || event.key !== "Escape" || dialogOpen) {
@@ -719,25 +757,23 @@ export function WarehouseOperationsPanel({
         notify(onClose);
       }}
     >
-      <div className={`stock-history-toolbar${purchasePeriodFilter ? " warehouse-purchase-toolbar" : ""}`} ref={toolbarRef}>
+      {headingWithCreate && <header className="work-panel-heading stock-panel-heading gestion-warehouse-titlebar">
+        <div><h2>{headingWithCreate.title}</h2><span>{headingWithCreate.subtitle}</span></div>
+        <div className="gestion-warehouse-title-actions gestion-warehouse-actions">{createAction}</div>
+      </header>}
+      <div className={`stock-history-toolbar${warehouseDesktopActions ? " warehouse-purchase-toolbar gestion-warehouse-toolbar" : ""}`} ref={toolbarRef}>
+        {purchasePeriodFilter && <div className="gestion-warehouse-period" aria-label={t("salesReport.currentPeriod")}>
+          <span>{t("salesReport.currentPeriod")}</span>
+          <strong>{selectedPeriod}</strong>
+          {isValidReportDate(dateFrom) && isValidReportDate(dateTo) &&
+            <small>{warehouseOperationsFormatDate(dateFrom, dateFormatter)} — {warehouseOperationsFormatDate(dateTo, dateFormatter)}</small>}
+        </div>}
         <label>
           <span>{labels.search}</span>
-          <input
-            ref={searchRef}
-            className={app !== "pda" ? "erp-search-input" : undefined}
-            type="search"
-            value={query}
-            placeholder={labels.searchPlaceholder}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (enterNavigationIntent(event.key, event) === "next") {
-                event.preventDefault();
-                toolbarRef.current?.querySelector<HTMLElement>(".erp-select__trigger:not(:disabled)")?.focus();
-              }
-            }}
-          />
+          {warehouseDesktopActions ? <WarehouseSearchFrame>{searchInput}</WarehouseSearchFrame> : searchInput}
         </label>
-        <div className="stock-history-filter-field">
+        <div className={`stock-history-filter-field${warehouseDesktopActions ? " gestion-warehouse-status-filter" : ""}`}
+          data-filter-active={warehouseDesktopActions ? Boolean(statusFilter) : undefined}>
           <span>{labels.status}</span>
           <ErpSelect
             aria-label={labels.status}
@@ -747,44 +783,42 @@ export function WarehouseOperationsPanel({
               ...statuses.map((status) => ({ value: status, label: warehouseOperationsStatusLabel(status, t) }))
             ]}
             onChange={setStatusFilter}
-            onCommit={() => toolbarRef.current?.querySelector<HTMLElement>(".warehouse-document-actions button:not(:disabled)")?.focus()}
+            onCommit={() => (panelRef.current?.querySelector<HTMLElement>(".gestion-warehouse-title-actions button:not(:disabled)")
+              ?? toolbarRef.current?.querySelector<HTMLElement>(".warehouse-document-actions button:not(:disabled)"))?.focus()}
             onNavigatePrevious={() => searchRef.current?.focus()}
           />
         </div>
-        {app !== "pda" && !purchasePeriodFilter && <>
+        {app !== "pda" && !warehouseDesktopActions && <>
           <label><span>{t("warehouse.report.from")}</span><input type="date" value={dateFrom} max={dateTo || undefined}
             onChange={(event) => setDateFrom(event.target.value)} /></label>
           <label><span>{t("warehouse.report.to")}</span><input type="date" value={dateTo} min={dateFrom || undefined}
             onChange={(event) => setDateTo(event.target.value)} /></label>
         </>}
-        <div className="filter-actions filter-wide warehouse-document-actions">
-          {resolvedPermissions.create && (
-            <button type="button" disabled={!token || deleting} onClick={openCreateDialog}>
-              {labels.create}
-            </button>
-          )}
+        <div className={`filter-actions filter-wide warehouse-document-actions${warehouseDesktopActions ? " gestion-warehouse-list-actions" : ""}`}>
+          {!headingWithCreate && createAction}
+          {exportActions}
           <button
             type="button"
+            className={warehouseDesktopActions ? "gestion-warehouse-action--open" : undefined}
             disabled={!selectedCanOpen || deleting}
             onClick={() => selectedDocument && openDocument(selectedDocument)}
           >
-            {selectedDocument && warehouseOperationsIsDraft(selectedDocument) ? labels.edit : labels.view}
+            {warehouseDesktopActions && (selectedDocument && warehouseOperationsIsDraft(selectedDocument)
+              ? <PencilSimple size={16} weight="bold" aria-hidden="true" focusable="false" />
+              : <Eye size={16} weight="bold" aria-hidden="true" focusable="false" />)}
+            {warehouseDesktopActions ? t("warehouseDocument.open") : selectedDocument && warehouseOperationsIsDraft(selectedDocument) ? labels.edit : labels.view}
           </button>
           {resolvedPermissions.delete && (
             <button
               type="button"
+              className={warehouseDesktopActions ? "gestion-warehouse-action--delete" : undefined}
               disabled={!selectedCanDelete || deleting}
               onClick={() => void deleteSelectedDocument()}
             >
+              {warehouseDesktopActions && <Trash size={16} weight="bold" aria-hidden="true" focusable="false" />}
               {deleting ? labels.deleting : labels.delete}
             </button>
           )}
-          {app === "gestion" && session?.permissions.some((value) =>
-            ["ADMIN", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_CUENTAS"].includes(value))
-            && (purchasePeriodFilter || mode === "output" || !documentType || documentType === "ENTRADA_ALMACEN") && <>
-            <button type="button" disabled={exportBusy || !token} onClick={() => void exportReport("pdf")}>PDF</button>
-            <button type="button" disabled={exportBusy || !token} onClick={() => void exportReport("xlsx")}>Excel</button>
-          </>}
         </div>
       </div>
 
@@ -883,10 +917,10 @@ export function WarehouseOperationsPanel({
         </table>
       </div>
 
-      {purchasePeriodFilter && <>
+      {warehouseDesktopActions && <>
         {dateOptionsFailed && <div className="report-date-options-error" role="alert">
           <span>{t("salesReport.loadError")}</span>
-          <button type="button" onClick={() => setDateOptionsReload((value) => value + 1)}>{t("salesReport.retry")}</button>
+          <button type="button" onClick={retryDateOptions}>{t("salesReport.retry")}</button>
         </div>}
         <ReportDateRangeFilter locale={locale} today={dateOptions?.currentDate ?? ""}
           earliestDate={dateOptions?.earliestDate ?? ""}

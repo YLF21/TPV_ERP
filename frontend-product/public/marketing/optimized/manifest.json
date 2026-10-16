@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "generator": {
+    "script": "scripts/optimize-marketing-images.mjs",
+    "tool": "sharp",
+    "version": "0.35.5",
+    "encoderVersions": {
+      "vips": "8.18.7",
+      "aom": "3.15.1",
+      "heif": "1.23.5",
+      "webp": "1.6.0",
+      "mozjpeg": "0826579"
+    },
+    "transform": {
+      "colourspace": "srgb",
+      "fit": "inside",
+      "kernel": "lanczos3",
+      "withoutEnlargement": true,
+      "crop": false,
+      "metadata": "stripped"
+    },
+    "formats": {
+      "avif": {
+        "quality": 70,
+        "effort": 4,
+        "chromaSubsampling": "4:4:4"
+      },
+      "webp": {
+        "quality": 90,
+        "effort": 5,
+        "smartSubsample": true
+      },
+      "jpeg": {
+        "quality": 90,
+        "mozjpeg": true,
+        "chromaSubsampling": "4:4:4",
+        "progressive": true
+      }
+    }
+  },
+  "images": [
+    {
+      "id": "contact-ecosystem",
+      "source": {
+        "path": "assets/marketing-sources/contact-ecosystem.png",
+        "sha256": "2e9c46e6339bdbd7720ebf927f24833d31a39bc81adefec8899c72d6dc2ba88a",
+        "width": 1536,
+        "height": 1024,
+        "bytes": 1821981
+      },
+      "outputs": [
+        {
+          "path": "public/marketing/optimized/contact-ecosystem-480.avif",
+          "url": "/marketing/optimized/contact-ecosystem-480.avif",
+          "format": "avif",
+          "width": 480,
+          "height": 320,
+          "bytes": 24709,
+          "sha256": "59b3546a6f8b0342652a68a8e0dac5bf283d86375911f12e779e48d02c409a48"
+        },
+        {
+          "path": "public/marketing/optimized/contact-ecosystem-768.avif",
+          "url": "/marketing/optimized/contact-ecosystem-768.avif",
+          "format": "avif",
+          "width": 768,
+          "height": 512,
+          "bytes": 43627,
+          "sha256": "0682da8205204462ec377b93d7c600e2bf649ee927c55ae0eb3fb8a748027700"
+        },
+        {
+          "path": "public/marketing/optimized/contact-ecosystem-1024.avif",
+          "url": "/marketing/optimized/contact-ecosystem-1024.avif",
+          "format": "avif",
+          "width": 1024,
+          "height": 683,
+          "bytes": 61896,
+          "sha256": "2375c24b9196cee10883a7386d24cd1990f4517356c29fa5aa0ce6fe40c53e40"
+        },
+        {
+          "path": "public/marketing/optimized/contact-ecosystem-1536.avif",
+          "url": "/marketing/optimized/contact-ecosystem-1536.avif",
+          "format": "avif",
+          "width": 1536,
+          "height": 1024,
+          "bytes": 100388,
+          "sha256": "89050c1acc65fd6b808ad83b2450688c2626cd0b1c993c47e694e26253cc11bc"
+        },
+        {
+          "path": "public/marketing/optimized/contact-ecosystem-480.webp",
+          "url": "/marketing/optimized/contact-ecosystem-480.webp",
+          "format": "webp",
+          "width": 480,
+          "height": 320,
+          "bytes": 39652,
+          "sha256": "911a6f5f4ab9e7bb5fcb289bebbc0bde9642c89f6789e6ee7e078a48e18b5f5e"
+        },
+        {
+          "path": "public/marketing/optimized/contact-ecosystem-768.webp",
+          "url": "/marketing/optimized/contact-ecosystem-768.webp",
+          "format": "webp",
+          "width": 768,
+          "height": 512,
+          "bytes": 76000,
+          "sha256": "33a25d2a3e90461728d5214313a74218736a0ed8a3a0c68b24a0f9bfb52a7a9d"
+        },
+        {
+          "path": "public/marketing/optimized/contact-ecosystem-1024.webp",
+          "url": "/marketing/optimized/contact-ecosystem-1024.webp",
+          "format": "webp",
+          "width": 1024,
+          "height": 683,
+          "bytes": 110348,
+          "sha256": "68fcf795a48c5dd9cb9280256e8f7c87c96b67eb52d6fe7f7464907a7aeaba83"
+        },
+        {
+          "path": "public/marketing/optimized/contact-ecosystem-1536.webp",
+          "url": "/marketing/optimized/contact-ecosystem-1536.webp",
+          "format": "webp",
+          "width": 1536,
+          "height": 1024,
+          "bytes": 180778,
+          "sha256": "800a37b544b11612e984ccc877e74a099c163af664d5d09a24052cf56a6bebe9"
+        },
+        {
+          "path": "public/marketing/optimized/contact-ecosystem-768.jpg",
+          "url": "/marketing/optimized/contact-ecosystem-768.jpg",
+          "format": "jpeg",
+          "width": 768,
+          "height": 512,
+          "bytes": 129353,
+          "sha256": "7d2da0c16bff03b0a0a6db58c7ebff62aeed660f886b6b2d0c4a346316fc3701"
+        },
+        {
+          "path": "public/marketing/optimized/contact-ecosystem-1536.jpg",
+          "url": "/marketing/optimized/contact-ecosystem-1536.jpg",
+          "format": "jpeg",
+          "width": 1536,
+          "height": 1024,
+          "bytes": 340134,
+          "sha256": "40a4122181b8db558505f801f4ddd7bf24fc152315b08d05acfd5f2f710b419a"
+        }
+      ]
+    },
+    {
+      "id": "hero-ecosystem",
+      "source": {
+        "path": "assets/marketing-sources/hero-ecosystem.png",
+        "sha256": "18421de4e08e7e80a646d51411e1694291627bb725a7bc75fb4bb7d24b45f5e6",
+        "width": 865,
+        "height": 795,
+        "bytes": 777623
+      },
+      "outputs": [
+        {
+          "path": "public/marketing/optimized/hero-ecosystem-865.avif",
+          "url": "/marketing/optimized/hero-ecosystem-865.avif",
+          "format": "avif",
+          "width": 865,
+          "height": 795,
+          "bytes": 44217,
+          "sha256": "71e2f4d368ad128ada24bebad5ec8d7734f9f1b37489a3395b9c2fef6b7c83cf"
+        },
+        {
+          "path": "public/marketing/optimized/hero-ecosystem-865.webp",
+          "url": "/marketing/optimized/hero-ecosystem-865.webp",
+          "format": "webp",
+          "width": 865,
+          "height": 795,
+          "bytes": 70308,
+          "sha256": "3568784f0910249945f2910a1536584fcb7899630de651a49b0aa9684d0e7674"
+        },
+        {
+          "path": "public/marketing/optimized/hero-ecosystem-865.jpg",
+          "url": "/marketing/optimized/hero-ecosystem-865.jpg",
+          "format": "jpeg",
+          "width": 865,
+          "height": 795,
+          "bytes": 137083,
+          "sha256": "d3a05f4ea60cac2aab62f6bc211f6463ece06848c13f7734d81d764fa55f1a9d"
+        }
+      ]
+    }
+  ]
+}

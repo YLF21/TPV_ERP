@@ -21,6 +21,7 @@
 }
 
 .mk-page *, .mk-page *::before, .mk-page *::after { box-sizing: border-box; }
+.mk-page .mk-responsive-picture { display: contents; }
 .mk-page a { color: inherit; text-decoration: none; }
 .mk-page button { cursor: pointer; font-family: inherit; }
 .mk-page button:disabled { cursor: default; }
@@ -44,10 +45,8 @@
 
 .mk-header.is-scrolled { min-height: 66px; box-shadow: 0 12px 28px rgba(17, 41, 78, .08); }
 .mk-brand-link { width: max-content; }
-.mk-brand { display: inline-flex; align-items: center; color: var(--mk-blue); font-size: 27px; letter-spacing: -.06em; }
-.mk-brand svg { width: 35px; height: 35px; margin-right: 11px; color: var(--mk-blue); }
-.mk-brand strong { font-weight: 900; }
-.mk-brand > span { font-weight: 450; }
+.mk-brand { display: inline-flex; align-items: center; line-height: 0; }
+.mk-brand img { display: block; width: 132px; height: 42px; object-fit: contain; }
 .mk-header nav { display: grid; grid-template-columns: 64px 84px 118px 58px 80px 80px; align-items: center; gap: 10px; height: 100%; }
 .mk-header nav a { position: relative; display: grid; place-items: center; height: 100%; color: #263650; font-size: 13px; font-weight: 650; }
 .mk-header nav a::after { content: ""; position: absolute; right: 100%; bottom: 0; left: 0; height: 3px; background: var(--mk-blue); transition: right .18s ease; }
@@ -388,6 +387,30 @@
 .mk-contact-trust strong { color: #173253; }
 .mk-contact-trust small { color: #647890; }
 
+.mk-wechat-card { display: flex; align-items: flex-start; gap: 14px; margin-top: 20px; border: 1px solid #b6dfca; border-radius: 16px; padding: 16px; background: rgba(255, 255, 255, .97); box-shadow: 0 12px 30px rgba(18, 95, 59, .07); }
+.mk-wechat-logo { flex: 0 0 auto; width: 42px; height: 42px; color: #087d46; }
+.mk-wechat-content { flex: 1; min-width: 0; }
+.mk-wechat-content h2 { margin: 0 0 5px; color: #154a35; font-size: 20px; line-height: 1.2; letter-spacing: -.02em; }
+.mk-wechat-account-line { margin: 0; color: #4c6358; font-size: 12px; line-height: 1.4; }
+.mk-wechat-account { color: #173d2c; }
+.mk-wechat-body { margin: 6px 0 0; color: #465f52; font-size: 12px; line-height: 1.4; }
+.mk-wechat-id-row { display: flex; gap: 8px; margin-top: 9px; }
+.mk-wechat-id { flex: 1; min-width: 0; min-height: 40px; border: 1px solid #bfd4c8; border-radius: 8px; padding: 8px 10px; color: #183c2b; background: #f4faf7; font: 13px/1.3 Consolas, monospace; }
+.mk-wechat-copy { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 7px; min-height: 40px; border: 1px solid #087d46; border-radius: 8px; padding: 8px 13px; color: white; background: #087d46; font-size: 12px; font-weight: 750; }
+.mk-wechat-copy:hover { background: #06683a; }
+.mk-wechat-copy svg { width: 16px; height: 16px; }
+.mk-wechat-hint { margin: 7px 0 0; color: #526b5d; font-size: 11px; line-height: 1.4; }
+.mk-wechat-status { min-height: 16px; margin: 5px 0 0; color: #176c42; font-size: 11px; font-weight: 650; line-height: 1.4; }
+.mk-wechat-status[data-state="error"] { color: #a12c32; }
+.mk-wechat-qr-trigger { display: grid; flex: 0 0 126px; justify-items: center; gap: 5px; width: 126px; border: 1px solid #d0e5d9; border-radius: 9px; padding: 5px; color: #176544; background: white; font-size: 11px; font-weight: 750; line-height: 1.3; }
+.mk-wechat-qr-trigger:hover { border-color: #087d46; }
+.mk-wechat-qr-trigger img { display: block; width: 100%; height: auto; object-fit: contain; }
+.mk-wechat-qr-dialog { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 14px; width: min(560px, 100%); height: min(850px, calc(100dvh - 48px)); overflow: hidden; border: 1px solid #cbdcf0; border-radius: 22px; padding: 22px; color: var(--mk-ink); background: white; box-shadow: 0 35px 90px rgba(0, 15, 45, .36); }
+.mk-wechat-qr-dialog .mk-product-dialog-header { gap: 14px; }
+.mk-wechat-qr-dialog .mk-product-dialog-header h2 { font-size: 27px; letter-spacing: -.035em; line-height: 1.15; }
+.mk-wechat-qr-dialog .mk-product-dialog-header > div > p { margin-top: 7px; font-size: 12px; line-height: 1.45; }
+.mk-wechat-qr-full { display: block; justify-self: center; align-self: center; min-width: 0; min-height: 0; width: 100%; height: 100%; object-fit: contain; }
+
 .mk-contact-form {
   color: var(--mk-ink);
   border-color: #d2e1f1;
@@ -403,8 +426,8 @@
 .mk-contact-form > small { color: #72839a; }
 
 .mk-footer { display: grid; grid-template-columns: 1fr 1fr auto; align-items: center; gap: 25px; padding: 38px clamp(28px, 5vw, 76px) 25px; color: white; background: #07172d; }
-.mk-brand-footer { color: white; }
-.mk-brand-footer svg { color: var(--mk-cyan); }
+.mk-brand-footer { border-radius: 8px; padding: 2px 8px; background: white; }
+.mk-brand-footer img { width: 116px; height: 37px; }
 .mk-footer p { color: #8ea1b8; font-size: 12px; }
 .mk-footer > div { display: flex; gap: 22px; }
 .mk-footer > div a, .mk-footer > div button { border: 0; padding: 5px 0; color: white; background: transparent; font-size: 11px; font-weight: 750; }
@@ -426,8 +449,6 @@
 }
 
 .mk-header.is-scrolled { min-height: 66px; box-shadow: 0 14px 36px rgba(14, 35, 69, .09); }
-.mk-brand { font-size: 25px; }
-.mk-brand svg { width: 31px; height: 31px; }
 .mk-header nav a { font-size: 13px; font-weight: 720; }
 .mk-client-button {
   min-height: 46px;
@@ -809,6 +830,22 @@
 }
 
 @media (min-width: 1121px) and (max-height: 820px) {
+  .mk-contact-story h1 { font-size: clamp(34px, 3vw, 40px); }
+  .mk-wechat-card { gap: 9px; margin-top: 12px; padding: 10px; }
+  .mk-wechat-logo { width: 32px; height: 32px; }
+  .mk-wechat-content h2 { font-size: 16px; }
+  .mk-wechat-account-line { font-size: 11px; }
+  /* The introduction already explains the demo; keep the contact details visible. */
+  .mk-wechat-body { display: none; }
+  .mk-wechat-id-row { margin-top: 6px; }
+  .mk-wechat-id, .mk-wechat-copy { min-height: 36px; padding-top: 6px; padding-bottom: 6px; }
+  .mk-wechat-hint, .mk-wechat-status { font-size: 10px; line-height: 1.4; }
+  .mk-wechat-status { min-height: 14px; }
+  .mk-wechat-qr-trigger { flex-basis: 94px; width: 94px; gap: 3px; padding: 3px; font-size: 10px; }
+  .mk-contact-products { margin-top: 12px; }
+  .mk-contact-product { min-height: 68px; padding: 8px; }
+  .mk-contact-product small { display: none; }
+  .mk-contact-trust { margin-top: 12px; padding-top: 10px; }
   .mk-contact-stage { padding-top: 8px; padding-bottom: 8px; }
   .mk-contact-form { gap: 5px; padding: 14px 18px; }
   /* The story already introduces the demo: reserve short-screen space for choices and fields. */
@@ -839,7 +876,7 @@
   .mk-header-actions { display: none; }
   .mk-menu-button { justify-self: end; display: grid; gap: 5px; width: 42px; height: 42px; border: 1px solid var(--mk-line); border-radius: 8px; padding: 11px 9px; background: white; }
   .mk-menu-button span { display: block; width: 22px; height: 2px; background: var(--mk-ink); }
-  .mk-hero { grid-template-columns: 1fr; }
+  .mk-hero { grid-template-columns: 1fr; flex-shrink: 0; }
   .mk-hero-copy { padding-top: 90px; }
   .mk-hero-product { min-height: 560px; border-radius: 80px 0 0 0; padding: 30px; }
   .mk-hero-product img { width: 100%; max-width: 820px; height: auto; max-height: 520px; object-fit: contain; object-position: center; }
@@ -854,8 +891,7 @@
 
 @media (max-width: 760px) {
   .mk-header { min-height: 66px; padding: 0 20px; }
-  .mk-brand { font-size: 22px; }
-  .mk-brand svg { width: 29px; height: 29px; }
+  .mk-brand img { width: 116px; height: 37px; }
   .mk-hero { min-height: auto; }
   .mk-hero-copy { padding: 46px 20px 36px; }
   .mk-hero-kicker { margin-bottom: 20px; }
@@ -911,6 +947,16 @@
   .mk-contact-product { min-height: 112px; }
   .mk-contact-trust { grid-template-columns: 1fr; }
   .mk-contact-form { padding: 25px 20px; }
+  .mk-wechat-card { gap: 10px; padding: 14px; }
+  .mk-wechat-card { flex-wrap: wrap; }
+  .mk-wechat-logo { width: 36px; height: 36px; }
+  .mk-wechat-content { flex-basis: calc(100% - 46px); }
+  .mk-wechat-qr-trigger { flex: 0 1 230px; width: min(230px, 100%); margin-inline: auto; padding: 7px; font-size: 12px; }
+  .mk-wechat-qr-dialog { height: min(850px, calc(100dvh - 20px)); padding: 16px; border-radius: 18px; }
+  .mk-wechat-qr-dialog .mk-product-dialog-header h2 { font-size: 23px; }
+  .mk-wechat-id-row { flex-wrap: wrap; }
+  .mk-wechat-id { flex: 1 1 220px; min-height: 44px; }
+  .mk-wechat-copy { flex: 1 1 110px; min-height: 44px; }
   .mk-contact-form .mk-contact-app-choice { min-height: 44px; }
   .mk-contact-fields { grid-template-columns: 1fr; }
   .mk-contact-scene { object-position: 62% center; opacity: .4; }
@@ -1038,4 +1084,367 @@
   .mk-home-sector-preview small { display: flex; align-items: center; gap: 6px; margin-top: auto; border-top: 1px solid #dde8f4; padding-top: 11px; color: #60748e; font-size: 9px; font-weight: 750; }
   .mk-home-sector-preview small svg { flex: 0 0 auto; width: 13px; height: 13px; color: var(--mk-cyan); }
   .mk-footer { min-height: 150px; }
+}
+
+/* Phase 1: delivery state and recovery must remain readable, including short windows. */
+.mk-contact-form .mk-delivery-status {
+  border: 1px solid #b7cceb;
+  border-radius: 10px;
+  padding: 11px 13px;
+  color: #24456a;
+  background: #f2f7ff;
+}
+.mk-contact-form .mk-delivery-status[data-state="available"] { border-color: #a6d4ba; color: #185b37; background: #f0faf4; }
+.mk-contact-form .mk-delivery-status[data-state="unavailable"] { border-color: #dfc28d; color: #6a4715; background: #fff9ed; }
+.mk-delivery-status p { margin: 0; font-size: 13px; line-height: 1.5; }
+.mk-contact-form .mk-delivery-actions { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 8px; }
+.mk-delivery-actions button { min-height: 36px; border: 1px solid currentColor; border-radius: 7px; padding: 7px 10px; color: #1451a3; background: white; font-size: 12px; font-weight: 700; }
+.mk-contact-form .mk-field-error { display: block; color: #9b252b; font-size: 12px; font-weight: 600; line-height: 1.45; }
+.mk-contact-form [aria-invalid="true"]:not(fieldset) { border-color: #b12933; }
+.mk-contact-form .mk-form-error-summary { display: block; margin: 4px 0; border: 1px solid #d99ba0; border-radius: 8px; padding: 11px; color: #8b1e28; background: #fff4f4; font-size: 13px; line-height: 1.5; }
+.mk-contact-form .mk-demo-receipt { display: block; margin: 4px 0; color: #24456a; font-size: 12px; line-height: 1.5; }
+.mk-demo-receipt code { display: block; overflow-wrap: anywhere; font-size: 12px; }
+.mk-contact-form :focus-visible { outline: 3px solid #0754ce; outline-offset: 3px; }
+.mk-contact-form .mk-contact-submit:disabled { opacity: .65; cursor: not-allowed; }
+.mk-contact-form .mk-contact-consent { font-size: 12px; line-height: 1.5; }
+@media (min-width: 1121px) {
+  .mk-contact-stage { min-height: calc(100dvh - 180px); padding-block: 32px; }
+  .mk-contact-form { align-self: center; gap: 10px; padding: 24px; }
+  .mk-contact-form h2 { position: static; width: auto; height: auto; overflow: visible; clip-path: none; white-space: normal; font-size: 24px; }
+  .mk-contact-form > p:not(.mk-contact-form-tag):not(.mk-contact-prepared):not(.mk-contact-error) { display: block; font-size: 13px; line-height: 1.5; }
+  .mk-contact-form label, .mk-contact-selection legend { font-size: 13px; }
+  .mk-contact-form input, .mk-contact-form select, .mk-contact-form textarea { font-size: 14px; }
+  .mk-contact-form .mk-contact-app-choice { min-height: 38px; padding: 8px; font-size: 12px; }
+  .mk-contact-app-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mk-contact-package small, .mk-contact-form > small, .mk-contact-talk { font-size: 12px; line-height: 1.45; }
+}
+
+/* Phase 3: reflow, keyboard focus and touch controls without a fixed-height composition. */
+.mk-page {
+  height: 100dvh;
+  min-height: 100dvh;
+  scroll-padding-block: 92px 24px;
+}
+
+.mk-background {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100%;
+}
+
+#mk-main-content {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mk-page :is(section, article, header, footer, form, fieldset, figure),
+.mk-page :is(h1, h2, h3, h4, p, li, dd) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mk-page :is(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid #0754ce;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 3px #fff;
+}
+
+.mk-page :is(a, button, input, select, textarea, summary, [tabindex]) {
+  scroll-margin-block: 92px 24px;
+}
+
+.mk-skip-link {
+  position: absolute;
+  z-index: 300;
+  top: max(8px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  max-width: calc(100% - 24px);
+  border: 2px solid #0754ce;
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #0754ce !important;
+  background: white;
+  font-size: 16px;
+  font-weight: 750;
+  transform: translateY(calc(-100% - 20px));
+}
+
+.mk-skip-link:focus { transform: none; }
+
+.mk-brand-link,
+.mk-header nav a,
+.mk-menu-button,
+.mk-primary,
+.mk-secondary,
+.mk-heading-actions .mk-primary,
+.mk-heading-actions > a:not(.mk-primary),
+.mk-intro > a,
+.mk-contact-submit,
+.mk-contact-talk,
+.mk-contact-form .mk-contact-package,
+.mk-contact-form .mk-contact-app-choice,
+.mk-delivery-actions button,
+.mk-wechat-copy,
+.mk-wechat-id,
+.mk-download-request,
+.mk-download-primary,
+.mk-download-checksum,
+.mk-tour-tabs button,
+.mk-tour-progress button,
+.mk-tour-actions button,
+.mk-faq-dialog header > button,
+.mk-footer > div a,
+.mk-footer > div button {
+  min-height: 44px;
+}
+
+.mk-brand-link { display: inline-flex; align-items: center; }
+.mk-menu-button, .mk-faq-dialog header > button { min-width: 44px; }
+.mk-primary, .mk-secondary, .mk-client-button, .mk-tour-actions button {
+  max-width: 100%;
+  padding-block: 10px;
+  white-space: normal;
+  line-height: 1.4;
+}
+.mk-heading-actions > a:not(.mk-primary), .mk-intro > a { max-width: 100%; }
+.mk-heading-actions .mk-primary { font-size: 14px; }
+.mk-language-selector { min-height: 44px; }
+.mk-language-selector select {
+  min-width: 0;
+  min-height: 44px;
+  font-size: 16px;
+}
+.mk-language-selector > svg { flex: 0 0 auto; }
+
+.mk-contact-form input:not([type="checkbox"]):not([type="radio"]),
+.mk-contact-form select,
+.mk-contact-form textarea {
+  min-width: 0;
+  min-height: 44px;
+  font-size: 16px;
+  line-height: 1.4;
+}
+.mk-contact-form textarea { min-height: 96px; }
+.mk-contact-form label, .mk-contact-selection legend { font-size: 14px; line-height: 1.45; }
+.mk-contact-form .mk-contact-app-choice { font-size: 14px; }
+.mk-contact-form .mk-contact-consent { align-items: center; min-height: 44px; padding-block: 8px; font-size: 13px; }
+.mk-contact-form .mk-contact-consent input,
+.mk-contact-form .mk-contact-selection input[type="checkbox"] {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+}
+.mk-contact-form .mk-contact-consent { grid-template-columns: 20px minmax(0, 1fr); }
+.mk-contact-product { overflow: visible; }
+.mk-contact-products { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.mk-contact-product > span { min-width: 0; }
+.mk-contact-package strong { font-size: 14px; }
+.mk-contact-package small, .mk-contact-form > small { font-size: 12px; line-height: 1.5; }
+.mk-delivery-actions button, .mk-contact-talk, .mk-wechat-copy { font-size: 14px; line-height: 1.4; }
+.mk-wechat-id { font-size: 16px; }
+.mk-wechat-body { display: block; }
+.mk-wechat-account-line, .mk-wechat-body, .mk-wechat-hint, .mk-wechat-status { font-size: 14px; line-height: 1.5; }
+
+.mk-hero { max-height: none; }
+.mk-page :is(.mk-hero h1, .mk-page-heading h1, .mk-contact-story h1) { line-height: 1.1; }
+.mk-hero-copy { min-width: 0; }
+.mk-hero-product img { max-width: 100%; }
+.mk-page-heading-support > small, .mk-note { color: #50627c; font-size: 12px; line-height: 1.5; }
+.mk-footer > div { flex-wrap: wrap; align-items: center; gap: 8px 22px; min-width: 0; }
+.mk-footer > div a, .mk-footer > div button { display: inline-flex; align-items: center; text-align: left; font-size: 13px; line-height: 1.4; }
+.mk-footer p, .mk-footer small { color: #adbed4; font-size: 12px; line-height: 1.5; }
+.mk-feature-list li > svg, .mk-checks li > svg, .mk-comparison-row .is-ours svg { flex: 0 0 auto; }
+
+/* Keep one scrollable dialog surface; text must not compete with a fixed image height. */
+.mk-product-overlay, .mk-faq-overlay {
+  z-index: 200;
+  padding-top: max(12px, env(safe-area-inset-top));
+  padding-right: max(12px, env(safe-area-inset-right));
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  padding-left: max(12px, env(safe-area-inset-left));
+}
+.mk-download-dialog, .mk-tour-dialog, .mk-faq-dialog, .mk-wechat-qr-dialog {
+  min-width: 0;
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom)));
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scroll-padding-block: 16px;
+}
+.mk-tour-dialog { display: block; height: auto; }
+.mk-product-dialog-header > div, .mk-faq-dialog > header > div { min-width: 0; }
+.mk-product-dialog-header h2, .mk-faq-dialog h2 { overflow-wrap: anywhere; line-height: 1.15; }
+.mk-tour-stage { align-items: stretch; }
+.mk-tour-context { height: auto; min-height: 0; }
+.mk-tour-preview { grid-template-rows: auto auto; }
+.mk-tour-preview img { max-height: 320px; }
+.mk-tour-preview figcaption, .mk-tour-context dt, .mk-tour-context dd,
+.mk-tour-product-label, .mk-tour-step-count, .mk-tour-details h4,
+.mk-tour-benefit strong, .mk-tour-progress button, .mk-tour-progress button span,
+.mk-download-card-head em, .mk-download-grid dt, .mk-download-grid dd,
+.mk-download-request, .mk-download-primary, .mk-download-checksum,
+.mk-download-safety { font-size: 12px; line-height: 1.5; }
+.mk-tour-tabs button, .mk-tour-actions button, .mk-faq-list button,
+.mk-download-grid article > p { font-size: 14px; line-height: 1.5; }
+.mk-tour-editorial > p:not(.mk-tour-product-label):not(.mk-tour-step-count),
+.mk-tour-capabilities li, .mk-tour-example p, .mk-tour-benefit { font-size: 14px; line-height: 1.5; }
+.mk-tour-context dt { color: #b8cce5; }
+.mk-tour-progress button { color: #50627c; }
+.mk-tour-context dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mk-download-actions { flex-wrap: wrap; }
+.mk-download-grid dl > div { min-width: 0; }
+.mk-wechat-qr-dialog { height: auto; grid-template-rows: auto auto; }
+.mk-wechat-qr-full { width: min(100%, 430px); height: auto; max-height: 640px; }
+
+@media (min-width: 1121px) {
+  .mk-header { grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 16px; }
+  .mk-header nav { justify-self: center; }
+  .mk-header-actions { width: auto; grid-template-columns: 80px minmax(190px, auto); }
+  .mk-language-selector { width: 80px; padding-inline: 6px; }
+  .mk-client-button { width: auto; font-size: 14px; }
+  .mk-hero { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); }
+  .mk-hero-copy { padding-block: 34px; }
+  .mk-lead, .mk-principles p, .mk-dark-band p:not(.mk-kicker),
+  .mk-inner-page:not(.mk-advantages-page) > .mk-page-heading .mk-page-heading-support > p,
+  .mk-advantages-page .mk-page-heading-support > p,
+  .mk-feature-list article > div:last-child > p:not(.mk-kicker) { font-size: 14px; line-height: 1.55; }
+  .mk-checks, .mk-feature-list ul { font-size: 12px; line-height: 1.5; }
+  .mk-feature-list h2 { line-height: 1.2; }
+  .mk-principles article { overflow: visible; }
+  .mk-advantages-page .mk-comparison-row > * { font-size: 14px; line-height: 1.5; }
+  .mk-advantages-page .mk-comparison-row.is-head > * { font-size: 12px; }
+  .mk-contact-stage { align-items: start; padding-block: 32px; }
+  .mk-contact-form { gap: 12px; }
+  .mk-contact-form h2 { position: static; width: auto; height: auto; overflow: visible; clip-path: none; white-space: normal; line-height: 1.2; }
+  .mk-contact-form > p:not(.mk-contact-form-tag):not(.mk-contact-prepared):not(.mk-contact-error) { display: block; font-size: 14px; line-height: 1.5; }
+  .mk-contact-story > p:not(.mk-kicker) { font-size: 14px; line-height: 1.55; }
+  .mk-contact-products { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mk-contact-product { min-height: 88px; }
+  .mk-contact-product em { font-size: 12px; }
+}
+
+@media (min-width: 761px) and (max-width: 1120px) {
+  .mk-advantages-page .mk-page-heading { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .mk-advantages-page .mk-page-heading-support > p { font-size: 16px; line-height: 1.6; }
+  .mk-comparison-row { grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(0, 1fr)); }
+  .mk-advantages-page .mk-comparison-row > * { padding-inline: 12px; font-size: 14px; line-height: 1.5; }
+  .mk-advantages-page .mk-comparison-row.is-head > * { font-size: 12px; }
+}
+
+@media (max-width: 1120px) {
+  .mk-header nav {
+    top: calc(100% + 4px);
+    right: max(12px, env(safe-area-inset-right));
+    left: max(12px, env(safe-area-inset-left));
+    max-height: calc(100vh - 90px);
+    max-height: calc(100dvh - 90px - env(safe-area-inset-bottom));
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding: 8px 16px;
+  }
+  .mk-header nav a { padding: 12px 8px; font-size: 16px; line-height: 1.5; }
+  .mk-header nav .mk-mobile-client-link { min-height: 44px; padding-inline: 8px; font-size: 16px; line-height: 1.5; text-align: left; }
+  .mk-header nav .mk-language-selector.is-mobile { padding-inline: 8px; }
+  .mk-header nav .mk-language-selector.is-mobile select { min-height: 44px; font-size: 16px; }
+  .mk-menu-button { width: 44px; height: 44px; }
+  .mk-intro { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .mk-hero-product { flex-direction: column; gap: 20px; }
+  .mk-proof-panel { position: static; width: 100%; flex: 0 0 auto; }
+  .mk-proof-panel strong { font-size: 14px; line-height: 1.4; }
+  .mk-proof-panel small { color: #50627c; font-size: 12px; line-height: 1.5; }
+}
+
+@media (max-width: 760px) {
+  .mk-page { scroll-padding-top: 82px; }
+  .mk-hero h1, .mk-page-heading h1, .mk-contact-story h1,
+  .mk-advantages-page .mk-page-heading h1 { font-size: clamp(32px, 8.5vw, 44px); }
+  .mk-intro { grid-template-columns: minmax(0, 1fr); }
+  .mk-intro h2, .mk-dark-band h2 { font-size: clamp(28px, 7.6vw, 42px); line-height: 1.15; }
+  .mk-intro > a { width: auto; }
+  .mk-feature-list h2 { font-size: clamp(26px, 7vw, 34px); line-height: 1.2; }
+  .mk-feature-list article { padding: 28px 20px; }
+  .mk-feature-list article > div:last-child > p:not(.mk-kicker) { font-size: 16px; line-height: 1.65; }
+  .mk-feature-list ul { font-size: 14px; line-height: 1.5; }
+  .mk-checks { display: flex; font-size: 13px; line-height: 1.5; }
+  .mk-contact-products { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mk-contact-product { grid-template-columns: auto minmax(0, 1fr); gap: 8px; min-height: 96px; padding: 12px; }
+  .mk-contact-product > svg:last-child { display: none; }
+  .mk-contact-product strong { font-size: 16px; }
+  .mk-contact-product em { font-size: 12px; }
+  .mk-contact-trust small { font-size: 12px; line-height: 1.5; }
+  .mk-contact-form { padding: 24px 16px; }
+  .mk-contact-form-tag { width: fit-content; max-width: 100%; font-size: 11px; line-height: 1.5; }
+  .mk-contact-form h2 { font-size: 26px; line-height: 1.2; }
+  .mk-contact-form > p:not(.mk-contact-form-tag):not(.mk-contact-prepared):not(.mk-contact-error) { font-size: 14px; line-height: 1.5; }
+  .mk-contact-app-options { gap: 8px; }
+  .mk-contact-form .mk-contact-app-choice { padding: 10px 8px; }
+  .mk-wechat-card { padding: 12px; }
+  .mk-wechat-content { flex-basis: calc(100% - 46px); }
+  .mk-comparison { position: relative; }
+  .mk-comparison-row.is-head {
+    position: absolute;
+    display: grid;
+    width: 1px;
+    height: 1px;
+    min-height: 0;
+    margin: -1px;
+    border: 0;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+  }
+  .mk-advantages-page .mk-comparison-row > * { padding: 14px; font-size: 14px; line-height: 1.5; }
+  .mk-comparison-row [data-label]::before { color: #52647d; font-size: 12px; line-height: 1.5; }
+  .mk-product-dialog-header, .mk-faq-dialog > header { gap: 12px; }
+  .mk-product-dialog-header h2, .mk-faq-dialog h2 { font-size: clamp(23px, 6vw, 29px); }
+  .mk-download-dialog, .mk-tour-dialog, .mk-faq-dialog { padding: 20px 16px; }
+  .mk-tour-context { margin-top: 0; }
+  .mk-tour-context dl { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .mk-tour-tabs { gap: 8px; }
+  .mk-tour-tabs button { padding: 10px 8px; }
+  .mk-tour-progress { grid-template-columns: minmax(0, 1fr); }
+  .mk-tour-progress button { font-size: 14px; }
+  .mk-tour-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mk-tour-actions button { min-width: 0; padding-inline: 8px; }
+  .mk-download-safety { flex-wrap: wrap; }
+  .mk-faq-answer { min-height: 0; }
+}
+
+@media (max-width: 420px) {
+  .mk-contact-products, .mk-contact-app-options { grid-template-columns: minmax(0, 1fr); }
+  .mk-contact-product { min-height: 80px; }
+  .mk-comparison-row { grid-template-columns: minmax(0, 1fr); }
+  .mk-comparison-row > * { grid-column: 1 / -1; }
+  .mk-comparison-row > * + * { border-top: 1px solid var(--mk-line); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-page, .mk-page *, .mk-page *::before, .mk-page *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+  .mk-page :is(a, button, article):hover,
+  .mk-contact-product.is-selected { transform: none; }
+  .mk-skip-link:not(:focus) { transform: translateY(calc(-100% - 20px)); }
+}
+
+@media (forced-colors: active) {
+  .mk-page :is(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline-color: Highlight;
+    box-shadow: none;
+  }
+  .mk-header nav a.active, .mk-tour-tabs button[aria-selected="true"],
+  .mk-tour-progress button.is-active, .mk-contact-selection label.is-selected {
+    outline: 2px solid Highlight;
+    outline-offset: -3px;
+  }
 }

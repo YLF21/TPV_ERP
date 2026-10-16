@@ -66,7 +66,7 @@ type SupplierOption = {
 const copy = {
   es: {
     setupTitle: "Registrar este PDA",
-    setupHelp: "Asigna un nombre reconocible. Después un administrador deberá aprobar el dispositivo en esPOS GESTIÓN.",
+    setupHelp: "Asigna un nombre reconocible. Después un administrador deberá aprobar el dispositivo en esPOS Gestión.",
     deviceName: "Nombre del dispositivo",
     devicePlaceholder: "PDA ALMACÉN 1",
     request: "Solicitar acceso",
@@ -74,13 +74,13 @@ const copy = {
     linkExisting: "Vincular existente",
     pairingCode: "Código temporal",
     pairingPlaceholder: "ABCD-EFGH",
-    pairingHelp: "Genera el código desde esPOS GESTIÓN → Seguridad → Terminales y PDA.",
+    pairingHelp: "Genera el código desde esPOS Gestión → Seguridad → Terminales y PDA.",
     link: "Vincular PDA",
     linkError: "El código no es válido, ha caducado o ya fue utilizado.",
-    pending: "Solicitud enviada. Aprueba el PDA desde esPOS GESTIÓN y después inicia sesión.",
+    pending: "Solicitud enviada. Aprueba el PDA desde esPOS Gestión y después inicia sesión.",
     requestError: "No se pudo registrar el PDA",
     reset: "Registrar otro dispositivo",
-    loginTitle: "APP PDA",
+    loginTitle: "esPOS PDA",
     loginHelp: "Identifícate para trabajar con este dispositivo de almacén.",
     language: "Idioma",
     logout: "Cerrar sesión",
@@ -89,7 +89,7 @@ const copy = {
   },
   en: {
     setupTitle: "Register this PDA",
-    setupHelp: "Choose a recognizable name. An administrator must then approve the device in APP MANAGEMENT.",
+    setupHelp: "Choose a recognizable name. An administrator must then approve the device in esPOS Management.",
     deviceName: "Device name",
     devicePlaceholder: "WAREHOUSE PDA 1",
     request: "Request access",
@@ -97,13 +97,13 @@ const copy = {
     linkExisting: "Link existing",
     pairingCode: "Temporary code",
     pairingPlaceholder: "ABCD-EFGH",
-    pairingHelp: "Generate the code in APP MANAGEMENT → Security → Terminals and PDA.",
+    pairingHelp: "Generate the code in esPOS Management → Security → Terminals and PDA.",
     link: "Link PDA",
     linkError: "The code is invalid, expired, or has already been used.",
-    pending: "Request sent. Approve the PDA in APP MANAGEMENT and then sign in.",
+    pending: "Request sent. Approve the PDA in esPOS Management and then sign in.",
     requestError: "The PDA could not be registered",
     reset: "Register another device",
-    loginTitle: "APP PDA",
+    loginTitle: "esPOS PDA",
     loginHelp: "Sign in to work with this warehouse device.",
     language: "Language",
     logout: "Sign out",
@@ -112,7 +112,7 @@ const copy = {
   },
   zh: {
     setupTitle: "注册此 PDA",
-    setupHelp: "请设置一个易识别的名称，然后由管理员在管理应用中批准该设备。",
+    setupHelp: "请设置一个易识别的名称，然后由管理员在 esPOS 管理应用中批准该设备。",
     deviceName: "设备名称",
     devicePlaceholder: "仓库 PDA 1",
     request: "申请访问",
@@ -120,13 +120,13 @@ const copy = {
     linkExisting: "绑定已有 PDA",
     pairingCode: "临时绑定码",
     pairingPlaceholder: "ABCD-EFGH",
-    pairingHelp: "请在管理应用 → 安全 → 终端和 PDA 中生成绑定码。",
+    pairingHelp: "请在 esPOS 管理应用 → 安全 → 终端和 PDA 中生成绑定码。",
     link: "绑定 PDA",
     linkError: "绑定码无效、已过期或已使用。",
-    pending: "申请已发送。请先在管理应用中批准 PDA，然后登录。",
+    pending: "申请已发送。请先在 esPOS 管理应用中批准 PDA，然后登录。",
     requestError: "无法注册 PDA",
     reset: "注册其他设备",
-    loginTitle: "APP PDA",
+    loginTitle: "esPOS PDA",
     loginHelp: "登录以使用此仓库设备。",
     language: "语言",
     logout: "退出登录",
@@ -270,7 +270,7 @@ function PdaEnrollment({
     <main className="pda-enrollment">
       <section className="pda-enrollment-card">
         <header>
-          <span>TPV ERP · v{applicationVersion}</span>
+          <span>esPOS · v{applicationVersion}</span>
           <strong>{text.setupTitle}</strong>
           <p>{mode === "register" ? text.setupHelp : text.pairingHelp}</p>
         </header>
@@ -346,7 +346,7 @@ function PdaWorkspace({
   return (
     <main className="pda-app-shell">
       <header className="pda-app-header">
-        <div><span>TPV ERP · PDA · v{applicationVersion}</span><strong>{copy[locale].title}</strong></div>
+        <div><span>esPOS · PDA · v{applicationVersion}</span><strong>{copy[locale].title}</strong></div>
         <div className="pda-header-actions">
           <small>{copy[locale].device}: {identity.terminalCode}</small>
           <select aria-label="Idioma" value={locale} onChange={(event) => onLocaleChange(event.target.value as LocaleCode)}>

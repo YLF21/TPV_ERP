@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { DownloadSimple } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode } from "../types";
 import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
 import { TableSortButton } from "./TableSortButton";
 import { nextTableSort, sortTableRows, type TableSort } from "./tableSorting";
+import { WarehouseSearchFrame } from "./WarehouseSearchFrame";
 import "./WarehouseClassicTables.css";
 import "./ErpSearchField.css";
 
@@ -400,25 +402,26 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
       setBusy(false);
     }
   }
+  const documentSearchInput = <input
+    ref={searchRef}
+    className={app !== "pda" ? "erp-search-input" : undefined}
+    type="search"
+    value={search}
+    placeholder={t("goodsCheck.searchPlaceholder")}
+    onChange={(event) => setSearch(event.target.value)}
+  />;
 
   return (
-    <section className={`goods-check-panel${separateWorkflow ? " goods-check-panel-separate" : ""}`}>
+    <section className={`goods-check-panel${separateWorkflow ? " goods-check-panel-separate" : ""}${app === "gestion" ? " gestion-warehouse-screen" : ""}`}>
       {(!separateWorkflow || workflowView === "documents") && <div className="goods-check-documents">
         <header className="goods-check-documents-header">
-          <div className="stock-history-toolbar goods-check-toolbar">
+          <div className={`stock-history-toolbar goods-check-toolbar${app === "gestion" ? " gestion-warehouse-toolbar" : ""}`}>
             <label className="goods-check-search">
               <span>{t("salesReport.search")}</span>
-              <input
-                ref={searchRef}
-                className={app !== "pda" ? "erp-search-input" : undefined}
-                type="search"
-                value={search}
-                placeholder={t("goodsCheck.searchPlaceholder")}
-                onChange={(event) => setSearch(event.target.value)}
-              />
+              {app === "gestion" ? <WarehouseSearchFrame>{documentSearchInput}</WarehouseSearchFrame> : documentSearchInput}
             </label>
-            <button type="button" disabled={!selectedDocument || busy} onClick={() => void importDocument()}>
-              {busy ? t("common.loading") : t("goodsCheck.import")}
+            <button type="button" className={app === "gestion" ? "primary" : undefined} disabled={!selectedDocument || busy} onClick={() => void importDocument()}>
+              {app === "gestion" ? <span><DownloadSimple size={16} aria-hidden="true" />{busy ? t("common.loading") : t("goodsCheck.import")}</span> : busy ? t("common.loading") : t("goodsCheck.import")}
             </button>
           </div>
           <div

@@ -69,11 +69,26 @@
       .product-select-popover button.selected,
       .adjustment-product-dropdown button[aria-selected="true"],
       .inventory-product-search [role="option"][aria-selected="true"]
-    ):not(:where(.danger, .warning, .destructive, .erp-dialog-action-cancel, .shutdown-yes, .expired, .gestion-rule-active-toggle,
+    ):not(:where(.danger, .warning, .destructive, .erp-dialog-action-cancel, .shutdown-yes, .expired, .gestion-rule-active-toggle, .table-layout-sort-button,
       .shared-excel-review *, .shared-excel-frozen-table *)) {
       border-color: var(--gestion-accent) !important;
       background: var(--gestion-accent) !important;
       color: #fff !important;
+    }
+
+    /* Sort selection belongs to the complete header, including its padding and
+       actions. Keep the sort button clear instead of painting a primary action. */
+    html[data-app="gestion"] .table-layout-sort-button {
+      background: transparent !important;
+      color: inherit !important;
+    }
+
+    html[data-app="gestion"] :is(th, [role="columnheader"], .table-layout-header-cell):is(
+      :hover, :focus-within, :has(.table-layout-sort-button.is-active)
+    ) {
+      background: #2e5072 !important;
+      color: #fff !important;
+      box-shadow: none !important;
     }
 
     /* Control-alert categories use an outlined selection, including hover. */

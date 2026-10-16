@@ -26,6 +26,7 @@ import "../../../packages/app-common/src/styles/ShortcutButtons.css";
 import "../../../packages/app-common/src/styles/DesktopWindowCorners.css";
 import "../../../packages/app-common/src/styles/tpv.css";
 import "./gestion.css";
+import "./GestionWarehouseScreens.css";
 import LoginScreen from "./GestionLoginScreen";
 import { canManageFamilies, canManageTaxes, visibleGestionModules } from "./gestionAccess";
 import { GestionDashboard } from "./GestionDashboard";
@@ -779,6 +780,7 @@ function GestionScreen({
         session={session}
         mode={stockSelection.warehouseOperation}
         t={t}
+        locale={locale}
       />
     ) : stockSelection.warehouseManagement ? (
       <WarehouseManagementScreen session={session} t={t} locale={locale} onCreateDocument={(kind) => {

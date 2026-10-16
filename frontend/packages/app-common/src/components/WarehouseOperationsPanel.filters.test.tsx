@@ -62,11 +62,12 @@ describe("Classic warehouse lists and filter tags", () => {
     expect(container.querySelectorAll("tbody tr[data-operation-id]")).toHaveLength(3);
     expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
     await waitFor(() => expect(search).toHaveFocus());
-    const purchaseDates = app === "gestion" && (documentType === "ALBARAN_ENTRADA" || documentType === "FACTURA_ENTRADA");
+    const warehouseDates = app === "gestion";
     expect(request.mock.calls.filter(([path]) => String(path).startsWith("/warehouse-"))).toHaveLength(1);
-    expect(request).toHaveBeenCalledTimes(purchaseDates ? 2 : 1);
-    if (purchaseDates) {
-      expect(request).toHaveBeenCalledWith(`/document-reports/date-options?report=${documentType === "FACTURA_ENTRADA" ? "inputInvoices" : "inputDeliveryNotes"}`, { token: "fixture" });
+    expect(request).toHaveBeenCalledTimes(warehouseDates ? 2 : 1);
+    if (warehouseDates) {
+      const report = mode === "output" ? "warehouseOutputs" : documentType === "FACTURA_ENTRADA" ? "inputInvoices" : documentType === "ALBARAN_ENTRADA" ? "inputDeliveryNotes" : "inputWarehouse";
+      expect(request).toHaveBeenCalledWith(`/document-reports/date-options?report=${report}`, { token: "fixture" });
       expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled();
     }
   });

@@ -86,13 +86,18 @@ describe("WarehouseOperationsPanel", () => {
     localStorage.clear();
   });
 
-  it.each(["FACTURA_ENTRADA", "ALBARAN_ENTRADA"] as const)("filters %s with the report period selector", async (documentType) => {
+  it.each([
+    ["input", "FACTURA_ENTRADA", "inputInvoices"],
+    ["input", "ALBARAN_ENTRADA", "inputDeliveryNotes"],
+    ["input", "ENTRADA_ALMACEN", "inputWarehouse"],
+    ["output", undefined, "warehouseOutputs"]
+  ] as const)("filters %s %s with the report period selector", async (mode, documentType, report) => {
     apiRequestMock.mockImplementation(async (path) => {
       if (String(path).includes("date-options")) return { currentDate: "2026-07-12", earliestDate: "2025-01-01" };
-      if (String(path).startsWith("/warehouse-inputs")) return [draft, { ...confirmed, date: "2026-07-12" }];
+      if (String(path).startsWith("/warehouse-inputs") || String(path).startsWith("/warehouse-outputs")) return [draft, { ...confirmed, date: "2026-07-12" }];
       return [];
     });
-    const view = render(<WarehouseOperationsPanel mode="input" app="gestion" documentType={documentType}
+    const view = render(<WarehouseOperationsPanel mode={mode} app="gestion" documentType={documentType}
       token="token" products={products} warehouses={warehouses} customers={customers} suppliers={suppliers} t={t} />);
     await waitFor(() => expect((view.getByRole("button", { name: "Hoy" }) as HTMLButtonElement).disabled).toBe(false));
     expect(view.container.querySelectorAll("tbody tr[data-operation-id]")).toHaveLength(2);
@@ -102,7 +107,7 @@ describe("WarehouseOperationsPanel", () => {
     fireEvent.click(view.getByRole("button", { name: "Ayer" }));
     expect(view.container.querySelector('[data-operation-id="input-1"]')).not.toBeNull();
     expect(view.container.querySelector('[data-operation-id="input-2"]')).toBeNull();
-    expect(apiRequestMock).toHaveBeenCalledWith(`/document-reports/date-options?report=${documentType === "FACTURA_ENTRADA" ? "inputInvoices" : "inputDeliveryNotes"}`, { token: "token" });
+    expect(apiRequestMock).toHaveBeenCalledWith(`/document-reports/date-options?report=${report}`, { token: "token" });
   });
 
   it("loads paged input and output collections from their existing GET endpoints", async () => {
