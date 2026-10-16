@@ -107,13 +107,25 @@ describe("BackendConnectionRecovery", () => {
     window.addEventListener("keydown", keydown);
     window.addEventListener("keyup", keyup);
     const view = render(<BackendConnectionRecovery locale="es" />);
-    const button = await screen.findByRole("button", { name: "Reintentar" });
-    for (const key of ["F2", "F3", "+", "-", "PrintScreen", " ", "Enter"]) {
-      expect(fireEvent.keyDown(button, { key, bubbles: true, cancelable: true })).toBe(true);
-      fireEvent.keyUp(button, { key, bubbles: true });
+    try {
+      const button = await screen.findByRole("button", { name: "Reintentar" });
+      await waitFor(() => {
+        expect(document.getElementById("root")?.inert).toBe(true);
+        expect(button).toHaveFocus();
+      });
+      for (const key of ["F2", "F3", "+", "-", "PrintScreen", " ", "Enter"]) {
+        expect(fireEvent.keyDown(button, { key, bubbles: true, cancelable: true })).toBe(true);
+        fireEvent.keyUp(button, { key, bubbles: true });
+      }
+      expect(keydown).not.toHaveBeenCalled(); expect(keyup).not.toHaveBeenCalled();
+      view.unmount();
+      expect(document.getElementById("root")?.inert).toBe(false);
+      fireEvent.keyDown(window, { key: "F2" });
+      expect(keydown).toHaveBeenCalledOnce();
+    } finally {
+      view.unmount();
+      window.removeEventListener("keydown", keydown);
+      window.removeEventListener("keyup", keyup);
     }
-    expect(keydown).not.toHaveBeenCalled(); expect(keyup).not.toHaveBeenCalled();
-    view.unmount(); fireEvent.keyDown(window, { key: "F2" }); expect(keydown).toHaveBeenCalledOnce();
-    window.removeEventListener("keydown", keydown); window.removeEventListener("keyup", keyup);
   });
 });

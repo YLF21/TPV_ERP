@@ -2012,6 +2012,8 @@ export function SalesReportScreen({
   const [reportExportBusy, setReportExportBusy] = useState(false);
   const [reportExportProgress, setReportExportProgress] = useState(0);
   const [reportNotice, setReportNotice] = useState<ReportNotice | null>(null);
+  const reportExportResetTimer = useRef<number | null>(null);
+  const reportMounted = useRef(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
   const [reportDocumentPrinting, setReportDocumentPrinting] = useState(false);
@@ -2181,6 +2183,17 @@ export function SalesReportScreen({
   );
   const selectedReportPage = reportPages[reportPageKey(selectedReport)];
   const selectedReportLoadError = reportLoadErrors[selectedReport] ?? "";
+
+  useEffect(() => {
+    reportMounted.current = true;
+    return () => {
+      reportMounted.current = false;
+      if (reportExportResetTimer.current !== null) {
+        window.clearTimeout(reportExportResetTimer.current);
+        reportExportResetTimer.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (reportNotice?.kind !== "success") return;
@@ -2813,6 +2826,23 @@ export function SalesReportScreen({
     }));
   }
 
+  function clearReportExportResetTimer() {
+    if (reportExportResetTimer.current !== null) {
+      window.clearTimeout(reportExportResetTimer.current);
+      reportExportResetTimer.current = null;
+    }
+  }
+
+  function finishReportExport() {
+    if (!reportMounted.current) return;
+    setReportExportBusy(false);
+    clearReportExportResetTimer();
+    reportExportResetTimer.current = window.setTimeout(() => {
+      reportExportResetTimer.current = null;
+      if (reportMounted.current) setReportExportProgress(0);
+    }, 700);
+  }
+
   async function saveExportBytes(
     bytes: Uint8Array,
     fileName: string,
@@ -2841,6 +2871,7 @@ export function SalesReportScreen({
 
   async function exportExcelReport() {
     if (!session.accessToken || reportExportBusy) return;
+    clearReportExportResetTimer();
     setPrintMenuOpen(false);
     setReportNotice(null);
     setReportExportBusy(true);
@@ -2861,9 +2892,11 @@ export function SalesReportScreen({
           columns: exportColumns(true)
         })
       });
+      if (!reportMounted.current) return;
       if (!response.ok) throw new Error(await salesReportResponseError(response));
       setReportExportProgress(70);
       const bytes = new Uint8Array(await response.arrayBuffer());
+      if (!reportMounted.current) return;
       const fileName = reportFileName("xlsx");
       setReportExportProgress(90);
       await saveExportBytes(
@@ -2872,21 +2905,23 @@ export function SalesReportScreen({
         "xlsx",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       );
+      if (!reportMounted.current) return;
       setReportExportProgress(100);
       setReportNotice({ kind: "success", message: t("salesReport.exportExcelSuccess") });
     } catch (error) {
+      if (!reportMounted.current) return;
       setReportNotice({
         kind: "error",
         message: `${t("salesReport.exportFailed")}: ${error instanceof Error ? error.message : ""}`
       });
     } finally {
-      setReportExportBusy(false);
-      window.setTimeout(() => setReportExportProgress(0), 700);
+      finishReportExport();
     }
   }
 
   async function exportPdfReport() {
     if (!session.accessToken || reportExportBusy) return;
+    clearReportExportResetTimer();
     setPrintMenuOpen(false);
     setReportExportBusy(true);
     setReportExportProgress(10);
@@ -2906,20 +2941,23 @@ export function SalesReportScreen({
           columns: exportColumns()
         })
       });
+      if (!reportMounted.current) return;
       if (!response.ok) throw new Error(await salesReportResponseError(response));
       setReportExportProgress(75);
       const bytes = new Uint8Array(await response.arrayBuffer());
+      if (!reportMounted.current) return;
       await saveExportBytes(bytes, reportFileName("pdf"), "pdf", "application/pdf");
+      if (!reportMounted.current) return;
       setReportExportProgress(100);
       setReportNotice({ kind: "success", message: t("salesReport.exportPdfSuccess") });
     } catch (error) {
+      if (!reportMounted.current) return;
       setReportNotice({
         kind: "error",
         message: `${t("salesReport.exportFailed")}: ${error instanceof Error ? error.message : ""}`
       });
     } finally {
-      setReportExportBusy(false);
-      window.setTimeout(() => setReportExportProgress(0), 700);
+      finishReportExport();
     }
   }
 

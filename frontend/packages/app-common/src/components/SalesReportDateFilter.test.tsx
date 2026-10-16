@@ -74,8 +74,85 @@ describe("report quick date integration", () => {
     await waitFor(() => expect(request).toHaveBeenCalledWith("/document-reports/tickets?limit=500&dateFrom=2025-10-01&dateTo=2025-12-31", { token: "token" }));
     fireEvent.keyDown(window, { key: "F6" });
     await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("Excel exportado correctamente")).toBeInTheDocument();
     expect(JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)).toMatchObject({ reportKey: "salesReport.tickets", filters: { dateFrom: "2025-10-01", dateTo: "2025-12-31" } });
     expect(request.mock.calls.every((call) => call.length === 2 && Object.keys(call[1]).join() === "token")).toBe(true);
+  });
+
+  it.each([
+    ["F6", "Excel exportado correctamente"],
+    ["F7", "PDF exportado correctamente"],
+  ])("cancels the %s export progress reset on unmount", async (key, success) => {
+    const saveFile = vi.fn().mockResolvedValue({ ok: true });
+    Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { reports: { saveFile } } });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new Uint8Array([1]), { status: 200 }));
+    const view = mount();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout");
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+    fireEvent.keyDown(window, { key });
+    expect(await screen.findByText(success)).toBeInTheDocument();
+    const resetIndex = setTimeoutSpy.mock.calls.findIndex(([, delay]) => delay === 700);
+    expect(resetIndex).toBeGreaterThanOrEqual(0);
+    const resetTimer = setTimeoutSpy.mock.results[resetIndex].value;
+    view.unmount();
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(resetTimer);
+  });
+
+  it("does not schedule an export progress reset if the save finishes after unmount", async () => {
+    let finishSave!: (result: { ok: true }) => void;
+    const saveFile = vi.fn(() => new Promise<{ ok: true }>((resolve) => { finishSave = resolve; }));
+    Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { reports: { saveFile } } });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new Uint8Array([1]), { status: 200 }));
+    const view = mount();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout");
+    fireEvent.keyDown(window, { key: "F6" });
+    await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(1));
+    view.unmount();
+    await act(async () => finishSave({ ok: true }));
+    expect(setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 700)).toHaveLength(0);
+  });
+
+  it.each(["F6", "F7"])("does not save a %s export when its request finishes after unmount", async (key) => {
+    let finishFetch!: (response: Response) => void;
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockImplementation(() => new Promise<Response>((resolve) => { finishFetch = resolve; }));
+    const saveFile = vi.fn().mockResolvedValue({ ok: true });
+    Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { reports: { saveFile } } });
+    const view = mount();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout");
+    fireEvent.keyDown(window, { key });
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    view.unmount();
+    await act(async () => finishFetch(new Response(new Uint8Array([1]), { status: 200 })));
+    expect(saveFile).not.toHaveBeenCalled();
+    expect(setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 700)).toHaveLength(0);
+  });
+
+  it("cancels the previous progress reset when a second export starts", async () => {
+    let finishSecondSave!: (result: { ok: true }) => void;
+    const saveFile = vi.fn()
+      .mockResolvedValueOnce({ ok: true })
+      .mockImplementationOnce(() => new Promise<{ ok: true }>((resolve) => { finishSecondSave = resolve; }));
+    Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { reports: { saveFile } } });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array([1]), { status: 200 }));
+    const view = mount();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout");
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+    fireEvent.keyDown(window, { key: "F6" });
+    expect(await screen.findByText("Excel exportado correctamente")).toBeInTheDocument();
+    const resetIndex = setTimeoutSpy.mock.calls.findIndex(([, delay]) => delay === 700);
+    expect(resetIndex).toBeGreaterThanOrEqual(0);
+    const previousReset = setTimeoutSpy.mock.results[resetIndex].value;
+    fireEvent.keyDown(window, { key: "F6" });
+    await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(2));
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(previousReset);
+    await waitFor(() => expect(screen.getByRole("progressbar")).toHaveAttribute("value", "90"));
+    await act(async () => finishSecondSave({ ok: true }));
+    view.unmount();
   });
 
   it.each([false, true])("isolates pagination from date changes (same range: %s)", async (sameRange) => {
