@@ -6355,6 +6355,29 @@ describe("SaleScreen", () => {
     expect(previousTicketImportSerialNumbersReady(withNewSerial)).toBe(true);
   });
 
+  it("validates replacement serials by product for a confirmed import", () => {
+    const source = previousTicketPreview().lines[0];
+    const prepared = preparePreviousTicketImport(previousTicketPreview({
+      lines: [
+        { ...source, sourceLineId: "history-coffee", quantity: "1", serialNumbers: ["OLD-COFFEE"] },
+        { ...source, sourceLineId: "history-milk", productId: "milk", quantity: "1", serialNumbers: ["OLD-MILK"] },
+      ],
+    }));
+    expect(prepared.issues).toEqual([]);
+    let lines = prepared.lines.map((entry) => entry.line);
+    lines = updateSaleLineSerialNumbers(lines, saleCartLineIdentity(lines[0]), [" shared-sn "]);
+    lines = updateSaleLineSerialNumbers(lines, saleCartLineIdentity(lines[1]), ["SHARED-SN"]);
+
+    expect(previousTicketImportSerialNumbersReady(lines)).toBe(true);
+    expect(saleSerialNumbersReady(lines)).toBe(true);
+    expect(previousTicketImportSerialNumbersReady([
+      lines[0], { ...lines[1], product: { ...lines[1].product, id: lines[0].product.id } },
+    ])).toBe(false);
+    expect(previousTicketImportSerialNumbersReady([
+      { ...lines[0], quantity: 2, serialNumbers: [" shared-sn ", "SHARED-SN"] },
+    ])).toBe(false);
+  });
+
   it("preserves and locks original serials when the source ticket is cancelled", () => {
     const preview = previousTicketPreview({
       status: "ANULADO",

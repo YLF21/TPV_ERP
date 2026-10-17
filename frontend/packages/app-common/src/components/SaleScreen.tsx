@@ -1148,7 +1148,7 @@ export function previousTicketImportSerialNumbersReady(lines: SaleLine[]) {
         || quantity <= 0
         || serialNumbers.length !== quantity
         || serialNumbers.some((value) => !value)) return false;
-    normalizedSerialNumbers.push(...serialNumbers);
+    normalizedSerialNumbers.push(...serialNumbers.map((value) => JSON.stringify([line.product.id, value])));
   }
   return new Set(normalizedSerialNumbers).size === normalizedSerialNumbers.length;
 }

@@ -55,7 +55,7 @@ export function TicketSerialNumberSearchDialog({ locale, token, app = "venta", u
   const labels: Record<ColumnKey, string> = {
     number: t("salesReport.column.ticket"), date: t("salesReport.column.date"),
     productCode: t("sale.searchDialog.code"), productName: t("salesReport.column.product"),
-    serialNumber: "S/N", total: t("sale.main.total"), status: t("salesReport.column.status"), action: "",
+    serialNumber: t("salesReport.column.serialNumber"), total: t("sale.main.total"), status: t("salesReport.column.status"), action: "",
   };
   function renderCell(match: SerialNumberTicketMatch, key: ColumnKey) {
     if (key === "action") return <button className="serial-search-primary" type="button"

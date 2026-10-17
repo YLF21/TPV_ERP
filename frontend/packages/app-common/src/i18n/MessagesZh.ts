@@ -1564,6 +1564,7 @@ export class MessagesZh {
     "salesReport.outputScope": "F5：所选单据 · F6/F7：可见行",
     "salesReport.outputScopeNoSelection": "F5：选择一行 · F6/F7：可见行",
     "salesReport.outputScopeSelected": "F5：打印所选行 · F6/F7：可见行",
+    "salesReport.column.serialNumber": "序列号",
     "salesReport.serialSearch.title": "查找序列号",
     "salesReport.serialSearch.input": "序列号",
     "salesReport.serialSearch.search": "查找",

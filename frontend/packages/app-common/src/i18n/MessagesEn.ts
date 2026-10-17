@@ -1568,6 +1568,7 @@ export class MessagesEn {
     "salesReport.outputScope": "F5: selected document · F6/F7: visible rows",
     "salesReport.outputScopeNoSelection": "F5: select a row · F6/F7: visible rows",
     "salesReport.outputScopeSelected": "F5: print selected row · F6/F7: visible rows",
+    "salesReport.column.serialNumber": "S/N",
     "salesReport.serialSearch.title": "Search S/N",
     "salesReport.serialSearch.input": "Serial number",
     "salesReport.serialSearch.search": "Search",

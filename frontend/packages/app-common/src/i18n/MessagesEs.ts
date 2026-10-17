@@ -1573,6 +1573,7 @@ export class MessagesEs {
     "salesReport.outputScope": "F5: documento seleccionado · F6/F7: líneas visibles",
     "salesReport.outputScopeNoSelection": "F5: selecciona una fila · F6/F7: líneas visibles",
     "salesReport.outputScopeSelected": "F5: imprime la fila · F6/F7: líneas visibles",
+    "salesReport.column.serialNumber": "S/N",
     "salesReport.serialSearch.title": "Buscar S/N",
     "salesReport.serialSearch.input": "N.º de serie",
     "salesReport.serialSearch.search": "Buscar",

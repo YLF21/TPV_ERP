@@ -4381,7 +4381,7 @@ export function SalesReportScreen({
                         return (
                           <tr key={line.id}>
                             <td>{adjustmentLabel ?? line.code}</td>
-                            <td>{adjustmentLabel ?? line.name}{line.serialNumbers?.length ? <div className="sale-line-serial">S/N: {line.serialNumbers.join(", ")}</div> : null}</td>
+                            <td>{adjustmentLabel ?? line.name}{line.serialNumbers?.length ? <div className="sale-line-serial">{t("salesReport.column.serialNumber")}: {line.serialNumbers.join(", ")}</div> : null}</td>
                             <td>{new Intl.NumberFormat(localeTag(locale), { maximumFractionDigits: 3 }).format(Number(line.quantity))}</td>
                             <td>{formatEuroUnitPrice(line.unitPrice, locale)}</td>
                             <td>{`${new Intl.NumberFormat(localeTag(locale), { maximumFractionDigits: 2 }).format(Number(line.discount))} %`}</td>
