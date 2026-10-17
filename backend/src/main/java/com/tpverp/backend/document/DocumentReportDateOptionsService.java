@@ -27,13 +27,14 @@ public class DocumentReportDateOptionsService {
     private final WarehouseTransferDocumentRepository transfers;
     private final StockAdjustmentHistoryRepository adjustments;
     private final StockCountRepository counts;
+    private final VoucherRepository vouchers;
     private final CurrentOrganization organization;
     private final Clock clock;
 
     public DocumentReportDateOptionsService(CommercialDocumentRepository documents,
             WarehouseInputRepository inputs, WarehouseOutputRepository outputs,
             WarehouseTransferDocumentRepository transfers, StockAdjustmentHistoryRepository adjustments,
-            StockCountRepository counts,
+            StockCountRepository counts, VoucherRepository vouchers,
             CurrentOrganization organization, Clock clock) {
         this.documents = documents;
         this.inputs = inputs;
@@ -41,6 +42,7 @@ public class DocumentReportDateOptionsService {
         this.transfers = transfers;
         this.adjustments = adjustments;
         this.counts = counts;
+        this.vouchers = vouchers;
         this.organization = organization;
         this.clock = clock;
     }
@@ -51,6 +53,8 @@ public class DocumentReportDateOptionsService {
             case "topSales" -> PermissionChecks.hasRole(authentication, "ADMIN")
                     || PermissionChecks.hasAnyAuthority(authentication, "STOCK_READ", "GESTION_PRODUCTO", "GESTION_VENTAS", "VENTA");
             case "tickets" -> PermissionChecks.hasSalesDocumentRead(authentication, "TICKETS_READ");
+            case "vouchers" -> PermissionChecks.hasRole(authentication, "ADMIN")
+                    || PermissionChecks.hasAnyAuthority(authentication, "GESTION_VENTAS");
             case "invoices" -> PermissionChecks.hasSalesDocumentRead(authentication, "INVOICES_READ");
             case "deliveryNotes" -> PermissionChecks.hasSalesDocumentRead(authentication, "DELIVERY_NOTES_READ");
             case "inputInvoices", "inputDeliveryNotes" -> PermissionChecks.hasPurchaseDocumentRead(authentication);
@@ -70,6 +74,7 @@ public class DocumentReportDateOptionsService {
                     CommercialDocumentType.TICKET, CommercialDocumentType.ALBARAN_VENTA,
                     CommercialDocumentType.FACTURA_VENTA, CommercialDocumentType.RECTIFICATIVA_VENTA));
             case "tickets" -> documents.findFirstReportDate(store.getId(), EnumSet.of(CommercialDocumentType.TICKET));
+            case "vouchers" -> storeDate(vouchers.findFirstReportCreatedAt(store.getId()), zone);
             case "invoices" -> documents.findFirstReportDate(store.getId(), EnumSet.of(
                     CommercialDocumentType.FACTURA_VENTA, CommercialDocumentType.RECTIFICATIVA_VENTA));
             case "deliveryNotes" -> documents.findFirstReportDate(store.getId(), EnumSet.of(CommercialDocumentType.ALBARAN_VENTA));

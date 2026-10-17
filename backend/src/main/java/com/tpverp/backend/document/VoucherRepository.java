@@ -15,6 +15,9 @@ import org.springframework.data.repository.query.Param;
 
 public interface VoucherRepository extends JpaRepository<Voucher, UUID> {
 
+    @Query("select min(voucher.createdAt) from Voucher voucher where voucher.tiendaId = :storeId")
+    Instant findFirstReportCreatedAt(@Param("storeId") UUID storeId);
+
     Optional<Voucher> findByTiendaIdAndCode(UUID tiendaId, String code);
 
     Optional<Voucher> findByTiendaIdAndCodeIgnoreCase(UUID tiendaId, String code);

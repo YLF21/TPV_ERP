@@ -202,11 +202,10 @@ describe("WarehouseOperationsScreen", () => {
     render(<WarehouseOperationsScreen session={session(["STOCK_ADJUST"])} mode="adjustment" t={t} />);
     const search = await screen.findByRole("searchbox", { name: "warehouse.management.search" });
     fireEvent.change(search, { target: { value: "CAF" } });
-    await waitFor(() => expect(screen.getByRole("button", { name: "Periodo personalizado" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Periodo personalizado" }));
+    await waitFor(() => expect(screen.getByLabelText("Desde")).toBeEnabled());
     fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-09-01" } });
     fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-09-23" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar periodo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
     await waitFor(() => expect(api.loadStockAdjustmentHistory).toHaveBeenLastCalledWith("token", expect.objectContaining({
       search: "CAF", from: new Date("2026-09-01T00:00:00").toISOString(), to: new Date("2026-09-24T00:00:00").toISOString()
     })));

@@ -9,11 +9,11 @@ import type { LocaleCode } from "../types";
 
 afterEach(cleanup);
 
-function mount(today = "2026-09-11", earliestDate = "2024-02-10", locale: LocaleCode = "es") {
+function mount(today = "2026-09-11", earliestDate = "2024-02-10", locale: LocaleCode = "es", inlineCustomRange = true) {
   const change = vi.fn();
   function Harness() {
     const [value, setValue] = useState<ReportDateRange>({ from: today, to: today, label: "", preset: "TODAY" });
-    return <ReportDateRangeFilter locale={locale} today={today} earliestDate={earliestDate} value={value}
+    return <ReportDateRangeFilter locale={locale} today={today} earliestDate={earliestDate} value={value} inlineCustomRange={inlineCustomRange}
       onChange={(next) => { change(next); setValue(next); }} />;
   }
   return { ...render(<Harness />), change };
@@ -26,13 +26,20 @@ describe("shared report date range filter", () => {
   ])("validates real calendar dates %s", (input, valid) => expect(isValidReportDate(input)).toBe(valid));
 
   it("uses the store day, previous day and Monday as the start of the current week", () => {
-    const { change } = mount("2026-01-01");
+    const { change, container } = mount("2026-01-01");
+    const summary = container.querySelector(".report-date-range-summary")!;
+    const dates = () => [...summary.querySelectorAll("time > span")].map((date) => date.textContent);
+    expect(dates()).toEqual(["01/01/2026"]);
+    expect(summary.querySelector(".report-date-range-weekday")).toHaveTextContent("Jueves");
     fireEvent.click(screen.getByRole("button", { name: "Ayer" }));
     expect(change).toHaveBeenLastCalledWith(expect.objectContaining({ from: "2025-12-31", to: "2025-12-31", preset: "YESTERDAY" }));
+    expect(dates()).toEqual(["31/12/2025"]);
     fireEvent.click(screen.getByRole("button", { name: "Semana actual" }));
     expect(change).toHaveBeenLastCalledWith(expect.objectContaining({ from: "2025-12-29", to: "2026-01-01", preset: "WEEK" }));
+    expect(dates()).toEqual(["29/12/2025", "01/01/2026"]);
     fireEvent.click(screen.getByRole("button", { name: "Hoy" }));
     expect(change).toHaveBeenLastCalledWith(expect.objectContaining({ from: "2026-01-01", to: "2026-01-01", preset: "TODAY" }));
+    expect(dates()).toEqual(["01/01/2026"]);
     expect(screen.getByRole("button", { name: "Hoy" })).toHaveAttribute("aria-pressed", "true");
   });
 
@@ -56,8 +63,38 @@ describe("shared report date range filter", () => {
       expect(change).toHaveBeenLastCalledWith(expect.objectContaining({ from, to: "2026-09-11" }));
     });
 
-  it("applies a custom period only after validation and supports submit and Escape", () => {
-    const { change } = mount();
+  it("keeps inline dates as a draft until Apply and synchronizes presets and Escape", () => {
+    const { change, container } = mount();
+    expect(screen.queryByRole("button", { name: "Periodo personalizado" })).not.toBeInTheDocument();
+    const from = screen.getByLabelText("Desde");
+    const to = screen.getByLabelText("Hasta");
+    expect(from).toHaveValue("2026-09-11");
+    expect(to).toHaveValue("2026-09-11");
+    fireEvent.change(from, { target: { value: "2026-08-01" } });
+    fireEvent.change(to, { target: { value: "2026-07-31" } });
+    expect(screen.getByRole("button", { name: "Aplicar" })).toBeDisabled();
+    fireEvent.change(to, { target: { value: "2026-09-12" } });
+    expect(screen.getByRole("button", { name: "Aplicar" })).toBeDisabled();
+    fireEvent.change(to, { target: { value: "2026-08-31" } });
+    expect(change).not.toHaveBeenCalled();
+    expect(container.querySelector(".report-date-range-summary time")).toHaveAttribute("dateTime", "2026-09-11");
+    fireEvent.submit(from.closest("form")!);
+    expect(change).toHaveBeenLastCalledWith({ from: "2026-08-01", to: "2026-08-31", label: "", preset: "CUSTOM" });
+    expect(screen.getByLabelText("Desde")).toHaveValue("2026-08-01");
+    fireEvent.change(from, { target: { value: "2026-08-02" } });
+    fireEvent.keyDown(from, { key: "Escape" });
+    expect(from).toHaveValue("2026-08-01");
+    expect(change).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Hoy" }));
+    expect(from).toHaveValue("2026-09-11");
+    expect(to).toHaveValue("2026-09-11");
+    fireEvent.change(from, { target: { value: "2026-08-01" } });
+    fireEvent.click(screen.getByRole("button", { name: "Hoy" }));
+    expect(from).toHaveValue("2026-09-11");
+  });
+
+  it("preserves the legacy custom period popover with validation, submit and Escape", () => {
+    const { change } = mount("2026-09-11", "2024-02-10", "es", false);
     fireEvent.click(screen.getByRole("button", { name: "Periodo personalizado" }));
     const from = screen.getByLabelText("Desde");
     const to = screen.getByLabelText("Hasta");
@@ -82,14 +119,17 @@ describe("shared report date range filter", () => {
     const { change } = mount("", "");
     screen.getAllByRole("button").forEach((button) => expect(button).toBeDisabled());
     screen.getAllByRole("combobox").forEach((select) => expect(select).toBeDisabled());
+    expect(screen.getByLabelText("Desde")).toBeDisabled();
+    expect(screen.getByLabelText("Hasta")).toBeDisabled();
     expect(change).not.toHaveBeenCalled();
   });
 
-  it.each([["es", "Hoy", "Mes"], ["en", "Today", "Month"], ["zh", "今天", "月份"]] as const)(
-    "reuses translated controls in %s", (locale, todayLabel, monthLabel) => {
+  it.each([["es", "Hoy", "Mes", "Aplicar"], ["en", "Today", "Month", "Apply"], ["zh", "今天", "月份", "应用"]] as const)(
+    "reuses translated controls in %s", (locale, todayLabel, monthLabel, applyLabel) => {
       mount("2026-09-11", "2024-02-10", locale);
       expect(screen.getByRole("button", { name: todayLabel })).toBeEnabled();
       expect(screen.getByRole("combobox", { name: monthLabel })).toBeEnabled();
+      expect(screen.getByRole("button", { name: applyLabel })).toBeEnabled();
       expect(reportDateRangeLabel({ from: "2026-09-11", to: "2026-09-11", label: "", preset: "TODAY" }, locale)).toBe(todayLabel);
     });
 });

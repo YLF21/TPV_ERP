@@ -100,6 +100,7 @@ describe("WarehouseOperationsPanel", () => {
     const view = render(<WarehouseOperationsPanel mode={mode} app="gestion" documentType={documentType}
       token="token" products={products} warehouses={warehouses} customers={customers} suppliers={suppliers} t={t} />);
     await waitFor(() => expect((view.getByRole("button", { name: "Hoy" }) as HTMLButtonElement).disabled).toBe(false));
+    expect(view.container.querySelector(".report-date-custom-inline")).not.toBeNull();
     expect(view.container.querySelectorAll("tbody tr[data-operation-id]")).toHaveLength(2);
     fireEvent.click(view.getByRole("button", { name: "Hoy" }));
     expect(view.container.querySelector('[data-operation-id="input-1"]')).toBeNull();

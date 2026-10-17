@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ArrowClockwise } from "@phosphor-icons/react";
 import type { LocaleCode, UserSession } from "@tpverp/app-common";
 import { CashPolicySettingsCard } from "../../../packages/app-common/src/components/CashPolicySettingsCard";
 import { CashOpeningAlertsScreen } from "./CashOpeningAlertsScreen";
@@ -35,7 +36,9 @@ export function CashClosuresScreen({ session, t, locale = "es" }: Props) {
     <header className="gestion-dashboard-toolbar gestion-cash-closures-header"><div>
       <span className="gestion-eyebrow">{t("gestion.cashClosures.eyebrow")}</span>
       <h2>{t("gestion.cashClosures.title")}</h2><p>{t("gestion.cashClosures.subtitle")}</p>
-    </div><button type="button" onClick={() => setRefreshSignal(value => value + 1)}>{t("common.refresh")}</button></header>
+    </div><div className="gestion-toolbar-actions">
+      <button type="button" onClick={() => setRefreshSignal(value => value + 1)}><ArrowClockwise size={17} aria-hidden="true" />{t("common.refresh")}</button>
+    </div></header>
     <div className="gestion-cash-tabs" role="tablist" aria-label={t("gestion.cashClosures.title")}>
       <button type="button" role="tab" aria-selected={tab === "activity"} onClick={() => setTab("activity")}>{t("gestion.cashClosures.tab.closures")}</button>
       <button type="button" role="tab" aria-selected={tab === "alerts"} onClick={() => { if (tab !== "alerts") { setTab("alerts"); setRefreshSignal(value => value + 1); } }}>{t("gestion.cashClosures.tab.alerts").replace("{count}", String(pendingCount))}</button>

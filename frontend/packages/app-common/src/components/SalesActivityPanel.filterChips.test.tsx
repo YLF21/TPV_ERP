@@ -50,8 +50,8 @@ describe("sales document period chips", () => {
 
   it("does not show a draft period as an applied chip and clears the applied range", async () => {
     mount(); await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Periodo personalizado" }));
     fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-07-01" } });
+    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-07-02" } });
     expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Ayer" }));
     expect(await screen.findByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("21/9/2026");
