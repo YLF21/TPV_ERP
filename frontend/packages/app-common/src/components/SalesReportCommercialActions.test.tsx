@@ -104,6 +104,7 @@ describe("Commercial report document actions", () => {
     fireEvent.click(rows()[1]);
     const menu = openMenu(t("salesReport.moreActions"));
     const actions = within(menu).getAllByRole("menuitem");
+    expect(within(menu).queryByRole("menuitem", { name: t("salesReport.serialSearch.title") }) != null).toBe(report === "invoices");
     expect(actions.slice(0, 2).map((item) => item.textContent?.trim())).toEqual([
       t("salesReport.printDocumentCopy"), t("salesReport.exportDocumentExcel"),
     ]);

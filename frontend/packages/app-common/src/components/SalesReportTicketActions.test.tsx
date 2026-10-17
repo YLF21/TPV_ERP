@@ -173,6 +173,7 @@ describe("Ticket report document actions", () => {
       t("sale.ticketCancel.title"),
     ]);
     expect(within(menu).getByRole("menuitem", { name: t("sale.ticketCancel.title") })).toBeEnabled();
+    expect(within(menu).getByRole("menuitem", { name: t("salesReport.serialSearch.title") })).toBeEnabled();
   });
 
   it("opens the existing cancellation confirmation for the selected ticket without cancelling it", async () => {

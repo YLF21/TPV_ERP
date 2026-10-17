@@ -447,33 +447,28 @@ public class PreviousTicketImportService {
     private void validateSerialNumbers(
             CommercialDocument ticket,
             Map<UUID, List<String>> requestedSerials) {
+        var originalsByProduct = new java.util.HashMap<UUID, java.util.Set<String>>();
+        for (var line : ticket.getLineas()) {
+            if (line.getLineType() != DocumentLineType.PRODUCT) continue;
+            var serials = originalsByProduct.computeIfAbsent(line.getProductoId(),
+                    ignored -> new java.util.HashSet<>());
+            line.getSerialNumbers().stream().map(value -> value.trim().toUpperCase(Locale.ROOT))
+                    .filter(value -> !value.isBlank()).forEach(serials::add);
+        }
         if (ticket.getEstado() == DocumentStatus.ANULADO) {
             if (!requestedSerials.isEmpty()) {
                 throw new IllegalArgumentException(
                         "message.document.previous_ticket_cancelled_serial_override");
             }
-            var originals = ticket.getLineas().stream()
-                    .flatMap(line -> line.getSerialNumbers().stream())
-                    .map(value -> value.trim().toUpperCase(Locale.ROOT))
-                    .filter(value -> !value.isBlank())
-                    .collect(Collectors.toSet());
-            if (!originals.isEmpty()
-                    && !documents.usedSerialNumbers(
-                            ticket.getTiendaId(), originals).isEmpty()) {
+            if (serialsAlreadyUsed(ticket, originalsByProduct)) {
                 throw new IllegalArgumentException(
                         "message.document.previous_ticket_new_serials_required");
             }
             return;
         }
-        var originalSerialsInTicket = ticket.getLineas().stream()
-                .flatMap(line -> line.getSerialNumbers().stream())
-                .map(value -> value.trim().toUpperCase(Locale.ROOT))
-                .collect(Collectors.toSet());
-        var replaySerials = new java.util.HashSet<String>();
+        var replayByProduct = new java.util.HashMap<UUID, java.util.Set<String>>();
         for (var line : ticket.getLineas()) {
-            if (line.getLineType() != DocumentLineType.PRODUCT) {
-                continue;
-            }
+            if (line.getLineType() != DocumentLineType.PRODUCT) continue;
             var originalSerials = line.getSerialNumbers();
             var replacements = requestedSerials.getOrDefault(line.getId(), List.of());
             if (originalSerials.isEmpty()) {
@@ -484,23 +479,30 @@ public class PreviousTicketImportService {
                 continue;
             }
             var normalized = replacements.stream()
-                    .map(value -> value == null ? "" : value.trim().toUpperCase(Locale.ROOT))
-                    .toList();
+                    .map(value -> value == null ? "" : value.trim().toUpperCase(Locale.ROOT)).toList();
+            var originals = originalsByProduct.get(line.getProductoId());
+            var replay = replayByProduct.computeIfAbsent(line.getProductoId(),
+                    ignored -> new java.util.HashSet<>());
             if (normalized.size() != originalSerials.size()
                     || normalized.stream().anyMatch(String::isBlank)
                     || normalized.stream().distinct().count() != normalized.size()
-                    || normalized.stream().anyMatch(originalSerialsInTicket::contains)
-                    || normalized.stream().anyMatch(value -> !replaySerials.add(value))) {
+                    || normalized.stream().anyMatch(originals::contains)
+                    || normalized.stream().anyMatch(value -> !replay.add(value))) {
                 throw new IllegalArgumentException(
                         "message.document.previous_ticket_new_serials_required");
             }
         }
-        if (!replaySerials.isEmpty()
-                && !documents.usedSerialNumbers(
-                        ticket.getTiendaId(), replaySerials).isEmpty()) {
+        if (serialsAlreadyUsed(ticket, replayByProduct)) {
             throw new IllegalArgumentException(
                     "message.document.previous_ticket_new_serials_required");
         }
+    }
+
+    private boolean serialsAlreadyUsed(CommercialDocument ticket,
+            Map<UUID, java.util.Set<String>> byProduct) {
+        return byProduct.entrySet().stream().anyMatch(entry -> !entry.getValue().isEmpty()
+                && !documents.usedSerialNumbers(ticket.getTiendaId(),
+                        entry.getKey(), entry.getValue()).isEmpty());
     }
 
     private CommercialDocument latestImportableTicket(Authentication authentication) {

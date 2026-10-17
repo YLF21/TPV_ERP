@@ -236,6 +236,8 @@ class DocumentServiceTest {
                 Clock.fixed(NOW, ZoneOffset.UTC));
         service.setSalesInvoiceRectifications(salesInvoiceRectificationRepository);
         service.setAuditService(audit);
+        lenient().when(documentRepository.saveAndFlush(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
@@ -1300,6 +1302,45 @@ class DocumentServiceTest {
         verify(fiscalIntegration).registerAlta(same(ticket), eq(false));
         verify(stockGateway).confirm(same(ticket));
         verify(memberLoyaltyService, never()).applyLineBenefit(any(), any(), any());
+    }
+
+    @Test
+    void approvedSerialTicketContinuesWithManagedGraphReturnedByFirstFlush() {
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        var managed = new java.util.concurrent.atomic.AtomicReference<CommercialDocument>();
+        when(documentRepository.saveAndFlush(any())).thenAnswer(invocation -> {
+            CommercialDocument argument = invocation.getArgument(0);
+            if (managed.get() == null) {
+                managed.set(org.mockito.Mockito.spy(argument));
+            } else {
+                assertThat(argument).isSameAs(managed.get());
+            }
+            return managed.get();
+        });
+        when(documentRepository.save(any())).thenAnswer(invocation -> {
+            assertThat(invocation.getArgument(0, CommercialDocument.class)).isSameAs(managed.get());
+            return managed.get();
+        });
+        var line = new DocumentLineCommand(UUID.randomUUID(), BigDecimal.ONE,
+                "P-SN", "Producto S/N", "VENTA", BigDecimal.TEN, BigDecimal.ZERO,
+                true, "IVA", new BigDecimal("21"), DocumentLineType.PRODUCT,
+                null, null, null, List.of("SN-123"))
+                .withRequiresSerialNumber(true).withDiscountEligible(true);
+        var frozen = new ApprovedCardTicketSnapshot(store.getId(), UUID.randomUUID(),
+                LocalDate.of(2026, 6, 8), null, cash.getId(), BigDecimal.ZERO,
+                new BigDecimal("8.26"), new BigDecimal("1.74"), BigDecimal.TEN, List.of(line));
+        var ticket = service.createApprovedCardTicketFromSnapshot(frozen,
+                List.of(new PaymentCommand(cash.getId(), BigDecimal.TEN, true, null, null)),
+                authentication());
+        assertThat(ticket).isSameAs(managed.get());
+        assertThat(ticket.getLineas().getFirst().getSerialNumbers()).containsExactly("SN-123");
+        assertThat(ticket.getPagos()).singleElement().satisfies(payment ->
+                assertThat(payment.getImporte()).isEqualByComparingTo("10.00"));
+        verify(stockGateway).confirm(same(ticket));
+        verify(fiscalIntegration).registerAlta(same(ticket), eq(false));
     }
 
     @Test
@@ -2404,7 +2445,7 @@ class DocumentServiceTest {
         line.assignSerialNumbers(List.of("NEW-SERIAL"));
         combined.addLine(line);
         when(documentRepository.usedSerialNumbers(
-                store.getId(), List.of("NEW-SERIAL")))
+                store.getId(), line.getProductoId(), List.of("NEW-SERIAL")))
                 .thenReturn(List.of("NEW-SERIAL"));
 
         assertThatThrownBy(() -> new DocumentSerialNumberGuard(documentRepository)

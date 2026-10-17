@@ -637,7 +637,9 @@ public class DocumentService {
                 snapshot.wholesaleMode());
         ticket.setParties(snapshot.customerId(), null, null);
         ticket.setInternalComment(snapshot.internalComment());
-        snapshot.lines().forEach(line -> ticket.addLine(line.toEntity(ticket)));
+        for (var line : snapshot.lines()) {
+            ticket.addLine(line.toEntity(ticket));
+        }
         snapshot.restoreAdjustments(ticket);
         if (ticket.getBaseTotal().compareTo(Money.euros(snapshot.baseTotal())) != 0
                 || ticket.getImpuestoTotal().compareTo(Money.euros(snapshot.taxTotal())) != 0
@@ -660,7 +662,8 @@ public class DocumentService {
         captureInvoicePrintSnapshot(ticket);
         // resolvePayment may create a loyalty movement linked to this ticket;
         // flush the confirmed parent before that FK-bearing work.
-        documents.saveAndFlush(ticket);
+        // merge returns the managed graph; serial collections can advance line versions.
+        ticket = documents.saveAndFlush(ticket);
         if (ticket.getTotal().signum() > 0) {
             addPayments(ticket, payments, "los pagos deben cuadrar con el total autorizado", terminalId);
         }

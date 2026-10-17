@@ -1148,7 +1148,7 @@ export function previousTicketImportSerialNumbersReady(lines: SaleLine[]) {
         || quantity <= 0
         || serialNumbers.length !== quantity
         || serialNumbers.some((value) => !value)) return false;
-    normalizedSerialNumbers.push(...serialNumbers);
+    normalizedSerialNumbers.push(...serialNumbers.map((value) => JSON.stringify([line.product.id, value])));
   }
   return new Set(normalizedSerialNumbers).size === normalizedSerialNumbers.length;
 }
@@ -1169,7 +1169,7 @@ export function saleSerialNumbersReady(lines: SaleLine[]) {
     const values = (line.serialNumbers ?? []).map((value) => value.trim().toUpperCase());
     if (!Number.isInteger(line.quantity) || line.quantity <= 0
       || values.length !== line.quantity || values.some((value) => !value)) return false;
-    serials.push(...values);
+    serials.push(...values.map((value) => JSON.stringify([line.product.id, value])));
   }
   return new Set(serials).size === serials.length;
 }
