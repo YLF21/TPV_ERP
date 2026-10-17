@@ -172,17 +172,17 @@ export function CashActivityView({ session, t, locale, refreshSignal }: Props) {
   }
 
   return <section className="gestion-cash-activity-view">
-    <div className="gestion-cash-activity-filters">
-      <label><span>{t("gestion.cashClosures.terminal")}</span><ErpSelect value={filters?.terminalId || ""} disabled={!options}
+    <div className="gestion-cash-activity-filters gestion-filter-toolbar">
+      <label data-filter-active={Boolean(filters?.terminalId)}><span>{t("gestion.cashClosures.terminal")}</span><ErpSelect value={filters?.terminalId || ""} disabled={!options}
         options={[{ value: "", label: t("gestion.cashClosures.allTerminals") }, ...(options?.terminals || []).map(item => ({ value: item.id, label: item.name }))]}
         onChange={value => changeFilter("terminalId", value)} aria-label={t("gestion.cashClosures.terminal")} /></label>
-      <label><span>{t("gestion.cashClosures.user")}</span><ErpSelect value={filters?.userId || ""} disabled={!options}
+      <label data-filter-active={Boolean(filters?.userId)}><span>{t("gestion.cashClosures.user")}</span><ErpSelect value={filters?.userId || ""} disabled={!options}
         options={[{ value: "", label: t("gestion.cashClosures.allUsers") }, ...(options?.users || []).map(item => ({ value: item.id, label: item.secondaryName && item.secondaryName !== item.name ? `${item.name} · ${item.secondaryName}` : item.name }))]}
         onChange={value => changeFilter("userId", value)} aria-label={t("gestion.cashClosures.user")} /></label>
-      <label><span>{t("gestion.cashActivity.column.action")}</span><ErpSelect value={filters?.action || ""} disabled={!options}
+      <label data-filter-active={Boolean(filters?.action)}><span>{t("gestion.cashActivity.column.action")}</span><ErpSelect value={filters?.action || ""} disabled={!options}
         options={[{ value: "", label: t("gestion.cashActivity.allActions") }, ...actions.map(action => ({ value: action, label: labelForAction(action) }))]}
         onChange={value => changeFilter("action", value)} aria-label={t("gestion.cashActivity.column.action")} /></label>
-      <label><span>{t("gestion.cashActivity.column.cashState")}</span><ErpSelect value={filters?.cashState || ""} disabled={!options}
+      <label data-filter-active={Boolean(filters?.cashState)}><span>{t("gestion.cashActivity.column.cashState")}</span><ErpSelect value={filters?.cashState || ""} disabled={!options}
         options={[{ value: "", label: t("gestion.cashActivity.allStates") }, ...states.map(state => ({ value: state, label: labelForState(state) }))]}
         onChange={value => changeFilter("cashState", value)} aria-label={t("gestion.cashActivity.column.cashState")} /></label>
     </div>
@@ -228,7 +228,9 @@ export function CashActivityView({ session, t, locale, refreshSignal }: Props) {
       <span>{t("gestion.cashActivity.loaded").replace("{count}", String(rows.length))}</span>
       {hasMore && <button type="button" disabled={loadingMore} onClick={() => void loadMore()}>{t("gestion.cashActivity.more")}</button>}
     </footer>
-    <ReportDateRangeFilter locale={locale} today={options?.businessDate || ""} earliestDate={options?.earliestDate || ""} value={range}
+    <ReportDateRangeFilter locale={locale} today={options?.businessDate || ""} earliestDate={options?.earliestDate || ""}
+      value={filters ? { ...range, from: filters.from, to: filters.to,
+        preset: range.from === filters.from && range.to === filters.to ? range.preset : undefined } : range}
       disabled={!options} onChange={value => { setRange(value); setFilters(current => current ? { ...current, from: value.from, to: value.to } : current); }} />
     {detail && <section className="gestion-cash-closure-detail" aria-label={t("gestion.cashClosures.detail")}>
       <header><h3>{t("gestion.cashClosures.detail")}</h3><WindowCloseButton type="button" onLight aria-label={t("gestion.cashClosures.closeDetail")} onClick={() => setSelectedId(null)} >{t("gestion.cashClosures.closeDetail")}</WindowCloseButton></header>

@@ -1,0 +1,51 @@
+/* Shared stock components keep their original layouts in APP VENTA and PDA. */
+.stock-toolbar.gestion-toolbar-layout,
+.stock-top-sales-toolbar.gestion-toolbar-layout,
+.bulk-edit-toolbar.gestion-toolbar-layout,
+.stock-history-toolbar.gestion-toolbar-layout {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.stock-toolbar.gestion-toolbar-layout .gestion-toolbar-start,
+.stock-top-sales-toolbar.gestion-toolbar-layout .gestion-toolbar-start,
+.bulk-edit-toolbar.gestion-toolbar-layout .gestion-toolbar-start {
+  align-items: center;
+}
+
+.bulk-edit-toolbar.gestion-toolbar-layout .gestion-toolbar-start .report-search {
+  min-width: 220px;
+}
+
+.stock-history-toolbar.gestion-toolbar-layout > label {
+  flex: 1 1 130px;
+}
+
+.stock-history-toolbar.gestion-toolbar-layout > .report-date-range-summary {
+  flex: 0 1 auto;
+}
+
+.sales-activity-toolbar.gestion-toolbar-layout .sales-activity-visualization {
+  padding-right: 0;
+  padding-left: 6px;
+  border-right: 0;
+  border-left: 1px solid var(--activity-line);
+}
+
+.stock-bulk-workspace-toolbar.gestion-toolbar-layout .danger {
+  margin-left: 0;
+}
+
+@layer gestion-accents {
+  @media screen {
+    html[data-app="gestion"] .stock-toolbar.gestion-toolbar-layout {
+      align-items: flex-start !important;
+    }
+
+    html[data-app="gestion"] .stock-toolbar.gestion-toolbar-layout > .gestion-toolbar-start {
+      align-items: flex-start !important;
+    }
+  }
+}

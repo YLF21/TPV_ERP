@@ -26,6 +26,7 @@ import {
 } from "./verifactuPresentation";
 import { fiscalErrorMessage } from "./verifactuErrorPresentation";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { ReportDateRangeSummary } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
 
 const defectiveStatuses = ["RECHAZADO", "DEFECTUOSO", "ACEPTADO_CON_ERRORES"] as const;
 const defectiveSortColumns = ["sequence", "document", "documentType", "fiscalOperation", "issueDate", "status", "updatedAt", "errorCode"] as const;
@@ -177,7 +178,7 @@ export function VerifactuDefectiveRecordsView({
           <button type="submit" form="verifactu-defective-filters-form" className="primary erp-dialog-action-confirm">{t("verifactu.management.applyFilters")}</button>
         </>}
       >
-      <form id="verifactu-defective-filters-form" className="gestion-verifactu-filters" onSubmit={(event) => { apply(event); }}>
+      <form id="verifactu-defective-filters-form" className="gestion-verifactu-filters gestion-filter-toolbar" onSubmit={(event) => { apply(event); }}>
         <label>
           <span>{t("verifactu.management.dateFrom")}</span>
           <input type="date" value={draft.dateFrom} onChange={(event) => setDraft({ ...draft, dateFrom: event.target.value })} />
@@ -186,7 +187,8 @@ export function VerifactuDefectiveRecordsView({
           <span>{t("verifactu.management.dateTo")}</span>
           <input type="date" value={draft.dateTo} onChange={(event) => setDraft({ ...draft, dateTo: event.target.value })} />
         </label>
-        <label>
+        <ReportDateRangeSummary locale={locale} value={{ from: filters.dateFrom, to: filters.dateTo, label: "" }} />
+        <label data-filter-active={Boolean(draft.status)}>
           <span>{t("verifactu.management.status")}</span>
           <ErpSelect
             value={draft.status}
@@ -195,7 +197,7 @@ export function VerifactuDefectiveRecordsView({
             onChange={(value) => setDraft({ ...draft, status: value as VerifactuAdminDefectiveFilters["status"] })}
           />
         </label>
-        <label>
+        <label data-filter-active={Boolean(draft.documentType)}>
           <span>{t("verifactu.management.documentType")}</span>
           <ErpSelect
             value={draft.documentType}
@@ -204,7 +206,7 @@ export function VerifactuDefectiveRecordsView({
             onChange={(value) => setDraft({ ...draft, documentType: value as VerifactuAdminDefectiveFilters["documentType"] })}
           />
         </label>
-        <label>
+        <label data-filter-active={Boolean(draft.operation)}>
           <span>{t("verifactu.management.fiscalOperation")}</span>
           <ErpSelect
             value={draft.operation}
@@ -227,7 +229,7 @@ export function VerifactuDefectiveRecordsView({
             <h3>{t("verifactu.management.defectiveTitle")}</h3>
             <span>{page.totalElements} {t("verifactu.management.records")}</span>
           </div>
-          <div className="fiscal-records-toolbar">
+          <div className="fiscal-records-toolbar gestion-filter-toolbar gestion-toolbar-layout gestion-native-filter-toolbar">
             {loading && <span className="gestion-verifactu-loading" role="status" aria-live="polite">{t("verifactu.management.updating")}</span>}
             <button
               type="button"

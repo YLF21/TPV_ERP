@@ -36,13 +36,26 @@ export function reportDateRangeLabel(value: ReportDateRange, locale: LocaleCode)
   }
 }
 
-export function ReportDateRangeFilter({ locale, today, earliestDate, value, onChange, disabled = false }: {
+export function ReportDateRangeSummary({ locale, value }: { locale: LocaleCode; value: ReportDateRange }) {
+  const from = isValidReportDate(value.from) ? value.from : "";
+  const to = isValidReportDate(value.to) ? value.to : "";
+  if (!from && !to) return null;
+  const format = new Intl.DateTimeFormat(localeTag(locale), { day: "2-digit", month: "2-digit", year: "numeric" });
+  return <span className="report-date-range-summary">
+    {from ? <time dateTime={from}>{format.format(localDate(from))}</time> : "…"}
+    <span aria-hidden="true">{" — "}</span>
+    {to ? <time dateTime={to}>{format.format(localDate(to))}</time> : "…"}
+  </span>;
+}
+
+export function ReportDateRangeFilter({ locale, today, earliestDate, value, onChange, disabled = false, showSummary = true }: {
   locale: LocaleCode;
   today: string;
   earliestDate: string;
   value: ReportDateRange;
   onChange: (range: ReportDateRange) => void;
   disabled?: boolean;
+  showSummary?: boolean;
 }) {
   const t = createSalesActivityTranslator(locale);
   const customId = useId();
@@ -119,6 +132,7 @@ export function ReportDateRangeFilter({ locale, today, earliestDate, value, onCh
     <button type="button" disabled={!ready} aria-expanded={customOpen} aria-controls={customId} onClick={() => {
       setDraftFrom(value.from); setDraftTo(value.to); setCustomOpen((open) => !open);
     }}>{t("custom")}</button>
+    {showSummary && <ReportDateRangeSummary locale={locale} value={value} />}
     {customOpen && <form id={customId} className="report-date-custom sales-activity-custom-period" onSubmit={(event) => {
       event.preventDefault(); if (validDraft) select(draftFrom, draftTo, "CUSTOM");
     }} onKeyDown={(event) => {

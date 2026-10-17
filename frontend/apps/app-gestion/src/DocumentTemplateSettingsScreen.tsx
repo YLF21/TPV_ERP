@@ -361,7 +361,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
         </aside>
       </header>
 
-      <div className="gestion-document-template-toolbar">
+      <div className="gestion-document-template-toolbar gestion-filter-toolbar">
         <div className="gestion-document-template-type-field">
           <label htmlFor="document-template-type">{t("gestion.documentTemplates.documentType")}</label>
           <ErpSelect
@@ -464,7 +464,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
                   ? "gestion.documentTemplates.presentationImportedHelp"
                   : "gestion.documentTemplates.presentationIntegratedHelp")}</small>
               </div>
-              <div className="gestion-ticket-style-actions">
+              <div className="gestion-ticket-style-actions gestion-toolbar-actions">
                 <label>
                   <span>{t("gestion.documentTemplates.presentationOriginLabel")}</span>
                   <select
@@ -516,7 +516,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
                   <small>{t("gestion.documentTemplates.ticketOriginImportedHelp")}</small>
                 </div>
               )}
-              <div className="gestion-ticket-style-actions">
+              <div className="gestion-ticket-style-actions gestion-toolbar-actions">
                 <label>
                   <span>{t("gestion.documentTemplates.ticketOriginLabel")}</span>
                   <select
@@ -605,7 +605,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
                   : t("gestion.documentTemplates.customActiveHelp")}</small>
               </div>
             )}
-            <div className="gestion-ticket-style-actions">
+            <div className="gestion-ticket-style-actions gestion-toolbar-actions">
               <button
                 type="button"
                 disabled={!canManage || busyId !== null || catalog?.effective?.builtIn === true}

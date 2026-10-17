@@ -195,19 +195,19 @@ export function PromotionListScreen({
             <h1>{t("promotion.list.heading")}</h1>
             <p>{t("promotion.list.subtitle")}</p>
           </div>
-          {app === "gestion" && <button type="button" className="promotion-primary-button" onClick={() => setCreateOpen(true)}>
+          {app === "gestion" && <div className="gestion-toolbar-actions"><button type="button" className="promotion-primary-button" onClick={() => setCreateOpen(true)}>
             {t("promotion.action.create")}
-          </button>}
+          </button></div>}
         </header>
 
         <section className="promotion-list-panel" aria-label={t("promotion.list.heading")}>
-          <div className="promotion-list-filters">
-            <label className="promotion-search-field">
+          <div className={`promotion-list-filters${app === "gestion" ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
+            <label className={`promotion-search-field${app === "gestion" ? " gestion-search-frame" : ""}`}>
               <input ref={searchRef} aria-label={t("salesReport.search")} type="search"
                 placeholder={t("promotion.list.search")} value={query} onChange={event => setQuery(event.target.value)} />
               <MagnifyingGlass size={17} aria-hidden="true" />
             </label>
-            <div className="promotion-status-filter"><ErpSelect value={statusFilter} aria-label={t("promotion.column.status")}
+            <div className="promotion-status-filter" data-filter-active={statusFilter !== "ALL"}><ErpSelect value={statusFilter} aria-label={t("promotion.column.status")}
               options={[
                 { value: "ALL", label: t("promotion.filter.all") },
                 ...(["ACTIVE", "DRAFT", "INACTIVE"] as const).map(value => ({ value, label: t(`promotion.status.${value}`) })),

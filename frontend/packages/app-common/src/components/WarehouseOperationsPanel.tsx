@@ -21,7 +21,7 @@ import {
 import type { WarehouseImportProduct } from "./warehouseDocumentImport";
 import { ErpSelect } from "./ErpSelect";
 import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
-import { ReportDateRangeFilter, isValidReportDate, reportDateRangeLabel, type ReportDateRange } from "./ReportDateRangeFilter";
+import { ReportDateRangeFilter, ReportDateRangeSummary, type ReportDateRange } from "./ReportDateRangeFilter";
 import "./WarehouseClassicTables.css";
 import "./ErpSearchField.css";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
@@ -374,10 +374,6 @@ export function WarehouseOperationsPanel({
   const onErrorRef = useRef(onError);
 
   const labels = warehouseOperationsLabels(t, mode, documentType);
-  const selectedPeriod = isValidReportDate(dateFrom) && isValidReportDate(dateTo)
-    ? reportDateRangeLabel({ from: dateFrom, to: dateTo, label: "",
-      preset: quickRange.from === dateFrom && quickRange.to === dateTo ? quickRange.preset : undefined }, locale)
-    : "—";
   const tableLayout = useTableLayoutPreference({
     app,
     username,
@@ -761,13 +757,7 @@ export function WarehouseOperationsPanel({
         <div><h2>{headingWithCreate.title}</h2><span>{headingWithCreate.subtitle}</span></div>
         <div className="gestion-warehouse-title-actions gestion-warehouse-actions">{createAction}</div>
       </header>}
-      <div className={`stock-history-toolbar${warehouseDesktopActions ? " warehouse-purchase-toolbar gestion-warehouse-toolbar" : ""}`} ref={toolbarRef}>
-        {purchasePeriodFilter && <div className="gestion-warehouse-period" aria-label={t("salesReport.currentPeriod")}>
-          <span>{t("salesReport.currentPeriod")}</span>
-          <strong>{selectedPeriod}</strong>
-          {isValidReportDate(dateFrom) && isValidReportDate(dateTo) &&
-            <small>{warehouseOperationsFormatDate(dateFrom, dateFormatter)} — {warehouseOperationsFormatDate(dateTo, dateFormatter)}</small>}
-        </div>}
+      <div className={`stock-history-toolbar${warehouseDesktopActions ? " warehouse-purchase-toolbar gestion-warehouse-toolbar gestion-toolbar-layout" : ""}`} ref={toolbarRef}>
         <label>
           <span>{labels.search}</span>
           {warehouseDesktopActions ? <WarehouseSearchFrame>{searchInput}</WarehouseSearchFrame> : searchInput}
@@ -793,10 +783,10 @@ export function WarehouseOperationsPanel({
             onChange={(event) => setDateFrom(event.target.value)} /></label>
           <label><span>{t("warehouse.report.to")}</span><input type="date" value={dateTo} min={dateFrom || undefined}
             onChange={(event) => setDateTo(event.target.value)} /></label>
+          <ReportDateRangeSummary locale={locale} value={{ from: dateFrom, to: dateTo, label: "" }} />
         </>}
-        <div className={`filter-actions filter-wide warehouse-document-actions${warehouseDesktopActions ? " gestion-warehouse-list-actions" : ""}`}>
+        <div className={`filter-actions filter-wide warehouse-document-actions${warehouseDesktopActions ? " gestion-warehouse-list-actions gestion-toolbar-end" : ""}`}>
           {!headingWithCreate && createAction}
-          {exportActions}
           <button
             type="button"
             className={warehouseDesktopActions ? "gestion-warehouse-action--open" : undefined}
@@ -819,6 +809,7 @@ export function WarehouseOperationsPanel({
               {deleting ? labels.deleting : labels.delete}
             </button>
           )}
+          {exportActions}
         </div>
       </div>
 

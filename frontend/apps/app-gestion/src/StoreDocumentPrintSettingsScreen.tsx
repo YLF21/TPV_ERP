@@ -210,7 +210,7 @@ export function StoreDocumentPrintSettingsScreen({
                 disabled={!canManage || busy !== null}
                 onChange={selectLogo}
               />
-              <div className="gestion-document-print-actions">
+              <div className="gestion-document-print-actions gestion-toolbar-actions">
                 <button type="button" className="gestion-primary-button" disabled={!canManage || busy !== null || !pendingLogo} onClick={() => void saveLogo()}>{t("gestion.documentPrint.saveLogo")}</button>
                 <button type="button" disabled={!canManage || busy !== null || !configuration?.logo} onClick={() => void removeLogo()}>{t("gestion.documentPrint.removeLogo")}</button>
               </div>

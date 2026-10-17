@@ -331,7 +331,7 @@ export function SalesOperationSecurityScreen({
         </div>
       )}
 
-      <div className="gestion-operation-security-toolbar">
+      <div className="gestion-operation-security-toolbar gestion-toolbar-actions">
         <div>
           <strong>
             {changedCount > 0

@@ -175,22 +175,19 @@ export function StockBulkWorkspaceList({
     }
   }
 
-  return (
-    <section className="stock-bulk-workspace-list" aria-label={t("stock.bulkEdit.workspace.title") }>
-      <header className="stock-bulk-workspace-toolbar">
-        <button type="button" className="primary" disabled={busy} onClick={onNew}>
+  const newButton = <button type="button" className="primary" disabled={busy} onClick={onNew}>
           {t("stock.bulkEdit.workspace.new")}
-        </button>
-        <button type="button" disabled={busy || !selectedDraft} onClick={() => selectedDraft && onOpen(selectedDraft)}>
+        </button>;
+  const openButton = <button type="button" disabled={busy || !selectedDraft} onClick={() => selectedDraft && onOpen(selectedDraft)}>
           {t("stock.bulkEdit.workspace.open")}
-        </button>
-        <button type="button" disabled={busy || !selectedDraft} onClick={() => selectedDraft && onComments(selectedDraft)}>
+        </button>;
+  const commentsButton = <button type="button" disabled={busy || !selectedDraft} onClick={() => selectedDraft && onComments(selectedDraft)}>
           {t("stock.bulkEdit.comments")}
-        </button>
-        <button type="button" disabled={busy || !selectedDraft} onClick={() => selectedDraft && onRename(selectedDraft)}>
+        </button>;
+  const renameButton = <button type="button" disabled={busy || !selectedDraft} onClick={() => selectedDraft && onRename(selectedDraft)}>
           {t("stock.bulkEdit.workspace.rename")}
-        </button>
-        <button
+        </button>;
+  const deleteButton = <button
           type="button"
           className="danger"
           disabled={busy || !selectedDraft || !canDelete}
@@ -198,7 +195,15 @@ export function StockBulkWorkspaceList({
           onClick={() => selectedDraft && onDelete(selectedDraft)}
         >
           {t("stock.bulkEdit.delete")}
-        </button>
+        </button>;
+
+  return (
+    <section className="stock-bulk-workspace-list" aria-label={t("stock.bulkEdit.workspace.title") }>
+      <header className={`stock-bulk-workspace-toolbar${app === "gestion" ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
+        {app === "gestion" ? <>
+          <div className="gestion-toolbar-start">{newButton}{commentsButton}{renameButton}</div>
+          <div className="gestion-toolbar-end">{openButton}{deleteButton}</div>
+        </> : <>{newButton}{openButton}{commentsButton}{renameButton}{deleteButton}</>}
       </header>
 
       <div

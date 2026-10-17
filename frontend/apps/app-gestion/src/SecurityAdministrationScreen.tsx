@@ -2,6 +2,7 @@ import { WindowCloseButton } from "../../../packages/app-common/src/components/W
 import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { GestionSearchFrame } from "../../../packages/app-common/src/components/GestionSearchFrame";
 import {
   TableLayoutHeaderCell,
   sortTableRows,
@@ -165,10 +166,10 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
         <button type="button" className="primary" onClick={() => setDialog("create")}>{t("gestion.users.new")}</button>
       </SecurityHeader>
 
-      <div className="gestion-security-toolbar">
+      <div className="gestion-security-toolbar gestion-filter-toolbar">
         <label>
           <span>{t("gestion.security.search")}</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("gestion.users.searchPlaceholder")} />
+          <GestionSearchFrame><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("gestion.users.searchPlaceholder")} /></GestionSearchFrame>
         </label>
         <span>{t("gestion.security.results").replace("{count}", String(filteredUsers.length))}</span>
       </div>
@@ -237,7 +238,7 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
               {selected.protectedUser ? (
                 <p className="gestion-security-notice">{t("gestion.users.adminProtected")}</p>
               ) : (
-                <div className="gestion-security-actions">
+                <div className="gestion-security-actions gestion-toolbar-actions">
                   <button type="button" onClick={() => setDialog("identity")}>{t("gestion.users.editIdentity")}</button>
                   <button type="button" onClick={() => setDialog("role")}>{t("gestion.users.changeRole")}</button>
                   <button type="button" onClick={() => setDialog("password")}>{t("gestion.users.resetPassword")}</button>
@@ -446,7 +447,7 @@ function RoleAdministration({ session, t }: { session: UserSession; t: Translato
 
       <div className="gestion-role-layout">
         <aside className="gestion-role-list">
-          <label><span>{t("gestion.security.search")}</span><input value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+          <label><span>{t("gestion.security.search")}</span><GestionSearchFrame><input value={query} onChange={(event) => setQuery(event.target.value)} /></GestionSearchFrame></label>
           <ErpFilterChips translate={t} chips={[
             { key: "search", label: t("gestion.security.search"), value: query, onRemove: () => setQuery("") }
           ]} onClear={() => setQuery("")} />
@@ -470,7 +471,7 @@ function RoleAdministration({ session, t }: { session: UserSession; t: Translato
               <header>
                 <div><span>{t("gestion.roles.detail")}</span><h3>{selected.name}</h3></div>
                 {!selected.protectedRole && (
-                  <div className="gestion-role-header-actions">
+                  <div className="gestion-role-header-actions gestion-toolbar-actions">
                     <strong>{t("gestion.roles.selectedCount").replace("{count}", String(draft.size))}</strong>
                     <button type="button" onClick={() => setRenaming(true)}>{t("gestion.roles.rename")}</button>
                     <button type="button" className="danger" onClick={() => setDeleting(true)}>{t("gestion.roles.delete")}</button>
@@ -625,7 +626,7 @@ function DeleteRoleDialog({ role, token, t, onClose, onDeleted }: {
 }
 
 function SecurityHeader({ eyebrow, title, subtitle, children }: { eyebrow: string; title: string; subtitle: string; children: ReactNode }) {
-  return <header className="gestion-dashboard-toolbar gestion-security-header"><div><span className="gestion-eyebrow">{eyebrow}</span><h2>{title}</h2><p>{subtitle}</p></div><div className="gestion-dashboard-actions">{children}</div></header>;
+  return <header className="gestion-dashboard-toolbar gestion-security-header"><div><span className="gestion-eyebrow">{eyebrow}</span><h2>{title}</h2><p>{subtitle}</p></div><div className="gestion-dashboard-actions gestion-toolbar-actions">{children}</div></header>;
 }
 
 function roleDeletionError(reason: unknown, t: Translator) {

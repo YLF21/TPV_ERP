@@ -33,6 +33,7 @@ import { FiscalWorkspaceDialog } from "./FiscalWorkspaceDialog";
 import { FiscalExportJobsList, useFiscalExportJobs } from "./fiscalExportJobs";
 import { fiscalErrorMessage } from "./verifactuErrorPresentation";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { ReportDateRangeSummary } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
 
 const emptyFilters: FiscalRecordCursorFilters = {
   dateFrom: "",
@@ -318,11 +319,11 @@ export function FiscalRecordsView({
       <section className="gestion-verifactu-table-panel" aria-label={t("verifactu.records.title")} aria-busy={loading}>
         <header>
           <div><h3>{t("verifactu.records.title")}</h3><span>{refreshing ? t("verifactu.records.refreshing") : `${page.items.length} ${t("verifactu.records.visibleCount")}`}</span></div>
-          <div className="fiscal-records-toolbar">
+          <div className="fiscal-records-toolbar gestion-filter-toolbar gestion-toolbar-layout gestion-native-filter-toolbar">
             {initialLoading && <span role="status" aria-live="polite" aria-label={t("verifactu.records.loading")}>{t("verifactu.records.loading")}</span>}
             {refreshing && <span role="status" aria-live="polite" aria-label={t("verifactu.records.refreshing")}>{t("verifactu.records.refreshing")}</span>}
             <button type="button" aria-haspopup="dialog" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}>{t("verifactu.ui.filters")}{activeFilterCount ? ` (${activeFilterCount})` : ""}</button>
-            {canManage && <button type="button" className="primary" aria-haspopup="dialog" aria-expanded={exportOpen} onClick={() => { setExportMessage(null); setExportOpen(true); void exportJobs.refresh(); }}>{t("verifactu.ui.export")}</button>}
+            {canManage && <button type="button" className="primary gestion-toolbar-tail-action" aria-haspopup="dialog" aria-expanded={exportOpen} onClick={() => { setExportMessage(null); setExportOpen(true); void exportJobs.refresh(); }}>{t("verifactu.ui.export")}</button>}
           </div>
         </header>
         <ErpFilterChips locale={locale} translate={t} onClear={clear} chips={[
@@ -353,14 +354,15 @@ export function FiscalRecordsView({
       </section>
 
       {filtersOpen && <FiscalWorkspaceDialog id="fiscal-record-filters" purpose="filters" className="gestion-rules-dialog" title={t("verifactu.ui.filters")} closeLabel={t("verifactu.ui.close")} onClose={() => setFiltersOpen(false)} footer={<><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={() => setFiltersOpen(false)}>{t("verifactu.ui.close")}</DialogDismissButton><button type="button" onClick={clear}>{t("verifactu.records.clearFilters")}</button><button type="submit" form="fiscal-record-filter-form" className="primary erp-dialog-action-confirm">{t("verifactu.records.applyFilters")}</button></>}>
-        <form id="fiscal-record-filter-form" className="gestion-verifactu-filters" onSubmit={apply}>
+        <form id="fiscal-record-filter-form" className="gestion-verifactu-filters gestion-filter-toolbar" onSubmit={apply}>
           <label><span>{t("verifactu.records.dateFrom")}</span><input type="date" value={draft.dateFrom} onChange={(event) => setDraft({ ...draft, dateFrom: event.target.value })} /></label>
           <label><span>{t("verifactu.records.dateTo")}</span><input type="date" value={draft.dateTo} onChange={(event) => setDraft({ ...draft, dateTo: event.target.value })} /></label>
+          <ReportDateRangeSummary locale={locale} value={{ from: filters.dateFrom, to: filters.dateTo, label: "" }} />
           <label htmlFor="fiscal-record-number"><span>{t("verifactu.records.number")}</span><input id="fiscal-record-number" aria-describedby="fiscal-record-number-hint" maxLength={64} value={draft.number} onChange={(event) => setDraft({ ...draft, number: event.target.value })} /><small id="fiscal-record-number-hint">{draft.numberMatch === "PREFIX" ? t("verifactu.records.numberPrefixHint") : ""}</small></label>
-          <label><span>{t("verifactu.records.numberMatch")}</span><ErpSelect value={draft.numberMatch ?? "PREFIX"} options={numberMatchOptions} aria-label={`${t("verifactu.records.numberMatch")}: ${selectedLabel(numberMatchOptions, draft.numberMatch ?? "PREFIX")}`} onChange={(value) => setDraft({ ...draft, numberMatch: value as "EXACT" | "PREFIX" })} /></label>
-          <label><span>{t("verifactu.records.operation")}</span><ErpSelect value={draft.operation} options={operationOptions} aria-label={`${t("verifactu.records.operation")}: ${selectedLabel(operationOptions, draft.operation)}`} onChange={(value) => setDraft({ ...draft, operation: value })} /></label>
-          <label><span>{t("verifactu.records.documentType")}</span><ErpSelect value={draft.documentType} options={documentTypeOptions} aria-label={`${t("verifactu.records.documentType")}: ${selectedLabel(documentTypeOptions, draft.documentType)}`} onChange={(value) => setDraft({ ...draft, documentType: value })} /></label>
-          <label><span>{t("verifactu.records.fiscalMode")}</span><ErpSelect value={draft.fiscalMode} options={modeOptions} aria-label={`${t("verifactu.records.fiscalMode")}: ${selectedLabel(modeOptions, draft.fiscalMode)}`} onChange={(value) => setDraft({ ...draft, fiscalMode: value })} /></label>
+          <label data-filter-active={Boolean(draft.number) && draft.numberMatch === "EXACT"}><span>{t("verifactu.records.numberMatch")}</span><ErpSelect value={draft.numberMatch ?? "PREFIX"} options={numberMatchOptions} aria-label={`${t("verifactu.records.numberMatch")}: ${selectedLabel(numberMatchOptions, draft.numberMatch ?? "PREFIX")}`} onChange={(value) => setDraft({ ...draft, numberMatch: value as "EXACT" | "PREFIX" })} /></label>
+          <label data-filter-active={Boolean(draft.operation)}><span>{t("verifactu.records.operation")}</span><ErpSelect value={draft.operation} options={operationOptions} aria-label={`${t("verifactu.records.operation")}: ${selectedLabel(operationOptions, draft.operation)}`} onChange={(value) => setDraft({ ...draft, operation: value })} /></label>
+          <label data-filter-active={Boolean(draft.documentType)}><span>{t("verifactu.records.documentType")}</span><ErpSelect value={draft.documentType} options={documentTypeOptions} aria-label={`${t("verifactu.records.documentType")}: ${selectedLabel(documentTypeOptions, draft.documentType)}`} onChange={(value) => setDraft({ ...draft, documentType: value })} /></label>
+          <label data-filter-active={Boolean(draft.fiscalMode)}><span>{t("verifactu.records.fiscalMode")}</span><ErpSelect value={draft.fiscalMode} options={modeOptions} aria-label={`${t("verifactu.records.fiscalMode")}: ${selectedLabel(modeOptions, draft.fiscalMode)}`} onChange={(value) => setDraft({ ...draft, fiscalMode: value })} /></label>
           {filterError && <p role="alert">{t("verifactu.records.invalidDateRange")}</p>}
         </form>
       </FiscalWorkspaceDialog>}

@@ -267,7 +267,7 @@ export function TerminalManagementScreen({ session, t }: {
               <div><dt>{t("gestion.terminals.id")}</dt><dd>{selectedSlot.terminalId || "—"}</dd></div>
               {selectedSlot.expiresAt && <div><dt>{t("gestion.terminals.pairingExpires")}</dt><dd>{new Date(selectedSlot.expiresAt).toLocaleString()}</dd></div>}
             </dl>
-            <div className="gestion-terminal-actions">
+            <div className="gestion-terminal-actions gestion-toolbar-actions">
               {["PENDING", "DISABLED"].includes(selectedSlot.status) && selectedSlot.code !== "001" && <button className="primary" type="button" disabled={busy || !selectedSlot.bindingId || selectedSlot.outOfQuota} onClick={() => void actOnSlot("approve")}>{t(selectedSlot.status === "DISABLED" ? "gestion.terminals.workstations.reactivate" : "gestion.terminals.workstations.approve")}</button>}
               {selectedSlot.status === "PENDING" && <>
                 <button type="button" disabled={busy || !selectedSlot.bindingId} onClick={() => void actOnSlot("cancel")}>{t("gestion.terminals.workstations.cancel")}</button>
@@ -296,7 +296,7 @@ export function TerminalManagementScreen({ session, t }: {
                 {legacyCodes.map(code => <option key={code} value={code}>{code}</option>)}
               </select>
             </label>
-            <div className="gestion-terminal-actions"><button className="primary" type="button" disabled={busy || !assignCode} onClick={() => void assignLegacy()}>{t("gestion.terminals.workstations.assign")}</button></div>
+            <div className="gestion-terminal-actions gestion-toolbar-actions"><button className="primary" type="button" disabled={busy || !assignCode} onClick={() => void assignLegacy()}>{t("gestion.terminals.workstations.assign")}</button></div>
           </> : !selected ? <p>{t("gestion.terminals.select")}</p> : (
             <>
               <header><span>{t(`gestion.terminals.type.${selected.type}`)}</span><h3>{selected.name}</h3></header>
@@ -305,7 +305,7 @@ export function TerminalManagementScreen({ session, t }: {
                 <div><dt>{t("gestion.terminals.lastIp")}</dt><dd>{selected.lastIp || "—"}</dd></div>
                 <div><dt>{t("gestion.terminals.status")}</dt><dd>{t(`gestion.terminals.status.${terminalDisplayStatus(selected)}`)}</dd></div>
               </dl>
-              <div className="gestion-terminal-actions">
+              <div className="gestion-terminal-actions gestion-toolbar-actions">
                 {!selected.approved && <button className="primary" type="button" disabled={busy} onClick={() => void approve()}>{t("gestion.terminals.approve")}</button>}
                 {selected.approved && selected.active && selected.type === "PDA" && <button className="primary" type="button" disabled={busy} onClick={() => void createPairingCode()}>{t("gestion.terminals.pairingCreate")}</button>}
                 {selected.approved && selected.active && selected.type !== "SERVIDOR" && <button className="danger" type="button" disabled={busy} onClick={() => void deactivate()}>{t("gestion.terminals.deactivate")}</button>}

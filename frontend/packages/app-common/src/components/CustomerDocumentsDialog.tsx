@@ -13,7 +13,9 @@ import { CustomerModel347Dialog } from "./CustomerModel347Dialog";
 import { customerDocumentAmount } from "./customerDocumentAmount";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
+import { ReportDateRangeSummary } from "./ReportDateRangeFilter";
 import "./CustomerDocumentsDialog.css";
+import "./NativeDateFilterSummary.css";
 
 const tabs = [
   { key: "tickets", shortcut: "F1", permission: "TICKETS_READ" },
@@ -355,6 +357,7 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
           onChange={(event) => setDraftFilters((current) => ({ ...current, dateTo: event.target.value }))} /></label>
         <button type="submit" className="erp-dialog-action-confirm" disabled={!allowed}>{t("salesReport.filter.apply")}</button>
         {(app === "pda" || !hasFilters) && <button type="button" onClick={() => applyFilters(true)}>{t("party.filter.clear")}</button>}
+        {(app === "venta" || app === "gestion") && <ReportDateRangeSummary locale={locale} value={{ from: filters.dateFrom, to: filters.dateTo, label: "" }} />}
       </form>
       {app !== "pda" && <ErpFilterChips locale={locale} chips={filterChips} focusRef={searchRef} onClear={() => applyFilters(true)} />}
       {filterError && <p className="customer-documents-notice" role="alert">{t("customerDocuments.invalidDates")}</p>}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowClockwise, ArrowDown, ArrowUp, ChartBar, ChartLine, Check, FloppyDisk, Info, SlidersHorizontal, Table, User } from "@phosphor-icons/react";
 import { type LocaleCode, type UserSession } from "@tpverp/app-common";
 import { ErpFilterChips, type ErpFilterChip } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { ReportDateRangeSummary } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
 import {
   dashboardPeriodRange, dashboardPreset, dashboardWidgetDefaults, defaultDashboardOptions,
   loadActivePromotions, loadControlAlertsSummary, loadDashboardPreference, loadDashboardWarehouses, loadSalesOverview, loadDashboardReceivables,
@@ -200,7 +201,7 @@ function DashboardWorkspace({ session, locale = "es", t, onOpenSales, onOpenStoc
   return <section className={`gestion-workspace gd-workspace ${customizing ? "is-customizing" : ""} ${options.density === "COMPACT" ? "is-compact" : ""}`}>
     <header className="gd-toolbar"><div><h2>{t(customizing ? "gestion.dashboard.customizeTitle" : "gestion.dashboard")}</h2>
       <p>{t(customizing ? "gestion.dashboard.customizeSubtitle" : "gestion.dashboard.subtitle")}</p></div>
-      <div className="gd-toolbar-actions">
+      <div className="gd-toolbar-actions gestion-toolbar-actions">
         {saveState === "saved" && <span className="gd-saved" role="status"><Check size={16} aria-hidden="true" />{t("gestion.dashboard.saved")}</span>}
         <button type="button" onClick={refreshData} disabled={preferenceLoading || saving}><ArrowClockwise size={17} aria-hidden="true" />{t("gestion.dashboard.refresh")}</button>
         {!customizing && <button type="button" className="gd-primary" disabled={!preference || preferenceLoading || preferenceError || saving} onClick={openCustomization}><SlidersHorizontal size={17} aria-hidden="true" />{t("gestion.dashboard.customize")}</button>}
@@ -216,7 +217,7 @@ function DashboardWorkspace({ session, locale = "es", t, onOpenSales, onOpenStoc
         {(hasSales || widgets.some(widget => widget.key === "promotions.active")) && <><div className="gd-period-presets" role="group" aria-label={t("gestion.dashboard.quickPeriods")}>
           {periods.map(value => <button type="button" key={value} aria-pressed={appliedPeriod === value} onClick={() => applyPeriod(value)}>{t(`gestion.dashboard.period.${value}`)}</button>)}
           {hasSales && !customizing && <label className="gd-checkbox"><input type="checkbox" checked={options.showComparison} disabled={saving} onChange={event => updateOptions({ showComparison: event.target.checked })} />{t("gestion.dashboard.showComparison")}</label>}
-        </div><section className="gd-filters" aria-label={t("gestion.dashboard.period")}>
+        </div><section className="gd-filters gestion-filter-toolbar" aria-label={t("gestion.dashboard.period")}>
           <label><span>{t("gestion.dashboard.period")}</span><select ref={periodRef} value={period} onChange={(event) => applyPeriod(event.target.value as typeof period)}>
             {periods.map((value) => <option value={value} key={value}>{t(`gestion.dashboard.period.${value}`)}</option>)}<option value="CUSTOM">{t("gestion.dashboard.period.CUSTOM")}</option>
           </select></label>
@@ -228,11 +229,12 @@ function DashboardWorkspace({ session, locale = "es", t, onOpenSales, onOpenStoc
             setRange(rangeDraft); setRangeError(false);
             setAppliedPeriod("CUSTOM");
           }}>{t("gestion.dashboard.apply")}</button>}
-          {hasSales && <label className="gd-warehouse"><span>{t("gestion.dashboard.warehouse")}</span><select value={warehouseId} onChange={(event) => setWarehouseId(event.target.value)}>
+          {hasSales && <label className="gd-warehouse" data-filter-active={warehouseId !== ""}><span>{t("gestion.dashboard.warehouse")}</span><select value={warehouseId} onChange={(event) => setWarehouseId(event.target.value)}>
             <option value="">{t("gestion.dashboard.allWarehouses")}</option>{warehouses.map((warehouse) => <option value={warehouse.id} key={warehouse.id}>{warehouse.name}</option>)}
           </select></label>}
+          <ReportDateRangeSummary locale={locale} value={{ ...range, label: "" }} />
         </section></>}
-        {!hasSales && hasReceivables && availableWidgets.some(key => key.startsWith("sales.")) && <section className="gd-filters"><label><span>{t("gestion.dashboard.warehouse")}</span>
+        {!hasSales && hasReceivables && availableWidgets.some(key => key.startsWith("sales.")) && <section className="gd-filters gestion-filter-toolbar"><label data-filter-active={warehouseId !== ""}><span>{t("gestion.dashboard.warehouse")}</span>
           <select value={warehouseId} onChange={event => setWarehouseId(event.target.value)}><option value="">{t("gestion.dashboard.allWarehouses")}</option>
             {warehouses.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></label></section>}
         {hasSales && <ErpFilterChips translate={t} chips={filterChips} focusRef={periodRef}
@@ -240,7 +242,6 @@ function DashboardWorkspace({ session, locale = "es", t, onOpenSales, onOpenStoc
         {rangeError && <p className="gd-inline-error" role="alert">{t("gestion.dashboard.invalidRange")}</p>}
         {warehouseError && <p className="gd-inline-error" role="alert">{t("gestion.dashboard.warehouseError")}<button type="button" onClick={refreshData}>{t("gestion.dashboard.retry")}</button></p>}
         {hasSales && <div className="gd-scope-note"><span title={t("gestion.dashboard.salesScopeDetail")}><Info size={14} aria-hidden="true" />{t("gestion.dashboard.salesScope")}</span>
-          <span>{formatDashboardRange(range.from, range.to, locale)}</span>
           {sales.data && options.showComparison && <span>{t("gestion.dashboard.comparedWith")} {formatDashboardRange(sales.data.previousFrom, sales.data.previousTo, locale)}</span>}
           {sales.loading && <span role="status">{t("common.loading")}</span>}
         </div>}
