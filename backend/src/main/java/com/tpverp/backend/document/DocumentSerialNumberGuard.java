@@ -9,7 +9,7 @@ import java.util.Locale;
 import java.util.Objects;
 
 /**
- * Serializes independent stock-output confirmations by store and normalized S/N.
+ * Serializes independent stock-output confirmations by store, product and normalized S/N.
  * PostgreSQL transaction advisory locks are deliberately acquired in lexical order
  * so confirmations containing several serials cannot deadlock each other.
  */
@@ -41,9 +41,10 @@ final class DocumentSerialNumberGuard {
         if (productLines.isEmpty()) return;
         var normalized = normalizedSerials(productLines);
         if (normalized.isEmpty()) return;
-        var ordered = normalized.stream().distinct().sorted().toList();
-        ordered.forEach(serial -> documents.lockSerialNumber(lockKey(document, serial)));
-        if (!documents.usedSerialNumbers(document.getTiendaId(), ordered).isEmpty()) {
+        var ordered = orderedSerials(normalized);
+        ordered.forEach(serial -> documents.lockSerialNumber(
+                lockKey(document, serial.productId(), serial.serial())));
+        if (hasUsedSerialNumbers(document, ordered)) {
             throw new IllegalArgumentException("message.document.serial_number_already_used");
         }
     }
@@ -63,9 +64,10 @@ final class DocumentSerialNumberGuard {
         var productLines = validateSnapshotStructure(document, snapshotLines);
         var normalized = normalizedSerials(productLines);
         if (normalized.isEmpty()) return;
-        var ordered = normalized.stream().distinct().sorted().toList();
-        ordered.forEach(serial -> documents.lockSerialNumber(lockKey(document, serial)));
-        if (!allowAlreadyUsed && !documents.usedSerialNumbers(document.getTiendaId(), ordered).isEmpty())
+        var ordered = orderedSerials(normalized);
+        ordered.forEach(serial -> documents.lockSerialNumber(
+                lockKey(document, serial.productId(), serial.serial())));
+        if (!allowAlreadyUsed && hasUsedSerialNumbers(document, ordered))
             throw new IllegalArgumentException("message.document.serial_number_already_used");
     }
 
@@ -76,8 +78,7 @@ final class DocumentSerialNumberGuard {
         var productLines = validateSnapshotStructure(document, snapshotLines);
         var normalized = normalizedSerials(productLines);
         if (normalized.isEmpty()) return productLines;
-        if (!documents.usedSerialNumbers(
-                document.getTiendaId(), normalized.stream().distinct().sorted().toList()).isEmpty()) {
+        if (hasUsedSerialNumbers(document, orderedSerials(normalized))) {
             throw new IllegalArgumentException("message.document.serial_number_already_used");
         }
         return productLines;
@@ -121,7 +122,7 @@ final class DocumentSerialNumberGuard {
         if (productLines.isEmpty()) return productLines;
         var normalized = normalizedSerials(productLines);
         if (normalized.isEmpty()) return productLines;
-        if (!documents.usedSerialNumbers(document.getTiendaId(), normalized.stream().distinct().sorted().toList()).isEmpty()) {
+        if (hasUsedSerialNumbers(document, orderedSerials(normalized))) {
             throw new IllegalArgumentException("message.document.serial_number_already_used");
         }
         return productLines;
@@ -159,16 +160,33 @@ final class DocumentSerialNumberGuard {
         return productLines;
     }
 
-    private static List<String> normalizedSerials(List<DocumentLine> productLines) {
+    private static List<ProductSerial> normalizedSerials(List<DocumentLine> productLines) {
         return productLines.stream()
-                .flatMap(line -> line.getSerialNumbers().stream())
-                .map(DocumentSerialNumberGuard::normalize)
-                .filter(value -> !value.isBlank())
+                .flatMap(line -> line.getSerialNumbers().stream()
+                        .map(value -> new ProductSerial(line.getProductoId(), normalize(value))))
+                .filter(value -> !value.serial().isBlank())
                 .toList();
     }
 
-    static String lockKey(CommercialDocument document, String normalizedSerial) {
-        return "document-sale-serial|" + document.getTiendaId()
+    private static List<ProductSerial> orderedSerials(List<ProductSerial> serials) {
+        return serials.stream().distinct().sorted(java.util.Comparator
+                .comparing((ProductSerial value) -> value.productId().toString())
+                .thenComparing(ProductSerial::serial)).toList();
+    }
+
+    private boolean hasUsedSerialNumbers(CommercialDocument document, List<ProductSerial> serials) {
+        var byProduct = serials.stream().collect(java.util.stream.Collectors.groupingBy(
+                ProductSerial::productId, java.util.LinkedHashMap::new,
+                java.util.stream.Collectors.mapping(ProductSerial::serial,
+                        java.util.stream.Collectors.toList())));
+        return byProduct.entrySet().stream().anyMatch(entry -> !documents.usedSerialNumbers(
+                document.getTiendaId(), entry.getKey(), entry.getValue()).isEmpty());
+    }
+
+    private record ProductSerial(java.util.UUID productId, String serial) { }
+
+    static String lockKey(CommercialDocument document, java.util.UUID productId, String normalizedSerial) {
+        return "document-sale-serial|" + document.getTiendaId() + "|" + productId
                 + "|" + normalizedSerial.length() + ":" + normalizedSerial;
     }
 

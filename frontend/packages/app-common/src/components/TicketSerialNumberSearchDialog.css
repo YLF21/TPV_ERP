@@ -1,0 +1,197 @@
+.document-activity-dialog.ticket-serial-search-dialog {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: calc(100vw - 40px);
+  overflow: hidden;
+  width: min(1440px, calc(100vw - 40px));
+  height: min(800px, calc(100dvh - 40px));
+  max-height: calc(100dvh - 40px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 3px;
+  background: #fff;
+}
+.ticket-serial-search-dialog > header {
+  min-height: 46px;
+  flex: 0 0 auto;
+  padding: 0 16px;
+}
+.ticket-serial-search-dialog > header h2 { margin: 0; font-size: 16px; }
+.ticket-serial-search-dialog .serial-search-body {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ticket-serial-search-dialog .serial-search-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #b7c4d2;
+  background: #edf2f7;
+}
+.ticket-serial-search-dialog .serial-search-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  color: #344c67;
+  font-size: 11px;
+  font-weight: 750;
+}
+.ticket-serial-search-dialog .serial-search-toolbar input {
+  box-sizing: border-box;
+  width: min(320px, 65vw);
+  height: 32px;
+  padding: 5px 9px;
+  border: 1px solid #8da1b6;
+  border-radius: 2px;
+  background: #fff;
+  color: #172b3d;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+.ticket-serial-search-dialog .serial-search-toolbar input:focus {
+  border-color: #0065fe;
+  outline: 2px solid #bfd8ff;
+  outline-offset: 1px;
+}
+.ticket-serial-search-dialog :is(.serial-search-toolbar, .serial-search-pagination, tbody) button {
+  min-height: 30px;
+  padding: 5px 12px;
+  border: 1px solid #8196ac;
+  border-radius: 2px;
+  background: #fff;
+  color: #173b61;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ticket-serial-search-dialog :is(.serial-search-toolbar, .serial-search-pagination, tbody) button.serial-search-primary {
+  border-color: #173b61;
+  background: #173b61;
+  color: #fff;
+}
+.ticket-serial-search-dialog .serial-search-toolbar button { min-width: 100px; height: 32px; }
+.ticket-serial-search-dialog :is(.serial-search-toolbar, .serial-search-pagination, tbody) button:disabled { opacity: .5; cursor: default; }
+.ticket-serial-search-dialog :is(.serial-search-toolbar, .serial-search-pagination, tbody) button:focus-visible {
+  outline: 2px solid #0065fe;
+  outline-offset: 2px;
+}
+.ticket-serial-search-dialog .serial-search-results {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: #fff;
+}
+.ticket-serial-search-dialog table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.ticket-serial-search-dialog th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 36px;
+  padding: 0 10px;
+  border-right: 1px solid #3f5874;
+  border-bottom: 1px solid #173b61;
+  background: #12385f;
+  color: #fff;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+.ticket-serial-search-dialog td {
+  height: 36px;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border-right: 1px solid #e0e6ec;
+  border-bottom: 1px solid #d2dce6;
+  color: #172b3d;
+  text-align: left;
+  vertical-align: middle;
+  line-height: 1.45;
+}
+.ticket-serial-search-dialog td:nth-child(1),
+.ticket-serial-search-dialog td:nth-child(2),
+.ticket-serial-search-dialog td:nth-child(3),
+.ticket-serial-search-dialog td:nth-child(6),
+.ticket-serial-search-dialog td:nth-child(7) { white-space: nowrap; }
+.ticket-serial-search-dialog td:nth-child(4),
+.ticket-serial-search-dialog td:nth-child(5) { overflow-wrap: anywhere; }
+.ticket-serial-search-dialog td:nth-child(6) { text-align: right; font-variant-numeric: tabular-nums; }
+.ticket-serial-search-dialog tbody tr:nth-child(even) { background: #f2f6fa; }
+.ticket-serial-search-dialog tbody tr:hover { background: #e8f1fa; }
+.ticket-serial-search-dialog .serial-search-body > p { margin: 0; padding: 28px 16px; font-size: 13px; }
+.ticket-serial-search-dialog .serial-search-pagination {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 16px;
+  border-top: 1px solid #c5d0dc;
+  background: #f4f7fa;
+}
+.ticket-serial-search-dialog > footer.erp-dialog-actions-row {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  padding: 10px 16px;
+  border-top: 1px solid #b7c4d2;
+  background: #edf2f7;
+}
+.ticket-serial-search-dialog .serial-search-body > p { flex: 0 0 auto; padding: 10px 16px; }
+.ticket-serial-search-dialog .table-layout-header-controls {
+  width: 100%; height: 36px; margin: 0; padding: 0;
+}
+.ticket-serial-search-dialog .table-layout-sort-button {
+  height: 36px; min-height: 0; margin: 0; padding: 0; gap: 4px;
+}
+.ticket-serial-search-dialog .table-layout-column-menu-button,
+.ticket-serial-search-dialog .table-layout-sort-indicator {
+  opacity: 0;
+}
+.ticket-serial-search-dialog th:hover .table-layout-column-menu-button,
+.ticket-serial-search-dialog th:focus-within .table-layout-column-menu-button,
+.ticket-serial-search-dialog .table-layout-column-menu-button.is-open,
+.ticket-serial-search-dialog th:hover .table-layout-sort-indicator,
+.ticket-serial-search-dialog th:focus-within .table-layout-sort-indicator {
+  opacity: 1;
+}
+.ticket-serial-search-dialog tbody tr.selected,
+.ticket-serial-search-dialog tbody tr.selected:hover {
+  background: #d8e9fb;
+  color: #12385f;
+}
+.ticket-serial-search-dialog tbody tr:focus-visible {
+  outline: 2px solid #1f5a94;
+  outline-offset: -2px;
+}
+.ticket-serial-search-dialog .serial-search-results tbody button {
+  min-height: 24px;
+  height: 24px;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.ticket-serial-search-dialog .serial-search-results > p {
+  margin: 0;
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 13px;
+}

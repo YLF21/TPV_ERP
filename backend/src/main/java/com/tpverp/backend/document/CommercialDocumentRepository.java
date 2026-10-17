@@ -470,6 +470,7 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
               from DocumentLine line
               join line.serialNumbers serial
              where line.documento.tiendaId = :storeId
+               and line.productoId = :productId
                and line.documento.tipo in (
                    com.tpverp.backend.document.CommercialDocumentType.TICKET,
                    com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
@@ -484,7 +485,35 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
             """)
     List<String> usedSerialNumbers(
             @Param("storeId") UUID storeId,
+            @Param("productId") UUID productId,
             @Param("serialNumbers") Collection<String> serialNumbers);
+
+    @Query("""
+            select document.id as ticketId, line.id as lineId, document.numero as number,
+                   document.fecha as date, document.estado as status, document.total as total,
+                   line.codigo as productCode, line.nombre as productName, serial as serialNumber
+              from DocumentLine line
+              join line.documento document
+              join line.serialNumbers serial
+             where document.tiendaId = :storeId
+               and document.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+               and document.estado <> com.tpverp.backend.document.DocumentStatus.BORRADOR
+               and (:serialNumber = '' or locate(:serialNumber, upper(trim(serial))) > 0)
+            """)
+    org.springframework.data.domain.Slice<SerialNumberTicketMatch> findTicketsBySerialNumber(
+            @Param("storeId") UUID storeId, @Param("serialNumber") String serialNumber, Pageable pageable);
+
+    interface SerialNumberTicketMatch {
+        UUID getTicketId();
+        UUID getLineId();
+        String getNumber();
+        LocalDate getDate();
+        DocumentStatus getStatus();
+        BigDecimal getTotal();
+        String getProductCode();
+        String getProductName();
+        String getSerialNumber();
+    }
 
     @Query("select min(document.fecha) from CommercialDocument document where document.tiendaId = :storeId and document.tipo in :types")
     LocalDate findFirstReportDate(UUID storeId, Collection<CommercialDocumentType> types);

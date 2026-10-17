@@ -688,6 +688,7 @@ describe("SaleScreen", () => {
     expect(saleSerialNumbersReady([line(["A"], 2)])).toBe(false);
     expect(saleSerialNumbersReady([line(["A", "A"], 2)])).toBe(false);
     expect(saleSerialNumbersReady([line(["A"]), line(["a"])] )).toBe(false);
+    expect(saleSerialNumbersReady([line(["A"]), { ...line(["a"]), product: { ...product, id: "OTHER-PRODUCT" } }])).toBe(true);
   });
 
   it("toggles wholesale mode on an empty cart and sends it with the next quote", async () => {

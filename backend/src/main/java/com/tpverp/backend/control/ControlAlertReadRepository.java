@@ -64,10 +64,12 @@ public interface ControlAlertReadRepository extends Repository<ControlAlert, UUI
                    actor.user_name as userName
             from sources source
             left join usuario actor on actor.id = source.operator_id
-                and exists (select 1 from tienda actor_store
+                and ((actor.tienda_id is null and actor.protegido = true
+                      and upper(actor.user_name) = 'ADMIN')
+                     or exists (select 1 from tienda actor_store
                     join tienda current_store on current_store.id = :storeId
                         and current_store.empresa_id = actor_store.empresa_id
-                    where actor_store.id = actor.tienda_id)
+                    where actor_store.id = actor.tienda_id))
             """, nativeQuery = true)
     List<CheckoutOperator> checkoutOperators(@Param("storeId") UUID storeId,
             @Param("documentIds") List<UUID> documentIds);

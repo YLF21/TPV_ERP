@@ -41,25 +41,25 @@ class DocumentSerialNumberGuardTest {
     void locksDistinctNormalizedSerialsInStableOrderBeforeFinalLookup() {
         var document = document(CommercialDocumentType.TICKET);
         document.addLine(line(document, 1, new BigDecimal("2"), List.of(" z-2 ", "a-1")));
-        when(documents.usedSerialNumbers(document.getTiendaId(), List.of("A-1", "Z-2")))
+        when(documents.usedSerialNumbers(document.getTiendaId(), document.getLineas().getFirst().getProductoId(), List.of("A-1", "Z-2")))
                 .thenReturn(List.of());
 
         guard.lockAndValidate(document, true);
 
         var ordered = inOrder(documents);
         ordered.verify(documents).lockSerialNumber(
-                DocumentSerialNumberGuard.lockKey(document, "A-1"));
+                DocumentSerialNumberGuard.lockKey(document, document.getLineas().getFirst().getProductoId(), "A-1"));
         ordered.verify(documents).lockSerialNumber(
-                DocumentSerialNumberGuard.lockKey(document, "Z-2"));
+                DocumentSerialNumberGuard.lockKey(document, document.getLineas().getFirst().getProductoId(), "Z-2"));
         ordered.verify(documents).usedSerialNumbers(
-                document.getTiendaId(), List.of("A-1", "Z-2"));
+                document.getTiendaId(), document.getLineas().getFirst().getProductoId(), List.of("A-1", "Z-2"));
     }
 
     @Test
     void rejectsSerialAlreadyClaimedByAnotherActiveStockOutput() {
         var document = document(CommercialDocumentType.ALBARAN_VENTA);
         document.addLine(line(document, 1, BigDecimal.ONE, List.of("SN-1")));
-        when(documents.usedSerialNumbers(document.getTiendaId(), List.of("SN-1")))
+        when(documents.usedSerialNumbers(document.getTiendaId(), document.getLineas().getFirst().getProductoId(), List.of("SN-1")))
                 .thenReturn(List.of("SN-1"));
 
         assertThatThrownBy(() -> guard.lockAndValidate(document, true))
@@ -67,7 +67,7 @@ class DocumentSerialNumberGuardTest {
                 .hasMessage("message.document.serial_number_already_used");
 
         verify(documents).lockSerialNumber(
-                DocumentSerialNumberGuard.lockKey(document, "SN-1"));
+                DocumentSerialNumberGuard.lockKey(document, document.getLineas().getFirst().getProductoId(), "SN-1"));
     }
 
     @Test
@@ -96,7 +96,7 @@ class DocumentSerialNumberGuardTest {
 
         verify(documents, never()).lockSerialNumber(org.mockito.ArgumentMatchers.anyString());
         verify(documents, never()).usedSerialNumbers(
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -126,7 +126,7 @@ class DocumentSerialNumberGuardTest {
         var product = product(document, true, ProductType.UNIT);
         when(products.findAllByStoreIdAndIdIn(document.getTiendaId(), List.of(product.getId())))
                 .thenReturn(List.of(product));
-        when(documents.usedSerialNumbers(document.getTiendaId(), List.of("SN-1", "SN-2")))
+        when(documents.usedSerialNumbers(document.getTiendaId(), document.getLineas().getFirst().getProductoId(), List.of("SN-1", "SN-2")))
                 .thenReturn(List.of());
 
         guard.lockAndValidate(document, true);
@@ -142,7 +142,7 @@ class DocumentSerialNumberGuardTest {
 
         guard.lockAndValidate(document, true);
         verify(documents, never()).usedSerialNumbers(
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -186,14 +186,14 @@ class DocumentSerialNumberGuardTest {
     void prepaymentSnapshotValidationUsesFrozenPolicyWithoutTakingDatabaseLock() {
         var document = document(CommercialDocumentType.TICKET);
         document.addLine(line(document, 1, BigDecimal.ONE, List.of("SN-1")));
-        when(documents.usedSerialNumbers(document.getTiendaId(), List.of("SN-1")))
+        when(documents.usedSerialNumbers(document.getTiendaId(), document.getLineas().getFirst().getProductoId(), List.of("SN-1")))
                 .thenReturn(List.of());
 
         guard.validateSnapshot(document, true,
                 List.of(DocumentLineCommand.from(document.getLineas().getFirst())
                         .withRequiresSerialNumber(true)));
 
-        verify(documents).usedSerialNumbers(document.getTiendaId(), List.of("SN-1"));
+        verify(documents).usedSerialNumbers(document.getTiendaId(), document.getLineas().getFirst().getProductoId(), List.of("SN-1"));
         verify(documents, never()).lockSerialNumber(
                 org.mockito.ArgumentMatchers.anyString());
         verifyNoInteractions(products);
@@ -205,7 +205,7 @@ class DocumentSerialNumberGuardTest {
         document.addLine(line(document, 1, BigDecimal.ONE, List.of("SN-USED")));
         var command = DocumentLineCommand.from(document.getLineas().getFirst())
                 .withRequiresSerialNumber(true);
-        when(documents.usedSerialNumbers(document.getTiendaId(), List.of("SN-USED")))
+        when(documents.usedSerialNumbers(document.getTiendaId(), document.getLineas().getFirst().getProductoId(), List.of("SN-USED")))
                 .thenReturn(List.of("SN-USED"));
 
         assertThatThrownBy(() -> guard.validateSnapshot(document, true, List.of(command)))
@@ -213,8 +213,8 @@ class DocumentSerialNumberGuardTest {
                 .hasMessage("message.document.serial_number_already_used");
 
         guard.lockAndValidateSnapshot(document, true, List.of(command), true);
-        verify(documents).lockSerialNumber(DocumentSerialNumberGuard.lockKey(document, "SN-USED"));
-        verify(documents, times(1)).usedSerialNumbers(document.getTiendaId(), List.of("SN-USED"));
+        verify(documents).lockSerialNumber(DocumentSerialNumberGuard.lockKey(document, document.getLineas().getFirst().getProductoId(), "SN-USED"));
+        verify(documents, times(1)).usedSerialNumbers(document.getTiendaId(), document.getLineas().getFirst().getProductoId(), List.of("SN-USED"));
     }
 
     @Test
@@ -230,6 +230,26 @@ class DocumentSerialNumberGuardTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("message.document.serial_number_duplicated");
         verifyNoInteractions(documents);
+    }
+
+    @Test
+    void permitsSameSerialForDifferentProductsInCurrentAndFrozenValidation() {
+        var document = document(CommercialDocumentType.TICKET);
+        document.addLine(line(document, 1, BigDecimal.ONE, List.of("SN-X")));
+        var other = new DocumentLine(document, UUID.randomUUID(), 2, BigDecimal.ONE,
+                "OTHER", "Otro producto", "VENTA", BigDecimal.TEN, BigDecimal.ZERO,
+                true, "IVA", new BigDecimal("21"));
+        other.assignSerialNumbers(List.of("sn-x"));
+        document.addLine(other);
+        guard.lockAndValidate(document, true);
+        guard.lockAndValidateSnapshot(document, true, document.getLineas().stream()
+                .map(DocumentLineCommand::from).map(line -> line.withRequiresSerialNumber(true)).toList());
+        for (var line : document.getLineas()) {
+            verify(documents, times(2)).usedSerialNumbers(document.getTiendaId(),
+                    line.getProductoId(), List.of("SN-X"));
+            verify(documents, times(2)).lockSerialNumber(
+                    DocumentSerialNumberGuard.lockKey(document, line.getProductoId(), "SN-X"));
+        }
     }
 
     private Product product(CommercialDocument document, boolean required, ProductType type) {
@@ -254,7 +274,8 @@ class DocumentSerialNumberGuardTest {
             BigDecimal quantity,
             List<String> serialNumbers) {
         var line = new DocumentLine(
-                document, UUID.randomUUID(), position, quantity,
+                document, document.getLineas().isEmpty() ? UUID.randomUUID()
+                        : document.getLineas().getFirst().getProductoId(), position, quantity,
                 "P-" + position, "Producto " + position, "VENTA",
                 BigDecimal.TEN, BigDecimal.ZERO, true, "IVA", new BigDecimal("21"));
         line.assignSerialNumbers(serialNumbers);

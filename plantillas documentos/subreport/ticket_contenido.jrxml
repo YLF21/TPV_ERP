@@ -16,7 +16,11 @@
 	</parameter>
 	<query language="sql"><![CDATA[SELECT
     dl.posicion,
-    dl.nombre AS articulo,
+    dl.nombre || COALESCE((
+        SELECT E'\nS/N: ' || string_agg(sn.numero_serie, ', ' ORDER BY sn.posicion)
+        FROM documento_linea_numero_serie sn
+        WHERE sn.documento_linea_id = dl.id
+    ), '') AS articulo,
     dl.cantidad,
     dl.precio_unitario AS precio,
     dl.descuento AS descuento_linea,

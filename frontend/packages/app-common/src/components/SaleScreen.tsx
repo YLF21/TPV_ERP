@@ -1169,7 +1169,7 @@ export function saleSerialNumbersReady(lines: SaleLine[]) {
     const values = (line.serialNumbers ?? []).map((value) => value.trim().toUpperCase());
     if (!Number.isInteger(line.quantity) || line.quantity <= 0
       || values.length !== line.quantity || values.some((value) => !value)) return false;
-    serials.push(...values);
+    serials.push(...values.map((value) => JSON.stringify([line.product.id, value])));
   }
   return new Set(serials).size === serials.length;
 }

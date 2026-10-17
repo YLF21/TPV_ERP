@@ -1,3 +1,4 @@
+import { TicketSerialNumberSearchDialog } from "./TicketSerialNumberSearchDialog";
 import { DialogDismissButton } from "./DialogDismissButton";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { AppBrand } from "./AppBrand";
@@ -481,6 +482,7 @@ type SalesDocumentDetail = {
     taxPercentage: number | string;
     total: number | string;
     documentAdjustmentType?: string | null;
+    serialNumbers?: string[];
   }>;
 };
 
@@ -2016,6 +2018,7 @@ export function SalesReportScreen({
   const reportMounted = useRef(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
+  const [serialSearchOpen, setSerialSearchOpen] = useState(false);
   const [reportDocumentPrinting, setReportDocumentPrinting] = useState(false);
   const [sortByReport, setSortByReport] = useState<Record<string, ReportSort | null>>({});
   const [customerDisplayModes, setCustomerDisplayModes] = useState<Record<string, CustomerDisplayMode>>(() =>
@@ -3855,6 +3858,13 @@ export function SalesReportScreen({
                   )}
                 </>
               )}
+              {(selectedReport === "salesReport.tickets" || selectedReport === "salesReport.invoices")
+                && session.permissions.some((permission) => ["ADMIN", "GESTION_VENTAS", "TICKETS_READ", "VENTA", "INVOICES_READ"].includes(permission)) && (
+                <button type="button" role="menuitem" disabled={!session.accessToken}
+                  onClick={() => { setMoreActionsOpen(false); setSerialSearchOpen(true); }}>
+                  {t("salesReport.serialSearch.title")}
+                </button>
+              )}
               {hasStatusFilter && selectedReport !== "salesReport.tickets" && !isCommercialDocumentReport && !isPurchaseDocumentReport(selectedReport) && (
                 <button type="button" role="menuitem" onClick={() => {
                   setMoreActionsOpen(false);
@@ -4291,6 +4301,15 @@ export function SalesReportScreen({
         {app !== "gestion" && <ScreenContextFooter locale={locale} terminalContext={terminalContext} />}
       </section>
 
+      {serialSearchOpen && <TicketSerialNumberSearchDialog locale={locale} token={session.accessToken} app={app} username={session.username}
+        request={request} onClose={() => {
+          setSerialSearchOpen(false); moreActionsRef.current?.querySelector("button")?.focus();
+        }} onOpenTicket={(match) => {
+          setSerialSearchOpen(false);
+          void openDocumentPreview({ __documentId: match.ticketId, __documentStatus: match.status,
+            ticket: match.number, date: match.date.split("-").reverse().join("/"), total: String(match.total) });
+        }} />}
+
       {activityDocumentId && (
         <DocumentOperationalTimelineDialog
           documentId={activityDocumentId}
@@ -4362,7 +4381,7 @@ export function SalesReportScreen({
                         return (
                           <tr key={line.id}>
                             <td>{adjustmentLabel ?? line.code}</td>
-                            <td>{adjustmentLabel ?? line.name}</td>
+                            <td>{adjustmentLabel ?? line.name}{line.serialNumbers?.length ? <div className="sale-line-serial">S/N: {line.serialNumbers.join(", ")}</div> : null}</td>
                             <td>{new Intl.NumberFormat(localeTag(locale), { maximumFractionDigits: 3 }).format(Number(line.quantity))}</td>
                             <td>{formatEuroUnitPrice(line.unitPrice, locale)}</td>
                             <td>{`${new Intl.NumberFormat(localeTag(locale), { maximumFractionDigits: 2 }).format(Number(line.discount))} %`}</td>

@@ -663,13 +663,14 @@ public class PosCashService {
         if (replay == null) {
             return;
         }
-        var unique = new HashSet<String>();
+        record ProductSerial(UUID productId, String serial) { }
+        var unique = new HashSet<ProductSerial>();
         var allLines = new ArrayList<DocumentLineCommand>(replay.commands());
         allLines.addAll(currentLines);
         for (var line : allLines) {
             for (var serial : line.serialNumbers()) {
                 var normalized = serial.trim().toUpperCase(Locale.ROOT);
-                if (!unique.add(normalized)) {
+                if (!unique.add(new ProductSerial(line.productoId(), normalized))) {
                     throw new IllegalArgumentException(
                             "message.document.previous_ticket_serial_duplicated");
                 }

@@ -2244,6 +2244,7 @@ describe("SalesReportScreen", () => {
             position: 1,
             code: "P-001",
             name: "Producto del albarán",
+            serialNumbers: ["SN-123"],
             quantity: "2.000",
             unitPrice: "25.00",
             discount: "0.00",
@@ -2300,6 +2301,7 @@ describe("SalesReportScreen", () => {
     expect(await screen.findByRole("heading", { name: "AV-001" })).toBeVisible();
     expect(await screen.findByText("Producto del albarán")).toBeVisible();
     expect(request).toHaveBeenCalledWith("/documents/delivery-1/detail", { token: "token" });
+    expect(screen.getByText("S/N: SN-123")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Imprimir copia" }));
     await waitFor(() => expect(request).toHaveBeenCalledWith("/documents/delivery-1/print-copy", { token: "token" }));
     expect(createObjectUrl).toHaveBeenCalledWith(expect.objectContaining({ type: "application/pdf" }));

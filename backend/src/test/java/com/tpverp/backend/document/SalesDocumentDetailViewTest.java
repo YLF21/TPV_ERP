@@ -21,6 +21,7 @@ class SalesDocumentDetailViewTest {
         var product = new DocumentLine(document, UUID.randomUUID(), 1, BigDecimal.ONE,
                 "P-1", "Articulo", null, new BigDecimal("1.42"), BigDecimal.ZERO,
                 true, "IVA", new BigDecimal("7.00"));
+        product.assignSerialNumbers(java.util.List.of("SN-123"));
         document.addLine(product);
         var adjustment = new DocumentAdjustment(document, type, 1, new BigDecimal("3.00"),
                 new BigDecimal("1.42"), new BigDecimal("0.04"), null, Instant.EPOCH,
@@ -33,6 +34,7 @@ class SalesDocumentDetailViewTest {
         document.addLine(discount);
 
         var detail = SalesDocumentDetailView.from(document);
+        assertThat(detail.lines().getFirst().serialNumbers()).containsExactly("SN-123");
 
         assertThat(detail.lines().getFirst().documentAdjustmentType()).isNull();
         assertThat(detail.lines().getLast().documentAdjustmentType()).isEqualTo(type);

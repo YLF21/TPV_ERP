@@ -133,6 +133,22 @@ class TicketJasperRendererPostgreSqlTest {
         assertThat(decodeQr(raster)).isEqualTo(QR_URL);
     }
 
+    @ParameterizedTest(name = "seriales {0}")
+    @EnumSource(TicketPrintStyle.class)
+    void printsPersistedSerialNumbersUnderProductNameWithoutChangingTotals(TicketPrintStyle style) throws Exception {
+        var fixture = insertFixture();
+        jdbc.update("""
+                insert into documento_linea_numero_serie(documento_linea_id,posicion,numero_serie)
+                select id,0,'SN-123456' from documento_linea where documento_id=? and posicion=1
+                """, fixture.document().getId());
+        var rendered = integratedRenderer(style).renderForPrint(fixture.document());
+        try (var pdf = Loader.loadPDF(rendered.pdf())) {
+            assertThat(new PDFTextStripper().getText(pdf)).contains("S/N: SN-123456", "Producto TEST");
+            assertThat(textBounds(pdf, "S/N: SN-123456").top())
+                    .isGreaterThan(textBounds(pdf, "Producto TEST").top());
+        }
+    }
+
     @ParameterizedTest(name = "cambio {0}")
     @EnumSource(TicketPrintStyle.class)
     void rendersPersistedExchangeReferencesBeforeArticles(TicketPrintStyle style) throws Exception {

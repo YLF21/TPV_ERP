@@ -82,7 +82,8 @@ public record SalesDocumentDetailView(
             String taxRegime,
             BigDecimal taxPercentage,
             BigDecimal total,
-            String documentAdjustmentType) {
+            String documentAdjustmentType,
+            List<String> serialNumbers) {
 
         static LineView from(DocumentLine line, Map<UUID, String> adjustmentTypes) {
             return new LineView(
@@ -97,7 +98,8 @@ public record SalesDocumentDetailView(
                     line.getPorcentajeImpuesto(),
                     line.getTotal(),
                     line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT
-                            ? adjustmentTypes.get(line.getDocumentAdjustmentId()) : null);
+                            ? adjustmentTypes.get(line.getDocumentAdjustmentId()) : null,
+                    line.getSerialNumbers());
         }
     }
 }
