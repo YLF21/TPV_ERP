@@ -1282,11 +1282,16 @@ describe("SalesReportScreen", () => {
       />
     );
 
-    await waitFor(() => expect(screen.getByLabelText("Desde")).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Aplicar" })).toBeEnabled());
+    expect(screen.getByLabelText("Desde")).toHaveValue("2026-08-16");
+    expect(screen.getByLabelText("Hasta")).toHaveValue("2026-08-16");
     fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-08-15" } });
     fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-08-16" } });
     fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
-    expect(screen.getAllByText("15/8/2026 — 16/8/2026")[0]).toBeVisible();
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/sales-activity/documents/by-day?dateFrom=2026-08-15&dateTo=2026-08-16&limit=250", { token: "token" }
+    ));
+    expect(await screen.findByText("15/8/2026 — 16/8/2026")).toBeVisible();
 
     view.rerender(
       <SalesActivityPanel
@@ -1299,7 +1304,9 @@ describe("SalesReportScreen", () => {
         request={request}
       />
     );
-    expect(screen.getAllByText("15/08/2026 — 16/08/2026")[0]).toBeVisible();
+    expect(await screen.findByText("15/08/2026 — 16/08/2026")).toBeVisible();
+    expect(screen.getByLabelText("From")).toHaveValue("2026-08-15");
+    expect(screen.getByLabelText("To")).toHaveValue("2026-08-16");
   });
 
   it("moves a TODAY document range to the server date after midnight", async () => {
