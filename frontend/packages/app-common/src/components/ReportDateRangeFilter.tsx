@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { createSalesActivityTranslator } from "../i18n/SalesActivityMessages";
 import { localeTag } from "../money";
 import type { LocaleCode } from "../types";
@@ -36,19 +36,38 @@ export function reportDateRangeLabel(value: ReportDateRange, locale: LocaleCode)
   }
 }
 
-export function ReportDateRangeSummary({ locale, value }: { locale: LocaleCode; value: ReportDateRange }) {
+export function reportDateWeekday(value: string, locale: LocaleCode) {
+  if (!isValidReportDate(value)) return "";
+  const weekday = new Intl.DateTimeFormat(localeTag(locale), { weekday: "long" }).format(localDate(value));
+  return locale === "es" ? weekday.charAt(0).toLocaleUpperCase("es-ES") + weekday.slice(1) : weekday;
+}
+
+export function ReportDateRangeSummary({ locale, value, collapseSingleDay = true, showWeekday = true }: {
+  locale: LocaleCode;
+  value: ReportDateRange;
+  collapseSingleDay?: boolean;
+  showWeekday?: boolean;
+}) {
   const from = isValidReportDate(value.from) ? value.from : "";
   const to = isValidReportDate(value.to) ? value.to : "";
   if (!from && !to) return null;
   const format = new Intl.DateTimeFormat(localeTag(locale), { day: "2-digit", month: "2-digit", year: "numeric" });
-  return <span className="report-date-range-summary">
-    {from ? <time dateTime={from}>{format.format(localDate(from))}</time> : "…"}
-    <span aria-hidden="true">{" — "}</span>
-    {to ? <time dateTime={to}>{format.format(localDate(to))}</time> : "…"}
+  function renderDate(date: string) {
+    return <time dateTime={date}>
+      <span>{format.format(localDate(date))}</span>
+      {showWeekday && <small className="report-date-range-weekday">{reportDateWeekday(date, locale)}</small>}
+    </time>;
+  }
+  return <span className={`report-date-range-summary${showWeekday ? " report-date-range-summary--weekdays" : ""}`}>
+    {from ? renderDate(from) : "…"}
+    {!(collapseSingleDay && from === to) && <>
+      <span aria-hidden="true">{" — "}</span>
+      {to ? renderDate(to) : "…"}
+    </>}
   </span>;
 }
 
-export function ReportDateRangeFilter({ locale, today, earliestDate, value, onChange, disabled = false, showSummary = true }: {
+export function ReportDateRangeFilter({ locale, today, earliestDate, value, onChange, disabled = false, showSummary = true, collapseSingleDay = true, showWeekday = true, inlineCustomRange = true }: {
   locale: LocaleCode;
   today: string;
   earliestDate: string;
@@ -56,12 +75,21 @@ export function ReportDateRangeFilter({ locale, today, earliestDate, value, onCh
   onChange: (range: ReportDateRange) => void;
   disabled?: boolean;
   showSummary?: boolean;
+  collapseSingleDay?: boolean;
+  showWeekday?: boolean;
+  inlineCustomRange?: boolean;
 }) {
   const t = createSalesActivityTranslator(locale);
   const customId = useId();
   const [customOpen, setCustomOpen] = useState(false);
-  const [draftFrom, setDraftFrom] = useState("");
-  const [draftTo, setDraftTo] = useState("");
+  const [draftFrom, setDraftFrom] = useState(value.from);
+  const [draftTo, setDraftTo] = useState(value.to);
+  useEffect(() => {
+    if (inlineCustomRange) {
+      setDraftFrom(value.from);
+      setDraftTo(value.to);
+    }
+  }, [inlineCustomRange, value.from, value.to]);
   const ready = !disabled && isValidReportDate(today) && isValidReportDate(earliestDate);
   const options = useMemo(() => {
     const months: Array<{ value: string; label: string }> = [];
@@ -88,6 +116,10 @@ export function ReportDateRangeFilter({ locale, today, earliestDate, value, onCh
 
   function select(from: string, to: string, preset: ReportRangePreset) {
     if (!ready || !isValidReportDate(from) || !isValidReportDate(to) || from > to || to > today) return;
+    if (inlineCustomRange) {
+      setDraftFrom(from);
+      setDraftTo(to);
+    }
     onChange({ from, to, preset, label: "" });
     setCustomOpen(false);
   }
@@ -121,6 +153,21 @@ export function ReportDateRangeFilter({ locale, today, earliestDate, value, onCh
   const selectedQuarter = value.preset === "QUARTER" && isValidReportDate(value.from)
     ? `${value.from.slice(0, 4)}-Q${Math.floor(localDate(value.from).getMonth() / 3) + 1}` : "";
   const selectedYear = value.preset === "YEAR" ? value.from.slice(0, 4) : "";
+  const customForm = (inlineCustomRange || customOpen) && <form id={customId}
+    className={inlineCustomRange ? "report-date-custom-inline" : "report-date-custom sales-activity-custom-period"}
+    aria-label={t("custom")} onSubmit={(event) => {
+      event.preventDefault(); if (validDraft) select(draftFrom, draftTo, "CUSTOM");
+    }} onKeyDown={(event) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        if (inlineCustomRange) { setDraftFrom(value.from); setDraftTo(value.to); }
+        else setCustomOpen(false);
+      }
+    }}>
+    <label><span>{t("from")}</span><input type="date" disabled={!ready} max={today} value={draftFrom} onChange={(event) => setDraftFrom(event.target.value)} /></label>
+    <label><span>{t("to")}</span><input type="date" disabled={!ready} max={today} value={draftTo} onChange={(event) => setDraftTo(event.target.value)} /></label>
+    <button type="submit" disabled={!validDraft}>{t(inlineCustomRange ? "applyInline" : "apply")}</button>
+  </form>;
 
   return <footer className="report-date-range-filter sales-activity-filter-dock" aria-label={t("currentPeriod")}>
     <button type="button" disabled={!ready} aria-pressed={value.preset === "TODAY"} className={value.preset === "TODAY" ? "selected" : ""} onClick={() => selectDay(0)}>{t("today")}</button>
@@ -129,18 +176,11 @@ export function ReportDateRangeFilter({ locale, today, earliestDate, value, onCh
     <label><span>{t("month")}</span><select disabled={!ready} value={selectedMonth} onChange={(event) => selectPeriod(event.target.value, "MONTH")}><option value="">—</option>{options.months.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
     <label><span>{t("quarter")}</span><select disabled={!ready} value={selectedQuarter} onChange={(event) => selectPeriod(event.target.value, "QUARTER")}><option value="">—</option>{options.quarters.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
     <label><span>{t("year")}</span><select disabled={!ready} value={selectedYear} onChange={(event) => selectPeriod(event.target.value, "YEAR")}><option value="">—</option>{options.years.map((year) => <option key={year} value={year}>{year}</option>)}</select></label>
-    <button type="button" disabled={!ready} aria-expanded={customOpen} aria-controls={customId} onClick={() => {
+    {!inlineCustomRange && <button type="button" disabled={!ready} aria-expanded={customOpen} aria-controls={customId} onClick={() => {
       setDraftFrom(value.from); setDraftTo(value.to); setCustomOpen((open) => !open);
-    }}>{t("custom")}</button>
-    {showSummary && <ReportDateRangeSummary locale={locale} value={value} />}
-    {customOpen && <form id={customId} className="report-date-custom sales-activity-custom-period" onSubmit={(event) => {
-      event.preventDefault(); if (validDraft) select(draftFrom, draftTo, "CUSTOM");
-    }} onKeyDown={(event) => {
-      if (event.key === "Escape") { event.stopPropagation(); setCustomOpen(false); }
-    }}>
-      <label><span>{t("from")}</span><input type="date" max={today} value={draftFrom} onChange={(event) => setDraftFrom(event.target.value)} /></label>
-      <label><span>{t("to")}</span><input type="date" max={today} value={draftTo} onChange={(event) => setDraftTo(event.target.value)} /></label>
-      <button type="submit" disabled={!validDraft}>{t("apply")}</button>
-    </form>}
+    }}>{t("custom")}</button>}
+    {inlineCustomRange && customForm}
+    {showSummary && <ReportDateRangeSummary locale={locale} value={value} collapseSingleDay={collapseSingleDay} showWeekday={showWeekday} />}
+    {!inlineCustomRange && customForm}
   </footer>;
 }

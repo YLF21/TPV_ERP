@@ -783,7 +783,7 @@ export function WarehouseOperationsPanel({
             onChange={(event) => setDateFrom(event.target.value)} /></label>
           <label><span>{t("warehouse.report.to")}</span><input type="date" value={dateTo} min={dateFrom || undefined}
             onChange={(event) => setDateTo(event.target.value)} /></label>
-          <ReportDateRangeSummary locale={locale} value={{ from: dateFrom, to: dateTo, label: "" }} />
+          <ReportDateRangeSummary collapseSingleDay={false} showWeekday={false} locale={locale} value={{ from: dateFrom, to: dateTo, label: "" }} />
         </>}
         <div className={`filter-actions filter-wide warehouse-document-actions${warehouseDesktopActions ? " gestion-warehouse-list-actions gestion-toolbar-end" : ""}`}>
           {!headingWithCreate && createAction}
@@ -913,7 +913,7 @@ export function WarehouseOperationsPanel({
           <span>{t("salesReport.loadError")}</span>
           <button type="button" onClick={retryDateOptions}>{t("salesReport.retry")}</button>
         </div>}
-        <ReportDateRangeFilter locale={locale} today={dateOptions?.currentDate ?? ""}
+        <ReportDateRangeFilter collapseSingleDay={app === "gestion"} showWeekday={app === "gestion"} locale={locale} today={dateOptions?.currentDate ?? ""}
           earliestDate={dateOptions?.earliestDate ?? ""}
           value={{ from: dateFrom, to: dateTo, label: "", preset: quickRange.from === dateFrom && quickRange.to === dateTo ? quickRange.preset : undefined }}
           onChange={(range) => { setQuickRange(range); setDateFrom(range.from); setDateTo(range.to); }} />

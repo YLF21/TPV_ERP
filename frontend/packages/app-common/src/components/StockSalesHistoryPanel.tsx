@@ -309,7 +309,8 @@ export function StockSalesHistoryPanel({
   const filterChips: ErpFilterChip[] = [
     ...(appliedFrom || appliedTo ? [{
       key: "period", label: t("salesReport.filter.dateRange"),
-      value: appliedFrom && appliedTo ? `${dateLabel(appliedFrom)} – ${dateLabel(appliedTo)}`
+      value: appliedFrom && appliedTo ? (app === "gestion" && appliedFrom === appliedTo
+        ? dateLabel(appliedFrom) : `${dateLabel(appliedFrom)} – ${dateLabel(appliedTo)}`)
         : `${t(appliedFrom ? "salesReport.filter.dateFrom" : "salesReport.filter.dateTo")} ${dateLabel(appliedFrom || appliedTo)}`,
       onRemove: () => removeFilter("period"),
     }] : []),
@@ -427,7 +428,7 @@ export function StockSalesHistoryPanel({
             <button type="button" role="menuitem" onClick={() => void exportReport("pdf")}>{t("stock.history.exportPdf")}</button>
           </div>}
         </div>
-        {app === "venta" && <ReportDateRangeSummary locale={locale} value={{ from: appliedFrom, to: appliedTo, label: "" }} />}
+        {app === "venta" && <ReportDateRangeSummary collapseSingleDay={false} showWeekday={false} locale={locale} value={{ from: appliedFrom, to: appliedTo, label: "" }} />}
       </div>
       {app !== "pda" && <ErpFilterChips chips={filterChips} onClear={clearFilters}
         focusRef={applyButtonRef} locale={locale} />}

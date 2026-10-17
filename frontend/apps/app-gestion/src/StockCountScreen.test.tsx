@@ -159,10 +159,9 @@ describe("StockCountScreen", () => {
     expect(screen.getByRole("row", { name: /INV-2026-000001/ })).toBeInTheDocument();
     fireEvent.click(within(dock).getByRole("button", { name: "Ayer" }));
     expect(screen.getByRole("row", { name: /INV-2026-000002/ })).toBeInTheDocument();
-    fireEvent.click(within(dock).getByRole("button", { name: "Periodo personalizado" }));
     fireEvent.change(within(dock).getByLabelText("Desde"), { target: { value: "2026-08-01" } });
     fireEvent.change(within(dock).getByLabelText("Hasta"), { target: { value: "2026-08-31" } });
-    fireEvent.click(within(dock).getByRole("button", { name: "Aplicar periodo" }));
+    fireEvent.click(within(dock).getByRole("button", { name: "Aplicar" }));
     expect(screen.getByRole("row", { name: /INV-2026-000003/ })).toBeInTheDocument();
     expect(screen.queryByRole("row", { name: /INV-2026-000001/ })).not.toBeInTheDocument();
   });

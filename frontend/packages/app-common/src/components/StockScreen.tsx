@@ -7744,7 +7744,7 @@ export function StockScreen({
                   <span>{t("salesReport.loadError")}</span>
                   <button type="button" onClick={() => setTopSalesDateOptionsReload((value) => value + 1)}>{t("salesReport.retry")}</button>
                 </div>}
-                <ReportDateRangeFilter locale={locale} today={topSalesDateOptions?.currentDate ?? ""}
+                <ReportDateRangeFilter collapseSingleDay={app === "gestion"} showWeekday={app === "gestion"} locale={locale} today={topSalesDateOptions?.currentDate ?? ""}
                   earliestDate={topSalesDateOptions?.earliestDate ?? ""}
                   value={{ from: topSalesDateFrom, to: topSalesDateTo, label: "",
                     preset: topSalesPeriod === "custom" && topSalesQuickRange?.from === topSalesDateFrom

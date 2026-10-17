@@ -338,14 +338,14 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
           <label className="receivables-checkbox"><input aria-label={t("receivables.overdueOnly")} type="checkbox" checked={overdue} onChange={(event) => setOverdue(event.target.checked)} />{t("receivables.overdueOnly")}</label>
           <label>{t("receivables.dueFrom")}<input type="date" value={dueFrom} onChange={(event) => setDueFrom(event.target.value)} /></label>
           <label>{t("receivables.dueTo")}<input type="date" value={dueTo} onChange={(event) => setDueTo(event.target.value)} /></label>
-          <ReportDateRangeSummary locale={locale} value={{ from: dueFrom, to: dueTo, label: "" }} />
+          <ReportDateRangeSummary collapseSingleDay={false} showWeekday={false} locale={locale} value={{ from: dueFrom, to: dueTo, label: "" }} />
         </div>
       </> : view === "HISTORY" ? <div className="customer-receivables-filters receivables-history-filters">
         <label>{t("receivables.history.search")}<input ref={historySearchRef} value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} /></label>
         <label>{t("receivables.history.method")}<select value={paymentMethodId} onChange={(event) => setPaymentMethodId(event.target.value)}><option value="">{t("receivables.all")}</option>{methods.map((method) => <option key={method.id} value={method.id}>{method.name ?? method.nombre ?? method.id}</option>)}</select></label>
         <label>{t("receivables.history.collectedFrom")}<input type="date" value={collectedFrom} onChange={(event) => setCollectedFrom(event.target.value)} /></label>
         <label>{t("receivables.history.collectedTo")}<input type="date" value={collectedTo} onChange={(event) => setCollectedTo(event.target.value)} /></label>
-        <ReportDateRangeSummary locale={locale} value={{ from: collectedFrom, to: collectedTo, label: "" }} />
+        <ReportDateRangeSummary collapseSingleDay={false} showWeekday={false} locale={locale} value={{ from: collectedFrom, to: collectedTo, label: "" }} />
       </div> : null}
       {tableTheme === "erp-blue-classic" && view !== "ACCOUNT" && <ErpFilterChips locale={locale} chips={filterChips}
         focusRef={view === "OPEN" ? searchRef : historySearchRef} onClear={clearFilters} />}

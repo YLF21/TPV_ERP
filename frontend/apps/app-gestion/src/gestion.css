@@ -378,6 +378,11 @@ body,
   overflow: hidden !important;
 }
 
+.report-screen.gestion-embedded-module[data-section-heading="hidden"] .report-shell {
+  grid-template-rows: 0 minmax(0, 1fr) !important;
+  row-gap: 0 !important;
+}
+
 .gestion-dashboard-toolbar {
   min-height: 58px;
   display: flex;
@@ -5190,28 +5195,15 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 }
 
 .gestion-vouchers-workspace {
-  display: grid;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr);
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   min-height: 0;
   overflow: hidden;
 }
-
-.gestion-vouchers-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 24px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--gestion-border);
-}
-
-.gestion-vouchers-header h2,
-.gestion-vouchers-header p { margin: 0; }
-.gestion-vouchers-header h2 { margin-top: 3px; }
-.gestion-vouchers-header p { margin-top: 5px; color: var(--gestion-muted); }
-.gestion-vouchers-header > button,
+.gestion-vouchers-workspace > :not(.gestion-voucher-content) { flex: 0 0 auto; }
+.gestion-vouchers-workspace > :is(.erp-filter-applied, .gestion-voucher-message) { order: 1; }
 .gestion-voucher-filters button,
-.gestion-voucher-list footer button,
 .gestion-voucher-detail button {
   min-height: 34px;
   border: 1px solid #58718b;
@@ -5240,28 +5232,31 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 .gestion-voucher-message.error { border-color: #b66d6d; background: #fff1f1; color: #7b2020; }
 
 .gestion-voucher-filters {
-  display: grid;
-  grid-template-columns: minmax(220px, 1.5fr) 180px 145px 145px auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: end;
   gap: 9px;
   padding: 10px;
   border: 1px solid #aebdcb;
   background: #eef2f5;
 }
-.gestion-voucher-filters label > span { display: block; margin-bottom: 4px; color: #30475f; font-size: 12px; font-weight: 800; }
+.gestion-voucher-filters > label.query { flex-basis: 420px; }
+.gestion-voucher-filters > label:not(.query) { flex-basis: 180px; }
+.gestion-voucher-filters > .gestion-toolbar-end > button { height: 34px; min-width: 0; }
+.gestion-voucher-filters label > span { display: block; color: #30475f; font-size: 12px; font-weight: 800; }
 .gestion-voucher-filters input { width: 100%; min-height: 35px; box-sizing: border-box; border: 1px solid #7f95aa; border-radius: 0; padding: 6px 8px; background: #fff; font: inherit; }
 .gestion-voucher-filters .erp-select__trigger { min-height: 35px; border-radius: 0; }
-.gestion-voucher-filters > div { display: flex; gap: 6px; }
 
-.gestion-voucher-content {
+.gestion-voucher-content.report-table-region {
   display: grid;
+  flex: 1 1 0;
   grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
 }
-.gestion-voucher-content.has-detail { grid-template-columns: minmax(620px, 1fr) 340px; }
-.gestion-voucher-list { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-width: 0; min-height: 0; border: 1px solid #9dafc0; background: #fff; }
-.gestion-voucher-table { min-height: 0; overflow: auto; }
+.gestion-voucher-content.has-detail { grid-template-columns: minmax(0, 1fr) 340px; }
+.gestion-voucher-list { display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 1px solid #9dafc0; border-radius: 6px; overflow: hidden; background: #fff; }
+.gestion-voucher-table { flex: 1 1 0; min-height: 0; overflow: auto; }
 .gestion-voucher-row {
   display: grid;
   min-width: max-content;
@@ -5279,6 +5274,9 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 button.gestion-voucher-row { cursor: pointer; }
 button.gestion-voucher-row:hover { background: #f2f6f9; }
 button.gestion-voucher-row.selected { box-shadow: inset 4px 0 0 #1d5f92; background: #eaf2f8; }
+@layer erp-report-corners {
+  html[data-app="gestion"] .report-screen--desktop .gestion-voucher-table > button.gestion-voucher-row { border-radius: 0 !important; }
+}
 .gestion-voucher-row > span { min-width: 0; box-sizing: border-box; padding: 9px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gestion-voucher-row.head { position: sticky; top: 0; z-index: 2; min-height: 38px; background: #dfe7ee; color: #263d54; font-size: 12px; font-weight: 900; letter-spacing: .02em; text-transform: uppercase; }
 .gestion-voucher-row.head > span { display: flex; align-items: center; border-right: 1px solid #c1cdd8; }
@@ -5289,10 +5287,9 @@ button.gestion-voucher-row.selected { box-shadow: inset 4px 0 0 #1d5f92; backgro
 .gestion-voucher-status.invalidated { border-color: #a85e5e; background: #fff0f0; color: #782626; }
 .gestion-voucher-state { display: grid; place-items: center; min-height: 170px; color: var(--gestion-muted); font-weight: 800; }
 .gestion-voucher-state.error { color: #8a2929; }
-.gestion-voucher-list > footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 45px; padding: 6px 10px; border-top: 1px solid #b8c6d3; background: #f2f5f7; font-size: 13px; font-weight: 700; }
-.gestion-voucher-list > footer div { display: flex; align-items: center; gap: 8px; }
+.gestion-voucher-state--more { min-height: 36px; }
 
-.gestion-voucher-detail { min-height: 0; overflow: auto; border: 1px solid #869bae; background: #f8fafb; box-shadow: -4px 0 12px rgb(24 48 70 / 8%); }
+.gestion-voucher-detail { min-height: 0; overflow: auto; border: 1px solid #869bae; border-radius: 6px; background: #f8fafb; }
 .gestion-voucher-detail > header { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: start; padding: 13px 14px; border-bottom: 3px solid #b88a22; background: var(--gestion-navy); color: #fff; }
 .gestion-voucher-detail > header span { color: #cad6e1; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .gestion-voucher-detail > header h3 { margin: 3px 0 0; font-size: 19px; letter-spacing: .04em; }
@@ -5320,14 +5317,11 @@ button.gestion-voucher-row.selected { box-shadow: inset 4px 0 0 #1d5f92; backgro
 .gestion-voucher-events article p { grid-column: 1 / -1; margin-top: 3px; font-size: 12px; }
 
 @media (max-width: 1180px) {
-  .gestion-voucher-filters { grid-template-columns: 1fr 180px 145px 145px; }
-  .gestion-voucher-filters > div { grid-column: 1 / -1; justify-content: flex-end; }
-  .gestion-voucher-content.has-detail { grid-template-columns: minmax(560px, 1fr) 320px; }
+  .gestion-voucher-content.has-detail { grid-template-columns: minmax(0, 1fr) 320px; }
 }
 
 @media (max-width: 900px) {
   .gestion-vouchers-workspace { overflow: auto; }
-  .gestion-voucher-filters,
   .gestion-voucher-content.has-detail { grid-template-columns: 1fr; }
   .gestion-voucher-detail { max-height: none; }
 }

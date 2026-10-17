@@ -80,6 +80,21 @@ html:is([data-app="gestion"], [data-app="venta"]) .report-date-range-filter.sale
   color: var(--activity-ink);
   font: inherit;
 }
+.report-date-custom-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin-left: 4px;
+  padding-left: 10px;
+  border-left: 1px solid #aebfd0;
+}
+.report-date-custom-inline input {
+  box-sizing: border-box;
+  width: 132px;
+  min-width: 132px;
+}
 .report-date-range-filter .report-date-custom {
   position: absolute;
   right: 8px;

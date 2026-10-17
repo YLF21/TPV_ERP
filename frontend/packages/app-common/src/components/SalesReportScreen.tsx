@@ -3917,8 +3917,12 @@ export function SalesReportScreen({
     );
   }
 
+  const hideSectionHeading = app === "gestion" && isDailySalesReport;
+  const screenTitle = t(hideSectionHeading ? "salesReport.dailySales"
+    : app === "gestion" ? "gestion.navigation.group.customerDocuments" : "home.salesReport");
+
   return (
-    <main data-period-summary={periodSummaryInDateFilter ? "footer" : undefined} className={`${embedded ? "report-screen gestion-embedded-module" : "report-screen"}${app !== "pda" ? " report-screen--desktop" : ""} report-density-${reportOutputPreferences.density}`}>
+    <main data-section-heading={hideSectionHeading ? "hidden" : undefined} data-period-summary={periodSummaryInDateFilter ? "footer" : undefined} className={`${embedded ? "report-screen gestion-embedded-module" : "report-screen"}${app !== "pda" ? " report-screen--desktop" : ""} report-density-${reportOutputPreferences.density}`}>
       {reportNotice && (
         <div
           className={`report-feedback ${reportNotice.kind}`}
@@ -4014,14 +4018,14 @@ export function SalesReportScreen({
         {"\u23FB"}
       </button>}
 
-      <section className="report-shell" aria-label={t("home.salesReport")}>
-        <header className="report-topbar">
+      <section className="report-shell" aria-label={screenTitle}>
+        {(!hideSectionHeading || !embedded) && <header className="report-topbar">
           {!embedded && <button type="button" className="report-brand-back" onClick={onBack}>
             <AppBrand app={app} label={t(app === "venta" ? "venta.title" : "gestion.title")} />
           </button>}
           {!embedded && <DesktopHeaderContext terminalContext={terminalContext} />}
-          <h1 className="report-title">{t("home.salesReport")}</h1>
-        </header>
+          {!hideSectionHeading && <h1 className="report-title">{screenTitle}</h1>}
+        </header>}
         {!embedded && <aside className="report-nav">
           {availableReports.visibleOutputReports.length > 0 && <strong>{t("salesReport.output")}</strong>}
           {availableReports.visibleOutputReports.map((reportKey) => (
@@ -4276,7 +4280,7 @@ export function SalesReportScreen({
                 <span>{t("salesReport.loadError")}</span>
                 <button type="button" onClick={() => setReportReloadKey((value) => value + 1)}>{t("salesReport.retry")}</button>
               </div>}
-              <ReportDateRangeFilter key={selectedReport} locale={locale}
+              <ReportDateRangeFilter inlineCustomRange={app !== "pda"} collapseSingleDay={app === "gestion"} showWeekday={app === "gestion"} key={selectedReport} locale={locale}
                 today={dateOptions?.report === selectedReport ? dateOptions.currentDate : ""}
                 earliestDate={dateOptions?.report === selectedReport ? dateOptions.earliestDate : ""}
                 value={selectedDateRange} onChange={applyDateRange} showSummary={periodSummaryInDateFilter} />

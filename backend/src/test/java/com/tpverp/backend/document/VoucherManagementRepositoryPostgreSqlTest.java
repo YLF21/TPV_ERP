@@ -158,6 +158,21 @@ class VoucherManagementRepositoryPostgreSqlTest {
         assertThat(familyNumbers.next(secondStore)).isEqualTo(1);
     }
 
+    @Test
+    void findsEarliestVoucherCreationOnlyForTheSelectedStore() {
+        var firstStore = insertStore();
+        var otherStore = insertStore();
+        var first = NOW.minusSeconds(7200);
+        vouchers.saveAllAndFlush(List.of(
+                voucher(firstStore, 1, "VA-FIRST", "10.00", "T-1", first, TODAY),
+                voucher(firstStore, 2, "VA-LATER", "10.00", "T-2", NOW, TODAY),
+                voucher(otherStore, 1, "VA-OTHER", "10.00", "T-3", first.minusSeconds(3600), TODAY)));
+
+        assertThat(vouchers.findFirstReportCreatedAt(firstStore)).isEqualTo(first);
+        assertThat(vouchers.findFirstReportCreatedAt(otherStore)).isEqualTo(first.minusSeconds(3600));
+        assertThat(vouchers.findFirstReportCreatedAt(UUID.randomUUID())).isNull();
+    }
+
     private UUID insertStore() {
         var companyId = UUID.randomUUID();
         var storeId = UUID.randomUUID();

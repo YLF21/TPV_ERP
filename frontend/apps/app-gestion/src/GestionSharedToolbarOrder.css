@@ -27,11 +27,32 @@
   flex: 0 1 auto;
 }
 
-.sales-activity-toolbar.gestion-toolbar-layout .sales-activity-visualization {
-  padding-right: 0;
-  padding-left: 6px;
-  border-right: 0;
-  border-left: 1px solid var(--activity-line);
+html[data-app="gestion"] .sales-activity-toolbar--daily > .sales-activity-date {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+html[data-app="gestion"] .sales-activity-toolbar--daily .sales-activity-date > span:first-child {
+  padding-top: 8px;
+}
+
+html[data-app="gestion"] .sales-activity-query-date {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+html[data-app="gestion"] .sales-activity-query-date .report-date-range-weekday {
+  color: #12385f;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+html[data-app="gestion"] .sales-activity-panel--daily .sales-daily-block--primary {
+  border-top: 1px solid var(--activity-line);
 }
 
 .stock-bulk-workspace-toolbar.gestion-toolbar-layout .danger {
@@ -40,6 +61,10 @@
 
 @layer gestion-accents {
   @media screen {
+    html[data-app="gestion"] .sales-activity-toolbar--daily.gestion-filter-toolbar {
+      align-items: center !important;
+    }
+
     html[data-app="gestion"] .stock-toolbar.gestion-toolbar-layout {
       align-items: flex-start !important;
     }
