@@ -3198,6 +3198,8 @@ export class MessagesZh {
     "goodsCheck.filter.linesAll": "\u5168\u90e8\u660e\u7ec6",
     "goodsCheck.filter.linesDifferences": "\u6709\u5dee\u5f02",
     "goodsCheck.filter.linesRegistered": "\u5df2\u626b\u63cf",
+    "goodsCheck.filter.linesPending": "\u672a\u6838\u5bf9",
+    "goodsCheck.filter.linesComplete": "\u5df2\u5b8c\u6210",
     "goodsCheck.filter.empty": "\u6b64\u7b5b\u9009\u4e0b\u6ca1\u6709\u660e\u7ec6",
     "goodsCheck.extraLines": "\u6709\u591a\u6536",
     "goodsCheck.closeConfirm": "\u4ecd\u6709 {missing} \u6761\u7f3a\u8d27\u548c {extra} \u6761\u591a\u6536\u3002\u662f\u5426\u6309\u6709\u5dee\u5f02\u5173\u95ed\u9a8c\u8d27\uff1f",

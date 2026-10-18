@@ -3202,6 +3202,8 @@ export class MessagesEn {
     "goodsCheck.filter.linesAll": "All lines",
     "goodsCheck.filter.linesDifferences": "With differences",
     "goodsCheck.filter.linesRegistered": "Scanned",
+    "goodsCheck.filter.linesPending": "Unchecked",
+    "goodsCheck.filter.linesComplete": "Complete",
     "goodsCheck.filter.empty": "There are no lines in this filter",
     "goodsCheck.extraLines": "With extra units",
     "goodsCheck.closeConfirm": "There are still {missing} missing lines and {extra} with extra units. Close the check with differences?",
