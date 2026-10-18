@@ -138,6 +138,8 @@ describe("Top ventas product selection", () => {
     table.focus();
     fireEvent.doubleClick(second);
     const dialog = await screen.findByRole("dialog", { name: "Información del producto" });
+    // The Escape listener is installed in a passive effect after the dialog render.
+    await act(async () => {});
     fireEvent.keyDown(dialog, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Información del producto" })).toBeNull());
     expect(document.activeElement).toBe(table);
