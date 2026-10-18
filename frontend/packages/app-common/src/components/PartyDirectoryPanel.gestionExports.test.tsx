@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -39,9 +39,12 @@ describe("Gestión directory export actions", () => {
       onBack={vi.fn()} onLocaleChange={vi.fn()}
       initialPartyDirectory="customers" allowSafeRetirement />);
     await screen.findByText("Ana");
+    // Flush the directory's keyboard effect after the async row render.
+    await act(async () => {});
 
     fireEvent.keyDown(document.body, { key: "F6" });
     await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("xlsx", expect.anything(), expect.stringMatching(/\.xlsx$/)));
+    await waitFor(() => expect(screen.getByRole("button", { name: /F7/ })).toBeEnabled());
     fireEvent.keyDown(document.body, { key: "F7" });
     await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("pdf", expect.anything(), expect.stringMatching(/\.pdf$/)));
     expect(screen.queryByRole("dialog", { name: "Añadir producto" })).not.toBeInTheDocument();
