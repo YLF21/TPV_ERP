@@ -57,16 +57,33 @@ describe("Gestión directory export actions", () => {
   });
 
   it.each(["customers", "members", "suppliers"] as const)("routes F5/F6/F7 for %s and leaves F7 out of the editor", async kind => {
+    const respond = vi.mocked(apiRequest).getMockImplementation()!;
+    let finishInitialLoad!: () => void;
+    const initialLoad = new Promise<void>(resolve => { finishInitialLoad = resolve; });
+    vi.mocked(apiRequest).mockImplementation(async (...args) => {
+      await initialLoad;
+      return respond(...args);
+    });
     render(<PartyDirectoryPanel app="gestion" kind={kind} locale="es" session={writer} allowSafeRetirement />);
-    await screen.findByText(kind === "suppliers" ? "Proveedor" : "Ana");
+    await waitFor(() => expect(vi.mocked(apiRequest).mock.calls.some(([path]) =>
+      kind === "members" ? path === "/members" : path.startsWith(`/${kind}/management/page?`)
+    )).toBe(true));
+    expect(screen.getByRole("button", { name: /F7/ })).toBeDisabled();
+    fireEvent.keyDown(window, { key: "F7" });
+    expect(savePartyDirectoryExport).not.toHaveBeenCalled();
+    // Settle the initial response and its keyboard effect before sending a ready-state shortcut.
+    await act(async () => { finishInitialLoad(); await initialLoad; });
+    expect(screen.getByText(kind === "suppliers" ? "Proveedor" : "Ana")).toBeVisible();
     expect(screen.getByRole("button", { name: /F5/ })).toHaveAttribute("aria-keyshortcuts", "F5");
     expect(screen.getByRole("button", { name: /F6/ })).toHaveAttribute("aria-keyshortcuts", "F6");
     expect(screen.getByRole("button", { name: /F7/ })).toHaveAttribute("aria-keyshortcuts", "F7");
     fireEvent.keyDown(window, { key: "F7" });
     await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("pdf", expect.anything(), expect.stringMatching(/\.pdf$/)));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: /F6/ })).toBeEnabled());
     fireEvent.keyDown(window, { key: "F6" });
     await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("xlsx", expect.anything(), expect.stringMatching(/\.xlsx$/)));
+    await waitFor(() => expect(screen.getByRole("button", { name: /F7/ })).toBeEnabled());
     fireEvent.keyDown(window, { key: "F5" });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
