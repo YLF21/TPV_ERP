@@ -18,6 +18,8 @@ import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
 import { ShortcutButtonLabel } from "./ShortcutButtonLabel";
 import { GestionSearchFrame } from "./GestionSearchFrame";
+import { FilePdf, FileXls, Plus } from "@phosphor-icons/react";
+import { savePartyDirectoryExport } from "./partyDirectoryExport";
 import { customerDocumentType, customerIdentityFailure } from "./customerDocumentIdentity";
 import stockFilterIcon from "../assets/stock/filter.png";
 import "./PartyDirectoryFilters.css";
@@ -404,6 +406,8 @@ export function PartyDirectoryPanel({
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const exportBusyRef = useRef(false);
 
   const endpoint = kind === "suppliers" ? "/suppliers" : kind === "members" ? "/members" : "/customers";
   const isSupplier = kind === "suppliers";
@@ -479,6 +483,21 @@ export function PartyDirectoryPanel({
     return t(`party.gestion.column.${column}`);
   }
 
+  function cellText(column: PartyDirectoryColumnKey, entry: PartyDirectoryEntry): string {
+    const customer = entry as CustomerView;
+    const member = entry as MemberDirectoryView;
+    if (column === "document") return `${entry.documentType} · ${entry.documentNumber}`;
+    if (column === "location") return [customer.address?.city, customer.address?.province].filter(Boolean).join(", ") || "-";
+    if (column === "balance") return Number(member.balance || 0).toLocaleString(locale, { style: "currency", currency: "EUR" });
+    if (column === "status") return t(entry.active ? "party.active" : "party.inactive") + (isMember && !member.customerActive ? ` · ${t("party.members.customerInactive")}` : "");
+    const value = partyDirectorySortValue(entry, kind, column);
+    if (column === "debt" || column === "creditLimit") return column === "creditLimit" && customer.creditLimit == null ? t("party.credit.unlimited") : customer[column === "debt" ? "outstandingDebt" : "creditLimit"] == null ? "—" : Number(value).toLocaleString(locale, { style: "currency", currency: "EUR" });
+    if (["creditEnabled", "creditBlocked", "isMember", "commercialConsent"].includes(column)) return customer[column as "creditEnabled"] == null ? "—" : t(value ? "common.yes" : "common.no");
+    if (["points", "discount", "paymentTermDays"].includes(column)) return Number(value).toLocaleString(locale) + (column === "discount" ? " %" : "");
+    if (column === "memberSince" && value) return new Date(`${value}T12:00:00`).toLocaleDateString(locale);
+    return String(value || (["phone", "email"].includes(column) ? "-" : "—"));
+  }
+
   function renderCell(column: PartyDirectoryColumnKey, entry: PartyDirectoryEntry) {
     const customer = entry as CustomerView;
     const supplier = entry as SupplierView;
@@ -514,13 +533,8 @@ export function PartyDirectoryPanel({
       return <span className={cellClassName} data-column-key={column} key={column} title={location}>{location}</span>;
     }
     if (column !== "status") {
-      const value = partyDirectorySortValue(entry, kind, column);
-      let text = String(value || "—");
-      if (column === "debt" || column === "creditLimit") text = column === "creditLimit" && customer.creditLimit == null ? t("party.credit.unlimited") : customer[column === "debt" ? "outstandingDebt" : "creditLimit"] == null ? "—" : Number(value).toLocaleString(locale, { style: "currency", currency: "EUR" });
-      if (["creditEnabled", "creditBlocked", "isMember", "commercialConsent"].includes(column)) text = customer[column as "creditEnabled"] == null ? "—" : t(value ? "common.yes" : "common.no");
-      if (["points", "discount", "paymentTermDays"].includes(column)) text = Number(value).toLocaleString(locale) + (column === "discount" ? " %" : "");
-      if (column === "memberSince" && value) text = new Date(`${value}T12:00:00`).toLocaleDateString(locale);
-      return <span data-column-key={column} key={column} className={`${cellClassName}${column === "debt" && Number(value) > 0 ? " has-debt" : ""}`} title={text}>{text}</span>;
+      const text = cellText(column, entry);
+      return <span data-column-key={column} key={column} className={`${cellClassName}${column === "debt" && Number(customer.outstandingDebt) > 0 ? " has-debt" : ""}`} title={text}>{text}</span>;
     }
     if (app !== "pda") {
       return <span data-column-key={column} key={column} className={cellClassName}>
@@ -657,6 +671,40 @@ export function PartyDirectoryPanel({
     setStatus(""); setDialogOpen(true);
   }
   const toolbarEntry = rows.find(entry => entry.id === selectedRowId) ?? null;
+  async function exportDirectory(format: "xlsx" | "pdf") {
+    if (app !== "gestion" || exportBusyRef.current || loading || loadError) return;
+    exportBusyRef.current = true;
+    setExporting(true); setStatus("");
+    try {
+      let exportRows = rows;
+      if (managementMode) {
+        // Read every page with the same filters/order; do not alter the visible list or selection.
+        exportRows = [];
+        let cursor: string | null = null;
+        const visited = new Set<string>();
+        do {
+          const page: PartyManagementPage<PartyDirectoryEntry> = await apiRequest(managementPagePath(cursor), { token: session.accessToken });
+          exportRows.push(...page.items);
+          if (!page.hasMore) break;
+          if (!page.nextCursor || visited.has(page.nextCursor)) throw new Error("Invalid directory cursor");
+          cursor = page.nextCursor; visited.add(cursor);
+        } while (true);
+      }
+      const filters = filterChips.map(chip => ({ label: chip.label, value: chip.value }));
+      await savePartyDirectoryExport(format, {
+        title,
+        columns: visibleColumns.map(column => ({ key: column.key, label: columnLabel(column.key) })),
+        rows: exportRows.map(entry => visibleColumns.map(column => column.key === "name" && isSupplier && (entry as SupplierView).tradeName
+          ? `${cellText(column.key, entry)} · ${(entry as SupplierView).tradeName}` : cellText(column.key, entry))),
+        filters,
+        totals: [{ label: t("party.results").replace("{count}", String(exportRows.length)), value: "" }]
+      }, `${title}.${format}`);
+    } catch {
+      setStatus(t("salesReport.exportFailed"));
+    } finally {
+      exportBusyRef.current = false; setExporting(false);
+    }
+  }
   function retireToolbarEntry() {
     if (!toolbarEntry || !classicWindow || !allowSafeRetirement || isMember || !session.permissions.includes("ADMIN")) return;
     setSelectedId(toolbarEntry.id); setRetirementOpen(true);
@@ -664,10 +712,17 @@ export function PartyDirectoryPanel({
   useEffect(() => {
     if (!classicWindow) return;
     const handler = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || !["F8", "F9", "F7"].includes(event.key)) return;
+      if (event.defaultPrevented || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || !(app === "gestion" ? ["F5", "F6", "F7", "F9"] : ["F8", "F9", "F7"]).includes(event.key)) return;
       if (document.querySelector('[aria-modal="true"]') || dialogOpen || retirementOpen || historyCustomer) return;
       if (event.key === "F9" && (!allowSafeRetirement || isMember || !session.permissions.includes("ADMIN"))) return;
       event.preventDefault();
+      if (app === "gestion") {
+        if (event.key === "F5" && canWrite) openNew();
+        if (event.key === "F6") void exportDirectory("xlsx");
+        if (event.key === "F7") void exportDirectory("pdf");
+        if (event.key === "F9") retireToolbarEntry();
+        return;
+      }
       if (event.key === "F8" && canWrite) openNew();
       if (event.key === "F9") retireToolbarEntry();
       if (event.key === "F7" && canWrite && toolbarEntry) openEntry(toolbarEntry);
@@ -922,12 +977,13 @@ export function PartyDirectoryPanel({
       onCancel={() => setConfirmation(null)}
       onConfirm={() => { const action = confirmation; setConfirmation(null); if (action === "discard") closeDialog(true); else void toggleActive(true); }}
     />}
-    <header className="work-panel-heading stock-panel-heading party-directory-heading">
+    <header className={`work-panel-heading stock-panel-heading party-directory-heading${app === "gestion" ? " gestion-party-directory-heading" : ""}`}>
       <div><h2>{title}</h2><span>{t(`party.${kind}.subtitle`)}</span></div>
       {classicWindow ? <div className={`management-record-actions${app === "gestion" ? " gestion-toolbar-actions" : ""}`}>
-        {canWrite && <button type="button" aria-keyshortcuts="F7" disabled={!toolbarEntry} onClick={() => toolbarEntry && openEntry(toolbarEntry)}><ShortcutButtonLabel label={t(`party.${kind}.edit`)} shortcut="F7" /></button>}
-        {canWrite && <button type="button" aria-keyshortcuts="F8" onClick={openNew}><ShortcutButtonLabel label={t(`party.${kind}.new`)} shortcut="F8" /></button>}
-        {allowSafeRetirement && !isMember && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!toolbarEntry} onClick={retireToolbarEntry}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut={t("safeManagement.shortcut.retire")} /></button>}
+        {app !== "gestion" && canWrite && <button type="button" aria-keyshortcuts="F7" disabled={!toolbarEntry} onClick={() => toolbarEntry && openEntry(toolbarEntry)}><ShortcutButtonLabel label={t(`party.${kind}.edit`)} shortcut="F7" /></button>}
+        {canWrite && (app === "gestion" ? <button type="button" className="gestion-party-add" aria-keyshortcuts="F5" onClick={openNew}><span><Plus size={16} aria-hidden="true" />{t(`party.${kind}.new`).replace(/\s+\(?F8\)?$/, "")}</span>{" "}<kbd>F5</kbd></button>
+          : <button type="button" aria-keyshortcuts="F8" onClick={openNew}><ShortcutButtonLabel label={t(`party.${kind}.new`)} shortcut="F8" /></button>)}
+        {app !== "gestion" && allowSafeRetirement && !isMember && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!toolbarEntry} onClick={retireToolbarEntry}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut={t("safeManagement.shortcut.retire")} /></button>}
       </div> : canWrite && <button type="button" className="stock-add-product-button" onClick={openNew}>{t(`party.${kind}.new`)}</button>}
     </header>
     {headerExtra}
@@ -969,6 +1025,11 @@ export function PartyDirectoryPanel({
       <span className="party-directory-result-count">
         {t("party.results").replace("{count}", String(rows.length))}
       </span>
+      {app === "gestion" && <div className="gestion-party-output-actions gestion-toolbar-actions">
+        {allowSafeRetirement && !isMember && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!toolbarEntry} onClick={retireToolbarEntry}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut="F9" /></button>}
+        <button type="button" aria-keyshortcuts="F6" disabled={loading || loadError || exporting} onClick={() => void exportDirectory("xlsx")}><span><FileXls size={16} aria-hidden="true" />{t("salesReport.excel")}</span>{" "}<kbd>F6</kbd></button>
+        <button type="button" aria-keyshortcuts="F7" disabled={loading || loadError || exporting} onClick={() => void exportDirectory("pdf")}><span><FilePdf size={16} aria-hidden="true" />{t("salesReport.pdf")}</span>{" "}<kbd>F7</kbd></button>
+      </div>}
       {supportsFieldFilters && fieldFiltersOpen && <div id={fieldFiltersId} className="party-directory-filter-fields"
         role="group" aria-label={t("party.filter.fields")}
         onKeyDown={event => {

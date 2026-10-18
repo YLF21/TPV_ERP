@@ -491,8 +491,8 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
   }, { positive: 0, negative: 0, net: 0 }) ?? { positive: 0, negative: 0, net: 0 };
 
   return (
-    <section ref={screenRef} data-warehouse-heading={mode === "adjustment" ? "unified" : undefined} className={`gestion-warehouse-operations gestion-warehouse-screen ${mode === "adjustment" ? "gestion-adjustment-screen" : ""}`} aria-labelledby="warehouse-operation-title">
-      {mode === "adjustment" && <div className="gestion-adjustment-module-title"><h1>{t("home.warehouse")}</h1></div>}
+    <section ref={screenRef} data-warehouse-heading={mode === "adjustment" ? "unified" : undefined} data-document-heading={mode === "adjustment" ? "warehouse" : undefined} className={`gestion-warehouse-operations gestion-warehouse-screen ${mode === "adjustment" ? "gestion-adjustment-screen" : ""}`} aria-labelledby="warehouse-operation-title">
+      {mode === "adjustment" && <div className="gestion-adjustment-module-title"><h1>{t("gestion.navigation.group.warehouse")}</h1></div>}
       <header className="gestion-warehouse-operations-header gestion-warehouse-titlebar">
         <div>
           {mode !== "adjustment" && <span>{t("warehouse.operations.section")}</span>}

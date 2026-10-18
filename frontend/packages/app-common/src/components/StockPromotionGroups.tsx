@@ -10,6 +10,7 @@ import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import type { UseTableLayoutPreferenceResult } from "./useTableLayoutPreference";
 import { useTableSortPreference, type TableSort } from "./tableSorting";
 import { sortProductTableRows } from "./productCodeSorting";
+import type { PromotionManagementActions, PromotionSelectionRequest } from "./usePromotionManagement";
 import "./StockPromotionGroups.css";
 
 export const stockPromotionGroupsMessageKeys = {
@@ -113,6 +114,8 @@ export type StockPromotionGroupsProps = {
   statusMessage?: string;
   onRefresh?: () => void;
   onExportContextChange?: (context: StockPromotionExportContext) => void;
+  management?: PromotionManagementActions;
+  selectionRequest?: PromotionSelectionRequest;
 };
 
 type ProductAccumulator = Omit<StockPromotionProduct, "stock"> & {
@@ -160,7 +163,9 @@ export function StockPromotionGroups({
   loading = false,
   statusMessage = "",
   onRefresh,
-  onExportContextChange
+  onExportContextChange,
+  management,
+  selectionRequest
 }: StockPromotionGroupsProps) {
   const productTableLayout = useTableLayoutPreference({
     app,
@@ -238,6 +243,13 @@ export function StockPromotionGroups({
       activeIds.has(current) ? current : filteredGroups[0]?.promotion.id ?? "");
   }, [groupIdsKey]);
 
+  useEffect(() => {
+    if (!selectionRequest) return;
+    setQuery("");
+    setStatusFilter("ALL");
+    setActivePromotionId(selectionRequest.id);
+  }, [selectionRequest]);
+
   function focusGroup(index: number) {
     const group = filteredGroups[index];
     if (!group) return;
@@ -256,14 +268,15 @@ export function StockPromotionGroups({
   return (
     <section className={rootClassName} aria-label={t(stockPromotionGroupsMessageKeys.tableLabel)}>
       <section className="stock-promotion-list-panel" aria-label={t(stockPromotionGroupsMessageKeys.tableLabel)}>
-        <div className="stock-promotion-list-filters">
-          <label className="stock-promotion-search">
+        <div className={`stock-promotion-list-filters${app === "gestion" ? " gestion-filter-toolbar" : ""}`}>
+          <label className={`stock-promotion-search${app === "gestion" ? " report-search" : ""}`}>
             <input type="search" aria-label={t("promotion.list.search")}
               placeholder={t("promotion.list.search")} value={query}
               onChange={(event) => setQuery(event.target.value)} />
             <MagnifyingGlass size={16} aria-hidden="true" />
           </label>
-          <div className="stock-promotion-status-filter">
+          <div className="stock-promotion-status-filter"
+            data-filter-active={app === "gestion" && statusFilter !== "ALL" ? "true" : undefined}>
             <ErpSelect value={statusFilter} aria-label={t("promotion.column.status")}
               options={[
                 { value: "ALL", label: t("promotion.filter.all") },
@@ -315,7 +328,7 @@ export function StockPromotionGroups({
             })}
           </div>
         )}
-        <div className="stock-promotion-list-footer">
+        <div className={`stock-promotion-list-footer${app === "gestion" ? " gestion-toolbar-actions" : ""}`}>
           <span>{t("promotion.list.heading")}: {filteredGroups.length}</span>
           {onRefresh && <button type="button" onClick={onRefresh} disabled={loading}
             aria-label={t("promotion.action.refresh")} title={t("promotion.action.refresh")}>
@@ -336,6 +349,14 @@ export function StockPromotionGroups({
                   <Circle size={10} weight="fill" aria-hidden="true" />
                   {expired ? t("promotion.list.expired") : t("promotion.status." + selectedPromotion.status)}
                 </span>
+                {app === "gestion" && management && <div className="stock-promotion-management-actions gestion-toolbar-actions">
+                  <button type="button" disabled={management.busy}
+                    onClick={() => management.onEditConditions(selectedPromotion)}>{t("promotion.action.editConditions")}</button>
+                  <button type="button" disabled={management.busy}
+                    onClick={() => management.onToggleActive(selectedPromotion)}>
+                    {t(selectedPromotion.status === "ACTIVE" ? "promotion.action.deactivate" : "promotion.action.activate")}
+                  </button>
+                </div>}
               </header>
               <dl className="stock-promotion-facts">
                 <div>
@@ -361,7 +382,11 @@ export function StockPromotionGroups({
               </section>
             </section>
             <section className="stock-promotion-products">
-              <h3>{t("promotion.detail.products")} ({number.format(selectedGroup.products.length)})</h3>
+              {app === "gestion" && management ? <div className="stock-promotion-products-heading gestion-toolbar-actions">
+                <h3>{t("promotion.detail.products")} ({number.format(selectedGroup.products.length)})</h3>
+                <button type="button" disabled={management.busy}
+                  onClick={() => management.onEditProducts(selectedPromotion)}>{t("promotion.action.editProducts")}</button>
+              </div> : <h3>{t("promotion.detail.products")} ({number.format(selectedGroup.products.length)})</h3>}
               {loading ? <p className="stock-promotion-empty" role="status">{t("common.loading")}</p>
                 : statusMessage ? <p className="stock-promotion-empty" role="alert">{statusMessage}</p>
                   : <PromotionProductsTable products={selectedGroup.products} locale={locale} t={t}

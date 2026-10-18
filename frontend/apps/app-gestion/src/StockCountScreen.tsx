@@ -53,8 +53,8 @@ export function StockCountScreen({ session, locale = "es", t }: { session: UserS
   if (!allowed) return <p role="alert">{c("noAccess")}</p>;
   const columns = [ ["number", 185], ["date", 160], ["warehouse", 210], ["status", 140], ["articles", 100], ["user", 180], ["notes", 250] ]
     .map(([key, width]) => ({ key: String(key), defaultWidth: Number(width), label: c(key as "number") }));
-  return <section ref={rootRef} data-warehouse-heading="unified" className="inventory-screen gestion-warehouse-screen">
-    <div className="inventory-module-title"><h1>{t("home.warehouse")}</h1></div>
+  return <section ref={rootRef} data-warehouse-heading="unified" data-document-heading="warehouse" className="inventory-screen gestion-warehouse-screen">
+    <div className="inventory-module-title"><h1>{t("gestion.navigation.group.warehouse")}</h1></div>
     <header className="gestion-warehouse-titlebar"><div><h2>{c("title")}</h2><p>{c("subtitle")}</p></div>
       <div className="gestion-warehouse-title-actions gestion-warehouse-actions"><button className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.create} disabled={busy || loading || !warehouses.some((item) => item.active !== false)} onClick={() => setEditor({ document: null })}><span><Plus size={16} aria-hidden="true" />{c("create")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.create}</kbd></button></div>
     </header>

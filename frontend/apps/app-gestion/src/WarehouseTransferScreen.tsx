@@ -221,8 +221,8 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
     } catch { setError(t("warehouse.report.exportError")); }
     finally { exportBusy.current = false; setExporting(false); }
   }
-  return <section ref={rootRef} data-warehouse-heading="unified" className="stock-sales-history-panel warehouse-operations-panel--classic gestion-warehouse-transfer-screen gestion-warehouse-screen" aria-labelledby="warehouse-transfer-title">
-    <div className="gestion-warehouse-transfer-module-title"><h1>{t("home.warehouse")}</h1></div>
+  return <section ref={rootRef} data-warehouse-heading="unified" data-document-heading="warehouse" className="stock-sales-history-panel warehouse-operations-panel--classic gestion-warehouse-transfer-screen gestion-warehouse-screen" aria-labelledby="warehouse-transfer-title">
+    <div className="gestion-warehouse-transfer-module-title"><h1>{t("gestion.navigation.group.warehouse")}</h1></div>
     <header className="gestion-warehouse-operations-header gestion-warehouse-titlebar"><div>
       <h2 id="warehouse-transfer-title">{t("warehouse.transfer.navigation")}</h2>
       <p>{t("warehouse.transfer.title.subtitle")}</p></div>

@@ -1,3 +1,5 @@
+@import "../styles/DesktopTableSelection.css" screen;
+
 /* Tabla ERP Azul Clásica, limited to APP VENTA's live cart.
    Keep its row height, thumbnails, wrapping, column layout and operational cues. */
 .sale-ticket-lines.sale-cart-table-scroll:has(> .sale-cart-table--classic) {

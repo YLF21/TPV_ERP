@@ -177,7 +177,7 @@ it("uses F9 for safe retirement in product management instead of exporting Excel
     terminalContext={{storeName:"Test",terminalCode:"TEST"}} onBack={vi.fn()} onLocaleChange={vi.fn()} />); });
   await screen.findByText("Cafe de prueba");
   expect(screen.getByRole("button",{name:"Añadir producto F5"})).toBeTruthy();
-  expect(screen.getByRole("button",{name:"Modificar producto F7"})).toBeTruthy();
+  expect(screen.getByRole("button",{name:"Modificar producto"})).toBeTruthy();
   fireEvent.keyDown(window,{key:"F9"});
   await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/products/management/product-1/retirement-impact",expect.anything()));
   expect(vi.mocked(apiRequest).mock.calls.some(([path]) => path.includes("exports") || path.endsWith("/retire"))).toBe(false);

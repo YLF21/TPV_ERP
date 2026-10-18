@@ -26,12 +26,15 @@ class StockExcelExportControllerContractTest {
 
         var create = StockExcelExportController.class.getDeclaredMethod(
                 "create", StockExcelExportService.ExportRequest.class, Authentication.class);
+        var createPdf = StockExcelExportController.class.getDeclaredMethod(
+                "createPdf", StockExcelExportService.ExportRequest.class, Authentication.class);
         var status = StockExcelExportController.class.getDeclaredMethod(
                 "status", UUID.class, Authentication.class);
         var file = StockExcelExportController.class.getDeclaredMethod(
                 "file", UUID.class, Authentication.class);
 
         assertThat(create.getAnnotation(PostMapping.class)).isNotNull();
+        assertThat(createPdf.getAnnotation(PostMapping.class).value()).containsExactly("/pdf");
         assertThat(status.getAnnotation(GetMapping.class).value()).containsExactly("/{jobId}");
         assertThat(file.getAnnotation(GetMapping.class).value()).containsExactly("/{jobId}/file");
     }

@@ -61,6 +61,19 @@ public class StockExcelExportController {
         return job;
     }
 
+    @PostMapping("/pdf")
+    public StockExcelExportService.JobView createPdf(
+            @RequestBody StockExcelExportService.ExportRequest request,
+            Authentication authentication) {
+        var job = exports.createPdf(
+                organization.currentStore().getId(),
+                owner(authentication),
+                PermissionChecks.hasProductManagement(authentication),
+                request);
+        launcher.launch(job.id());
+        return job;
+    }
+
     @GetMapping("/{jobId}")
     public StockExcelExportService.JobView status(
             @PathVariable UUID jobId,
@@ -76,7 +89,7 @@ public class StockExcelExportController {
         var file = exports.file(jobId, organization.currentStore().getId(),
                 owner(authentication));
         return ResponseEntity.ok()
-                .contentType(XLSX)
+                .contentType(file.fileName().endsWith(".pdf") ? MediaType.APPLICATION_PDF : XLSX)
                 .contentLength(file.size())
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         ContentDisposition.attachment()
