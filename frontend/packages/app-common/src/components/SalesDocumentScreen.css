@@ -1,3 +1,5 @@
+@import "../styles/DesktopTableSelection.css" screen;
+
 /* Selected documentary-sale layout: full-height ERP table and right-hand actions. */
 .sales-document-screen {
   --sales-document-blue: #0065fe;

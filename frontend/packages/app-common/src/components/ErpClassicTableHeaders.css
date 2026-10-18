@@ -1,3 +1,5 @@
+@import "../styles/DesktopTableSelection.css" screen;
+
 /* Tabla ERP Azul Clásica: opt-in headers for APP VENTA management tables.
    Keep the shared sort, column movement and resize controls and their focus
    targets; only their presentation changes inside the marked screen. */

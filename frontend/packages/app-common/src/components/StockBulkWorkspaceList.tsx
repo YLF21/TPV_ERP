@@ -7,6 +7,9 @@ import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import { sortTableRows, useTableSortPreference } from "./tableSorting";
+import { userCanManageStockProducts } from "./stockAccess";
+
+export const STOCK_BULK_NEW_SHORTCUT = "F5" as const;
 
 const stockBulkWorkspaceColumns = [
   { key: "code", labelKey: "stock.bulkEdit.workspace.code", defaultWidth: 128 },
@@ -35,6 +38,7 @@ type StockBulkWorkspaceListProps = {
   drafts: StockBulkDraftView[];
   selectedId: string | null;
   busy: boolean;
+  showNewButton?: boolean;
   onSelect: (id: string) => void;
   onNew: () => void;
   onOpen: (draft: StockBulkDraftView) => void;
@@ -70,6 +74,7 @@ export function StockBulkWorkspaceList({
   drafts,
   selectedId,
   busy,
+  showNewButton = true,
   onSelect,
   onNew,
   onOpen,
@@ -78,6 +83,7 @@ export function StockBulkWorkspaceList({
   onDelete
 }: StockBulkWorkspaceListProps) {
   const t = createTranslator(locale);
+  const canCreate = userCanManageStockProducts(session);
   const tableLayout = useTableLayoutPreference({
     app,
     username,
@@ -116,6 +122,20 @@ export function StockBulkWorkspaceList({
   useEffect(() => {
     if (selectedId) rowRefs.current.get(selectedId)?.scrollIntoView({ block: "nearest" });
   }, [selectedId]);
+
+  useEffect(() => {
+    if (app === "pda" || busy || !canCreate) return;
+    const handleNewShortcut = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || event.key !== STOCK_BULK_NEW_SHORTCUT || event.repeat
+          || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey
+          || document.querySelector('[aria-modal="true"], [role="menu"]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onNew();
+    };
+    window.addEventListener("keydown", handleNewShortcut);
+    return () => window.removeEventListener("keydown", handleNewShortcut);
+  }, [app, busy, canCreate, onNew]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.target !== event.currentTarget) {
@@ -175,7 +195,7 @@ export function StockBulkWorkspaceList({
     }
   }
 
-  const newButton = <button type="button" className="primary" disabled={busy} onClick={onNew}>
+  const newButton = showNewButton && <button type="button" className="primary" disabled={busy} onClick={onNew}>
           {t("stock.bulkEdit.workspace.new")}
         </button>;
   const openButton = <button type="button" disabled={busy || !selectedDraft} onClick={() => selectedDraft && onOpen(selectedDraft)}>

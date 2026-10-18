@@ -166,7 +166,7 @@ const catalogs: Record<LocaleCode, Record<string, string>> = {
     "gestion.navigation.destination.purchaseInvoiceReport": "入库发票报表",
     "gestion.navigation.destination.orderCheck": "订单核对",
     "gestion.navigation.destination.stock": "库存",
-    "gestion.navigation.destination.topSales": "畅销商品",
+    "gestion.navigation.destination.topSales": "热销排行",
     "gestion.navigation.destination.productsOnOffer": "特价商品",
     "gestion.navigation.destination.memberPriceProducts": "会员价商品",
     "gestion.navigation.destination.promotedProducts": "促销商品",

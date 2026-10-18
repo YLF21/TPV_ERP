@@ -35,7 +35,7 @@ test("empareja una imagen por código, la guarda y la aplica al producto", async
     await loginUi(page, "venta");
     await openStock(page, "venta");
     await openBulkEdit(page);
-    await page.getByRole("button", { name: "Nuevo", exact: true }).click();
+    await page.getByRole("button", { name: "Nuevo F5", exact: true }).click();
 
     const codeInput = page.getByPlaceholder("Código o código de barras");
     await codeInput.fill(marker);

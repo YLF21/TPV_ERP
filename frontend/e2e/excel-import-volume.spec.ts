@@ -13,7 +13,7 @@ test("revisa 5000 filas originales y columnas AA sin usar Cantidad en Stock", as
   await loginUi(page, "venta");
   await page.getByRole("button", { name: "GESTIÓN", exact: true }).click();
   await openBulkEdit(page);
-  await page.getByRole("button", { name: "Nuevo", exact: true }).click();
+  await page.getByRole("button", { name: "Nuevo F5", exact: true }).click();
   await chooseImportAction(page, "Importar Excel");
   const dialog = page.getByRole("dialog", { name: "Importar Excel", exact: true });
   const readResponse = page.waitForResponse(response => response.url().endsWith("/product-excel-imports/read"));

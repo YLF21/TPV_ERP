@@ -4,11 +4,15 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -39,6 +43,22 @@ public class PromotionController {
     @PreAuthorize(MANAGE_PERMISSION)
     public PromotionService.PromotionView create(@Valid @RequestBody PromotionService.PromotionRequest request) {
         return promotions.create(request);
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize(MANAGE_PERMISSION)
+    public PromotionService.PromotionView update(
+            @PathVariable UUID id,
+            @Valid @RequestBody PromotionService.PromotionUpdateRequest request) {
+        return promotions.update(id, request);
+    }
+
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ProblemDetail versionConflict(OptimisticLockingFailureException exception) {
+        var problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.CONFLICT, "PROMOTION_VERSION_CONFLICT");
+        problem.setProperty("code", "PROMOTION_VERSION_CONFLICT");
+        return problem;
     }
 
     @PostMapping("/preview")

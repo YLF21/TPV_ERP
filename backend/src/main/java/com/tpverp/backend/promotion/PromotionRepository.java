@@ -39,6 +39,12 @@ public interface PromotionRepository extends JpaRepository<Promotion, UUID> {
 
     Optional<Promotion> findByIdAndEmpresaId(UUID id, UUID empresaId);
 
+    @Query("select coalesce(promotion.versionOrigenId, promotion.id) from Promotion promotion "
+            + "where promotion.id = :id and promotion.empresaId = :empresaId")
+    Optional<UUID> findRootVersionId(
+            @Param("id") UUID id,
+            @Param("empresaId") UUID empresaId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select promotion

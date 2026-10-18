@@ -19,6 +19,7 @@ export type PromotionTargetRequest = {
 
 export type PromotionView = {
   id: string;
+  version?: number;
   name: string;
   type: PromotionType;
   status: PromotionStatus;
@@ -178,6 +179,38 @@ export function createDefaultPromotionDraft(startDate = new Date().toISOString()
     couponValidUntilDate: "",
     couponValidDays: "",
     targetIds: []
+  };
+}
+
+/** Keep the API's decimal strings intact when an existing promotion is edited. */
+export function promotionDraftFromView(view: PromotionView): PromotionDraft {
+  const text = (value: string | number | null | undefined) => value == null ? "" : String(value);
+  return {
+    name: view.name,
+    type: view.type,
+    startDate: view.startDate,
+    endDate: text(view.endDate),
+    scope: view.scope ?? "SALE",
+    customerSegment: view.customerSegment ?? "ALL",
+    memberCategoryId: text(view.memberCategoryId),
+    minimumAmount: text(view.minimumAmount),
+    minimumQuantity: text(view.minimumQuantity),
+    buyQuantity: text(view.buyQuantity),
+    payQuantity: text(view.payQuantity),
+    buyXPayYMode: view.buyXPayYMode ?? "SAME_PRODUCT",
+    discountAmount: text(view.discountAmount),
+    discountPercent: text(view.discountPercent),
+    maximumDiscount: text(view.maximumDiscount),
+    packPrice: text(view.packPrice),
+    couponAmount: text(view.couponAmount),
+    couponPercent: text(view.couponPercent),
+    couponMaximumDiscount: text(view.couponMaximumDiscount),
+    couponMinimumAmount: text(view.couponMinimumAmount),
+    couponValidFromDate: text(view.couponValidFromDate),
+    couponValidFromDays: text(view.couponValidFromDays),
+    couponValidUntilDate: text(view.couponValidUntilDate),
+    couponValidDays: text(view.couponValidDays),
+    targetIds: view.targets.map((target) => target.targetId)
   };
 }
 

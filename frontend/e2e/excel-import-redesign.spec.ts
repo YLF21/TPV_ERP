@@ -116,7 +116,7 @@ test.describe("rediseño importación Excel contra backend aislado", () => {
     await page.getByRole("button", { name: "GESTIÓN", exact: true }).click();
     await expect(page.locator(".stock-screen")).toBeVisible();
     await openBulkEdit(page);
-    await page.getByRole("button", { name: "Nuevo", exact: true }).click();
+    await page.getByRole("button", { name: "Nuevo F5", exact: true }).click();
     await openExcelImport(page, { name: "productos-e2e.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: xlsx });
     const dialog = await configureAndApply(page);
 
@@ -256,7 +256,7 @@ test.describe("rediseño importación Excel contra backend aislado", () => {
     await page.getByRole("button", { name: "GESTIÓN", exact: true }).click();
     await expect(page.locator(".stock-screen")).toBeVisible();
     await openBulkEdit(page);
-    await page.getByRole("button", { name: "Nuevo", exact: true }).click();
+    await page.getByRole("button", { name: "Nuevo F5", exact: true }).click();
     await openExcelImport(page, { name: "edicion-e2e.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: xlsx });
     const dialog = await configureAndApply(page);
     expect(await dialog.getByLabel("Cantidad Columna Excel").count()).toBe(0);
@@ -280,7 +280,7 @@ test.describe("rediseño importación Excel contra backend aislado", () => {
     await page.getByRole("button", { name: "GESTIÓN", exact: true }).click();
     await expect(page.locator(".stock-screen")).toBeVisible();
     await openBulkEdit(page);
-    await page.getByRole("button", { name: "Nuevo", exact: true }).click();
+    await page.getByRole("button", { name: "Nuevo F5", exact: true }).click();
     await openExcelImport(page, { name: "manual-e2e.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: xlsx });
     const dialog = await configureAndApply(page);
     await dialog.getByRole("button", { name: /Productos no importables/ }).click();
@@ -325,7 +325,7 @@ test.describe("rediseño importación Excel contra backend aislado", () => {
     await page.getByRole("button", { name: "GESTIÓN", exact: true }).click();
     await expect(page.locator(".stock-screen")).toBeVisible();
     await openBulkEdit(page);
-    await page.getByRole("button", { name: "Nuevo", exact: true }).click();
+    await page.getByRole("button", { name: "Nuevo F5", exact: true }).click();
     await openExcelImport(page, { name: "poi-e2e.xls", mimeType: "application/vnd.ms-excel", buffer: xls });
     const dialog = page.getByRole("dialog", { name: "Importar Excel" });
     await expect(dialog.getByLabel("Código Columna Excel")).toHaveValue("A");

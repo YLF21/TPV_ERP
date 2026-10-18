@@ -1,0 +1,41 @@
+/* Desktop rows share a complete selection frame, including portalled pickers.
+   Keep it inside the row: no layout shifts, extra height or clipped outer edges.
+   The layer overrides legacy !important skins without changing semantic colours. */
+@layer erp-desktop-table-selection {
+  @media screen {
+    html:is([data-app="gestion"], [data-app="venta"], :has(.sale-screen, .stock-screen--venta, .report-screen--desktop, .sales-document-screen)) :is(
+      tbody > tr,
+      [role="row"],
+      .stock-row, .party-directory-row, .customer-documents-row,
+      .promotion-row, .promotion-list-row, .stock-promotion-list-row,
+      .warehouse-supplier-table-row, .sale-product-search-row,
+      .sale-customer-table-row, .sale-customer-receivables-row,
+      .gestion-warehouse-row
+    ):is(.selected, [aria-selected="true"], .warehouse-document-line-selected),
+    html:is([data-app="gestion"], [data-app="venta"], :has(.sale-screen, .stock-screen--venta, .report-screen--desktop, .sales-document-screen)) .bulk-edit-row:not(.bulk-edit-head):has(> .bulk-check input:checked) {
+      outline: 1px solid #0065fe !important;
+      outline-offset: -1px !important;
+    }
+
+    /* Positioned stock cells paint their separators above the row's outline. */
+    .stock-screen.erp-classic-tables .stock-row:is(.selected, [aria-selected="true"]) > :last-child {
+      border-right-color: #0065fe !important;
+    }
+
+    /* Keyboard navigation retains the stronger focus frame. */
+    html:is([data-app="gestion"], [data-app="venta"], :has(.sale-screen, .stock-screen--venta, .report-screen--desktop, .sales-document-screen)) :is(
+      tbody > tr, [role="row"], .stock-row, .party-directory-row,
+      .customer-documents-row, .promotion-row, .promotion-list-row,
+      .stock-promotion-list-row, .warehouse-supplier-table-row,
+      .sale-product-search-row, .sale-customer-table-row,
+      .sale-customer-receivables-row, .gestion-warehouse-row
+    ):is(.selected, [aria-selected="true"], .warehouse-document-line-selected):focus-visible,
+    html:is([data-app="gestion"], [data-app="venta"], :has(.sale-screen, .stock-screen--venta, .report-screen--desktop, .sales-document-screen)) :is(
+      .stock-table, .stock-bulk-workspace-table-wrap, .customer-documents-table-body
+    ):focus-visible :is(.selected, [aria-selected="true"]),
+    html:is([data-app="gestion"], [data-app="venta"], :has(.sale-screen, .stock-screen--venta, .report-screen--desktop, .sales-document-screen)) .bulk-edit-row:not(.bulk-edit-head):has(> .bulk-check input:checked):focus-within {
+      outline: 2px solid #0065fe !important;
+      outline-offset: -2px !important;
+    }
+  }
+}

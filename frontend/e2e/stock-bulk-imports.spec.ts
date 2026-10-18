@@ -104,7 +104,7 @@ test("Archivo ejecuta todas las importaciones reales y la exportación Excel", a
     await loginUi(page, "venta");
     await openStock(page, "venta");
     await openBulkEdit(page);
-    await page.getByRole("button", { name: "Nuevo", exact: true }).click();
+    await page.getByRole("button", { name: "Nuevo F5", exact: true }).click();
 
     const codeInput = page.getByPlaceholder("Código o código de barras");
     await codeInput.fill(marker);

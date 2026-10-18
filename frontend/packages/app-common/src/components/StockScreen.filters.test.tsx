@@ -37,6 +37,7 @@ beforeEach(() => {
   vi.mocked(apiRequest).mockReset().mockImplementation(async path => {
     if (path.startsWith("/stock/page")) return { items: [], hasMore: false };
     if (path === "/warehouses") return [{ id: warehouseId, name: "GENERAL", active: true, defaultWarehouse: true }];
+    if (path === "/document-reports/date-options?report=topSales") return { currentDate: "2026-10-18", earliestDate: "2026-01-01" };
     if (path.startsWith("/stock/top-sales")) return topRows;
     return [];
   });
@@ -175,9 +176,12 @@ describe("Stock applied filter chips", () => {
   it("updates top-sales rows locally and resets only the selected period in the backend request", async () => {
     const { container } = render(<StockScreen {...props} app="venta" initialView="stock.topSales" />);
     await waitFor(() => expect(container.querySelectorAll("article.stock-row")).toHaveLength(2));
+    const dateFilter = screen.getByRole("contentinfo", { name: "Periodo seleccionado" });
+    const month = within(dateFilter).getByRole("combobox", { name: "Mes" });
+    await waitFor(() => expect(within(month).getByRole("option", { name: "octubre de 2026" })).toBeTruthy());
+    fireEvent.change(month, { target: { value: "2026-10" } });
     fireEvent.click(screen.getByRole("button", { name: "Filtrar top ventas" }));
     const dialog = screen.getByRole("dialog", { name: "Filtrar top ventas" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Mes" }));
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Proveedor" }), { target: { value: "Uno" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar filtro" }));
     fireEvent.change(screen.getByRole("searchbox", { name: "Buscar top ventas" }), { target: { value: "Café" } });
@@ -194,6 +198,58 @@ describe("Stock applied filter chips", () => {
     fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Proveedor" }));
     expect(container.querySelectorAll("article.stock-row")).toHaveLength(2);
     expect(screen.queryByRole("group", { name: "Filtros aplicados" })).toBeNull();
+  });
+
+  it.each(["venta", "gestion"] as const)("keeps the bottom date range when applying and clearing top-sales filters in %s", async app => {
+    render(<StockScreen {...props} app={app} initialView="stock.topSales" />);
+    const dateFilter = screen.getByRole("contentinfo", { name: "Periodo seleccionado" });
+    await waitFor(() => expect(within(dateFilter).getByRole("button", { name: "Aplicar" })).toHaveProperty("disabled", false));
+    fireEvent.change(within(dateFilter).getByLabelText("Desde"), { target: { value: "2026-09-03" } });
+    fireEvent.change(within(dateFilter).getByLabelText("Hasta"), { target: { value: "2026-09-17" } });
+    fireEvent.click(within(dateFilter).getByRole("button", { name: "Aplicar" }));
+    const latestTopSalesQuery = () => new URL(vi.mocked(apiRequest).mock.calls
+      .map(([path]) => path).filter(path => path.startsWith("/stock/top-sales")).at(-1)!, "http://test").searchParams;
+    await waitFor(() => {
+      expect(latestTopSalesQuery().get("dateFrom")).toBe("2026-09-03");
+      expect(latestTopSalesQuery().get("dateTo")).toBe("2026-09-17");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar top ventas" }));
+    let dialog = screen.getByRole("dialog", { name: "Filtrar top ventas" });
+    expect(within(dialog).queryByText("Período", { exact: true })).toBeNull();
+    expect(within(dialog).queryByRole("textbox", { name: "Fecha" })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "Mes" })).toBeNull();
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Proveedor" }), { target: { value: "Uno" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar filtro" }));
+    expect(screen.getByRole("button", { name: "Quitar filtro Proveedor" })).toBeTruthy();
+    expect(latestTopSalesQuery().get("dateFrom")).toBe("2026-09-03");
+    expect(latestTopSalesQuery().get("dateTo")).toBe("2026-09-17");
+
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar todos" }));
+    expect(screen.queryByRole("button", { name: "Quitar filtro Proveedor" })).toBeNull();
+    expect(latestTopSalesQuery().get("dateFrom")).toBe("2026-09-03");
+    expect(latestTopSalesQuery().get("dateTo")).toBe("2026-09-17");
+    expect(within(dateFilter).getByLabelText("Desde")).toHaveProperty("value", "2026-09-03");
+    expect(within(dateFilter).getByLabelText("Hasta")).toHaveProperty("value", "2026-09-17");
+
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar top ventas" }));
+    dialog = screen.getByRole("dialog", { name: "Filtrar top ventas" });
+    expect(within(dialog).queryByText("Período", { exact: true })).toBeNull();
+    expect(within(dialog).queryByRole("textbox", { name: "Fecha" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Limpiar" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar filtro" }));
+    expect(latestTopSalesQuery().get("dateFrom")).toBe("2026-09-03");
+    expect(latestTopSalesQuery().get("dateTo")).toBe("2026-09-17");
+  });
+
+  it("retains the date controls in the PDA dialog, which has no bottom date bar", async () => {
+    render(<StockScreen {...props} app="pda" initialView="stock.topSales" />);
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar top ventas" }));
+    const dialog = screen.getByRole("dialog", { name: "Filtrar top ventas" });
+    expect(within(dialog).getByText("Período", { exact: true })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Mes" })).toBeTruthy();
+    expect(within(dialog).getByText("Fecha", { exact: true })).toBeTruthy();
+    expect(screen.queryByRole("contentinfo", { name: "Periodo seleccionado" })).toBeNull();
   });
 
   it("restores bulk rows without losing pending edits or the remaining price criterion", async () => {

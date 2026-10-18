@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   buildPromotionRequest,
   createDefaultPromotionDraft,
+  promotionDraftFromView,
   promotionTargetTypeForScope,
   validatePromotionDraft,
   type PromotionDraft,
   type PromotionRequest,
-  type PromotionType
+  type PromotionType,
+  type PromotionView
 } from "./PromotionForm";
 
 function draftFor(type: PromotionType): PromotionDraft {
@@ -85,6 +87,48 @@ function emptyRequest(type: PromotionType): PromotionRequest {
 }
 
 describe("PromotionForm payload", () => {
+  it.each([
+    ["SALE", null],
+    ["PRODUCT_LIST", "PRODUCT"],
+    ["FAMILY", "FAMILY"],
+    ["SUBFAMILY", "SUBFAMILY"]
+  ] as const)("round-trips the %s scope and target IDs", (scope, targetType) => {
+    const base = emptyRequest("SECOND_UNIT_PERCENT");
+    const targets = targetType ? [{ type: targetType, targetId: "target/1" }] : [];
+    const view: PromotionView = {
+      ...base, id: "promotion-1", status: "DRAFT", scope, discountPercent: "5.25", targets
+    };
+    const draft = promotionDraftFromView(view);
+    expect(draft.targetIds).toEqual(targets.map((target) => target.targetId));
+    expect(buildPromotionRequest(draft)).toEqual({ ...base, scope, discountPercent: "5.25", targets });
+  });
+
+  it("restores every decimal and coupon field without rounding, including zero and selected products", () => {
+    const view: PromotionView = {
+      id: "promotion-1", version: 7, name: "Cupón", type: "PURCHASE_THRESHOLD_COUPON", status: "ACTIVE",
+      startDate: "2026-07-11", endDate: null, scope: "PRODUCT_LIST", customerSegment: "MEMBER_CATEGORY",
+      memberCategoryId: "category-1", minimumAmount: "0.000000000000000001", minimumQuantity: 0,
+      buyQuantity: null, payQuantity: null, buyXPayYMode: null, discountAmount: null,
+      discountPercent: null, maximumDiscount: null, packPrice: null, couponAmount: null,
+      couponPercent: "12.50", couponMaximumDiscount: "8.000", couponMinimumAmount: "0",
+      couponValidFromDate: null, couponValidFromDays: 0, couponValidUntilDate: null,
+      couponValidDays: 30, targets: [{ type: "PRODUCT", targetId: "p-1" }, { type: "PRODUCT", targetId: "p-2" }]
+    };
+
+    const draft = promotionDraftFromView(view);
+    expect(draft).toMatchObject({
+      minimumAmount: "0.000000000000000001", minimumQuantity: "0", couponPercent: "12.50",
+      couponMaximumDiscount: "8.000", couponMinimumAmount: "0", couponValidFromDays: "0",
+      couponValidDays: "30", targetIds: ["p-1", "p-2"]
+    });
+    expect(validatePromotionDraft(draft)).toEqual([]);
+    expect(buildPromotionRequest(draft)).toMatchObject({
+      minimumAmount: view.minimumAmount, couponPercent: view.couponPercent,
+      couponMaximumDiscount: view.couponMaximumDiscount, couponMinimumAmount: view.couponMinimumAmount,
+      couponValidFromDays: 0, couponValidDays: 30, targets: view.targets
+    });
+  });
+
   it.each([
     ["PURCHASE_THRESHOLD_COUPON", {
       minimumAmount: "50.00",

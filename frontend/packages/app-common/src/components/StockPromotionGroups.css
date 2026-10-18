@@ -175,15 +175,15 @@
 }
 .stock-promotion-products table.report-table tbody tr:hover td { background: #f4f8fc !important; }
 
-/* Only the shared promotions destination opts out of the generic stock heading. */
-.stock-promotions-screen > .work-shell { background: #eef3f8 !important; }
-.stock-screen.stock-promotions-screen.gestion-embedded-module > .work-shell {
+/* Keep the existing consultation skin outside Gestión's document-style screen. */
+.stock-promotions-screen:not(.stock-document-screen) > .work-shell { background: #eef3f8 !important; }
+.stock-screen.stock-promotions-screen:not(.stock-document-screen).gestion-embedded-module > .work-shell {
   grid-template-rows: minmax(0, 1fr) !important;
   padding: 16px 18px 14px !important;
 }
-.stock-screen.stock-promotions-screen.gestion-embedded-module > .work-shell > .work-topbar { display: none !important; }
-.stock-screen.stock-promotions-screen.gestion-embedded-module .stock-promotions-panel { grid-row: 1 !important; }
-.stock-screen.stock-promotions-screen .stock-list.stock-promotions-panel {
+.stock-screen.stock-promotions-screen:not(.stock-document-screen).gestion-embedded-module > .work-shell > .work-topbar { display: none !important; }
+.stock-screen.stock-promotions-screen:not(.stock-document-screen).gestion-embedded-module .stock-promotions-panel { grid-row: 1 !important; }
+.stock-screen.stock-promotions-screen:not(.stock-document-screen) .stock-list.stock-promotions-panel {
   display: flex !important;
   flex-direction: column;
   gap: 10px !important;
@@ -192,24 +192,24 @@
   border: 0;
   background: transparent !important;
 }
-.stock-screen.stock-promotions-screen .stock-list.stock-promotions-panel > .stock-panel-heading {
+.stock-screen.stock-promotions-screen:not(.stock-document-screen) .stock-list.stock-promotions-panel > .stock-panel-heading {
   flex: 0 0 auto;
   min-height: 46px !important;
   padding: 0 0 10px !important;
   background: transparent;
   border-bottom: 1px solid #cbd6e2;
 }
-.stock-screen.stock-promotions-screen .stock-list.stock-promotions-panel > .stock-panel-heading h2 {
+.stock-screen.stock-promotions-screen:not(.stock-document-screen) .stock-list.stock-promotions-panel > .stock-panel-heading h2 {
   color: #0c2e58;
   font: 700 22px/1.25 "Segoe UI", "Microsoft YaHei UI", Arial, sans-serif !important;
 }
-.stock-screen.stock-promotions-screen .stock-list.stock-promotions-panel > .stock-panel-heading span {
+.stock-screen.stock-promotions-screen:not(.stock-document-screen) .stock-list.stock-promotions-panel > .stock-panel-heading span {
   font-size: 11px;
   font-weight: 400;
 }
-.stock-screen.stock-promotions-screen .stock-list.stock-promotions-panel > .stock-inventory-controls { flex: 0 0 auto; }
-.stock-promotions-screen .stock-toolbar { min-height: 34px; }
-.stock-screen.stock-promotions-screen .stock-toolbar {
+.stock-screen.stock-promotions-screen:not(.stock-document-screen) .stock-list.stock-promotions-panel > .stock-inventory-controls { flex: 0 0 auto; }
+.stock-promotions-screen:not(.stock-document-screen) .stock-toolbar { min-height: 34px; }
+.stock-screen.stock-promotions-screen:not(.stock-document-screen) .stock-toolbar {
   display: flex !important;
   flex-wrap: wrap;
   align-items: center !important;
@@ -225,20 +225,20 @@
   gap: 8px;
   margin-left: auto;
 }
-.stock-screen.stock-promotions-screen .stock-export-all-promotions {
+.stock-screen.stock-promotions-screen:not(.stock-document-screen) .stock-export-all-promotions {
   background: #fff !important;
   color: #163b61 !important;
   border-color: #9eb2c9 !important;
 }
-.stock-screen.stock-promotions-screen .stock-export-all-promotions:hover:not(:disabled),
-.stock-screen.stock-promotions-screen .stock-export-all-promotions:focus-visible:not(:disabled) {
+.stock-screen.stock-promotions-screen:not(.stock-document-screen) .stock-export-all-promotions:hover:not(:disabled),
+.stock-screen.stock-promotions-screen:not(.stock-document-screen) .stock-export-all-promotions:focus-visible:not(:disabled) {
   background: #eaf2fb !important;
   border-color: #174c82 !important;
 }
-.stock-promotions-screen .stock-toolbar button,
-.stock-promotions-screen .stock-add-product-button { font-weight: 600; }
-.stock-promotions-screen .stock-search-stack { gap: 3px; }
-.stock-promotions-screen .stock-search-stack input { font-size: 12px; font-weight: 400; }
+.stock-promotions-screen:not(.stock-document-screen) .stock-toolbar button,
+.stock-promotions-screen:not(.stock-document-screen) .stock-add-product-button { font-weight: 600; }
+.stock-promotions-screen:not(.stock-document-screen) .stock-search-stack { gap: 3px; }
+.stock-promotions-screen:not(.stock-document-screen) .stock-search-stack input { font-size: 12px; font-weight: 400; }
 .stock-promotions-screen .stock-promotion-groups { grid-template-columns: minmax(245px, 33fr) minmax(0, 67fr); }
 .stock-promotion-detail-heading { flex-direction: column; gap: 12px; }
 .stock-promotion-list-row { min-height: 54px; padding-block: 9px; }

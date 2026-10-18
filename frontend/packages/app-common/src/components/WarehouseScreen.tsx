@@ -142,10 +142,12 @@ export function WarehouseScreen({
           : "warehouseScreen.goodsCheckSubtitle";
   const supplierDocumentHeading = app === "gestion" && embedded
     && (section === "purchaseDeliveryNotes" || section === "purchaseInvoices" || section === "goodsCheck");
-  const moduleTitleKey = supplierDocumentHeading ? "gestion.navigation.group.supplierDocuments" : "home.warehouse";
+  const documentHeading = app === "gestion" && embedded ? supplierDocumentHeading ? "supplier" : "warehouse" : undefined;
+  const moduleTitleKey = supplierDocumentHeading ? "gestion.navigation.group.supplierDocuments"
+    : documentHeading === "warehouse" ? "gestion.navigation.group.warehouse" : "home.warehouse";
 
   return (
-    <main data-document-heading={supplierDocumentHeading ? "supplier" : undefined}
+    <main data-document-heading={documentHeading}
       data-warehouse-heading={app === "gestion" && embedded && section !== "goodsCheck" ? "unified" : undefined} className={embedded
       ? `stock-screen work-screen warehouse-screen gestion-embedded-module${app === "gestion" ? " gestion-warehouse-screen" : ""}`
       : `stock-screen work-screen warehouse-screen${app === "gestion" ? " gestion-warehouse-screen" : ""}`}

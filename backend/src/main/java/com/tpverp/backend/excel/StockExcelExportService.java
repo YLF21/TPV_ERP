@@ -77,8 +77,30 @@ public class StockExcelExportService {
             String owner,
             boolean includePurchaseFields,
             ExportRequest request) {
+        return create(storeId, owner, includePurchaseFields, request, ExportFormat.XLSX);
+    }
+
+    public synchronized JobView createPdf(
+            UUID storeId,
+            String owner,
+            boolean includePurchaseFields,
+            ExportRequest request) {
+        return create(storeId, owner, includePurchaseFields, request, ExportFormat.PDF);
+    }
+
+    private JobView create(
+            UUID storeId,
+            String owner,
+            boolean includePurchaseFields,
+            ExportRequest request,
+            ExportFormat format) {
         cleanupExpired();
         var normalized = normalize(request, includePurchaseFields);
+        if (format == ExportFormat.PDF && normalized.view() != null
+                && !Set.of("CURRENT_STOCK", "TOP_SALES", "OFFERS", "MEMBER_PRICE", "NO_DISCOUNT")
+                        .contains(normalized.view())) {
+            throw new IllegalArgumentException("stock_pdf_export_view_invalid");
+        }
         var normalizedOwner = owner(owner);
         var existing = jobs.values().stream()
                 .filter(job -> job.storeId.equals(storeId)
@@ -87,7 +109,7 @@ public class StockExcelExportService {
                 .findFirst();
         if (existing.isPresent()) {
             var inProgress = existing.orElseThrow();
-            if (inProgress.request.equals(normalized)
+            if (inProgress.format == format && inProgress.request.equals(normalized)
                     && inProgress.includePurchaseFields == includePurchaseFields) return inProgress.view();
             throw new IllegalStateException("stock_excel_export_busy");
         }
@@ -104,9 +126,9 @@ public class StockExcelExportService {
         }
         Instant createdAt = Instant.now();
         LocalDate exportDate = LocalDate.now();
-        var job = new ExportJob(UUID.randomUUID(), storeId, normalizedOwner,
+        var job = new ExportJob(UUID.randomUUID(), storeId, normalizedOwner, format,
                 includePurchaseFields, normalized, createdAt, exportDate,
-                fileName(normalized, promotionName, exportDate));
+                fileName(normalized, promotionName, exportDate, format));
         jobs.put(job.id, job);
         return job.view();
     }
@@ -118,8 +140,19 @@ public class StockExcelExportService {
         Path output = null;
         try {
             Files.createDirectories(directory);
-            output = Files.createTempFile(directory, "stock-", ".xlsx");
-            writeWorkbook(job, output);
+            output = Files.createTempFile(directory, "stock-", job.format.extension);
+            if (job.format == ExportFormat.PDF) {
+                Path workbook = null;
+                try {
+                    workbook = Files.createTempFile(directory, "stock-pdf-source-", ".xlsx");
+                    writeWorkbook(job, workbook);
+                    StockPdfRenderer.render(workbook, output, job.request);
+                } finally {
+                    delete(workbook);
+                }
+            } else {
+                writeWorkbook(job, output);
+            }
             job.complete(output, Files.size(output));
         } catch (RuntimeException | IOException failure) {
             delete(output);
@@ -705,7 +738,8 @@ public class StockExcelExportService {
         return "NO_DISCOUNT".equals(optionalUpper(request.view())) ? "NONE" : null;
     }
 
-    private static String fileName(ExportRequest request, String promotionName, LocalDate date) {
+    private static String fileName(ExportRequest request, String promotionName, LocalDate date,
+            ExportFormat format) {
         String language = request.language();
         String prefix = switch (request.view() == null ? "STOCK" : request.view()) {
             case "PROMOTIONS" -> "SELECTED".equals(request.promotionScope())
@@ -721,7 +755,7 @@ public class StockExcelExportService {
             case "TOP_SALES" -> translatedPrefix(language, "top-ventas", "top-sales", "热销商品");
             default -> translatedPrefix(language, "stock", "stock", "库存");
         };
-        return prefix + "-" + date + ".xlsx";
+        return prefix + "-" + date + format.extension;
     }
 
     private static String translatedPrefix(String language, String es, String en, String zh) {
@@ -840,6 +874,16 @@ public class StockExcelExportService {
 
     public enum JobStatus { QUEUED, RUNNING, COMPLETED, FAILED }
 
+    private enum ExportFormat {
+        XLSX(".xlsx"), PDF(".pdf");
+
+        private final String extension;
+
+        ExportFormat(String extension) {
+            this.extension = extension;
+        }
+    }
+
     public record JobView(
             UUID id,
             JobStatus status,
@@ -855,6 +899,7 @@ public class StockExcelExportService {
         private final UUID id;
         private final UUID storeId;
         private final String owner;
+        private final ExportFormat format;
         private final boolean includePurchaseFields;
         private final ExportRequest request;
         private final Instant createdAt;
@@ -867,11 +912,12 @@ public class StockExcelExportService {
         private volatile String error;
 
         private ExportJob(
-                UUID id, UUID storeId, String owner, boolean includePurchaseFields,
+                UUID id, UUID storeId, String owner, ExportFormat format, boolean includePurchaseFields,
                 ExportRequest request, Instant createdAt, LocalDate exportDate, String fileName) {
             this.id = id;
             this.storeId = storeId;
             this.owner = owner;
+            this.format = format;
             this.includePurchaseFields = includePurchaseFields;
             this.request = request;
             this.createdAt = createdAt;

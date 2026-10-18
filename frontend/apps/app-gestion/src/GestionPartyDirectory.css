@@ -1,0 +1,138 @@
+/* Third-party directories follow the approved two-level document heading. */
+@media screen {
+  html[data-app="gestion"] .gestion-party-screen.gestion-embedded-module > .work-shell {
+    grid-template-rows: 42px minmax(0, 1fr);
+    gap: 0;
+    padding: 14px 18px 10px;
+  }
+  html[data-app="gestion"] .gestion-party-screen .work-topbar {
+    min-height: 42px;
+    padding: 0 2px 8px;
+    border-bottom: 1px solid var(--gestion-border-dark, #8297ad);
+  }
+  html[data-app="gestion"] .gestion-party-screen .work-topbar .report-title {
+    margin: 0;
+    color: #102033;
+    font-size: 23px;
+    font-weight: 950;
+    line-height: 1;
+    text-transform: none;
+  }
+  html[data-app="gestion"] .gestion-party-screen .stock-list { gap: 0; }
+  html[data-app="gestion"] .gestion-party-screen .stock-list > .gestion-party-directory-heading {
+    box-sizing: border-box;
+    min-height: 0 !important;
+    align-items: center;
+    padding: 6px 14px 7px !important;
+    border-bottom: 1px solid #aeb9c8;
+  }
+  html[data-app="gestion"] .gestion-party-screen .stock-list > .gestion-party-directory-heading h2 {
+    margin: 0;
+    color: #102033;
+    font-size: 22px !important;
+    font-weight: 900 !important;
+    line-height: 1.1 !important;
+  }
+  html[data-app="gestion"] .gestion-party-directory-heading > div:first-child > span { display: none; }
+
+  html[data-app="gestion"] .party-directory-toolbar.party-directory-toolbar--classic {
+    grid-template-columns: minmax(220px, 360px) 190px auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    flex: 0 0 auto;
+    margin: 4px 14px 8px;
+  }
+  html[data-app="gestion"] .party-directory-toolbar .party-directory-result-count {
+    grid-column: 4;
+    grid-row: 2;
+    margin: 0;
+    align-self: center;
+  }
+  html[data-app="gestion"] .party-directory-toolbar .gestion-party-output-actions {
+    display: flex;
+    grid-column: 5;
+    grid-row: 2;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  html[data-app="gestion"] .party-directory-toolbar .party-directory-filter-fields { grid-row: 3; }
+  html[data-app="gestion"] .party-directory-toolbar .party-directory-active-filters { grid-column: 1 / -1; }
+
+  html[data-app="gestion"] :is(.gestion-party-output-actions, .gestion-party-directory-heading .management-record-actions) > button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-sizing: border-box;
+    min-width: 0;
+    height: 34px;
+    min-height: 34px;
+    padding: 0 0 0 10px;
+    border: 1px solid #68737e;
+    border-radius: 4px;
+    color: #092b53;
+    background: #eef1f4;
+    box-shadow: none;
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  html[data-app="gestion"] :is(.gestion-party-output-actions, .gestion-party-directory-heading) button > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  html[data-app="gestion"] .gestion-party-output-actions button:disabled { opacity: .5; }
+  html[data-app="gestion"] :is(.gestion-party-output-actions, .gestion-party-directory-heading) button:focus-visible {
+    outline: 2px solid #0065fe;
+    outline-offset: 2px;
+  }
+
+  /* Existing directory rules keep menus visible; opt Gestión into hidden tools. */
+  html[data-app="gestion"] .party-desktop-table .party-directory-row.header .table-layout-column-menu-button {
+    opacity: 0 !important;
+    visibility: hidden !important;
+  }
+  html[data-app="gestion"] .party-desktop-table .party-directory-row.header .table-layout-header-cell:is(:hover, :focus-within) .table-layout-column-menu-button,
+  html[data-app="gestion"] .party-desktop-table .party-directory-row.header .table-layout-column-menu-button.is-open {
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+  html[data-app="gestion"] .party-desktop-table .party-directory-row.header .table-layout-header-label {
+    padding-right: calc(2px + var(--gestion-menu-space, 0px)) !important;
+  }
+  html[data-app="gestion"] .party-desktop-table .party-directory-row.header .table-layout-sort-button:not(.is-active) .table-layout-sort-indicator { display: inline-grid; }
+  @media (max-width: 1100px) {
+    html[data-app="gestion"] .party-directory-toolbar.party-directory-toolbar--classic {
+      grid-template-columns: minmax(180px, 1fr) 150px auto auto;
+    }
+    html[data-app="gestion"] .party-directory-toolbar .party-directory-result-count { grid-column: 4; grid-row: 1; }
+    html[data-app="gestion"] .party-directory-toolbar .gestion-party-output-actions { grid-column: 4; }
+  }
+  @media (max-width: 760px) {
+    html[data-app="gestion"] .party-directory-toolbar.party-directory-toolbar--classic { grid-template-columns: minmax(0, 1fr) 150px; }
+    html[data-app="gestion"] .party-directory-toolbar .party-directory-filter-button { grid-column: 1; grid-row: 3; justify-self: start; }
+    html[data-app="gestion"] .party-directory-toolbar .party-directory-result-count { grid-column: 1; grid-row: 4; justify-self: start; }
+    html[data-app="gestion"] .party-directory-toolbar .gestion-party-output-actions { grid-column: 1 / -1; grid-row: 5; flex-wrap: wrap; }
+    html[data-app="gestion"] .party-directory-toolbar .party-directory-filter-fields { grid-row: 6; }
+  }
+  @media (hover: none), (any-pointer: coarse) {
+    html[data-app="gestion"] .party-desktop-table .party-directory-row.header .table-layout-column-menu-button { opacity: 1 !important; visibility: visible !important; }
+  }
+}
+
+@layer gestion-accents {
+  @media screen {
+    html[data-app="gestion"] .gestion-party-directory-heading .management-record-actions > .gestion-party-add {
+      border-color: #0065fe !important;
+      color: #fff !important;
+      background: #0065fe !important;
+      box-shadow: none !important;
+    }
+    html[data-app="gestion"] .gestion-party-output-actions > button {
+      border-color: #68737e !important;
+      color: #092b53 !important;
+      background: #eef1f4 !important;
+      box-shadow: none !important;
+    }
+  }
+}
