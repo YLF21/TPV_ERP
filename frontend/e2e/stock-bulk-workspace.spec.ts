@@ -20,7 +20,7 @@ test("crea, guarda, reabre, aplica y versiona una lista conservando comentarios"
     await loginUi(page, "venta");
     await openStock(page, "venta");
     await openBulkEdit(page);
-    await page.getByRole("button", { name: "Nuevo", exact: true }).click();
+    await page.getByRole("button", { name: "Nuevo F5", exact: true }).click();
 
     const codeInput = page.getByPlaceholder("Código o código de barras");
     await codeInput.fill(marker);
