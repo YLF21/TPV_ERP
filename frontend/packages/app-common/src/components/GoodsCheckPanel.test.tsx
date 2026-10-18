@@ -75,6 +75,18 @@ describe("GoodsCheckPanel", () => {
     expect(progress).toEqual({ total: 2, balanced: 1, percent: 50 });
   });
 
+  it("includes only balanced quantities in the complete line filter", () => {
+    const todos = [
+      { productId: "complete", code: "A", name: "Complete", expectedQuantity: "2.5", registeredQuantity: 2.5, missingQuantity: 0, extraQuantity: 0 },
+      { productId: "partial", code: "B", name: "Partial", expectedQuantity: 3, registeredQuantity: 1, missingQuantity: 2, extraQuantity: 0 },
+      { productId: "extra", code: "C", name: "Extra", expectedQuantity: 1, registeredQuantity: 2, missingQuantity: 0, extraQuantity: 1 },
+      { productId: "pending", code: "D", name: "Pending", expectedQuantity: 1, registeredQuantity: 0, missingQuantity: 1, extraQuantity: 0 }
+    ];
+    const check = { id: "check", documentId: "document", status: "ABIERTA" as const, todos, faltantes: [], registrados: [] };
+    expect(filterGoodsCheckItems(check, "complete").map(item => item.productId)).toEqual(["complete"]);
+    expect(filterGoodsCheckItems(check, "missing").map(item => item.productId)).toEqual(["partial", "extra", "pending"]);
+  });
+
   it("keeps search, document summary and import action in a separated header", () => {
     const html = renderToStaticMarkup(
       <GoodsCheckPanel locale="es" t={(key) => key} />

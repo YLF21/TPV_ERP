@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -96,7 +97,7 @@ describe("Goods check ERP table filters", () => {
     expect(screen.getByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("Buscar: Norte");
   });
 
-  it.each(["venta", "gestion"] as const)("keeps line filters independent and preserves operational row markers in %s", async app => {
+  it.each(["venta"] as const)("keeps line filters independent and preserves operational row markers in %s", async app => {
     const { container } = show(app);
     await waitFor(() => expect(documentRows(container)).toHaveLength(4));
     fireEvent.change(screen.getByRole("searchbox", { name: "Buscar" }), { target: { value: "Norte" } });
@@ -121,6 +122,62 @@ describe("Goods check ERP table filters", () => {
     expect(screen.getByRole("searchbox", { name: "Buscar" })).toHaveValue("Norte");
     await waitFor(() => expect(within(workspace).getByRole("button", { name: /^Todas las líneas/ })).toHaveFocus());
     expect(apiRequest).toHaveBeenCalledTimes(3);
+  });
+
+  it("shows pending and complete lines without removable line chips in Gestión", async () => {
+    const { container } = show("gestion");
+    await waitFor(() => expect(documentRows(container)).toHaveLength(4));
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar comprobación" }));
+    const workspace = container.querySelector<HTMLElement>(".goods-check-workspace")!;
+    const lineRows = () => [...workspace.querySelectorAll(".goods-check-lines tbody tr")];
+    await waitFor(() => expect(lineRows()).toHaveLength(3));
+    fireEvent.click(within(workspace).getByRole("button", { name: /^Sin comprobar\s*2$/ }));
+    expect(lineRows().map(row => row.textContent)).toEqual([
+      expect.stringContaining("Pendiente"), expect.stringContaining("Sobrante")
+    ]);
+    expect(workspace.querySelector(".goods-check-line-filter-chips")).toBeNull();
+    fireEvent.click(within(workspace).getByRole("button", { name: /^Completas\s*1$/ }));
+    expect(lineRows()).toHaveLength(1);
+    expect(lineRows()[0]).toHaveTextContent("Equilibrado");
+    expect(within(workspace).queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
+    fireEvent.click(within(workspace).getByRole("button", { name: /^Todas las líneas\s*3$/ }));
+    expect(lineRows()).toHaveLength(3);
+    expect(apiRequest).toHaveBeenCalledTimes(3);
+  });
+
+  it("moves from code to quantity with Enter and registers only after the second Enter in Gestión", async () => {
+    const user = userEvent.setup();
+    const { container } = show("gestion");
+    await waitFor(() => expect(documentRows(container)).toHaveLength(4));
+    await user.click(screen.getByRole("button", { name: "Iniciar comprobación" }));
+    const code = await screen.findByRole("textbox", { name: t("goodsCheck.productCode") });
+    const quantity = screen.getByRole("textbox", { name: "Cantidad a registrar" });
+    await waitFor(() => expect(code).toHaveFocus());
+    await user.keyboard("{Enter}");
+    expect(code).toHaveFocus();
+    await user.keyboard("B{Enter}");
+    expect(quantity).toHaveFocus();
+    expect(quantity).toHaveProperty("selectionStart", 0);
+    expect(quantity).toHaveProperty("selectionEnd", 1);
+    const scanCalls = () => vi.mocked(apiRequest).mock.calls.filter(([path]) => path.endsWith("/scan"));
+    expect(scanCalls()).toHaveLength(0);
+
+    await user.keyboard("0{Enter}");
+    expect(screen.getByText(t("goodsCheck.quantityError"))).toBeInTheDocument();
+    expect(scanCalls()).toHaveLength(0);
+    expect(quantity).toHaveFocus();
+
+    vi.mocked(apiRequest).mockResolvedValueOnce({ id: "check", documentId: "delivery-north", status: "ABIERTA", todos: items,
+      faltantes: [items[1]], registrados: [items[0], items[2]] } satisfies GoodsCheckView);
+    await user.clear(quantity);
+    await user.type(quantity, "2,5{Enter}");
+    await waitFor(() => expect(scanCalls()).toHaveLength(1));
+    expect(scanCalls()[0]).toEqual(["/goods-checks/check/scan", expect.objectContaining({
+      method: "POST", body: { code: "B", quantity: 2.5 }
+    })]);
+    await waitFor(() => expect(code).toHaveFocus());
+    expect(code).toHaveValue("");
+    expect(quantity).toHaveValue("1");
   });
 
   it.each(["pda"] as const)("preserves the existing filters and appearance in %s", async (app) => {

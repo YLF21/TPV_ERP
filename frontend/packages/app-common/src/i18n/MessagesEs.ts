@@ -3207,6 +3207,8 @@ export class MessagesEs {
     "goodsCheck.filter.linesAll": "Todas las líneas",
     "goodsCheck.filter.linesDifferences": "Con diferencias",
     "goodsCheck.filter.linesRegistered": "Escaneadas",
+    "goodsCheck.filter.linesPending": "Sin comprobar",
+    "goodsCheck.filter.linesComplete": "Completas",
     "goodsCheck.filter.empty": "No hay líneas en este filtro",
     "goodsCheck.extraLines": "Con sobrante",
     "goodsCheck.closeConfirm": "Todavía hay {missing} líneas faltantes y {extra} con sobrante. ¿Cerrar la comprobación con diferencias?",
