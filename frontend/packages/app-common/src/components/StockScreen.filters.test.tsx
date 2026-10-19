@@ -203,9 +203,10 @@ describe("Stock applied filter chips", () => {
   it.each(["venta", "gestion"] as const)("keeps the bottom date range when applying and clearing top-sales filters in %s", async app => {
     render(<StockScreen {...props} app={app} initialView="stock.topSales" />);
     const dateFilter = screen.getByRole("contentinfo", { name: "Periodo seleccionado" });
-    await waitFor(() => expect(within(dateFilter).getByRole("button", { name: "Aplicar" })).toHaveProperty("disabled", false));
+    await waitFor(() => expect(within(dateFilter).getByLabelText("Desde")).toHaveProperty("disabled", false));
     fireEvent.change(within(dateFilter).getByLabelText("Desde"), { target: { value: "2026-09-03" } });
     fireEvent.change(within(dateFilter).getByLabelText("Hasta"), { target: { value: "2026-09-17" } });
+    expect(within(dateFilter).getByRole("button", { name: "Aplicar" })).toHaveProperty("disabled", false);
     fireEvent.click(within(dateFilter).getByRole("button", { name: "Aplicar" }));
     const latestTopSalesQuery = () => new URL(vi.mocked(apiRequest).mock.calls
       .map(([path]) => path).filter(path => path.startsWith("/stock/top-sales")).at(-1)!, "http://test").searchParams;

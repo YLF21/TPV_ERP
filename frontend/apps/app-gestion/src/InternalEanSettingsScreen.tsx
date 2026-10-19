@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { UserSession } from "@tpverp/app-common";
+import { GestionModuleHeading } from "./GestionModuleHeading";
 import {
   loadInternalEanConfiguration,
   saveInternalEanConfiguration,
@@ -53,14 +54,14 @@ export function InternalEanSettingsScreen({ session, t }: Props) {
     } finally { setSaving(false); }
   }
 
-  return <section className="gestion-internal-ean-screen">
-    <header><h1>{t("gestion.internalEan.title")}</h1><p>{t("gestion.internalEan.description")}</p></header>
-    <div className="gestion-internal-ean-card">
+  return <section className="gestion-internal-ean-screen gestion-module-screen">
+    <GestionModuleHeading group={t("gestion.navigation.group.configuration")} title={t("gestion.internalEan.title")} description={t("gestion.internalEan.description")} />
+    <div className="gestion-internal-ean-card gestion-module-panel gestion-module-fields">
       {loading ? <p>{t("common.loading")}</p> : <>
         <label><span>{t("gestion.internalEan.companyCode")}</span><input autoFocus inputMode="numeric" maxLength={2} value={companyCode} onChange={(event) => setCompanyCode(event.currentTarget.value.replace(/\D/g, "").slice(0, 2))} /></label>
         <p className="gestion-internal-ean-example">{t("gestion.internalEan.example", { code: companyCode.padStart(2, "0") })}</p>
         <div className="gestion-internal-ean-warning"><strong>{t("gestion.internalEan.restrictedTitle")}</strong><p>{t("gestion.internalEan.restricted")}</p></div>
-        <button type="button" disabled={saving || !/^[0-9]{2}$/.test(companyCode)} onClick={() => void save()}>{saving ? t("common.saving") : t("common.save")}</button>
+        <div className="gestion-toolbar-actions"><button type="button" disabled={saving || !/^[0-9]{2}$/.test(companyCode)} onClick={() => void save()}>{saving ? t("common.saving") : t("common.save")}</button></div>
       </>}
       {status && <p className="gestion-success" role="status">{status}</p>}
       {error && <p className="gestion-error" role="alert">{error}</p>}

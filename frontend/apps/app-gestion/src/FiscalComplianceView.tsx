@@ -372,13 +372,13 @@ export function FiscalComplianceView({
   return (
     <div className="gestion-fiscal-compliance">
       {!fiscalTimezone && <p className="gestion-verifactu-message error" role="alert">{t("verifactu.management.timezoneUnavailable")}</p>}
-      <section className="gestion-verifactu-panel gestion-fiscal-integrity">
+      <section className="gestion-verifactu-panel gestion-fiscal-integrity gestion-module-panel">
         <header>
           <div>
             <span className="gestion-eyebrow">{t("verifactu.compliance.controlEyebrow")}</span>
             <h3>{t("verifactu.compliance.integrityTitle")}</h3>
           </div>
-          {canManage && <div className="gestion-fiscal-integrity-actions">
+          {canManage && <div className="gestion-fiscal-integrity-actions gestion-toolbar-actions">
             <button type="button" className="primary" disabled={integrityWorking} onClick={() => void checkIntegrity()}>
               {integrityWorking ? t("verifactu.compliance.checking") : t("verifactu.compliance.runIntegrity")}
             </button>
@@ -412,9 +412,9 @@ export function FiscalComplianceView({
         )}
       </section>
 
-      {token && <section className="gestion-verifactu-panel gestion-fiscal-responsible-declaration">
+      {token && <section className="gestion-verifactu-panel gestion-fiscal-responsible-declaration gestion-module-panel">
         <header><div><span className="gestion-eyebrow">{t("verifactu.compliance.declarationEyebrow")}</span><h3>{t("verifactu.compliance.declarationTitle")}</h3></div>
-          <button type="button" disabled={responsibleDeclarationLoading} onClick={() => void loadResponsibleDeclaration()}>{responsibleDeclarationLoading ? t("verifactu.compliance.declarationLoading") : t("verifactu.compliance.declarationAction")}</button>
+          <button type="button" className="gestion-module-action" disabled={responsibleDeclarationLoading} onClick={() => void loadResponsibleDeclaration()}>{responsibleDeclarationLoading ? t("verifactu.compliance.declarationLoading") : t("verifactu.compliance.declarationAction")}</button>
         </header>
         {responsibleDeclarationError && <p className="gestion-verifactu-message error" role="alert">{t("verifactu.compliance.declarationError")}</p>}
         {responsibleDeclaration && <div className="gestion-fiscal-declaration-status" role="status">
@@ -422,12 +422,12 @@ export function FiscalComplianceView({
           {responsibleDeclaration.fileName && <span>{responsibleDeclaration.fileName}</span>}
           {responsibleDeclaration.issuedAt && <span>{formatVerifactuDateTime(responsibleDeclaration.issuedAt, locale, fiscalTimezone)}</span>}
           {responsibleDeclaration.sha256 && <ComplianceHashValue value={responsibleDeclaration.sha256} t={t} />}
-          {responsibleDeclaration.downloadUrl && responsibleDeclaration.status === "AVAILABLE" && <button type="button" onClick={() => void downloadResponsibleDeclaration(responsibleDeclaration.downloadUrl!, responsibleDeclaration.fileName ?? undefined, token).catch(() => setResponsibleDeclarationDownloadError(true))}>{t("verifactu.compliance.declarationDownload")}</button>}
+          {responsibleDeclaration.downloadUrl && responsibleDeclaration.status === "AVAILABLE" && <button type="button" className="gestion-module-action" onClick={() => void downloadResponsibleDeclaration(responsibleDeclaration.downloadUrl!, responsibleDeclaration.fileName ?? undefined, token).catch(() => setResponsibleDeclarationDownloadError(true))}>{t("verifactu.compliance.declarationDownload")}</button>}
         </div>}
         {responsibleDeclarationDownloadError && <p className="gestion-verifactu-message error" role="alert">{t("verifactu.compliance.declarationDownloadError")}</p>}
       </section>}
 
-      <section className="gestion-verifactu-panel gestion-fiscal-events">
+      <section className="gestion-verifactu-panel gestion-fiscal-events gestion-module-panel">
         <header>
           <div>
             <span className="gestion-eyebrow">{t("verifactu.compliance.auditEyebrow")}</span>
@@ -436,14 +436,14 @@ export function FiscalComplianceView({
           <span>{t("verifactu.compliance.lastEvents")}</span>
         </header>
         {eventsError ? (
-          <div className="gestion-verifactu-message error" role="alert">{t("verifactu.compliance.eventsError")} <button type="button" onClick={() => setHistoryRefresh((value) => value + 1)}>{t("verifactu.exportJobs.retry")}</button></div>
+          <div className="gestion-verifactu-message error" role="alert">{t("verifactu.compliance.eventsError")} <button type="button" className="gestion-module-action" onClick={() => setHistoryRefresh((value) => value + 1)}>{t("verifactu.exportJobs.retry")}</button></div>
         ) : eventsLoading ? (
           <div className="gestion-verifactu-message">{t("verifactu.compliance.eventsLoading")}</div>
         ) : events.length === 0 ? (
           <div className="gestion-verifactu-message">{t("verifactu.compliance.eventsEmpty")}</div>
         ) : (
           <>
-          <div className="gestion-verifactu-table-scroll">
+          <div className="gestion-verifactu-table-scroll gestion-module-table">
             <table className="gestion-verifactu-table">
               <colgroup>{visibleEventColumns.map((column) => <col key={column.key} style={{ width: `${column.width}px` }} />)}</colgroup>
               <thead><tr>
@@ -481,20 +481,20 @@ export function FiscalComplianceView({
         )}
       </section>
 
-      <section className="gestion-verifactu-panel gestion-fiscal-export">
+      <section className="gestion-verifactu-panel gestion-fiscal-export gestion-module-panel">
         <header>
           <div><span className="gestion-eyebrow">{t("verifactu.compliance.conservationEyebrow")}</span><h3>{t("verifactu.compliance.exportTitle")}</h3></div>
           {canManage ? (
-            <button type="button" className="primary" aria-haspopup="dialog" aria-expanded={exportDialogOpen} disabled={!fiscalTimezone} onClick={() => { setExportError(false); setExportSuccess(false); setExportDialogOpen(true); void exportJobs.refresh(); }}>
+            <button type="button" className="primary gestion-module-action" aria-haspopup="dialog" aria-expanded={exportDialogOpen} disabled={!fiscalTimezone} onClick={() => { setExportError(false); setExportSuccess(false); setExportDialogOpen(true); void exportJobs.refresh(); }}>
               {t("verifactu.ui.export")}
             </button>
           ) : <span className="gestion-verifactu-readonly-note">{t("verifactu.compliance.managePermission")}</span>}
         </header>
         <p>{t("verifactu.compliance.exportHint")}</p>
-        {exportHistoryError && <p className="gestion-verifactu-message error" role="alert">{t("verifactu.compliance.exportHistoryError")} <button type="button" onClick={() => setHistoryRefresh((value) => value + 1)}>{t("verifactu.exportJobs.retry")}</button></p>}
+        {exportHistoryError && <p className="gestion-verifactu-message error" role="alert">{t("verifactu.compliance.exportHistoryError")} <button type="button" className="gestion-module-action" onClick={() => setHistoryRefresh((value) => value + 1)}>{t("verifactu.exportJobs.retry")}</button></p>}
         {exportHistoryLoading && <p className="gestion-verifactu-message" role="status">{t("verifactu.exportJobs.loading")}</p>}
         {!exportHistoryLoading && !exportHistoryError && exportHistory.length === 0 && <p className="gestion-verifactu-message">{t("verifactu.exportJobs.empty")}</p>}
-        {!exportHistoryLoading && !exportHistoryError && exportHistory.length > 0 && <><div className="gestion-verifactu-table-scroll">
+        {!exportHistoryLoading && !exportHistoryError && exportHistory.length > 0 && <><div className="gestion-verifactu-table-scroll gestion-module-table">
           <table className="gestion-verifactu-table">
             <colgroup>{visibleExportColumns.map((column) => <col key={column.key} style={{ width: `${column.width}px` }} />)}</colgroup>
             <thead><tr>{visibleExportColumns.map((column) => (
@@ -565,7 +565,7 @@ export function FiscalComplianceView({
       )}
 
       {mode === "NO_VERIFACTU" && (
-        <section className="gestion-verifactu-panel gestion-fiscal-requirement">
+        <section className="gestion-verifactu-panel gestion-fiscal-requirement gestion-module-panel">
           <header><div><span className="gestion-eyebrow">{t("verifactu.compliance.aeatEyebrow")}</span><h3>{t("verifactu.compliance.requirementTitle")}</h3></div></header>
           <p>{t("verifactu.compliance.requirementHint")}</p>
           {canAttendRequirements ? <>
@@ -574,7 +574,7 @@ export function FiscalComplianceView({
                 <span>{t("verifactu.compliance.requirementReference")}</span>
                 <input maxLength={18} value={requirementReference} onChange={(event) => setRequirementReference(event.target.value)} />
               </label>
-              <button type="submit" disabled={requirementWorking || !requirementReference.trim()}>{t("verifactu.compliance.registerRequirement")}</button>
+              <button type="submit" className="gestion-module-action" disabled={requirementWorking || !requirementReference.trim()}>{t("verifactu.compliance.registerRequirement")}</button>
             </form>
             <div className="gestion-fiscal-requirement-period">
               <FiscalDateTimeField label={t("verifactu.management.dateFrom")} value={requirementPeriodStart} offset={requirementStartOffset} timezone={fiscalTimezone} disabled={!fiscalTimezone} onChange={(value) => { setRequirementPeriodStart(value); setRequirementStartOffset(undefined); }} onOffsetChange={setRequirementStartOffset} t={t} />
@@ -586,16 +586,16 @@ export function FiscalComplianceView({
               <strong>{requirement.reference}</strong>
               <span>{requirementStatusLabel(requirement.status, t)}</span>
               {requirement.status === "PENDIENTE" && (
-                 <button type="button" className="primary" disabled={requirementWorking || !validRequiredPeriod(requirementPeriodStart, requirementPeriodEnd, fiscalTimezone, requirementStartOffset, requirementEndOffset)} onClick={() => void exportRequirement()}>
+                 <button type="button" className="primary gestion-module-action" disabled={requirementWorking || !validRequiredPeriod(requirementPeriodStart, requirementPeriodEnd, fiscalTimezone, requirementStartOffset, requirementEndOffset)} onClick={() => void exportRequirement()}>
                   {t("verifactu.compliance.attendRequirement")}
                 </button>
               )}
             </div>
           )}
-          {requirementsError && <p className="gestion-verifactu-message error" role="alert">{t("verifactu.compliance.requirementsError")} <button type="button" onClick={() => setHistoryRefresh((value) => value + 1)}>{t("verifactu.exportJobs.retry")}</button></p>}
+          {requirementsError && <p className="gestion-verifactu-message error" role="alert">{t("verifactu.compliance.requirementsError")} <button type="button" className="gestion-module-action" onClick={() => setHistoryRefresh((value) => value + 1)}>{t("verifactu.exportJobs.retry")}</button></p>}
           {requirementsLoading && <p className="gestion-verifactu-message" role="status">{t("verifactu.exportJobs.loading")}</p>}
           {!requirementsLoading && !requirementsError && requirements.length === 0 && <p className="gestion-verifactu-message">{t("verifactu.exportJobs.empty")}</p>}
-          {!requirementsLoading && !requirementsError && requirements.length > 0 && <><div className="gestion-verifactu-table-scroll">
+          {!requirementsLoading && !requirementsError && requirements.length > 0 && <><div className="gestion-verifactu-table-scroll gestion-module-table">
             <table className="gestion-verifactu-table">
               <colgroup>{visibleRequirementColumns.map((column) => <col key={column.key} style={{ width: `${column.width}px` }} />)}</colgroup>
               <thead><tr>{visibleRequirementColumns.map((column) => (
@@ -616,7 +616,7 @@ export function FiscalComplianceView({
                     {column.key === "reference" && <strong>{item.reference}</strong>}
                     {column.key === "status" && requirementStatusLabel(item.status, t)}
                     {column.key === "generatedAt" && formatVerifactuDateTime(item.requestedAt, locale, fiscalTimezone)}
-                    {column.key === "actions" && canAttendRequirements && item.status === "PENDIENTE" && <button type="button" onClick={() => {
+                    {column.key === "actions" && canAttendRequirements && item.status === "PENDIENTE" && <button type="button" className="gestion-module-action" onClick={() => {
                       setRequirement(item);
                       setRequirementReference(item.reference);
                     }}>{t("verifactu.compliance.selectRequirement")}</button>}
@@ -682,7 +682,7 @@ function ExportFields({
   disabled: boolean;
   t: VerifactuTranslator;
 }) {
-  return <div className="gestion-fiscal-export-fields">
+  return <div className="gestion-fiscal-export-fields gestion-module-fields">
     <label>
       <span>{t("verifactu.compliance.exportKind")}</span>
       <select disabled={disabled} value={exportKind} onChange={(event) => onKindChange(event.target.value as FiscalExportKind)}>

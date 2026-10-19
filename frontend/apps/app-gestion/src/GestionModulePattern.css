@@ -1,0 +1,387 @@
+/* Administration screens share the compact product/warehouse control pattern. */
+@media screen {
+  html[data-app="gestion"] .gestion-module-screen {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    padding: 14px 18px 10px;
+    background: #fff;
+    color: var(--gestion-text);
+  }
+
+  html[data-app="gestion"] header.gestion-module-heading {
+    display: block;
+    flex: 0 0 auto;
+    min-width: 0;
+    margin: 0 0 8px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: none;
+  }
+
+  html[data-app="gestion"] .gestion-module-heading .gestion-module-heading-group {
+    box-sizing: border-box;
+    min-height: 42px;
+    margin: 0;
+    padding: 0 2px 8px;
+    border-bottom: 1px solid var(--gestion-border-dark);
+    color: var(--gestion-navy);
+    font: 900 23px/28px "Segoe UI", Arial, sans-serif;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
+  html[data-app="gestion"] .gestion-module-heading-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    box-sizing: border-box;
+    min-height: 68px;
+    padding: 10px 18px;
+    border-bottom: 1px solid #c7d4e3;
+  }
+
+  html[data-app="gestion"] .gestion-module-heading-copy { min-width: 0; }
+
+  html[data-app="gestion"] .gestion-module-heading-copy h2 {
+    margin: 0;
+    color: var(--gestion-navy);
+    font: 700 24px/28px "Segoe UI", Arial, sans-serif;
+    text-transform: none;
+  }
+
+  html[data-app="gestion"] .gestion-module-heading-copy p {
+    margin: 4px 0 0;
+    color: var(--gestion-muted);
+    font-size: 12px;
+    line-height: 17px;
+  }
+
+  html[data-app="gestion"] .gestion-module-heading-actions { margin-left: auto; }
+
+  html[data-app="gestion"] .gestion-module-heading-actions aside {
+    display: grid;
+    gap: 4px;
+    width: auto;
+    max-width: 320px;
+    padding-left: 12px;
+    border-left: 1px solid #c7d4e3;
+    color: var(--gestion-muted);
+    font-size: 12px;
+  }
+
+  html[data-app="gestion"] .gestion-module-heading-actions aside :is(strong, code) {
+    color: var(--gestion-navy);
+    font: inherit;
+    font-weight: 800;
+  }
+
+  html[data-app="gestion"] .gestion-module-heading-actions aside small { font-size: 12px; }
+
+  html[data-app="gestion"] .gestion-safe-management > header.gestion-module-heading {
+    display: block !important;
+    height: auto;
+    min-height: 0 !important;
+    padding: 0 !important;
+    border-bottom: 0 !important;
+    margin-bottom: 0;
+  }
+
+  html[data-app="gestion"] .gestion-safe-management {
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  html[data-app="gestion"] .gestion-safe-management > [role="tabpanel"] {
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  html[data-app="gestion"] .gestion-safe-management .stock-panel-heading {
+    min-height: 68px !important;
+    padding: 10px 18px !important;
+  }
+
+  html[data-app="gestion"] .gestion-safe-management .stock-panel-heading h2 {
+    margin: 0 !important;
+    color: var(--gestion-navy);
+    font: 700 24px/28px "Segoe UI", Arial, sans-serif !important;
+  }
+
+  html[data-app="gestion"] .gestion-safe-management > .supplier-directory-tab > .party-directory-table {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+
+  html[data-app="gestion"] .gestion-module-screen .member-settings-actions { border-radius: 6px; box-shadow: none; }
+
+  html[data-app="gestion"] :is(.gestion-payment-methods-workspace, .gestion-document-print-workspace) {
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+  }
+
+  html[data-app="gestion"] :is(.gestion-payment-methods-workspace, .gestion-document-print-workspace) > * { flex-shrink: 0; }
+
+  html[data-app="gestion"] .member-settings-screen {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: auto;
+  }
+
+  html[data-app="gestion"] .member-settings-screen > * { flex-shrink: 0; }
+
+  html[data-app="gestion"] .gestion-operation-security-row {
+    min-width: 960px;
+    grid-template-columns: minmax(190px, 1.15fr) minmax(110px, .65fr) minmax(185px, 1fr) 112px 122px minmax(240px, 1.25fr);
+  }
+
+  html[data-app="gestion"] .gestion-operation-security-group { min-width: 960px; }
+
+  html[data-app="gestion"] :is(.gestion-safe-management, .erp-management-screen.gestion-party-screen) .party-directory-toolbar--classic {
+    grid-template-columns: minmax(200px, 1fr) 170px auto auto max-content;
+  }
+
+  html[data-app="gestion"] :is(.gestion-safe-management, .erp-management-screen.gestion-party-screen) .gestion-party-output-actions {
+    flex-wrap: nowrap;
+    width: max-content;
+    align-self: end;
+  }
+
+  html[data-app="gestion"] :is(.gestion-safe-management, .erp-management-screen.gestion-party-screen) .party-directory-result-count { align-self: center; }
+
+  html[data-app="gestion"] :is(.gestion-safe-management, .erp-management-screen.gestion-party-screen) .party-directory-table {
+    border: 1px solid #b5c3d2;
+    border-radius: 6px !important;
+    box-shadow: none;
+  }
+
+  html[data-app="gestion"] .gestion-safe-management .gestion-safe-management-tabs {
+    padding: 8px 18px;
+    border: 0;
+    background: #fff;
+  }
+
+  html[data-app="gestion"] .gestion-module-panel,
+  html[data-app="gestion"] .gestion-module-table {
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 0;
+    border-radius: 6px;
+    box-shadow: none;
+  }
+
+  html[data-app="gestion"] .gestion-module-panel:not(:where(.gestion-verifactu-decision, .gestion-verifactu-certificate-state, .gestion-verifactu-diagnostic-banner, .gestion-verifactu-fiscal-strip)),
+  html[data-app="gestion"] .gestion-module-table {
+    border: 1px solid #b5c3d2;
+    background: #fff;
+  }
+
+  html[data-app="gestion"] .gestion-module-table { overflow: auto; }
+
+  html[data-app="gestion"] .gestion-module-screen :is(.gestion-security-grid, .gestion-role-layout),
+  html[data-app="gestion"] .gestion-security-dialog {
+    border-radius: 6px;
+    box-shadow: none;
+  }
+
+  html[data-app="gestion"] .gestion-module-screen :is(.gestion-terminal-layout, .gestion-terminal-summary > div) { border-radius: 6px; }
+
+  html[data-app="gestion"] .gestion-module-panel > :is(header, .gestion-verifactu-fiscal-primary):first-child {
+    border-radius: 5px 5px 0 0;
+  }
+
+  html[data-app="gestion"] .gestion-verifactu-navigation {
+    gap: 8px;
+    border: 0;
+    background: #fff;
+  }
+
+  html[data-app="gestion"] .gestion-verifactu-navigation > .gestion-module-heading { grid-column: 1 / -1; margin-bottom: 0; }
+
+  html[data-app="gestion"] .gestion-verifactu-tabs.gestion-toolbar-actions {
+    gap: 6px;
+    overflow: visible;
+    background: #fff;
+  }
+
+  html[data-app="gestion"] .gestion-verifactu-view { overflow: auto; }
+
+  html[data-app="gestion"] .gestion-fiscal-compliance {
+    height: auto;
+    min-height: 100%;
+    align-content: start;
+  }
+
+  html[data-app="gestion"] .fiscal-workspace-dialog-purpose-export .gestion-fiscal-export-fields > label {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+    color: var(--gestion-muted);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  html[data-app="gestion"] :is(.gestion-verifactu-queue, .gestion-verifactu-defective) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  html[data-app="gestion"] :is(.gestion-verifactu-queue, .gestion-verifactu-defective) > .gestion-verifactu-table-panel {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+
+  html[data-app="gestion"] .gestion-verifactu-refresh {
+    align-self: start;
+    min-height: 34px;
+    padding: 0 10px;
+    border: 1px solid #68737e;
+    border-radius: 4px;
+    background: #eef1f4;
+    box-shadow: none;
+  }
+
+  html[data-app="gestion"] .gestion-verifactu-refresh:focus-visible { outline: 2px solid #0065fe; outline-offset: 1px; }
+
+  html[data-app="gestion"] .gestion-verifactu-sandbox.gestion-module-panel {
+    border-color: #c9a86f;
+    background: #fff7e8;
+  }
+
+  html[data-app="gestion"] .gestion-verifactu-status.gestion-module-panel.active { border-left: 6px solid var(--gestion-positive); background: #f4faf6; }
+  html[data-app="gestion"] .gestion-verifactu-status.gestion-module-panel.inactive { border-left: 6px solid #a46a16; background: #fff9ef; }
+
+  html[data-app="gestion"] .gestion-verifactu-metrics.gestion-module-panel { overflow: hidden; }
+  html[data-app="gestion"] .gestion-verifactu-metrics > .gestion-verifactu-metric { border: 0; border-right: 1px solid #c9d1d8; border-radius: 0; }
+  html[data-app="gestion"] .gestion-verifactu-metrics > .gestion-verifactu-metric:last-child { border-right: 0; }
+
+  html[data-app="gestion"] .gestion-module-table > table {
+    width: 100%;
+    margin: 0;
+  }
+
+  html[data-app="gestion"] .gestion-module-table > table > thead > tr > th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #12385f;
+    color: #fff;
+  }
+
+  html[data-app="gestion"] .gestion-module-screen :where(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not([type="range"]), select, .erp-select__trigger, .erp-multi-select__trigger),
+  html[data-app="gestion"] .gestion-module-fields :where(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not([type="range"]), select, .erp-select__trigger, .erp-multi-select__trigger) {
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 34px;
+    border: 1px solid #aebfd0;
+    border-radius: 4px;
+    background-color: #fff;
+    color: #12385f;
+    font: inherit;
+    box-shadow: none;
+  }
+
+  html[data-app="gestion"] :is(.gestion-module-screen, .gestion-module-fields) textarea {
+    box-sizing: border-box;
+    min-width: 0;
+    border: 1px solid #aebfd0;
+    border-radius: 4px;
+    font: inherit;
+    box-shadow: none;
+  }
+
+  html[data-app="gestion"] :is(.gestion-module-screen, .gestion-module-fields) select {
+    --gestion-module-select-arrow: #12385f;
+    appearance: none;
+    padding-inline: 10px 50px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 20 20'%3E%3Cpath d='m4 7 6 6 6-6' fill='none' stroke='white' stroke-width='2.5'/%3E%3C/svg%3E"), linear-gradient(to left, var(--gestion-module-select-arrow) 42px, transparent 42px);
+    background-position: right 12px center, right center;
+    background-size: 18px 18px, 100% 100%;
+    background-repeat: no-repeat;
+  }
+
+  html[data-app="gestion"] :is(.gestion-module-screen, .gestion-module-fields) select:is(:hover, :focus-visible) { --gestion-module-select-arrow: #0065fe; }
+
+  html[data-app="gestion"] :is(.gestion-module-screen, .gestion-module-fields) :is(input, select, textarea):focus-visible {
+    border-color: #0065fe;
+    outline: 2px solid #0065fe;
+    outline-offset: 1px;
+  }
+
+  html[data-app="gestion"] :is(.gestion-module-screen, .gestion-module-fields) :is(.erp-select__arrow, .erp-multi-select__arrow) {
+    border-radius: 0 4px 4px 0;
+    background: #12385f;
+    color: #fff;
+  }
+
+  html[data-app="gestion"] :is(.gestion-module-screen, .gestion-module-fields) :is(.erp-select__trigger, .erp-multi-select__trigger):is(:focus-visible, [aria-expanded="true"]) {
+    border-color: #0065fe;
+  }
+
+  html[data-app="gestion"] :is(.gestion-module-screen, .gestion-module-fields) :is(.erp-select__trigger, .erp-multi-select__trigger):is(:focus-visible, [aria-expanded="true"]) :is(.erp-select__arrow, .erp-multi-select__arrow) {
+    background: #0065fe;
+  }
+
+  @media (max-width: 700px) {
+    html[data-app="gestion"] .gestion-module-screen { padding: 10px; }
+    html[data-app="gestion"] .gestion-module-heading-row { padding: 10px 4px; }
+    html[data-app="gestion"] .gestion-module-heading-actions { margin-left: 0; }
+  }
+
+  @media (max-width: 1200px) {
+    html[data-app="gestion"] :is(.gestion-safe-management, .erp-management-screen.gestion-party-screen) .party-directory-toolbar--classic { grid-template-columns: minmax(180px, 1fr) 150px auto auto; }
+    html[data-app="gestion"] :is(.gestion-safe-management, .erp-management-screen.gestion-party-screen) .gestion-party-output-actions { grid-column: 1 / -1; grid-row: 3; justify-self: end; }
+    html[data-app="gestion"] :is(.gestion-safe-management, .erp-management-screen.gestion-party-screen) .party-directory-filter-fields { grid-row: 4; }
+  }
+
+  @media (max-width: 760px) {
+    html[data-app="gestion"] :is(.gestion-safe-management, .erp-management-screen.gestion-party-screen) .party-directory-toolbar--classic { grid-template-columns: minmax(0, 1fr) 150px; }
+    html[data-app="gestion"] :is(.gestion-safe-management, .erp-management-screen.gestion-party-screen) .gestion-party-output-actions { grid-column: 1 / -1; grid-row: 5; flex-wrap: wrap; width: auto; }
+    html[data-app="gestion"] :is(.gestion-safe-management, .erp-management-screen.gestion-party-screen) .party-directory-filter-fields { grid-row: 6; }
+  }
+}
+
+@layer gestion-accents {
+  @media screen {
+    html[data-app="gestion"] button.gestion-module-action,
+    html[data-app="gestion"] .gestion-module-screen :is(.gestion-verifactu-pagination button, .gestion-verifactu-link-button) {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      box-sizing: border-box;
+      min-height: 34px !important;
+      padding: 0 10px;
+      border: 1px solid #68737e !important;
+      border-radius: 4px !important;
+      background: #eef1f4 !important;
+      color: #092b53 !important;
+      font-size: 11px !important;
+      font-weight: 800;
+      line-height: 1.2;
+      box-shadow: none !important;
+    }
+    html[data-app="gestion"] button.gestion-module-action:is(.primary, .gestion-verifactu-primary-action):not(:disabled) {
+      border-color: #0065fe !important;
+      background: #0065fe !important;
+      color: #fff !important;
+    }
+    html[data-app="gestion"] button.gestion-module-action:is(.danger, .destructive) {
+      border-color: #b4232e !important;
+      background: #fff !important;
+      color: #b4232e !important;
+    }
+    html[data-app="gestion"] button.gestion-module-action:disabled { opacity: .5; cursor: not-allowed; }
+    html[data-app="gestion"] button.gestion-module-action:focus-visible { outline: 2px solid #0065fe; outline-offset: 1px; }
+    html[data-app="gestion"] button.gestion-module-action:hover:not(:disabled) { border-color: #0065fe !important; }
+  }
+}

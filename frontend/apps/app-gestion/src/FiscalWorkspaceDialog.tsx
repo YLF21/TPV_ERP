@@ -94,7 +94,7 @@ export function FiscalWorkspaceDialog({
 
   const isDrawer = variant === "drawer";
   const dialogClassName = [
-    isDrawer ? "fiscal-workspace-dialog fiscal-workspace-dialog-drawer" : "fiscal-workspace-dialog",
+    isDrawer ? "fiscal-workspace-dialog fiscal-workspace-dialog-drawer gestion-module-panel" : "fiscal-workspace-dialog gestion-module-panel",
     `fiscal-workspace-dialog-purpose-${purpose}`,
     className
   ].filter(Boolean).join(" ");
@@ -121,8 +121,8 @@ export function FiscalWorkspaceDialog({
             ×
           </WindowCloseButton>
         </header>
-        <div className="fiscal-workspace-dialog-body">{children}</div>
-        {footer && <footer className="erp-dialog-actions-row">{footer}</footer>}
+        <div className="fiscal-workspace-dialog-body gestion-module-fields">{children}</div>
+        {footer && <footer className="erp-dialog-actions-row gestion-toolbar-actions">{footer}</footer>}
       </section>
     </div>,
     document.body

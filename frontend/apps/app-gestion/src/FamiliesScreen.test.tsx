@@ -93,11 +93,46 @@ describe("FamiliesScreen", () => {
     expect(screen.getByRole("group", { name: "Filtros aplicados" })).toHaveTextContent(kind === "subfamily" ? "Subfamilia: 001001 · Agua" : "Familia: 001 · Bebidas");
     const loads = request.mock.calls.filter(([path]) => path.startsWith("/families/products?")).length;
     fireEvent.click(screen.getByRole("button", { name: `Quitar filtro ${kind === "subfamily" ? "Subfamilia" : "Familia"}` }));
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    const table = screen.getByRole("table");
+    expect(within(table.querySelector("tbody")!).getByText("Selecciona una familia o subfamilia.")).toBeInTheDocument();
+    expect(within(table).getByRole("checkbox", { name: "Seleccionar productos cargados" })).toBeDisabled();
+    expect(within(table).queryByText("Agua producto")).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Mover" })).not.toBeInTheDocument();
     expect(request.mock.calls.filter(([path]) => path.startsWith("/families/products?"))).toHaveLength(loads);
     await waitFor(() => expect(screen.getByRole("treeitem", { name: /GENERAL/ })).toHaveFocus());
+  });
+
+  it("keeps the product table visible before selection and for an empty family", async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path === "/families") return families;
+      if (path === DRINK_PRODUCTS_NAME_ASC)
+        return { items: [], hasMore: false };
+      return [];
+    });
+    renderScreen(request as unknown as typeof apiRequest);
+    await screen.findByText("Bebidas");
+
+    const table = screen.getByRole("table");
+    const expectEmptyTable = () => {
+      const headers = within(table).getAllByRole("columnheader");
+      expect(headers).toHaveLength(5);
+      ["Imagen", "Código", "Nombre", "Precio venta"].forEach((label, index) => {
+        expect(headers[index + 1]).toHaveTextContent(label);
+      });
+      const body = table.querySelector("tbody")!;
+      expect(within(body).getAllByRole("row")).toHaveLength(1);
+      expect(within(body).getByText("Selecciona una familia o subfamilia.")).toBeInTheDocument();
+      expect(within(table).getByRole("checkbox", { name: "Seleccionar productos cargados" })).toBeDisabled();
+    };
+
+    expectEmptyTable();
+    expect(request.mock.calls.filter(([path]) => path.startsWith("/families/products?"))).toHaveLength(0);
+    expect(within(table).queryByRole("button", { name: /Ordenar por/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Bebidas"));
+    await waitFor(() => expect(request).toHaveBeenCalledWith(DRINK_PRODUCTS_NAME_ASC, { token: "token" }));
+    await waitFor(() => expectEmptyTable());
   });
 
   it("renders the catalogue as a two-pane workspace using the shared ERP table", async () => {

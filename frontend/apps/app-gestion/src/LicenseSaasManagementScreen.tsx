@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, apiRequest, type LocaleCode, type UserSession } from "@tpverp/app-common";
 import { GestionTableSearch, matchesGestionTableSearch } from "./GestionTableSearch";
+import { GestionModuleHeading } from "./GestionModuleHeading";
 import {
   linkSaasLicense,
   loadLicenseHistory,
@@ -135,19 +136,14 @@ export function LicenseSaasManagementScreen({
   }
 
   return (
-    <section className="gestion-workspace gestion-license-workspace">
-      <header className="gestion-license-heading">
-        <div>
-          <span>{t("gestion.configuration.navigation")}</span>
-          <h2>{t("gestion.licenses.title")}</h2>
-          <p>{t("gestion.licenses.description")}</p>
-        </div>
+    <section className="gestion-workspace gestion-license-workspace gestion-module-screen">
+      <GestionModuleHeading className="gestion-license-heading" group={t("gestion.navigation.group.configuration")} title={t("gestion.licenses.title")} description={t("gestion.licenses.description")}>
         <aside>
           <span>{t("gestion.licenses.store")}</span>
           <strong>{storeName}</strong>
           <small>{canManage ? t("gestion.licenses.adminScope") : t("gestion.licenses.readOnlyScope")}</small>
         </aside>
-      </header>
+      </GestionModuleHeading>
 
       {message && (
         <p className={`gestion-license-message ${message.kind}`} role={message.kind === "error" ? "alert" : "status"}>
@@ -156,7 +152,7 @@ export function LicenseSaasManagementScreen({
       )}
 
       <section className="gestion-license-summary" aria-label={t("gestion.licenses.current") }>
-        <div className="gestion-license-current">
+        <div className="gestion-license-current gestion-module-panel">
           <header>
             <div>
               <span>{t("gestion.licenses.current")}</span>
@@ -182,7 +178,7 @@ export function LicenseSaasManagementScreen({
           ) : (
             <p className="gestion-license-state">{t("gestion.licenses.empty")}</p>
           )}
-          <footer>
+          <footer className="gestion-toolbar-actions">
             <button type="button" disabled={busy !== null} onClick={() => void refresh(true)}>
               {busy === "refresh" ? t("gestion.licenses.refreshing") : t("gestion.licenses.refresh")}
             </button>
@@ -192,7 +188,7 @@ export function LicenseSaasManagementScreen({
           </footer>
         </div>
 
-        <form className="gestion-license-pairing" onSubmit={submitPairing}>
+        <form className="gestion-license-pairing gestion-module-panel gestion-module-fields" onSubmit={submitPairing}>
           <header>
             <span>{t("gestion.licenses.pairingEyebrow")}</span>
             <h3>{t("gestion.licenses.pairingTitle")}</h3>
@@ -209,14 +205,14 @@ export function LicenseSaasManagementScreen({
               placeholder={t("gestion.licenses.pairingPlaceholder")}
             />
           </label>
-          <button type="submit" disabled={!canManage || busy !== null || !pairingCode.trim()}>
+          <div className="gestion-toolbar-actions"><button type="submit" disabled={!canManage || busy !== null || !pairingCode.trim()}>
             {busy === "link" ? t("gestion.licenses.linking") : t("gestion.licenses.link")}
-          </button>
+          </button></div>
           <small>{canManage ? t("gestion.licenses.pairingSecurity") : t("gestion.licenses.adminRequired")}</small>
         </form>
       </section>
 
-      <section className="gestion-license-history">
+      <section className="gestion-license-history gestion-module-panel">
         <header>
           <div>
             <h3>{t("gestion.licenses.history")}</h3>
@@ -225,7 +221,7 @@ export function LicenseSaasManagementScreen({
           <strong>{visibleHistory.length}</strong>
         </header>
         <GestionTableSearch value={query} onChange={setQuery} t={t} />
-        <div className="gestion-license-table" role="table" aria-label={t("gestion.licenses.history") }>
+        <div className="gestion-license-table gestion-module-table" role="table" aria-label={t("gestion.licenses.history") }>
           <div className="head" role="row">
             <span role="columnheader">{t("gestion.licenses.reference")}</span>
             <span role="columnheader">{t("gestion.licenses.period")}</span>

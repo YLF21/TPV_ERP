@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ApiError, apiRequest, type UserSession } from "@tpverp/app-common";
 import "./StoreDocumentPrintSettingsScreen.css";
+import { GestionModuleHeading } from "./GestionModuleHeading";
 import {
   loadStoreDocumentPrintConfiguration,
   removeStoreDocumentLogo,
@@ -154,29 +155,24 @@ export function StoreDocumentPrintSettingsScreen({
   const preview = pendingPreview ?? configuration?.logo?.dataUri ?? null;
 
   return (
-    <section className="gestion-workspace gestion-document-print-workspace">
-      <header className="gestion-document-print-header">
-        <div>
-          <span>{t("gestion.configuration.navigation")}</span>
-          <h2>{t("gestion.documentPrint.title")}</h2>
-          <p>{t("gestion.documentPrint.description")}</p>
-        </div>
+    <section className="gestion-workspace gestion-document-print-workspace gestion-module-screen">
+      <GestionModuleHeading className="gestion-document-print-header" group={t("gestion.navigation.group.configuration")} title={t("gestion.documentPrint.title")} description={t("gestion.documentPrint.description")}>
         <aside>
           <strong>{t("gestion.documentPrint.storeScope")}</strong>
           <small>{storeName}</small>
         </aside>
-      </header>
+      </GestionModuleHeading>
 
       {message && <p className={`gestion-document-print-message ${message.kind}`} role={message.kind === "error" ? "alert" : "status"}>{message.text}</p>}
 
       {loading ? <p className="gestion-document-print-loading">{t("common.loading")}</p> : (
         <>
-          <section className="gestion-document-name-panel" aria-labelledby="document-name-title">
+          <section className="gestion-document-name-panel gestion-module-panel gestion-module-fields" aria-labelledby="document-name-title">
             <div>
               <h3 id="document-name-title">{t("gestion.documentPrint.storeName")}</h3>
               <p>{t("gestion.documentPrint.storeNameHelp")}</p>
             </div>
-            <div className="gestion-document-name-control">
+            <div className="gestion-document-name-control gestion-toolbar-actions">
               <span className={configuration?.showStoreName ? "is-visible" : "is-hidden"}>
                 {t(configuration?.showStoreName
                   ? "gestion.documentPrint.storeNameVisible"
@@ -196,7 +192,7 @@ export function StoreDocumentPrintSettingsScreen({
             </div>
           </section>
 
-          <section className="gestion-document-logo-panel" aria-labelledby="document-logo-title">
+          <section className="gestion-document-logo-panel gestion-module-panel gestion-module-fields" aria-labelledby="document-logo-title">
             <div className={`gestion-document-logo-preview ${preview ? "has-logo" : ""}`}>
               {preview ? <img src={preview} alt={t("gestion.documentPrint.logoPreview")} /> : <span>{t("gestion.documentPrint.noLogo")}</span>}
             </div>
@@ -217,7 +213,7 @@ export function StoreDocumentPrintSettingsScreen({
             </div>
           </section>
 
-          <section className="gestion-document-observations-panel" aria-labelledby="document-observations-title">
+          <section className="gestion-document-observations-panel gestion-module-panel gestion-module-fields" aria-labelledby="document-observations-title">
             <header>
               <h3 id="document-observations-title">{t("gestion.documentPrint.observations")}</h3>
               <p>{t("gestion.documentPrint.observationsHelp")}</p>
@@ -236,7 +232,7 @@ export function StoreDocumentPrintSettingsScreen({
                 </label>
               ))}
             </div>
-            <footer>
+            <footer className="gestion-toolbar-actions">
               <button type="button" className="gestion-primary-button" disabled={!canManage || busy !== null} onClick={() => void saveObservations()}>{t("gestion.documentPrint.saveObservations")}</button>
             </footer>
           </section>

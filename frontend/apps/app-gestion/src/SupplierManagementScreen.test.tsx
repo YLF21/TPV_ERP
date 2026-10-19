@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type UserSession } from "@tpverp/app-common";
+import { createTranslator, type UserSession } from "@tpverp/app-common";
 import { SupplierManagementScreen } from "./SupplierManagementScreen";
 
 const request = vi.hoisted(() => vi.fn());
@@ -139,21 +139,50 @@ describe("SupplierManagementScreen", () => {
   });
 });
 
-it("selects a representative and opens the editor with F7 while F8 creates a new record", async () => {
- request.mockImplementation(async (path: string) => path.startsWith("/sales-representatives/management/page") ? {items:[{id:"rep-1",version:1,commercialId:"COM-001",name:"Ana",active:true,suppliers:[]}],hasMore:false} : []);
- render(<SupplierManagementScreen locale="es" session={adminSession}/>);
- fireEvent.click(screen.getByRole("tab",{name:"Comerciales de proveedor"}));
- expect(screen.getByRole("button",{name:"Modificar comercial F7"})).toBeDisabled();
- expect(screen.getByRole("button",{name:"Retirar de forma segura F9"})).toBeDisabled();
- fireEvent.click(await screen.findByText("COM-001"),{detail:1});
- expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
- expect(screen.getByRole("button",{name:"Retirar de forma segura F9"})).toBeEnabled();
- fireEvent.keyDown(window,{key:"F7"});
- expect(await screen.findByDisplayValue("Ana")).toBeInTheDocument();
- fireEvent.keyDown(window,{key:"F8"});
- expect(screen.getByDisplayValue("Ana")).toBeInTheDocument();
-  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button",{name:"Cerrar"}));
- fireEvent.keyDown(window,{key:"F8"});
- expect(screen.queryByDisplayValue("Ana")).not.toBeInTheDocument();
- expect(screen.getByRole("dialog",{name:"Nuevo comercial"})).toBeInTheDocument();
+it("selects a representative and opens the editor with F7 while F5 creates a new record", async () => {
+  request.mockImplementation(async (path: string) => path.startsWith("/sales-representatives/management/page") ? {
+    items: [{ id: "rep-1", version: 1, commercialId: "COM-001", name: "Ana", active: true, suppliers: [] }],
+    nextCursor: null,
+    hasMore: false,
+  } : []);
+  const t = createTranslator("es");
+
+  render(<SupplierManagementScreen locale="es" session={adminSession} />);
+  fireEvent.click(screen.getByRole("tab", { name: t("safeManagement.suppliers.tab.representatives") }));
+  expect(screen.getByRole("button", { name: "Modificar comercial F7" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Retirar de forma segura F9" })).toBeDisabled();
+  fireEvent.click(await screen.findByText("COM-001"), { detail: 1 });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Retirar de forma segura F9" })).toBeEnabled();
+  fireEvent.keyDown(window, { key: "F7" });
+  expect(await screen.findByDisplayValue("Ana")).toBeInTheDocument();
+  fireEvent.keyDown(window, { key: "F5" });
+  expect(screen.getByDisplayValue("Ana")).toBeInTheDocument();
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: t("common.close") }));
+  fireEvent.keyDown(window, { key: "F5" });
+  expect(screen.queryByDisplayValue("Ana")).not.toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: t("safeManagement.representatives.new") })).toBeInTheDocument();
+});
+
+it.each(["es", "en", "zh"] as const)("opens new representative with F5 in %s and ignores F8", async (locale) => {
+  const t = createTranslator(locale);
+  request.mockImplementation(async (path: string) => path.startsWith("/sales-representatives/management/page")
+    ? { items: [], nextCursor: null, hasMore: false }
+    : []);
+
+  render(<SupplierManagementScreen locale={locale} session={adminSession} />);
+  fireEvent.click(screen.getByRole("tab", { name: t("safeManagement.suppliers.tab.representatives") }));
+  expect(await screen.findByText(t("safeManagement.representatives.empty"))).toBeInTheDocument();
+
+  const newButton = screen.getByRole("button", { name: new RegExp(`${t("safeManagement.representatives.new")}\\s*F5`) });
+  expect(newButton).toHaveAttribute("aria-keyshortcuts", "F5");
+  fireEvent.keyDown(window, { key: "F8" });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+  fireEvent.keyDown(window, { key: "F5" });
+  const dialog = screen.getByRole("dialog", { name: t("safeManagement.representatives.new") });
+  expect(dialog).toBeInTheDocument();
+  fireEvent.keyDown(window, { key: "F5" });
+  expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  expect(screen.getByRole("dialog", { name: t("safeManagement.representatives.new") })).toBe(dialog);
 });

@@ -1,5 +1,6 @@
 import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
+import { ArrowsLeftRight, PencilSimple, Plus, Trash } from "@phosphor-icons/react";
 import {
   useCallback,
   useEffect,
@@ -351,11 +352,11 @@ function ProductTable({
       aria-labelledby="families-products-title"
       aria-busy={loading}
     >
-      <header className="gestion-families-products-header">
+      <header className="gestion-families-products-header gestion-filter-toolbar">
         <div>
-          <h2 id="families-products-title">
+          <h3 id="families-products-title">
             {t("gestion.families.productsTitle")}
-          </h2>
+          </h3>
           <p>
             {page
               ? translated(
@@ -365,7 +366,7 @@ function ProductTable({
                     : "gestion.families.productsCount",
                   { count: page.total ?? page.items.length },
                 )
-              : t("gestion.families.selectNode")}
+              : translated(t, "gestion.families.productsCount", { count: 0 })}
           </p>
           <ErpFilterChips translate={t} chips={filterChips} focusRef={filterFocusRef} />
         </div>
@@ -375,18 +376,7 @@ function ProductTable({
           {error}
         </p>
       )}
-      {loading && !page ? (
-        <div className="gestion-families-product-state">
-          {t("gestion.families.productsLoading")}
-        </div>
-      ) : !page ? (
-        error ? null : (
-          <div className="gestion-families-product-state">
-            {t("gestion.families.selectNode")}
-          </div>
-        )
-      ) : (
-        <>
+      <>
           <div
             ref={scrollRef}
             className="gestion-families-products-table-wrap"
@@ -395,7 +385,7 @@ function ProductTable({
               if (
                 scroll &&
                 !loading &&
-                page.hasMore &&
+                page?.hasMore &&
                 scroll.clientHeight > 0 &&
                 scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <=
                   120
@@ -421,36 +411,37 @@ function ProductTable({
                       checked={
                         visible.length > 0 && selectedVisible === visible.length
                       }
+                      disabled={visible.length === 0}
                       onChange={(event) => onTogglePage(event.target.checked)}
                     />
                   </th>
                   <th scope="col">{t("gestion.families.thumbnail")}</th>
                   <th scope="col" aria-sort={ariaSort("code")}>
-                    <TableSortButton
+                    {page ? <TableSortButton
                       label={sortLabel(codeLabel)}
                       direction={sortDirection("code")}
                       onSort={() => onSort("code")}
                     >
                       {codeLabel}
-                    </TableSortButton>
+                    </TableSortButton> : codeLabel}
                   </th>
                   <th scope="col" aria-sort={ariaSort("name")}>
-                    <TableSortButton
+                    {page ? <TableSortButton
                       label={sortLabel(nameLabel)}
                       direction={sortDirection("name")}
                       onSort={() => onSort("name")}
                     >
                       {nameLabel}
-                    </TableSortButton>
+                    </TableSortButton> : nameLabel}
                   </th>
                   <th scope="col" className="numeric" aria-sort={ariaSort("salePrice")}>
-                    <TableSortButton
+                    {page ? <TableSortButton
                       label={sortLabel(salePriceLabel)}
                       direction={sortDirection("salePrice")}
                       onSort={() => onSort("salePrice")}
                     >
                       {salePriceLabel}
-                    </TableSortButton>
+                    </TableSortButton> : salePriceLabel}
                   </th>
                 </tr>
               </thead>
@@ -530,13 +521,15 @@ function ProductTable({
                 {visible.length === 0 && (
                   <tr>
                     <td colSpan={5} className="gestion-families-product-state">
-                      {t("gestion.families.productsEmpty")}
+                      <span role={loading ? "status" : undefined}>
+                        {t(loading ? "gestion.families.productsLoading" : "gestion.families.selectNode")}
+                      </span>
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
-            {loading && (
+            {loading && visible.length > 0 && (
               <div
                 className="gestion-families-products-load-more"
                 role="status"
@@ -546,8 +539,7 @@ function ProductTable({
               </div>
             )}
           </div>
-        </>
-      )}
+      </>
     </section>
   );
 }
@@ -1589,16 +1581,32 @@ export function FamiliesScreen({
       aria-labelledby="families-title"
     >
       <header className="gestion-families-heading">
-        <div>
-          <span className="gestion-section-kicker">
-            {t("gestion.families.navigation")}
-          </span>
-          <h1 id="families-title">{t("gestion.families.title")}</h1>
-          <p>{t("gestion.families.description")}</p>
+        <h1 className="gestion-families-module-title">{t("stock.products.title")}</h1>
+        <div className="gestion-families-titlebar">
+          <h2 id="families-title">{t("gestion.families.navigation")}</h2>
+          {canManage && (
+            <div className="management-record-actions gestion-toolbar-actions">
+              <button
+                type="button"
+                className="primary"
+                disabled={busy}
+                onClick={() => void openNewFamily()}
+              >
+                <Plus size={16} weight="bold" aria-hidden="true" />
+                {t("gestion.families.newFamily")}
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={busy}
+                onClick={() => void openNewSubfamily()}
+              >
+                <Plus size={16} weight="bold" aria-hidden="true" />
+                {t("gestion.families.newSubfamily")}
+              </button>
+            </div>
+          )}
         </div>
-        <span className="gestion-families-scope">
-          {t("gestion.families.storeScope")}
-        </span>
       </header>
       {error && !editor && !impact && !moveOpen && !generalConfirm && (
         <p className="gestion-error" role="alert">
@@ -1617,29 +1625,12 @@ export function FamiliesScreen({
           >
             <header>
               <div>
-                <h2 id="family-tree-title">{t("gestion.families.families")}</h2>
+                <h3 id="family-tree-title">{t("gestion.families.families")}</h3>
                 <span>{t("gestion.families.familyHint")}</span>
               </div>
-              {canManage && (
-                <div className="gestion-families-tree-actions">
-                  <button
-                    type="button"
-                    className="primary"
-                    disabled={busy}
-                    onClick={() => void openNewFamily()}
-                  >
-                    {t("gestion.families.newFamily")}
-                  </button>
-                  <button
-                    type="button"
-                    className="primary"
-                    disabled={busy}
-                    onClick={() => void openNewSubfamily()}
-                  >
-                    {t("gestion.families.newSubfamily")}
-                  </button>
-                </div>
-              )}
+              <span className="gestion-families-scope">
+                {t("gestion.families.storeScope")}
+              </span>
             </header>
             <div
               className="gestion-families-tree"
@@ -1711,28 +1702,34 @@ export function FamiliesScreen({
                     {family.defaultFamily && (
                       <em>{t("gestion.families.general")}</em>
                     )}
-                    <div className="gestion-row-actions">
+                    <div className="gestion-row-actions gestion-toolbar-actions">
                       <button
                         type="button"
                         tabIndex={-1}
+                        aria-label={t("common.edit")}
+                        title={t("common.edit")}
                         disabled={!canManage || family.defaultFamily || busy}
                         onClick={(event) => {
                           event.stopPropagation();
                           openEditFamily(family);
                         }}
                       >
-                        {t("common.edit")}
+                        <PencilSimple size={14} aria-hidden="true" />
+                        <span>{t("common.edit")}</span>
                       </button>
                       <button
                         type="button"
                         tabIndex={-1}
+                        aria-label={t("common.delete")}
+                        title={t("common.delete")}
                         disabled={!canManage || family.defaultFamily || busy}
                         onClick={(event) => {
                           event.stopPropagation();
                           void askDelete("family", family.id);
                         }}
                       >
-                        {t("common.delete")}
+                        <Trash size={14} aria-hidden="true" />
+                        <span>{t("common.delete")}</span>
                       </button>
                     </div>
                   </div>
@@ -1776,28 +1773,34 @@ export function FamiliesScreen({
                           <span className="gestion-family-tree-name">
                             {subfamily.name}
                           </span>
-                          <div className="gestion-row-actions">
+                          <div className="gestion-row-actions gestion-toolbar-actions">
                             <button
                               type="button"
                               tabIndex={-1}
+                              aria-label={t("common.edit")}
+                              title={t("common.edit")}
                               disabled={!canManage || busy}
                               onClick={(event) => {
                                 event.stopPropagation();
                                 openEditSubfamily(subfamily);
                               }}
                             >
-                              {t("common.edit")}
+                              <PencilSimple size={14} aria-hidden="true" />
+                              <span>{t("common.edit")}</span>
                             </button>
                             <button
                               type="button"
                               tabIndex={-1}
+                              aria-label={t("common.delete")}
+                              title={t("common.delete")}
                               disabled={!canManage || busy}
                               onClick={(event) => {
                                 event.stopPropagation();
                                 void askDelete("subfamily", subfamily.id);
                               }}
                             >
-                              {t("common.delete")}
+                              <Trash size={14} aria-hidden="true" />
+                              <span>{t("common.delete")}</span>
                             </button>
                           </div>
                         </div>
@@ -1832,7 +1835,7 @@ export function FamiliesScreen({
                     count: selectedProductIds.size,
                   })}
                 </span>
-                <div>
+                <div className="gestion-toolbar-actions">
                   <button
                     type="button"
                     onClick={() => {
@@ -1841,6 +1844,7 @@ export function FamiliesScreen({
                     }}
                     disabled={busy}
                   >
+                    <ArrowsLeftRight size={16} aria-hidden="true" />
                     {t("gestion.families.move")}
                   </button>
                   <button
@@ -1848,6 +1852,7 @@ export function FamiliesScreen({
                     onClick={() => setGeneralConfirm(true)}
                     disabled={busy}
                   >
+                    <ArrowsLeftRight size={16} aria-hidden="true" />
                     {t("gestion.families.moveGeneral")}
                   </button>
                 </div>
@@ -2109,7 +2114,7 @@ export function FamiliesScreen({
                 {error}
               </p>
             )}
-            <label className="gestion-family-move-search">
+            <label className="gestion-family-move-search gestion-filter-toolbar">
               <span>{t("gestion.families.search")}</span>
               <GestionSearchFrame>
                 <input

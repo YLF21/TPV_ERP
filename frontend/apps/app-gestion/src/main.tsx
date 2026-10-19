@@ -31,6 +31,7 @@ import "./GestionDateFilters.css";
 import "./GestionToolbarLayout.css";
 import "./GestionSharedToolbarOrder.css";
 import "./GestionPartyDirectory.css";
+import "./GestionModulePattern.css";
 import LoginScreen from "./GestionLoginScreen";
 import { canManageFamilies, canManageTaxes, visibleGestionModules } from "./gestionAccess";
 import { GestionDashboard } from "./GestionDashboard";
