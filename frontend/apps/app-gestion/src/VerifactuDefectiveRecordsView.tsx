@@ -178,7 +178,7 @@ export function VerifactuDefectiveRecordsView({
           <button type="submit" form="verifactu-defective-filters-form" className="primary erp-dialog-action-confirm">{t("verifactu.management.applyFilters")}</button>
         </>}
       >
-      <form id="verifactu-defective-filters-form" className="gestion-verifactu-filters gestion-filter-toolbar" onSubmit={(event) => { apply(event); }}>
+      <form id="verifactu-defective-filters-form" className="gestion-verifactu-filters gestion-filter-toolbar gestion-module-fields" onSubmit={(event) => { apply(event); }}>
         <label>
           <span>{t("verifactu.management.dateFrom")}</span>
           <input type="date" value={draft.dateFrom} onChange={(event) => setDraft({ ...draft, dateFrom: event.target.value })} />
@@ -223,13 +223,13 @@ export function VerifactuDefectiveRecordsView({
       </form>
       </FiscalWorkspaceDialog>}
 
-      <section className="gestion-verifactu-table-panel">
+      <section className="gestion-verifactu-table-panel gestion-module-panel">
         <header>
           <div>
             <h3>{t("verifactu.management.defectiveTitle")}</h3>
             <span>{page.totalElements} {t("verifactu.management.records")}</span>
           </div>
-          <div className="fiscal-records-toolbar gestion-filter-toolbar gestion-toolbar-layout gestion-native-filter-toolbar">
+          <div className="fiscal-records-toolbar gestion-filter-toolbar gestion-toolbar-layout gestion-native-filter-toolbar gestion-toolbar-actions">
             {loading && <span className="gestion-verifactu-loading" role="status" aria-live="polite">{t("verifactu.management.updating")}</span>}
             <button
               type="button"
@@ -256,7 +256,7 @@ export function VerifactuDefectiveRecordsView({
         ) : !loading && page.items.length === 0 ? (
           <div className="gestion-verifactu-message">{t("verifactu.management.emptyDefective")}</div>
         ) : (
-          <div className="gestion-verifactu-table-scroll">
+          <div className="gestion-verifactu-table-scroll gestion-module-table">
           <table className="gestion-verifactu-table" aria-rowcount={page.totalElements}>
             <colgroup>
               {visibleColumns.map((column) => <col key={column.key} style={{ width: `${column.width}px` }} />)}
@@ -287,7 +287,7 @@ export function VerifactuDefectiveRecordsView({
                 <td>
                     <button
                       type="button"
-                      className="gestion-verifactu-link-button"
+                      className="gestion-verifactu-link-button gestion-module-action"
                       aria-label={`${t("verifactu.management.viewAttempts")} ${item.documentNumber}`}
                       onClick={(event) => onOpenAttempts(item.recordId, item.documentNumber, event.currentTarget)}
                     >
@@ -297,7 +297,7 @@ export function VerifactuDefectiveRecordsView({
                   <td>
                     <button
                       type="button"
-                      className="gestion-verifactu-link-button"
+                      className="gestion-verifactu-link-button gestion-module-action"
                       aria-label={`${t("verifactu.resolution.review")} ${item.documentNumber}`}
                       onClick={(event) => onOpenResolution(item.recordId, item.documentNumber, event.currentTarget)}
                     >

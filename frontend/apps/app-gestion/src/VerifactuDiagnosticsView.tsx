@@ -57,7 +57,7 @@ export function VerifactuDiagnosticsView({
 
   return (
     <div className="gestion-verifactu-diagnostics">
-      <section className="gestion-verifactu-diagnostic-banner">
+      <section className="gestion-verifactu-diagnostic-banner gestion-module-panel">
         <div>
           <span>{t("verifactu.management.passiveDiagnostic")}</span>
           <strong>{diagnostics.endpointConfigured
@@ -107,7 +107,7 @@ export function VerifactuDiagnosticsView({
 
 function DiagnosticCard({ label, value, meta }: { label: string; value: string; meta: string }) {
   return (
-    <article className="gestion-verifactu-diagnostic-card">
+    <article className="gestion-verifactu-diagnostic-card gestion-module-panel">
       <span>{label}</span>
       <strong>{value}</strong>
       <small>{meta}</small>

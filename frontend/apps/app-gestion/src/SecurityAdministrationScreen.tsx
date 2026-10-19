@@ -3,6 +3,7 @@ import { DialogDismissButton } from "../../../packages/app-common/src/components
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { GestionSearchFrame } from "../../../packages/app-common/src/components/GestionSearchFrame";
+import { GestionModuleHeading } from "./GestionModuleHeading";
 import {
   TableLayoutHeaderCell,
   sortTableRows,
@@ -156,15 +157,15 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
   }
 
   return (
-    <section className="gestion-workspace gestion-security-workspace gestion-users-workspace">
-      <SecurityHeader
-        eyebrow={t("gestion.security.eyebrow")}
+    <section className="gestion-workspace gestion-module-screen gestion-security-workspace gestion-users-workspace">
+      <GestionModuleHeading
+        group={t("gestion.navigation.group.security")}
         title={t("gestion.users.title")}
-        subtitle={t("gestion.users.subtitle")}
+        description={t("gestion.users.subtitle")}
       >
         <button type="button" onClick={() => void refresh()}>{t("common.refresh")}</button>
         <button type="button" className="primary" onClick={() => setDialog("create")}>{t("gestion.users.new")}</button>
-      </SecurityHeader>
+      </GestionModuleHeading>
 
       <div className="gestion-security-toolbar gestion-filter-toolbar">
         <label>
@@ -178,7 +179,7 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
       ]} onClear={() => setQuery("")} />
 
       <div className="gestion-security-grid">
-        <section className="gestion-security-list" aria-label={t("gestion.users.title")}>
+        <section className="gestion-security-list gestion-module-panel gestion-module-table" aria-label={t("gestion.users.title")}>
           <div className="gestion-security-table" role="table" aria-rowcount={filteredUsers.length}>
             <div className="gestion-security-row head" role="row" style={tableStyle}>
               {visibleColumns.map((column) => (
@@ -221,7 +222,7 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
           </div>
         </section>
 
-        <aside className="gestion-security-detail">
+        <aside className="gestion-security-detail gestion-module-panel">
           {!selected && <SecurityState>{t("gestion.users.select")}</SecurityState>}
           {selected && (
             <>
@@ -342,7 +343,7 @@ function UserActionDialog({ kind, user, roles, token, t, onClose, onSaved }: {
   const title = t(`gestion.users.dialog.${kind}`);
   return (
     <Modal title={title} closeLabel={t("common.close")} onClose={onClose} className={`gestion-users-dialog gestion-users-dialog-${kind}`}>
-      <form className={`gestion-security-form gestion-users-form gestion-users-form-${kind}`} onSubmit={submit}>
+      <form className={`gestion-security-form gestion-module-fields gestion-users-form gestion-users-form-${kind}`} onSubmit={submit}>
         {(kind === "create" || kind === "identity") && (
           <>
             <label><span>{t("gestion.users.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>
@@ -439,15 +440,15 @@ function RoleAdministration({ session, t }: { session: UserSession; t: Translato
   }
 
   return (
-    <section className="gestion-workspace gestion-security-workspace gestion-role-workspace">
-      <SecurityHeader eyebrow={t("gestion.security.eyebrow")} title={t("gestion.roles.title")} subtitle={t("gestion.roles.subtitle")}>
+    <section className="gestion-workspace gestion-module-screen gestion-security-workspace gestion-role-workspace">
+      <GestionModuleHeading group={t("gestion.navigation.group.security")} title={t("gestion.roles.title")} description={t("gestion.roles.subtitle")}>
         <button type="button" onClick={() => void refresh()}>{t("common.refresh")}</button>
         <button type="button" className="primary" onClick={() => setCreating(true)}>{t("gestion.roles.new")}</button>
-      </SecurityHeader>
+      </GestionModuleHeading>
 
       <div className="gestion-role-layout">
-        <aside className="gestion-role-list">
-          <label><span>{t("gestion.security.search")}</span><GestionSearchFrame><input value={query} onChange={(event) => setQuery(event.target.value)} /></GestionSearchFrame></label>
+        <aside className="gestion-role-list gestion-module-panel">
+          <label className="gestion-filter-toolbar"><span>{t("gestion.security.search")}</span><GestionSearchFrame><input value={query} onChange={(event) => setQuery(event.target.value)} /></GestionSearchFrame></label>
           <ErpFilterChips translate={t} chips={[
             { key: "search", label: t("gestion.security.search"), value: query, onRemove: () => setQuery("") }
           ]} onClear={() => setQuery("")} />
@@ -464,7 +465,7 @@ function RoleAdministration({ session, t }: { session: UserSession; t: Translato
           </div>
         </aside>
 
-        <section className="gestion-permission-editor">
+        <section className="gestion-permission-editor gestion-module-panel">
           {!selected && <SecurityState>{t("gestion.roles.select")}</SecurityState>}
           {selected && (
             <>
@@ -484,8 +485,8 @@ function RoleAdministration({ session, t }: { session: UserSession; t: Translato
                 <>
                   <div className="gestion-permission-groups">
                     {groups.map(([group, permissions]) => (
-                      <section key={group}>
-                        <header><strong>{t(`gestion.permissions.group.${group}`)}</strong><button type="button" onClick={() => {
+                      <section className="gestion-module-panel" key={group}>
+                        <header><strong>{t(`gestion.permissions.group.${group}`)}</strong><button type="button" className="gestion-module-action" onClick={() => {
                           const next = new Set(draft);
                           const allSelected = permissions.every((permission) => next.has(permission.code));
                           permissions.forEach((permission) => allSelected ? next.delete(permission.code) : next.add(permission.code));
@@ -504,7 +505,7 @@ function RoleAdministration({ session, t }: { session: UserSession; t: Translato
                       </section>
                     ))}
                   </div>
-                  <footer>{saveError && <span className="gestion-inline-error">{t("gestion.security.saveError")}</span>}<button type="button" className="primary" disabled={saving} onClick={() => void savePermissions()}>{saving ? t("common.saving") : t("gestion.roles.savePermissions")}</button></footer>
+                  <footer className="gestion-toolbar-actions">{saveError && <span className="gestion-inline-error">{t("gestion.security.saveError")}</span>}<button type="button" className="primary" disabled={saving} onClick={() => void savePermissions()}>{saving ? t("common.saving") : t("gestion.roles.savePermissions")}</button></footer>
                 </>
               )}
             </>
@@ -557,7 +558,7 @@ function CreateRoleDialog({ token, t, onClose, onCreated }: { token?: string; t:
     catch { setError(t("gestion.security.saveError")); }
     finally { setSaving(false); }
   }
-  return <Modal title={t("gestion.roles.dialog.create")} closeLabel={t("common.close")} onClose={onClose} className="gestion-roles-dialog"><form className="gestion-security-form" onSubmit={submit}><label><span>{t("gestion.roles.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>{error && <p className="gestion-inline-error" role="alert">{error}</p>}<footer className="erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.cancel")}</DialogDismissButton><button type="submit" className="primary erp-dialog-action-confirm" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</button></footer></form></Modal>;
+  return <Modal title={t("gestion.roles.dialog.create")} closeLabel={t("common.close")} onClose={onClose} className="gestion-roles-dialog"><form className="gestion-security-form gestion-module-fields" onSubmit={submit}><label><span>{t("gestion.roles.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>{error && <p className="gestion-inline-error" role="alert">{error}</p>}<footer className="erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.cancel")}</DialogDismissButton><button type="submit" className="primary erp-dialog-action-confirm" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</button></footer></form></Modal>;
 }
 
 function RenameRoleDialog({ role, token, t, onClose, onRenamed }: {
@@ -580,7 +581,7 @@ function RenameRoleDialog({ role, token, t, onClose, onRenamed }: {
   }
   return (
     <Modal title={t("gestion.roles.dialog.rename")} closeLabel={t("common.close")} onClose={onClose} className="gestion-roles-dialog">
-      <form className="gestion-security-form" onSubmit={submit}>
+      <form className="gestion-security-form gestion-module-fields" onSubmit={submit}>
         <label><span>{t("gestion.roles.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>
         {error && <p className="gestion-inline-error" role="alert">{error}</p>}
         <footer className="erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.cancel")}</DialogDismissButton><button type="submit" className="primary erp-dialog-action-confirm" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</button></footer>
@@ -623,10 +624,6 @@ function DeleteRoleDialog({ role, token, t, onClose, onDeleted }: {
       </div>
     </Modal>
   );
-}
-
-function SecurityHeader({ eyebrow, title, subtitle, children }: { eyebrow: string; title: string; subtitle: string; children: ReactNode }) {
-  return <header className="gestion-dashboard-toolbar gestion-security-header"><div><span className="gestion-eyebrow">{eyebrow}</span><h2>{title}</h2><p>{subtitle}</p></div><div className="gestion-dashboard-actions gestion-toolbar-actions">{children}</div></header>;
 }
 
 function roleDeletionError(reason: unknown, t: Translator) {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTranslator, type apiRequest, type UserSession } from "@tpverp/app-common";
 import { TaxSettingsScreen } from "./TaxSettingsScreen";
@@ -80,5 +80,43 @@ describe("TaxSettingsScreen", () => {
     expect(screen.getAllByRole("button", { name: "Eliminar" })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("No se puede eliminar un impuesto utilizado por productos"));
+  });
+
+  it("shows activation immediately while filtering by confirmed data, then accepts the server response", async () => {
+    const t = createTranslator("es");
+    let resolveActive!: (tax: typeof rows[number]) => void;
+    const activeRequest = new Promise<typeof rows[number]>(resolve => { resolveActive = resolve; });
+    const request = vi.fn((path: string) => path === "/taxes" ? Promise.resolve(rows) : activeRequest);
+    render(<TaxSettingsScreen session={taxManager} t={t} request={request as unknown as typeof apiRequest} />);
+    await screen.findByText("21 %");
+
+    fireEvent.click(screen.getAllByRole("switch")[1]);
+    const switchInput = screen.getAllByRole("switch")[1] as HTMLInputElement;
+    expect(switchInput.checked).toBe(true);
+    expect(switchInput.disabled).toBe(true);
+    expect(switchInput.getAttribute("data-saving")).toBe("true");
+    expect(switchInput.parentElement?.textContent).toContain(t("gestion.taxes.active"));
+
+    fireEvent.change(screen.getByRole("searchbox", { name: t("party.searchLabel") }), { target: { value: t("gestion.taxes.inactive") } });
+    expect(screen.getByText("21 %")).toBeTruthy();
+    await act(async () => { resolveActive({ ...rows[1], active: false }); });
+    expect((screen.getByRole("switch") as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByRole("switch").hasAttribute("data-saving")).toBe(false);
+    expect(request).toHaveBeenCalledWith("/taxes/tax-21/active", expect.objectContaining({ method: "PATCH", body: { active: true } }));
+  });
+
+  it("restores the confirmed status when activation fails", async () => {
+    let rejectActive!: (cause: Error) => void;
+    const activeRequest = new Promise<typeof rows[number]>((_resolve, reject) => { rejectActive = reject; });
+    const request = vi.fn((path: string) => path === "/taxes" ? Promise.resolve(rows) : activeRequest);
+    render(<TaxSettingsScreen session={taxManager} t={createTranslator("es")} request={request as unknown as typeof apiRequest} />);
+    await screen.findByText("21 %");
+
+    fireEvent.click(screen.getAllByRole("switch")[1]);
+    expect((screen.getAllByRole("switch")[1] as HTMLInputElement).checked).toBe(true);
+    await act(async () => { rejectActive(new Error("No se pudo activar")); });
+    expect((screen.getAllByRole("switch")[1] as HTMLInputElement).checked).toBe(false);
+    expect(screen.getAllByRole("switch")[1].hasAttribute("data-saving")).toBe(false);
+    expect(screen.getByRole("alert").textContent).toContain("No se pudo activar");
   });
 });

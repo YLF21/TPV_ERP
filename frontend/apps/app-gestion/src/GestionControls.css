@@ -1,6 +1,83 @@
 /* Shared warehouse control skin. Only APP GESTIÓN opts into these surfaces. */
 @layer gestion-accents {
   @media screen {
+    /* Only on/off switches use this skin; selection checkboxes stay unchanged. */
+    html[data-app="gestion"] input[type="checkbox"][role="switch"] {
+      appearance: none !important;
+      box-sizing: border-box !important;
+      position: relative !important;
+      inset: auto !important;
+      display: inline-block !important;
+      flex: 0 0 38px !important;
+      width: 38px !important;
+      min-width: 38px !important;
+      max-width: 38px !important;
+      height: 20px !important;
+      min-height: 20px !important;
+      max-height: 20px !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 1px solid #68737e !important;
+      border-radius: 999px !important;
+      background: #d4dbe2 !important;
+      box-shadow: none !important;
+      opacity: 1 !important;
+      pointer-events: auto !important;
+      vertical-align: middle;
+      cursor: pointer !important;
+      transition: background-color 200ms ease, border-color 200ms ease !important;
+    }
+
+    html[data-app="gestion"] input[type="checkbox"][role="switch"]::before {
+      content: "";
+      box-sizing: border-box;
+      position: absolute;
+      top: 1px;
+      left: 1px;
+      width: 16px;
+      height: 16px;
+      border: 0;
+      border-radius: 50%;
+      background: #fff;
+      transform: translateX(0);
+      transition: transform 200ms ease !important;
+    }
+
+    html[data-app="gestion"] input[type="checkbox"][role="switch"]:checked {
+      border-color: #0065fe !important;
+      background: #0065fe !important;
+    }
+
+    html[data-app="gestion"] input[type="checkbox"][role="switch"]:checked::before { transform: translateX(18px); }
+
+    html[data-app="gestion"] input[type="checkbox"][role="switch"]:hover:not(:disabled) { border-color: #0065fe !important; }
+
+    html[data-app="gestion"] input[type="checkbox"][role="switch"]:focus-visible {
+      outline: 2px solid #0065fe !important;
+      outline-offset: 2px !important;
+    }
+
+    html[data-app="gestion"] input[type="checkbox"][role="switch"]:disabled {
+      cursor: not-allowed !important;
+      opacity: .55 !important;
+    }
+
+    html[data-app="gestion"] label:has(> input[type="checkbox"][role="switch"]:disabled) { cursor: not-allowed; }
+
+    html[data-app="gestion"] input[type="checkbox"][role="switch"]:disabled ~ :is(b, span) { opacity: .55; }
+
+    html[data-app="gestion"] input[type="checkbox"][role="switch"][data-saving="true"]:disabled,
+    html[data-app="gestion"] input[type="checkbox"][role="switch"][data-saving="true"] ~ :is(b, span) { opacity: 1 !important; }
+
+    @media (prefers-reduced-motion: reduce) {
+      html[data-app="gestion"] input[type="checkbox"][role="switch"],
+      html[data-app="gestion"] input[type="checkbox"][role="switch"]::before { transition: none !important; }
+    }
+  }
+}
+
+@layer gestion-accents {
+  @media screen {
     html[data-app="gestion"] {
       --gestion-control-border: #68737e;
       --gestion-control-background: #eef1f4;

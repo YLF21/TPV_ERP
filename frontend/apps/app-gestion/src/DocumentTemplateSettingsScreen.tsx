@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { GestionTableSearch, matchesGestionTableSearch } from "./GestionTableSearch";
+import { GestionModuleHeading } from "./GestionModuleHeading";
 import { ApiError, apiRequest, ErpSelect, type UserSession } from "@tpverp/app-common";
 import {
   activateDocumentTemplate,
@@ -348,18 +349,13 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
   }
 
   return (
-    <section className="gestion-workspace gestion-document-templates-workspace">
-      <header className="gestion-document-templates-header">
-        <div>
-          <span>{t("gestion.configuration.navigation")}</span>
-          <h2>{t("gestion.documentTemplates.title")}</h2>
-          <p>{t("gestion.documentTemplates.description")}</p>
-        </div>
+    <section className="gestion-workspace gestion-document-templates-workspace gestion-module-screen">
+      <GestionModuleHeading className="gestion-document-templates-header" group={t("gestion.navigation.group.configuration")} title={t("gestion.documentTemplates.title")} description={t("gestion.documentTemplates.description")}>
         <aside>
           <strong>{t("gestion.documentTemplates.storeScope")}</strong>
           <small>{t("gestion.documentTemplates.fallback")}</small>
         </aside>
-      </header>
+      </GestionModuleHeading>
 
       <div className="gestion-document-template-toolbar gestion-filter-toolbar">
         <div className="gestion-document-template-type-field">
@@ -404,7 +400,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
         </p>
       )}
 
-      <section className="gestion-document-template-effective" aria-labelledby="document-template-effective-title">
+      <section className="gestion-document-template-effective gestion-module-panel" aria-labelledby="document-template-effective-title">
         <div>
           <span>{t("gestion.documentTemplates.effective")}</span>
           <h3 id="document-template-effective-title">
@@ -444,7 +440,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
       <div className={`gestion-document-template-layout ${selectedType === "TICKET" ? "is-ticket" : ""}`}>
         <div className="gestion-document-template-editor">
           {selectedType !== "TICKET" && (
-            <section className="gestion-ticket-style-selector" aria-labelledby="document-presentation-title">
+            <section className="gestion-ticket-style-selector gestion-module-panel" aria-labelledby="document-presentation-title">
               <div className="gestion-ticket-style-copy">
                 <h3 id="document-presentation-title">
                   {t("gestion.documentTemplates.documentPresentation")}
@@ -494,7 +490,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
           )}
 
           {selectedType === "TICKET" && (
-            <section className="gestion-ticket-style-selector is-ticket" aria-labelledby="ticket-style-title">
+            <section className="gestion-ticket-style-selector is-ticket gestion-module-panel" aria-labelledby="ticket-style-title">
               <div className="gestion-ticket-style-copy">
                 <h3 id="ticket-style-title">{t("gestion.documentTemplates.ticketStyle")}</h3>
                 <p>{catalog?.effective?.builtIn
@@ -561,7 +557,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
             </section>
           )}
 
-          <form className="gestion-document-template-create" onSubmit={createDraft}>
+          <form className="gestion-document-template-create gestion-module-panel gestion-module-fields" onSubmit={createDraft}>
             <div>
               <h3>{t("gestion.documentTemplates.newVersion")}</h3>
               <p>{t("gestion.documentTemplates.newVersionHelp")}</p>
@@ -574,12 +570,12 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
               <span>{t("gestion.documentTemplates.name")}</span>
               <input value={name} maxLength={160} required onChange={(event) => setName(event.target.value)} />
             </label>
-            <button type="submit" disabled={!canManage || busyId !== null || !name.trim()}>{t("gestion.documentTemplates.createDraft")}</button>
+            <div className="gestion-toolbar-actions"><button type="submit" disabled={!canManage || busyId !== null || !name.trim()}>{t("gestion.documentTemplates.createDraft")}</button></div>
           </form>
 
         </div>
         {selectedType !== "TICKET" && (
-          <section className="gestion-ticket-style-selector" aria-labelledby="document-built-in-title">
+          <section className="gestion-ticket-style-selector gestion-module-panel" aria-labelledby="document-built-in-title">
             <div className="gestion-ticket-style-copy">
               <h3 id="document-built-in-title">{t("gestion.documentTemplates.builtInTitle")}</h3>
               <p>{catalog?.effective?.builtIn
@@ -621,7 +617,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
 
       </div>
 
-      <section className="gestion-document-template-list" aria-label={t("gestion.documentTemplates.versions")}>
+      <section className="gestion-document-template-list gestion-module-panel gestion-module-table" aria-label={t("gestion.documentTemplates.versions")}>
         <GestionTableSearch value={templateQuery} onChange={setTemplateQuery} t={t} />
         <header>
           <span>{t("gestion.documentTemplates.version")}</span>
@@ -639,7 +635,7 @@ export function DocumentTemplateSettingsScreen({ session, t, request = apiReques
             <div><b>{template.name}</b><small>{template.code}</small></div>
             <span className={`status status-${template.status.toLowerCase()}`}>{t(`gestion.documentTemplates.status.${template.status}`)}</span>
             <time dateTime={template.validatedAt ?? template.createdAt}>{formatDate(template.validatedAt ?? template.createdAt)}</time>
-            <div className="actions">
+            <div className="actions gestion-toolbar-actions">
               <label className={template.status !== "DRAFT" ? "disabled" : undefined}>
                 <input
                   type="file"

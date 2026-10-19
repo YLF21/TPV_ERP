@@ -6,6 +6,7 @@ import {
   type VoucherConfiguration
 } from "./vouchersApi";
 import "./VoucherSettingsScreen.css";
+import { GestionModuleHeading } from "./GestionModuleHeading";
 
 type Props = {
   session: UserSession;
@@ -63,23 +64,18 @@ export function VoucherSettingsScreen({ session, storeName, t }: Props) {
     && (saved.expirationMode !== mode || saved.validityDays !== days);
 
   return (
-    <section className="gestion-workspace gestion-voucher-settings-workspace">
-      <header className="gestion-voucher-settings-header">
-        <div>
-          <span>{t("gestion.configuration.navigation")}</span>
-          <h2>{t("gestion.voucherSettings.title")}</h2>
-          <p>{t("gestion.voucherSettings.description")}</p>
-        </div>
+    <section className="gestion-workspace gestion-voucher-settings-workspace gestion-module-screen">
+      <GestionModuleHeading className="gestion-voucher-settings-header" group={t("gestion.navigation.group.configuration")} title={t("gestion.voucherSettings.title")} description={t("gestion.voucherSettings.description")}>
         <aside>
           <strong>{t("gestion.voucherSettings.storeScope")}</strong>
           <small>{storeName}</small>
         </aside>
-      </header>
+      </GestionModuleHeading>
 
       {message && <p className={`gestion-voucher-settings-message ${message.kind}`} role={message.kind === "error" ? "alert" : "status"}>{message.text}</p>}
 
       {loading ? <p className="gestion-voucher-settings-loading">{t("common.loading")}</p> : (
-        <form className="gestion-voucher-settings-panel" onSubmit={save}>
+        <form className="gestion-voucher-settings-panel gestion-module-panel gestion-module-fields" onSubmit={save}>
           <div className="gestion-voucher-settings-intro">
             <span className="gestion-voucher-settings-index">{t("gestion.voucherSettings.sectionNumber")}</span>
             <div>
@@ -123,7 +119,7 @@ export function VoucherSettingsScreen({ session, storeName, t }: Props) {
               <strong>{mode === "DAYS" ? t("gestion.voucherSettings.summaryDays").replace("{days}", String(days)) : t("gestion.voucherSettings.summaryNever")}</strong>
               <small>{t("gestion.voucherSettings.noRetroactiveChanges")}</small>
             </div>
-            <button type="submit" className="primary" disabled={!canManage || saving || !changed || days < 1 || days > 36500}>{saving ? t("common.saving") : t("common.save")}</button>
+            <div className="gestion-toolbar-actions"><button type="submit" className="primary" disabled={!canManage || saving || !changed || days < 1 || days > 36500}>{saving ? t("common.saving") : t("common.save")}</button></div>
           </footer>
         </form>
       )}

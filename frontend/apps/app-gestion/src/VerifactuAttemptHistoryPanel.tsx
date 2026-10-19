@@ -71,7 +71,7 @@ export function VerifactuAttemptHistoryPanel({
   if (!target) return null;
 
   return (
-    <aside className="gestion-verifactu-attempts" aria-label={t("verifactu.management.attemptHistory")}>
+    <aside className="gestion-verifactu-attempts gestion-module-panel" aria-label={t("verifactu.management.attemptHistory")}>
       <header>
         <div>
           <span>{t("verifactu.management.attemptHistory")}</span>

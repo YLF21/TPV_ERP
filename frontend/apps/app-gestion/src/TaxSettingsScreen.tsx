@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ApiError, apiRequest, type UserSession } from "@tpverp/app-common";
 import { canManageTaxes } from "./gestionAccess";
 import { GestionTableSearch, matchesGestionTableSearch } from "./GestionTableSearch";
+import { GestionModuleHeading } from "./GestionModuleHeading";
 
 type Translator = (key: string) => string;
 type Request = typeof apiRequest;
@@ -37,6 +38,7 @@ export function TaxSettingsScreen({ session, t, request = apiRequest }: {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [pendingActive, setPendingActive] = useState<{ id: string; active: boolean } | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -103,6 +105,7 @@ export function TaxSettingsScreen({ session, t, request = apiRequest }: {
     if (!canManage || busy || (tax.defaultTax && !active)) return;
     if (!active && !window.confirm(t("gestion.taxes.confirmDeactivate"))) return;
     setBusy(true);
+    setPendingActive({ id: tax.id, active });
     setError("");
     try {
       const saved = await request<Tax>(`/taxes/${tax.id}/active`, {
@@ -115,6 +118,7 @@ export function TaxSettingsScreen({ session, t, request = apiRequest }: {
     } catch (cause) {
       setError(errorText(cause, "gestion.taxes.saveError", t));
     } finally {
+      setPendingActive(null);
       setBusy(false);
     }
   }
@@ -156,21 +160,16 @@ export function TaxSettingsScreen({ session, t, request = apiRequest }: {
   }
 
   return (
-    <section className="gestion-workspace gestion-taxes-workspace">
-      <header className="gestion-taxes-header">
-        <div>
-          <span>{t("gestion.configuration.navigation")}</span>
-          <h2>{t("gestion.taxes.title")}</h2>
-          <p>{t("gestion.taxes.description")}</p>
-        </div>
+    <section className="gestion-workspace gestion-taxes-workspace gestion-module-screen">
+      <GestionModuleHeading className="gestion-taxes-header" group={t("gestion.navigation.group.configuration")} title={t("gestion.taxes.title")} description={t("gestion.taxes.description")}>
         {canManage && <div className="gestion-toolbar-actions"><button type="button" className="primary" disabled={busy || Boolean(draft)} onClick={openNew}>{t("gestion.taxes.new")}</button></div>}
-      </header>
+      </GestionModuleHeading>
 
       {error && <p className="gestion-taxes-message error" role="alert">{error}</p>}
       {feedback && !draft && <p className="gestion-taxes-message success" role="status">{feedback}</p>}
 
       {draft && (
-        <form className="gestion-taxes-editor" onSubmit={(event) => void save(event)}>
+        <form className="gestion-taxes-editor gestion-module-panel gestion-module-fields" onSubmit={(event) => void save(event)}>
           <h3>{t(draft.id ? "gestion.taxes.editTitle" : "gestion.taxes.newTitle")}</h3>
           <label>
             <span>{t("gestion.taxes.percentage")}</span>
@@ -183,7 +182,7 @@ export function TaxSettingsScreen({ session, t, request = apiRequest }: {
         </form>
       )}
 
-      <section className="gestion-taxes-table" aria-label={t("gestion.taxes.title")}>
+      <section className="gestion-taxes-table gestion-module-panel gestion-module-table" aria-label={t("gestion.taxes.title")}>
         <GestionTableSearch value={query} onChange={setQuery} t={t} />
         <header>
           <span>{t("gestion.taxes.percentage")}</span>
@@ -194,8 +193,8 @@ export function TaxSettingsScreen({ session, t, request = apiRequest }: {
           <article key={tax.id}>
             <strong>{tax.percentage} %{tax.defaultTax && <small>{t("gestion.taxes.default")}</small>}</strong>
             <label className="gestion-taxes-switch">
-              <input type="checkbox" role="switch" checked={tax.active} disabled={!canManage || busy || tax.defaultTax} onChange={(event) => void setActive(tax, event.currentTarget.checked)} />
-              <span>{t(tax.active ? "gestion.taxes.active" : "gestion.taxes.inactive")}</span>
+              <input type="checkbox" role="switch" checked={pendingActive?.id === tax.id ? pendingActive.active : tax.active} disabled={!canManage || busy || tax.defaultTax} data-saving={canManage && busy && !tax.defaultTax || undefined} onChange={(event) => void setActive(tax, event.currentTarget.checked)} />
+              <span>{t((pendingActive?.id === tax.id ? pendingActive.active : tax.active) ? "gestion.taxes.active" : "gestion.taxes.inactive")}</span>
             </label>
             <div className="gestion-taxes-actions gestion-toolbar-actions">
               <button type="button" disabled={!canManage || busy} onClick={() => openEdit(tax)}>{t("gestion.taxes.edit")}</button>
