@@ -426,7 +426,7 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
         </div>
         <div className="management-record-actions gestion-toolbar-actions">
           <button type="button" className="gestion-module-action" aria-keyshortcuts="F7" disabled={!toolbarRepresentative || loading} onClick={() => toolbarRepresentative && openRepresentative(toolbarRepresentative)}><ShortcutButtonLabel label={t("safeManagement.representatives.edit")} shortcut={t("safeManagement.shortcut.modify")} /></button>
-          <button type="button" className="gestion-module-action primary" aria-keyshortcuts="F5" onClick={openNew}><span><Plus size={16} aria-hidden="true" />{t("safeManagement.representatives.new")}</span>{" "}<kbd>F5</kbd></button>
+          <button type="button" className="gestion-module-action primary" aria-keyshortcuts="F5" onClick={openNew}><span><Plus size={16} aria-hidden="true" />{t("safeManagement.representatives.new")}</span>{" "}<kbd>{t("safeManagement.shortcut.add")}</kbd></button>
           <button type="button" aria-keyshortcuts="F9" className="gestion-module-action safe-retirement-open" disabled={!toolbarRepresentative || loading} onClick={retireToolbarRepresentative}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut={t("safeManagement.shortcut.retire")} /></button>
         </div>
       </header>
