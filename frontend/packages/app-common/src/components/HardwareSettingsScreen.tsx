@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { hasPermission } from "../auth/auth";
+import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
+import { loadCustomerDisplayIdentity } from "../hardware/customerDisplayIdentity";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import {
   createA4TestDocument,
   createCustomerDisplayIdleState,
-  createCustomerDisplayPaymentState,
-  createCustomerDisplaySaleState,
   createTestTicket,
   defaultHardwareConfig,
   getHardwareBridge,
@@ -14,6 +14,7 @@ import {
 } from "../hardware/hardware";
 import type {
   CashDrawerPaymentMethod,
+  CustomerDisplayState,
   CustomerDisplayScreen,
   DocumentPrintRoute,
   HardwareBridge,
@@ -28,6 +29,9 @@ import {
 } from "../hardware/scannerTimingDetection";
 import { ErpSelect, type ErpSelectOption } from "./ErpSelect";
 import { PaymentTerminalSettings } from "./PaymentTerminalSettings";
+import { CustomerDisplaySettings } from "./CustomerDisplaySettings";
+import { SerialPortSelect } from "./SerialPortSelect";
+import { SerialBaudRateSelect } from "./SerialBaudRateSelect";
 import { productLabelMinimumSize } from "./productLabelLayout";
 import { SaleSettingsShell, type SaleSettingsDestination } from "./SaleSettingsShell";
 import { OperationalStatusCard } from "./OperationalStatusCard";
@@ -38,6 +42,8 @@ import type { TableColumnDefinition } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import { useSettingsNavigationGuard, type SettingsSaveResult } from "./useSettingsNavigationGuard";
 import "./ErpClassicTables.css";
+import "./TicketPrinterSettings.css";
+import "./PrinterSettings.css";
 
 type HardwareDiagnosticKey = "electron" | "printers" | "ticket" | "a4" | "drawer" | "customerDisplay";
 type HardwareSettingsMode = "devices" | "printers" | "printing" | "diagnostics";
@@ -53,7 +59,7 @@ export const hardwareRouteColumnDefinitions = [
   { key: "document", labelKey: "hardware.route.document", defaultWidth: 120 },
   { key: "target", labelKey: "hardware.route.target", defaultWidth: 150 },
   { key: "printer", labelKey: "hardware.route.printer", defaultWidth: 190 },
-  { key: "paper", labelKey: "hardware.route.paper", defaultWidth: 96 },
+  { key: "paper", labelKey: "hardware.route.paper", defaultWidth: 112 },
   { key: "orientation", labelKey: "hardware.route.orientation", defaultWidth: 120 },
   { key: "copies", labelKey: "hardware.route.copies", defaultWidth: 72 },
   { key: "auto", labelKey: "hardware.route.auto", defaultWidth: 100 },
@@ -65,6 +71,18 @@ type HardwareDiagnosticResult = {
   message: string;
   checkedAt: string;
 };
+
+type PrinterTestArtifacts = {
+  renderedPdf?: { contentType?: string; base64?: string } | null;
+  ticketRenderedImage?: { contentType?: string; base64?: string } | null;
+};
+
+function isRenderedArtifact(value: PrinterTestArtifacts["renderedPdf"], contentType: string, signature: string): value is { contentType: string; base64: string } {
+  return value?.contentType === contentType
+    && typeof value.base64 === "string"
+    && value.base64.startsWith(signature)
+    && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value.base64);
+}
 
 const cashDrawerPaymentMethods: CashDrawerPaymentMethod[] = [
   "EFECTIVO",
@@ -138,6 +156,9 @@ export function HardwareSettingsScreen({
   const [profileId, setProfileId] = useState(defaultHardwareConfig.defaultProductLabelProfileId);
   const [savedConfig, setSavedConfig] = useState(JSON.stringify(defaultHardwareConfig));
   const [savingConfig, setSavingConfig] = useState(false);
+  const printingTestTicketRef = useRef(false);
+  const printerDetectionRequestRef = useRef(0);
+  const [printingTestTicket, setPrintingTestTicket] = useState(false);
   const dirty = JSON.stringify(config) !== savedConfig;
   const [diagnostics, setDiagnostics] = useState<Partial<Record<HardwareDiagnosticKey, HardwareDiagnosticResult>>>({});
 
@@ -172,6 +193,14 @@ export function HardwareSettingsScreen({
   }, [hardware]);
 
   useEffect(() => {
+    if (!hardware || effectiveMode !== "printing") return;
+    void refreshPrinters();
+    return () => { printerDetectionRequestRef.current += 1; };
+    // Refresh when entering each printer tab; detection never edits configuration.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hardware, effectiveMode, printerTab]);
+
+  useEffect(() => {
     if (!dirty) return;
     const preventUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
     window.addEventListener("beforeunload", preventUnload);
@@ -195,8 +224,10 @@ export function HardwareSettingsScreen({
 
   async function refreshPrinters() {
     if (!hardware) return;
+    const request = ++printerDetectionRequestRef.current;
     try {
       const result = await hardware.listPrinters();
+      if (request !== printerDetectionRequestRef.current) return;
       if (!result.ok) {
         setStatus(result.message);
         updateDiagnostic("printers", false, result.message);
@@ -207,6 +238,7 @@ export function HardwareSettingsScreen({
       setStatus(message);
       updateDiagnostic("printers", true, message);
     } catch (error) {
+      if (request !== printerDetectionRequestRef.current) return;
       const message = errorMessage(error);
       setStatus(message);
       updateDiagnostic("printers", false, message);
@@ -236,6 +268,9 @@ export function HardwareSettingsScreen({
       setStatus(result.ok ? t("hardware.status.saved") : result.message);
       if (result.ok) {
         setSavedConfig(JSON.stringify(config));
+        window.dispatchEvent(new CustomEvent("tpv:hardware-config-changed", {
+          detail: { customerDisplayEnabled: config.customerDisplayEnabled, customerDisplayMode: config.customerDisplayMode },
+        }));
         return { ok: true };
       }
       return { ok: false, error: result.message };
@@ -281,9 +316,21 @@ export function HardwareSettingsScreen({
   }
 
   async function printTestTicket() {
-    if (!hardware) return;
+    if (!hardware || printingTestTicketRef.current) return;
+    printingTestTicketRef.current = true;
+    setPrintingTestTicket(true);
     try {
-      const result = await hardware.printTicket(createTestTicket(terminalContext), config);
+      const artifacts = await apiRequest<PrinterTestArtifacts>("/hardware/printer-test", { token: session.accessToken });
+      if (!isRenderedArtifact(artifacts?.renderedPdf, "application/pdf", "JVBERi0")
+        || !isRenderedArtifact(artifacts?.ticketRenderedImage, "image/png", "iVBORw0KGgo")) {
+        throw new Error(t("hardware.status.testTicketDocumentUnavailable"));
+      }
+      const result = await hardware.printTicket({
+        ...createTestTicket(terminalContext),
+        requireRenderedDocument: true,
+        renderedPdf: { contentType: "application/pdf", base64: artifacts.renderedPdf.base64 },
+        documentRaster: `data:image/png;base64,${artifacts.ticketRenderedImage.base64}`,
+      }, config);
       const message = result.ok ? t("hardware.status.ticketSent") : result.message;
       setStatus(message);
       updateDiagnostic("ticket", result.ok, message);
@@ -291,6 +338,9 @@ export function HardwareSettingsScreen({
       const message = errorMessage(error);
       setStatus(message);
       updateDiagnostic("ticket", false, message);
+    } finally {
+      printingTestTicketRef.current = false;
+      setPrintingTestTicket(false);
     }
   }
 
@@ -342,7 +392,7 @@ export function HardwareSettingsScreen({
   async function openCustomerDisplay() {
     if (!hardware) return;
     try {
-      const idleState = createCustomerDisplayIdleState(config.customerDisplayIdleLine1, config.customerDisplayIdleLine2);
+      const idleState = await enrichCustomerDisplayState(createCustomerDisplayIdleState(config.customerDisplayIdleLine1, config.customerDisplayIdleLine2, true));
       const result = await hardware.openCustomerDisplay(config, idleState);
       const message = result.ok ? t("hardware.status.customerDisplayOpened") : result.message;
       setStatus(message);
@@ -368,10 +418,15 @@ export function HardwareSettingsScreen({
     }
   }
 
-  async function updateCustomerDisplay(state: ReturnType<typeof createCustomerDisplayIdleState>) {
+  async function enrichCustomerDisplayState(state: CustomerDisplayState): Promise<CustomerDisplayState> {
+    const identity = await loadCustomerDisplayIdentity(session.accessToken, terminalContext);
+    return { ...state, locale, identity };
+  }
+
+  async function updateCustomerDisplay(state: CustomerDisplayState) {
     if (!hardware) return;
     try {
-      const result = await hardware.updateCustomerDisplay(state);
+      const result = await hardware.openCustomerDisplay(config, await enrichCustomerDisplayState(state));
       setStatus(result.ok ? t("hardware.status.customerDisplaySent") : result.message);
     } catch (error) {
       setStatus(errorMessage(error));
@@ -628,54 +683,18 @@ export function HardwareSettingsScreen({
 
         </div>}
 
-        {deviceTab === "customerDisplay" && <section className="hardware-section hardware-section-wide">
-          <h2>{t("hardware.customerDisplay")}</h2>
-          <div className="hardware-display-grid">
-            <label className="hardware-check">
-              <input type="checkbox" checked={config.customerDisplayEnabled}
-                onChange={(event) => updateConfig({ customerDisplayEnabled: event.target.checked })} />
-              <span>{t("hardware.customerDisplayEnabled")}</span>
-            </label>
-            <label><span>{t("hardware.customerDisplayScreen")}</span>
-              <ErpSelect aria-label={t("hardware.customerDisplayScreen")} value={config.customerDisplayScreenId}
-                onChange={(value) => updateConfig({ customerDisplayScreenId: value })}
-                options={[
-                  { value: "", label: t("hardware.customerDisplayAutoScreen") },
-                  ...customerDisplays.map((display) => ({
-                    value: display.id,
-                    label: `${display.label}${display.primary ? ` · ${t("hardware.primaryScreen")}` : ""}`,
-                  })),
-                ]} />
-            </label>
-            <label><span>{t("hardware.customerDisplayIdleLine1")}</span>
-              <input value={config.customerDisplayIdleLine1}
-                onChange={(event) => updateConfig({ customerDisplayIdleLine1: event.target.value })} />
-            </label>
-            <label><span>{t("hardware.customerDisplayIdleLine2")}</span>
-              <input value={config.customerDisplayIdleLine2}
-                onChange={(event) => updateConfig({ customerDisplayIdleLine2: event.target.value })} />
-            </label>
-          </div>
-          <div className="hardware-inline-actions">
-            <button type="button" onClick={refreshCustomerDisplays} disabled={!desktopHardwareAvailable}>{t("hardware.detectScreens")}</button>
-            <button type="button" onClick={openCustomerDisplay} disabled={!desktopHardwareAvailable}>{t("hardware.openCustomerDisplay")}</button>
-            <button type="button" onClick={closeCustomerDisplay} disabled={!desktopHardwareAvailable}>{t("hardware.closeCustomerDisplay")}</button>
-          </div>
-          <div className="hardware-inline-actions">
-            <button type="button" disabled={!desktopHardwareAvailable} onClick={() => updateCustomerDisplay(
-              createCustomerDisplayIdleState(config.customerDisplayIdleLine1, config.customerDisplayIdleLine2))}>
-              {t("hardware.sendIdleDisplay")}
-            </button>
-            <button type="button" disabled={!desktopHardwareAvailable} onClick={() => updateCustomerDisplay(
-              createCustomerDisplaySaleState({ name: "TEST HARDWARE", quantity: 1, price: 1 }))}>
-              {t("hardware.sendSaleDisplay")}
-            </button>
-            <button type="button" disabled={!desktopHardwareAvailable} onClick={() => updateCustomerDisplay(
-              createCustomerDisplayPaymentState({ total: 12.5, change: 2.5 }))}>
-              {t("hardware.sendPaymentDisplay")}
-            </button>
-          </div>
-        </section>}
+        {deviceTab === "customerDisplay" && <CustomerDisplaySettings
+          t={t}
+          config={config}
+          updateConfig={updateConfig}
+          customerDisplays={customerDisplays}
+          listSerialPorts={hardware?.listSerialPorts}
+          desktopHardwareAvailable={desktopHardwareAvailable}
+          refreshCustomerDisplays={refreshCustomerDisplays}
+          openCustomerDisplay={openCustomerDisplay}
+          closeCustomerDisplay={closeCustomerDisplay}
+          updateCustomerDisplay={updateCustomerDisplay}
+        />}
 
         {deviceTab === "paymentTerminal" && <PaymentTerminalSettings locale={locale} token={session.accessToken} />}
 
@@ -685,7 +704,7 @@ export function HardwareSettingsScreen({
       </>}
 
       {effectiveMode === "printing" && <>
-        <nav className="hardware-device-tabs" aria-label={t("hardware.printing.title")}>
+        <nav className="hardware-device-tabs hardware-printing-tabs" aria-label={t("hardware.printing.title")}>
           {([
             ["tickets", "hardware.printers.tab.tickets"],
             ["a4", "hardware.printers.tab.a4"],
@@ -697,19 +716,29 @@ export function HardwareSettingsScreen({
             onClick={() => setPrinterTab(key)}>{t(labelKey)}</button>)}
         </nav>
 
-        {printerTab === "tickets" && <div className="hardware-combined-sections">
-          <section className="hardware-section">
-            <h2>{t("hardware.printer")}</h2>
-            <div className="hardware-escpos-grid">
-              <label><span>{t("hardware.printerMode")}</span>
-                <ErpSelect aria-label={t("hardware.printerMode")} value={config.ticketPrinterDriver}
-                  onChange={(value) => updateConfig({ ticketPrinterDriver: value as HardwareConfig["ticketPrinterDriver"] })}
-                  options={[
-                    { value: "WINDOWS_DRIVER", label: t("hardware.mode.windows") },
-                    { value: "ESCPOS_RAW", label: t("hardware.mode.escpos") },
-                  ] satisfies readonly ErpSelectOption[]} />
-              </label>
-              <label><span>{t("hardware.windowsPrinter")}</span>
+        {printerTab === "tickets" && <section className="hardware-section hardware-section-wide hardware-ticket-printer"
+          aria-labelledby="ticket-printer-heading">
+          <h2 id="ticket-printer-heading">{t("hardware.printer")}</h2>
+          <div className="hardware-ticket-printer-grid">
+            <label><span>{t("hardware.printerMode")}</span>
+              <ErpSelect aria-label={t("hardware.printerMode")} value={config.ticketPrinterDriver}
+                onChange={(value) => updateConfig({ ticketPrinterDriver: value as HardwareConfig["ticketPrinterDriver"] })}
+                options={[
+                  { value: "WINDOWS_DRIVER", label: t("hardware.mode.windows") },
+                  { value: "ESCPOS_RAW", label: t("hardware.mode.escpos") },
+                ] satisfies readonly ErpSelectOption[]} />
+            </label>
+            {config.ticketPrinterDriver === "ESCPOS_RAW" && <label><span>{t("hardware.connectionType")}</span>
+              <ErpSelect aria-label={`${t("hardware.connectionType")} ESC/POS`} value={config.ticketPrinterConnection}
+                onChange={(value) => updateConfig({ ticketPrinterConnection: value as HardwareConfig["ticketPrinterConnection"] })}
+                options={[
+                  { value: "WINDOWS_PRINTER", label: "USB / Windows RAW" },
+                  { value: "SERIAL", label: "COM" },
+                  { value: "NETWORK", label: "LAN" },
+                ] satisfies readonly ErpSelectOption[]} />
+            </label>}
+            {(config.ticketPrinterDriver === "WINDOWS_DRIVER" || config.ticketPrinterConnection === "WINDOWS_PRINTER")
+              && <label><span>{t("hardware.windowsPrinter")}</span>
                 <ErpSelect aria-label={t("hardware.windowsPrinter")} value={config.ticketPrinterName}
                   onChange={(value) => updateConfig({ ticketPrinterName: value })}
                   options={[
@@ -719,88 +748,52 @@ export function HardwareSettingsScreen({
                       label: `${printer.displayName}${printer.isDefault ? ` · ${t("hardware.defaultPrinter")}` : ""}`,
                     })),
                   ] satisfies readonly ErpSelectOption[]} />
+              </label>}
+            {config.ticketPrinterDriver === "ESCPOS_RAW" && config.ticketPrinterConnection === "SERIAL" && <>
+              <SerialPortSelect t={t} label={t("hardware.devicePath")} value={config.escposDevicePath}
+                onChange={(value) => updateConfig({ escposDevicePath: value })}
+                listSerialPorts={hardware?.listSerialPorts} available={desktopHardwareAvailable} />
+              <label><span>{t("hardware.serialBaudRate")}</span>
+                <SerialBaudRateSelect label={t("hardware.serialBaudRate")} value={config.escposSerialBaudRate}
+                  onChange={(value) => updateConfig({ escposSerialBaudRate: value })} />
               </label>
-            </div>
-            <div className="hardware-inline-actions">
-              <button
-                type="button"
-                onClick={refreshPrinters}
-                disabled={!desktopHardwareAvailable}
-                title={!desktopHardwareAvailable ? t("hardware.desktopActionsHelp") : undefined}
-              >
-                {t("hardware.detectPrinters")}
-              </button>
-              <button
-                type="button"
-                onClick={printTestTicket}
-                disabled={!desktopHardwareAvailable}
-                title={!desktopHardwareAvailable ? t("hardware.desktopActionsHelp") : undefined}
-              >
-                {t("hardware.printTest")}
-              </button>
-            </div>
-            {!desktopHardwareAvailable ? (
-              <p className="hardware-desktop-note">{t("hardware.desktopActionsHelp")}</p>
-            ) : null}
-          </section>
-
-          <section className="hardware-section hardware-section-wide">
-            <h2>ESC/POS</h2>
-            <div className="hardware-escpos-grid">
-              <label><span>{t("hardware.connectionType")}</span>
-                <ErpSelect aria-label={`${t("hardware.connectionType")} ESC/POS`} value={config.ticketPrinterConnection}
-                  onChange={(value) => updateConfig({ ticketPrinterConnection: value as HardwareConfig["ticketPrinterConnection"] })}
-                  options={[
-                    { value: "WINDOWS_PRINTER", label: "USB / Windows RAW" },
-                    { value: "SERIAL", label: "COM" },
-                    { value: "NETWORK", label: "LAN" },
-                  ] satisfies readonly ErpSelectOption[]} />
+            </>}
+            {config.ticketPrinterDriver === "ESCPOS_RAW" && config.ticketPrinterConnection === "NETWORK" && <>
+              <label><span>{t("hardware.host")}</span>
+                <input value={config.escposHost} onChange={(event) => updateConfig({ escposHost: event.target.value })} />
               </label>
+              <label><span>{t("hardware.port")}</span>
+                <input type="number" value={config.escposPort}
+                  onChange={(event) => updateConfig({ escposPort: Number(event.target.value) || 9100 })} />
+              </label>
+            </>}
+            {config.ticketPrinterDriver === "ESCPOS_RAW" && <div className="hardware-ticket-printer-feed">
               <label><span>{t("hardware.escposAdditionalFeedLines")}</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={12}
-                  step={1}
-                  aria-describedby="escpos-additional-feed-help"
-                  value={config.escposAdditionalFeedLines}
+                <span id="escpos-additional-feed-help" className="hardware-ticket-printer-feed-help">
+                  {t("hardware.escposAdditionalFeedLinesHelp")}
+                </span>
+                <input type="number" min={0} max={12} step={1}
+                  aria-label={t("hardware.escposAdditionalFeedLines")}
+                  aria-describedby="escpos-additional-feed-help" value={config.escposAdditionalFeedLines}
                   onChange={(event) => updateConfig({
                     escposAdditionalFeedLines: Math.min(12, Math.max(0, Math.trunc(Number(event.target.value) || 0))),
-                  })}
-                />
+                  })} />
               </label>
-              {config.ticketPrinterConnection === "WINDOWS_PRINTER" && <label><span>{t("hardware.windowsPrinter")}</span>
-                <ErpSelect aria-label={`${t("hardware.windowsPrinter")} ESC/POS`} value={config.ticketPrinterName}
-                  onChange={(value) => updateConfig({ ticketPrinterName: value })}
-                  options={[
-                    { value: "", label: t("hardware.selectPrinter") },
-                    ...printers.map((printer) => ({ value: printer.name, label: printer.displayName })),
-                  ]} />
-              </label>}
-              {config.ticketPrinterConnection === "SERIAL" && <>
-                <label><span>{t("hardware.devicePath")}</span>
-                  <input value={config.escposDevicePath} onChange={(event) => updateConfig({ escposDevicePath: event.target.value })} />
-                </label>
-                <label><span>{t("hardware.serialBaudRate")}</span>
-                  <input type="number" value={config.escposSerialBaudRate}
-                    onChange={(event) => updateConfig({ escposSerialBaudRate: Number(event.target.value) || 9600 })} />
-                </label>
-              </>}
-              {config.ticketPrinterConnection === "NETWORK" && <>
-                <label><span>{t("hardware.host")}</span>
-                  <input value={config.escposHost} onChange={(event) => updateConfig({ escposHost: event.target.value })} />
-                </label>
-                <label><span>{t("hardware.port")}</span>
-                  <input type="number" value={config.escposPort}
-                    onChange={(event) => updateConfig({ escposPort: Number(event.target.value) || 9100 })} />
-                </label>
-              </>}
-            </div>
-            <p id="escpos-additional-feed-help" className="hardware-desktop-note">
-              {t("hardware.escposAdditionalFeedLinesHelp")}
-            </p>
-          </section>
-        </div>}
+            </div>}
+          </div>
+          <div className="hardware-inline-actions">
+            {(config.ticketPrinterDriver === "WINDOWS_DRIVER" || config.ticketPrinterConnection === "WINDOWS_PRINTER")
+              && <button type="button" onClick={refreshPrinters} disabled={!desktopHardwareAvailable}
+                title={!desktopHardwareAvailable ? t("hardware.desktopActionsHelp") : undefined}>
+                {t("hardware.detectPrinters")}
+              </button>}
+            <button type="button" onClick={printTestTicket} disabled={!desktopHardwareAvailable || printingTestTicket}
+              title={!desktopHardwareAvailable ? t("hardware.desktopActionsHelp") : undefined}>
+              {t("hardware.printTest")}
+            </button>
+          </div>
+          {!desktopHardwareAvailable && <p className="hardware-desktop-note">{t("hardware.desktopActionsHelp")}</p>}
+        </section>}
 
         {printerTab === "a4" && <section className="hardware-section hardware-section-wide">
           <h2>{t("hardware.a4Printer")}</h2>
@@ -823,7 +816,7 @@ export function HardwareSettingsScreen({
           </div>
         </section>}
 
-        {printerTab === "routes" && <section className="hardware-section hardware-section-wide">
+        {printerTab === "routes" && <section className="hardware-section hardware-section-wide hardware-document-routes">
           <h2>{t("hardware.printers.tab.routes")}</h2>
           <div className="hardware-route-table erp-classic-tables">
             <div className="hardware-route-header" style={routeGridStyle}>

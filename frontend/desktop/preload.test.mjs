@@ -3,6 +3,17 @@ import vm from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 
 describe("desktop preload hardware bridge", () => {
+  it("enumerates COM ports through a dedicated channel without renderer arguments", async () => {
+    const result = { ok: true, ports: [{ path: "COM2" }] };
+    const invoke = vi.fn().mockResolvedValue(result);
+    let desktopApi;
+    vm.runInNewContext(fs.readFileSync(new URL("./preload.cjs", import.meta.url), "utf8"), {
+      require: () => ({ contextBridge: { exposeInMainWorld: (_name, api) => { desktopApi = api; } },
+        ipcRenderer: { invoke } }),
+    });
+    expect(await desktopApi.hardware.listSerialPorts("ignored")).toEqual(result);
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("tpv:hardware:list-serial-ports");
+  });
   it("exposes scoped connection recovery calls and unsubscribes its status listener", async () => {
     const invoke = vi.fn().mockResolvedValue({ ok: true });
     const on = vi.fn();

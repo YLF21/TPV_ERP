@@ -1,0 +1,155 @@
+.hardware-settings-content .customer-display-settings {
+  gap: 14px;
+}
+
+.hardware-settings-content .customer-display-settings .customer-display-enabled {
+  align-self: start;
+  min-height: 32px;
+}
+
+.hardware-settings-content .customer-display-settings .customer-display-enabled input,
+.hardware-settings-content .customer-display-settings .customer-display-mode-option input {
+  width: 18px;
+  height: 18px;
+  min-height: 18px !important;
+  margin: 0;
+  padding: 0;
+  accent-color: #173f6e;
+}
+
+.hardware-settings-content .customer-display-mode {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.hardware-settings-content .customer-display-mode legend,
+.hardware-settings-content .customer-display-group h3 {
+  margin: 0 0 8px;
+  color: #42566f;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.hardware-settings-content .customer-display-mode-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  max-width: 560px;
+}
+
+.hardware-settings-content .customer-display-settings .customer-display-mode-option {
+  min-width: 0;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid #9eadbd;
+  border-radius: 6px;
+  background: #f6f8fa;
+  cursor: pointer;
+}
+
+.hardware-settings-content .customer-display-settings .customer-display-mode-option:has(input:checked) {
+  border-color: #0065fe;
+  background: #0065fe;
+  color: #ffffff;
+}
+
+.hardware-settings-content .customer-display-settings .customer-display-mode-option:has(input:checked) input {
+  accent-color: #ffffff;
+}
+
+.hardware-settings-content .customer-display-settings .customer-display-mode-option input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.hardware-settings-content .customer-display-settings .customer-display-mode-option:focus-within {
+  outline: 2px solid #0065fe;
+  outline-offset: 2px;
+}
+
+.hardware-settings-content .customer-display-group {
+  min-width: 0;
+  padding-top: 14px;
+  border-top: 1px solid #d7e0ea;
+}
+
+.hardware-settings-content .customer-display-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
+  align-items: start;
+  max-width: 900px;
+}
+
+.hardware-settings-content .customer-display-fields > label {
+  min-width: 0;
+}
+
+.hardware-settings-content .customer-display-settings .hardware-serial-port-picker > button {
+  height: 36px;
+  min-height: 36px;
+}
+
+.hardware-settings-content .customer-display-settings .hardware-serial-baud-rate > .erp-select.erp-select--editable > input,
+.hardware-settings-content .customer-display-settings .hardware-serial-baud-rate > .erp-select.erp-select--editable > .erp-select__trigger {
+  height: 34px !important;
+  min-height: 34px !important;
+}
+
+.hardware-settings-content .customer-display-fields > .customer-display-connection-choice {
+  grid-column: 1 / -1;
+}
+
+.hardware-settings-content .customer-display-options-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 18px;
+}
+
+.hardware-settings-content .customer-display-options-grid > label {
+  min-width: 0;
+}
+
+.hardware-settings-content .customer-display-fields input,
+.hardware-settings-content .customer-display-fields .erp-select {
+  min-width: 0;
+  width: 100%;
+}
+
+.hardware-settings-content .customer-display-group .hardware-help {
+  margin: 8px 0 0;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.hardware-settings-content .customer-display-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 0;
+}
+
+.hardware-settings-content .customer-display-actions + .customer-display-actions {
+  margin-top: 8px;
+}
+
+@media (max-width: 640px) {
+  .hardware-settings-content .customer-display-mode-options,
+  .hardware-settings-content .customer-display-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hardware-settings-content .customer-display-options-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

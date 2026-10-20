@@ -245,6 +245,7 @@
 				<includes>
 					<include>ticket_anulado.jrxml</include>
 					<include>cobro_pendiente.jrxml</include>
+					<include>PRUEBA_IMPRESORA_TICKET_80.jrxml</include>
 				</includes>
 			</resource>
 			<!-- Immutable v1 JSON-backed commercial document models. -->

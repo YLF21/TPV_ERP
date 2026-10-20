@@ -1,0 +1,49 @@
+.hardware-settings-content .hardware-serial-port-field {
+  min-width: 0;
+  container-type: inline-size;
+}
+
+.hardware-settings-content .hardware-serial-port-picker {
+  display: flex;
+  gap: 8px;
+}
+
+.hardware-settings-content .hardware-serial-port-picker > label {
+  flex: 1;
+  min-width: 0;
+}
+
+.hardware-settings-content .hardware-serial-port-picker > button {
+  flex: none;
+  align-self: end;
+  white-space: nowrap;
+}
+
+.hardware-settings-content .hardware-serial-port-field .erp-select {
+  min-width: 0;
+  width: 100%;
+}
+
+.hardware-settings-content .hardware-serial-port-field .hardware-help {
+  margin: 12px 0 0;
+}
+
+.hardware-settings-content .hardware-serial-port-refresh-icon {
+  display: none;
+}
+
+@container (max-width: 320px) {
+  .hardware-settings-content .hardware-serial-port-picker > .sale-settings-action-button {
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+  }
+
+  .hardware-settings-content .hardware-serial-port-refresh-text {
+    display: none;
+  }
+
+  .hardware-settings-content .hardware-serial-port-refresh-icon {
+    display: block;
+  }
+}

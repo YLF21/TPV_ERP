@@ -9,6 +9,7 @@ import { ApiError, apiRequest } from "../api/client";
 import { isOfflineApplicationClosePrepared, registerOfflineClosePreparation } from "../sale/offlineClosePreparation";
 import { offlineWorkRecoveryBridge, offlineSaleIdentity, readOfflineRecoveryStorage, restoreOfflineRecoveryStorage, saveOfflineSaleRecovery, retireOfflineSaleRecovery, validateOfflineSaleRecovery, isOfflineSaleRecoveryTombstone, type OfflineSaleRecovery } from "../sale/offlineSaleRecovery";
 import { useSaleControlDelivery } from "../sale/useSaleControlDelivery";
+import { useCustomerDisplaySale } from "../sale/useCustomerDisplaySale";
 import type { SaleControlDelivery } from "../sale/saleControlDelivery";
 import { roundUnitPrice } from "../money";
 import { apiBaseUrl } from "../api/runtime";
@@ -2229,6 +2230,25 @@ function SaleScreenContent({
     && confirmedAuthoritativeQuote !== null;
   const commercialQuoteReady = authoritativeQuoteRequestKey === currentSaleRequestKey
     && confirmedCommercialQuote !== null;
+  useCustomerDisplaySale({
+    enabled: app === "venta",
+    token: session.accessToken,
+    terminal: terminalContext,
+    locale,
+    lines: lines.map(line => ({
+      id: saleCartLineIdentity(line),
+      name: line.temporaryName ?? line.product.name ?? line.product.code ?? "",
+      quantity: line.quantity,
+    })),
+    quote: commercialQuoteReady ? confirmedCommercialQuote : null,
+    quoteError: Boolean(authoritativeQuoteError),
+    payment: cashResult ? {
+      totalCents: cashResult.totalCents,
+      changeCents: cashResult.changeCents,
+    } : null,
+    paymentLocked,
+    reservedTotalCents: reservedPaymentTotalCents,
+  });
   const authoritativeTotal = commercialQuoteReady ? Number(confirmedCommercialQuote.total) : total;
   const acceptedMemberBalanceCents = authoritativeQuoteReady
     ? Math.round(Number(confirmedAuthoritativeQuote.memberBalanceTotal ?? 0) * 100)
