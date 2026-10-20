@@ -1,0 +1,30 @@
+.mk-page .mk-service-disclosure { min-width: 0; margin-top: 12px; border: 1px solid var(--mk-line); border-radius: 14px; color: var(--mk-ink); background: white; overflow-wrap: anywhere; }
+.mk-page .mk-service-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 14px 16px; cursor: pointer; list-style: none; }
+.mk-service-disclosure > summary::-webkit-details-marker { display: none; }
+.mk-service-disclosure > summary > span { min-width: 0; }
+.mk-service-disclosure > summary strong { display: block; color: var(--mk-navy); font-size: 18px; line-height: 1.35; }
+.mk-service-disclosure > summary span > span { display: block; margin-top: 4px; color: var(--mk-muted); font-size: 14px; line-height: 1.5; }
+.mk-service-disclosure > summary > svg { flex: none; width: 18px; height: 18px; color: var(--mk-blue); }
+.mk-service-disclosure[open] > summary > svg { transform: rotate(180deg); }
+.mk-page .mk-service-disclosure :focus-visible { outline: 3px solid #0754ce; outline-offset: 3px; }
+.mk-service-content { min-width: 0; padding: 0 16px 16px; }
+.mk-service-content :is(h3,h4) { margin: 0 0 7px; color: var(--mk-navy); font-size: 16px; line-height: 1.4; }
+.mk-page .mk-service-content :is(p,dd,li) { color: var(--mk-muted); font-size: 15px; line-height: 1.5; }
+.mk-service-content p { margin: 8px 0; }
+.mk-service-content :is(ul,ol) { padding-left: 22px; }
+.mk-service-content li + li { margin-top: 6px; }
+.mk-service-grid,.mk-service-steps { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.mk-service-grid > *,.mk-service-steps > li { min-width: 0; border-top: 1px solid var(--mk-line); padding-top: 12px; }
+.mk-service-steps { margin: 10px 0; }
+.mk-service-steps > li { margin: 0; }
+.mk-app-explorer-setup > .mk-service-disclosure { grid-column: 1 / -1; margin-top: 0; }
+.mk-service-facts { margin: 8px 0; }
+.mk-service-facts dt { color: var(--mk-navy); font-size: 14px; font-weight: 700; line-height: 1.5; }
+.mk-service-facts dd { margin: 4px 0 10px; }
+.mk-service-note { border-left: 3px solid var(--mk-line); padding-left: 10px; }
+.mk-page .mk-service-action { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; max-width: 100%; border: 1px solid var(--mk-blue); border-radius: 8px; padding: 9px 12px; color: var(--mk-blue-strong); background: white; font: inherit; font-weight: 700; line-height: 1.4; }
+.mk-service-action svg { flex: none; width: 18px; height: 18px; }
+@media (max-width:760px) {
+  .mk-service-grid,.mk-service-steps { grid-template-columns: minmax(0,1fr); }
+  .mk-page .mk-service-content :is(p,dd,li),.mk-service-disclosure > summary span > span { font-size: 16px; }
+}

@@ -46,7 +46,7 @@ export async function prerender() {
   const previous = new Map(["window", "document", "sessionStorage", "localStorage"].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   try {
     if (server.httpServer !== null) throw new Error("Prerender must not create an HTTP listener");
-    const [{ default: MarketingPage }, { routeIds, marketingLanguages, marketingHref }, { buildMarketingMetadata, renderMarketingHead, safePublicSiteUrl }] = await Promise.all([
+    const [{ default: MarketingPage }, { routeIds, routeAliases, marketingLanguages, marketingHref }, { buildMarketingMetadata, renderMarketingHead, safePublicSiteUrl }] = await Promise.all([
       server.ssrLoadModule("/src/MarketingPage.tsx"),
       server.ssrLoadModule("/src/marketingRoutes.ts"),
       server.ssrLoadModule("/src/seo.ts")
@@ -54,8 +54,8 @@ export async function prerender() {
     const entries = [];
     const origin = safePublicSiteUrl(publicSiteUrl);
     if (publicSiteUrl && !origin) console.warn("SEO: VITE_PUBLIC_SITE_URL is not a public HTTPS origin; indexing and canonical URLs remain disabled.");
-    const render = (language, route) => {
-      const location = { origin: origin?.origin ?? "http://localhost", pathname: marketingHref(language, route), hash: "", search: "" };
+    const render = (language, route, pathname = marketingHref(language, route)) => {
+      const location = { origin: origin?.origin ?? "http://localhost", pathname, hash: "", search: "" };
       const storage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
       Object.defineProperty(globalThis, "window", { configurable: true, value: { location } });
       Object.defineProperty(globalThis, "document", { configurable: true, value: { referrer: "" } });
@@ -74,6 +74,15 @@ export async function prerender() {
         await writeFile(path.join(directory, "index.html"), html);
         entries.push(metadata);
       }
+      // Keep previously published feature URLs valid on static hosts. They render
+      // the combined page directly, with its solution canonical and no redirect.
+      for (const alias of Object.keys(routeAliases)) {
+        const aliasPath = `/${language}/producto/${alias}/`;
+        const { html } = render(language, alias, aliasPath);
+        const directory = path.join(dist, language, "producto", alias);
+        await mkdir(directory, { recursive: true });
+        await writeFile(path.join(directory, "index.html"), html);
+      }
     }
     await writeFile(path.join(dist, "index.html"), render("es", "inicio").html);
     if (origin && indexable) {
@@ -84,7 +93,9 @@ export async function prerender() {
       await rm(path.join(dist, "sitemap.xml"), { force: true });
       await writeFile(path.join(dist, "robots.txt"), buildRobots());
     }
-    console.log(`Prerender: 19 semantic HTML documents generated; indexing ${origin && indexable ? "explicitly enabled" : "disabled (safe default)"}.`);
+    const canonicalCount = routeIds.length * marketingLanguages.length;
+    const aliasCount = Object.keys(routeAliases).length * marketingLanguages.length;
+    console.log(`Prerender: ${canonicalCount + aliasCount + 1} semantic HTML documents generated (${canonicalCount} canonical, ${aliasCount} compatibility aliases, 1 root); indexing ${origin && indexable ? "explicitly enabled" : "disabled (safe default)"}.`);
   } finally {
     for (const [key, descriptor] of previous) {
       if (descriptor) Object.defineProperty(globalThis, key, descriptor);

@@ -1,7 +1,8 @@
 # Web pública de esPOS
 
 Aplicación comercial independiente del panel interno `frontend-saas`.
-Conserva las seis secciones, las imágenes y los idiomas español, inglés y chino.
+Conserva las imágenes y los idiomas español, inglés y chino en cinco secciones:
+Inicio, Solución (incluye funcionalidades), Apps, Ventajas y Contacto.
 
 La marca pública es `esPOS` en los tres idiomas. `src/brand.ts` centraliza el
 nombre y las rutas de los activos: el wordmark y el favicon en `public/branding`
@@ -9,6 +10,23 @@ son copias sin modificar de `frontend/branding/espos-wordmark.png` y
 `frontend/branding/app-venta.ico`. No se recrea el logotipo con tipografías o
 iconos genéricos. Los identificadores técnicos, variables de entorno, rutas y
 nombres de artefactos de publicación se conservan por compatibilidad.
+
+## Solución unificada: presentación compacta
+
+Solución reúne la explicación general, tres principios de funcionamiento y las
+cuatro áreas de funcionalidades, sin eliminar información en ES/EN/ZH. Los
+principios agrupan icono y texto; las funcionalidades usan tarjetas con cabecera,
+descripción y tres capacidades. El diseño presenta dos columnas a partir de
+960 px y una por debajo, con tamaños de lectura y alturas naturales. La llamada
+a conocer las aplicaciones ocupa una banda final compacta con el enlace separado
+del texto. No se ocultan explicaciones ni se fuerza una pantalla sin scroll.
+
+`npm run test:a11y` comprueba contenido completo, jerarquía de títulos, listas,
+IDs y relaciones ARIA mediante SSR. El E2E queda preparado para comprobar esta
+pantalla a 320, 390, 768, 1024 y 1440 px en los tres idiomas: reflow, contenido
+visible, ausencia de recortes/solapes y acceso al enlace de Apps. Solo se comprueba
+su sintaxis mientras continúa el bloqueo conocido de acceso al navegador; no se
+presentan estos contratos de código como validación visual ni de geometría real.
 
 ## Desarrollo
 
@@ -62,7 +80,8 @@ pueden añadirse también sus enlaces `.sha256` y `VITE_DOWNLOAD_RELEASE_VERSION
 No se muestran enlaces de descarga incompletos o de ejemplo.
 La vista previa usa http://127.0.0.1:4176/.
 Los enlaces nuevos usan `/{es|en|zh}/producto/{pantalla}/`. El build genera
-18 directorios con su `index.html`, más una portada raíz de compatibilidad.
+15 directorios canónicos con su `index.html`, tres alias de compatibilidad de
+`funcionalidades` y una portada raíz: 19 documentos HTML en total.
 El alojamiento debe servir esos archivos y directorios completos desde la raíz
 del dominio, junto con `/assets`, `/branding`, `/marketing` y `/contact`.
 Las entradas antiguas `#/producto/inicio`, `#/producto/apps`, etc. siguen
@@ -112,7 +131,7 @@ web. La prueba verifica cuatro imágenes diferentes, su carga y el cambio de
 imagen al seleccionar otra pestaña.
 
 Cada uno de los tres pasos incluye acciones concretas, un ejemplo práctico
-y un beneficio cualitativo, definidos en `tour.stepDetails` para español,
+y un beneficio cualitativo, definidos en `tourExamples.ts` para español,
 inglés y chino. El panel de contexto aclara la plataforma y modalidad de uso
 de cada aplicación. Los textos no prometen sincronización instantánea,
 integraciones de pago no configuradas ni acceso público al portal cliente.
@@ -312,13 +331,17 @@ de errores del formulario se conservan.
 
 ### Enlaces e indexación
 
-Las seis pantallas tienen una URL distinta en cada idioma. El idioma explícito
+Las cinco pantallas tienen una URL distinta en cada idioma. El idioma explícito
 de la URL prevalece sobre la preferencia guardada; cambiar de idioma conserva
 la pantalla y la query. La navegación cliente usa History API y respeta los
 clics modificados/abrir en otra pestaña. Los enlaces antiguos con hash se
 interpretan, pero ya no se usan como canonical. El prerender de compilación
-incluye contenido semántico, título y metadatos específicos en 19 HTML: no son
-18 copias de una portada vacía. El explorador de Apps conserva su resumen
+incluye contenido semántico, título y metadatos específicos en 19 HTML:
+15 páginas canónicas, tres alias de compatibilidad y la portada raíz.
+`/{idioma}/producto/funcionalidades/` y `#/producto/funcionalidades` muestran
+directamente la nueva Solución completa, sin redirección ni pérdida de la query.
+Los metadatos de esos alias apuntan a `solucion`; el sitemap incluye únicamente
+las 15 rutas canónicas. El explorador de Apps conserva su resumen
 inicial de Venta; cambiar sus pestañas sigue siendo una interacción JavaScript.
 
 Este enfoque sigue las recomendaciones oficiales de Google sobre
@@ -506,6 +529,26 @@ pero solo se comprueba su sintaxis por el bloqueo de acceso conocido. La elecci�
 real de variante, ausencia de descargas duplicadas, layout y tiempos de carga
 siguen pendientes de una sesión de navegador permitida.
 
+## Diseño compacto en las cinco pantallas
+
+Inicio, Solución, Apps, Ventajas y Contacto comparten una densidad más compacta,
+sin exigir que toda la información quepa en una sola altura de ventana. Los
+contratos SSR conservan un único `h1` por ruta e idioma, los cuatro beneficios y
+cuatro ejemplos de sectores de Inicio, las acciones enlazables, las cuatro
+aplicaciones y cuatro pestañas informativas, todas las filas y celdas de la
+comparativa y el formulario con selección múltiple, paquete completo, consentimiento
+y acceso al QR original de WeChat. El envío sigue bloqueado hasta comprobar la
+disponibilidad real del servicio; renderizar el formulario no envía datos.
+
+El E2E queda preparado para reflujo en 320, 390, 768, 1024 y 1440 px en los tres
+idiomas. Comprueba contenido conservado, controles alcanzables mediante scroll
+vertical natural, ausencia de solapamientos y desbordamiento horizontal, sin
+imponer una altura máxima de pantalla. En esta entrega solo se comprueba la
+sintaxis del E2E: no se inicia navegador ni se realizan peticiones HTTP por el
+bloqueo de acceso conocido. SSR y sintaxis no certifican el diseño móvil o de
+escritorio, el foco real ni las métricas de carga; esas comprobaciones visuales
+e interactivas siguen pendientes de una sesión de navegador permitida.
+
 ## Alcance
 
 Tiene su propio package.json, lockfile, dependencias, estilos, recursos y build.
@@ -513,7 +556,7 @@ No importa código del panel SaaS.
 El idioma usa la URL explícita o, para entradas antiguas, la preferencia
 `tpv-product-language` como alternativa.
 El formulario de contacto permite elegir varias aplicaciones mediante casillas
-o seleccionar las cuatro con «Paquete completo». Las tarjetas y las casillas
+o seleccionar las cuatro con «Me interesa el conjunto completo». Las tarjetas y las casillas
 comparten la selección; los accesos desde recorridos y descargas siguen
 preseleccionando su aplicación. La API recibe `products` con la lista completa
 y mantiene `product` como primer producto para compatibilidad. La migración
@@ -533,3 +576,182 @@ botón o Escape y devolución del foco al botón de origen. No se inventan enlac
 de WeChat. El formulario sigue disponible como alternativa. La prueba E2E cubre
 la integridad del JPEG original, su carga y ampliación en los tres idiomas,
 además de la copia correcta, denegada y sus mensajes.
+
+## Información para elegir aplicaciones y entender la conexión
+
+La página Apps incorpora una guía desplegable con cuatro escenarios orientativos:
+caja y administración (Venta + Gestión), almacén (Gestión + PDA), consulta central
+de instalaciones existentes (SaaS) y el conjunto de las cuatro aplicaciones.
+Cada escenario explica sus dependencias y enlaza a Contacto con la selección
+correspondiente. Los enlaces conservan su destino nativo al abrirlos en otra pestaña.
+Las combinaciones expresan interés para una demostración: no son paquetes
+comerciales, reglas de licencia ni una promesa de despliegue independiente.
+
+Contacto aclara junto a las casillas que la selección no supone una compra y que
+los módulos, licencias, dispositivos y condiciones se concretan para cada negocio.
+El aviso se asocia al grupo mediante `aria-describedby`; el control de selección
+de las cuatro aplicaciones y el contrato de envío de `products` no cambian.
+
+Solución muestra antes de las funcionalidades un resumen visible de servicio de
+tienda, internet y consulta sincronizada. Apps mantiene también una explicación
+de conexión por aplicación visible fuera de sus pestañas de detalle. Los textos de
+Inicio, Ventajas, recorridos y FAQ distinguen operativa local de sincronización y
+definen SaaS como consulta de documentos y stock recibidos, licencias, facturas del
+servicio y soporte según permisos, no edición remota completa. Descargas especifica
+Android y acceso autorizado al servicio de tienda para PDA, igual que su guía.
+
+El contenido está disponible en español, inglés y chino. `npm run test:information`
+valida traducciones, combinaciones, dependencias, enlaces, preselección, semántica
+del conjunto completo y presencia de los límites de conexión mediante contratos
+de datos y renderizado SSR, sin navegador, HTTP ni envío de solicitudes reales.
+Estas pruebas no sustituyen la comprobación visual o interactiva en un navegador
+autorizado; esa verificación sigue pendiente por el bloqueo de acceso conocido.
+
+## Implantación, compatibilidad y soporte: información orientativa
+
+Apps añade tres desplegables nativos cerrados inicialmente, con el mismo estilo
+compacto y contenido ES/EN/ZH. No constituyen una oferta comercial ni ejecutan
+instalaciones o cambios en las aplicaciones del negocio:
+
+- `ImplementationJourney.tsx` y `implementationContent.ts` describen cuatro
+  etapas posteriores a la demo: alcance y responsabilidades, muestra de datos y
+  equipos, configuración y pruebas, y preparación de formación y arranque si se
+  acuerdan. Cada etapa distingue qué preparar y qué confirmar. Se conserva la
+  guía anterior de tres pasos para preparar la demostración.
+- `CompatibilityChecklist.tsx` y `compatibilityContent.ts` reutilizan los
+  requisitos de las guías existentes y separan las comprobaciones pendientes
+  por instalación: versiones y recursos, periféricos, terminal de pago, Excel,
+  red, autorización PDA, permisos y sincronización SaaS. No se publican modelos
+  certificados ni mínimos inventados. Aparece también en «Qué necesitas» de
+  cada app y en el centro de descargas, conservando el idioma del modal.
+- `SupportInformation.tsx` y `supportContent.ts` explican el contacto existente
+  de WeChat, el soporte SaaS según permisos, la información técnica necesaria
+  para comunicar incidencias y las cuestiones por acordar sobre cobertura,
+  formación, respuesta, copias y restauración. Contacto incorpora este bloque y
+  la guía de implantación. El botón de WeChat reutiliza el QR existente; el enlace
+  de Apps abre Contacto. No se inventan enlaces a WeChat, correos ni horarios.
+
+Los textos generales y las FAQ distinguen las capacidades técnicas de permisos,
+auditoría y trazabilidad de un servicio de copias o acompañamiento cuya inclusión
+debe confirmarse. No se fijan precios, plazos, niveles de servicio ni exclusiones
+comerciales. La referencia de recepción confirma un registro, no una cita ni un
+correo enviado automáticamente. Ver el QR o copiar el ID no envía el formulario.
+Se pide compartir solo información técnica y muestras anonimizadas o ficticias,
+nunca contraseñas, tarjetas o bases de datos de clientes. No se alteran la política
+de privacidad pendiente, el contrato de solicitudes, las bases de datos ni el backend.
+
+`npm run test:implementation` comprueba contenido, idiomas, responsabilidades,
+requisitos reutilizados, listas por app, semántica de los desplegables, enlaces,
+callbacks sin ejecutar e integración SSR sin navegador, HTTP ni solicitudes reales.
+La presencia en las pestañas de configuración y en el modal de descargas se
+comprueba mediante contratos de código; no equivale a probar su interacción o
+geometría en móvil y escritorio. La revisión visual sigue pendiente de acceso
+autorizado al navegador. Los presupuestos existentes de carga no se amplían.
+
+## Revisión editorial ES/EN/ZH
+
+Los textos de páginas, guías, combinaciones, conexión, compatibilidad,
+implantación, soporte, recorridos, descargas, estados del formulario y metadatos
+se revisan con el mismo alcance funcional. La PDA comprueba documentos ya
+confirmados sin duplicar entradas; SaaS consulta documentos y datos de existencias
+recibidos, además de información del servicio, sin prometer gestión remota completa.
+Las facturas del servicio no se presentan como contabilidad consolidada. Los
+requisitos de red, servicio local, permisos y sincronización se conservan.
+
+Se distingue la información de publicación de una verificación de firma o SHA-256
+realizada por el usuario. El pipeline de publicación mantiene sus controles
+existentes; la interfaz no afirma comprobar automáticamente un instalador.
+El estado de disponibilidad del formulario tampoco afirma nada sobre solicitudes
+previas ni fija una espera no definida para reintentar. No se cambian el transporte
+de solicitudes, el acceso a WeChat ni las condiciones comerciales o de privacidad.
+
+Para reducir repetición sin ocultar requisitos: «Qué necesitas» muestra su lista
+una vez y conserva el resumen permanente de conexión; el desplegable contextual
+de compatibilidad utiliza `includeRequirements={false}` y presenta las
+comprobaciones pendientes. Las versiones completas de Apps y Descargas mantienen
+requisitos y comprobaciones. En Contacto, `showAccount={false}` evita repetir el
+ID de WeChat dentro de Soporte, ya que la tarjeta principal lo muestra y permite
+copiarlo. El soporte independiente conserva la cuenta por defecto. Los estilos,
+las rutas y los controles compactos no cambian.
+
+El inglés sigue la variante británica (`en_GB`) y el chino simplificado utiliza
+el trato «您». Las capturas de aplicación se identifican como interfaz en español
+con datos de demostración, también al cambiar el idioma de los textos de la web.
+El HTML inicial español y los metadatos generados comparten título y descripción;
+los cambios editoriales no activan la indexación ni publican una nueva URL.
+
+`npm run test:editorial` comprueba los conjuntos de textos, metadatos y
+deduplicación mediante contratos de datos y SSR. No inicia un navegador ni envía
+solicitudes reales, y no certifica geometría ni interacción de los desplegables.
+
+## Precisión comercial: cobros, comparativa y acciones
+
+Esta revisión se realiza en tres fases, manteniendo las estructuras compactas y
+los textos en español, inglés y chino:
+
+1. Los ejemplos de pago ordinario se separan de los cobros pendientes. Facturas
+   y albaranes admiten saldo pendiente; el cobro unificado también contempla
+   tickets pendientes con cliente identificado y las autorizaciones necesarias.
+   El saldo pendiente no representa un ingreso ni un medio de pago. No se
+   publican plazos de crédito ni condiciones comerciales nuevas.
+2. La comparativa distingue capacidades documentadas de aspectos por confirmar
+   durante la implantación. Una capacidad técnica no implica que su licencia,
+   configuración o un servicio estén incluidos en una oferta.
+3. La solicitud de demo mantiene la aplicación elegida en Contacto. La acción
+   de preparación de la implantación abre la guía existente en Apps, sin crear
+   otra solicitud ni duplicar su contenido.
+
+La restricción de tickets del inicio de `docs/customer-pending-sales-operations.md`
+no describe todo el flujo actual. Para los textos de la web se han contrastado
+`CommercialDocument.isReceivableDocument`, el cierre del cobro unificado en
+`SalePaymentSessionService` y sus pruebas de tickets pendientes, además del flujo
+de facturas y albaranes. Esta revisión no cambia esos procesos del negocio.
+
+`npm run test:clarity` agrupa los contratos de estas tres fases. Se complementa
+con la compilación y las pruebas de guías, renderizado, información, implantación,
+accesibilidad, navegación y coherencia editorial. Las comprobaciones de código y
+SSR no sustituyen una revisión visual; el acceso al navegador sigue pendiente.
+
+## Recorridos prácticos y capturas por paso: estado de esta fase
+
+Los tres pasos de cada aplicación conservan la composición compacta de acciones,
+ejemplo y resultado en ES/EN/ZH. Los ejemplos son ilustrativos: las cantidades y
+los casos descritos no representan operaciones de clientes ni necesariamente los
+datos visibles en la captura de referencia. Se mantienen las condiciones de
+conexión y autorización y se revisa el resultado antes de aplicar cambios.
+Los ejemplos detallados viven en `tourExamples.ts`, importado desde el diálogo
+de carga diferida: no se añaden a la descarga inicial de las páginas.
+
+`TourStepPreview.tsx` muestra solo la imagen del paso activo y permite ampliar su
+original en otra pestaña. `tourStepMedia.ts` separa una captura específica
+(`step-capture`) de una vista general (`application-overview`). Cada paso tiene
+contexto, texto alternativo y leyenda traducidos; una vista general se identifica
+expresamente como referencia, no como prueba visual de la operación descrita.
+
+Actualmente siguen disponibles únicamente las cuatro capturas generales
+verificadas: ticket de Venta antes del cobro, resumen de ventas en Gestión,
+consulta de precio y existencias en PDA y documentos recibidos en el portal
+cliente SaaS. Se conservan sin modificación, con datos ficticios y la procedencia
+ya descrita arriba. No se han publicado imágenes antiguas con datos sin validar,
+pantallas de administración interna ni duplicados renombrados como nuevos pasos.
+
+Las doce referencias específicas permanecen pendientes en
+`tourStepCaptureAssets`. Para completarlas se necesitan capturas reales con datos
+ficticios de los siguientes estados:
+
+- Venta: cobro y cambio, consultas de stock/deudas y revisión operativa local.
+- Gestión: existencias/movimientos, revisión e importación Excel y permisos.
+- PDA: recuento y diferencias, comprobación de documento confirmado y reposición.
+- SaaS cliente: consulta de documentos/existencias, supervisión de sincronización
+  y licencias/facturas del servicio/soporte según los permisos correspondientes.
+
+El acceso al navegador continúa bloqueado; en esta fase no se ejecutan las
+herramientas de captura existentes ni se generan pantallas simuladas para
+presentarlas como imágenes del producto. Al incorporar una captura verificada,
+hay que indicar su ruta, dimensiones y procedencia y comprobar la correspondencia
+con el paso. El ejemplo comercial por sí solo no acredita lo mostrado en la imagen.
+
+`npm run test:tour` comprueba las 36 combinaciones de paso, aplicación e idioma,
+la existencia y dimensiones de los archivos, la distinción de procedencia y el
+enlace al original mediante contratos de datos y SSR. No ejecuta un navegador ni
+certifica la geometría o la interacción real en móvil y escritorio.

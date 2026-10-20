@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { productBrand } from "./brand";
 import { marketingImages } from "./marketingImages";
 import type { MarketingLanguage } from "./marketingI18n";
-import { marketingHref, marketingLanguages, readMarketingLocation, type MarketingRoute } from "./marketingRoutes";
+import { marketingHref, marketingLanguages, normalizeMarketingRoute, readMarketingLocation, type MarketingRoute, type MarketingRouteInput } from "./marketingRoutes";
 
 type SeoCopy = {
   title: string;
@@ -13,23 +13,19 @@ const seoCopy: Record<MarketingLanguage, Record<MarketingRoute, SeoCopy>> = {
   es: {
     inicio: {
       title: "esPOS | Venta, gestión y stock para comercios",
-      description: "Conecta el punto de venta, la gestión, el almacén y el control multi-tienda en una plataforma preparada para la operativa diaria."
+      description: "Conecta punto de venta, gestión y almacén con una consulta central de la información recibida de tus tiendas vinculadas."
     },
     solucion: {
-      title: "Solución conectada para comercios | esPOS",
-      description: "Une mostrador, oficina, almacén y dirección para reducir tareas manuales y mantener una visión completa de cada tienda."
-    },
-    funcionalidades: {
-      title: "Funcionalidades de venta, stock y gestión | esPOS",
-      description: "Descubre herramientas para caja, facturación, catálogo, clientes, almacén, permisos, trazabilidad e informes de negocio."
+      title: "Solución y funcionalidades para comercios | esPOS",
+      description: "Conecta venta, gestión y almacén. Descubre funciones de caja, facturación, catálogo, clientes, stock e informes para reducir tareas manuales y coordinar tus tiendas."
     },
     apps: {
       title: "Apps de venta, gestión, almacén y SaaS | esPOS",
-      description: "Conoce esPOS Venta, Gestión, PDA y SaaS: tareas, ejemplos de uso, requisitos de conexión y respuestas para elegir las aplicaciones de tu negocio."
+      description: "Conoce esPOS Venta, Gestión, PDA y SaaS: tareas, conexión, compatibilidad y pasos para preparar la implantación y consultar el soporte."
     },
     ventajas: {
       title: "Ventajas de una gestión local y en la nube | esPOS",
-      description: "Combina una operativa local ágil con sincronización, control central multi-tienda, seguridad y acompañamiento durante la implantación."
+      description: "Compara la operativa con servicio de tienda y la consulta central por sincronización. Revisa conectividad, permisos y aspectos de implantación por confirmar."
     },
     contacto: {
       title: "Solicita una demostración de esPOS",
@@ -39,23 +35,19 @@ const seoCopy: Record<MarketingLanguage, Record<MarketingRoute, SeoCopy>> = {
   en: {
     inicio: {
       title: "esPOS | Sales, management and stock for retailers",
-      description: "Connect point of sale, management, warehouse and multi-store control in one platform designed for everyday retail operations."
+      description: "Connect point of sale, management and warehouse work with a central view of information received from your linked stores."
     },
     solucion: {
-      title: "Connected retail management solution | esPOS",
-      description: "Bring checkout, back office, warehouse and management together to reduce manual work and keep a complete view of every store."
-    },
-    funcionalidades: {
-      title: "Sales, stock and management features | esPOS",
-      description: "Explore checkout, billing, catalogue, customer, warehouse, permissions, traceability and business reporting capabilities."
+      title: "Retail management solution and features | esPOS",
+      description: "Connect sales, management and warehouse operations. Explore checkout, billing, catalogue, customers, stock and reporting tools to reduce manual work and coordinate stores."
     },
     apps: {
       title: "Sales, management, warehouse and SaaS apps | esPOS",
-      description: "Explore esPOS Sales, Management, PDA and SaaS: everyday tasks, usage examples, connection requirements and answers to help you choose your business apps."
+      description: "Explore esPOS Sales, Management, PDA and SaaS: tasks, connectivity, compatibility and how to prepare rollout and discuss support."
     },
     ventajas: {
       title: "Local and cloud retail management benefits | esPOS",
-      description: "Combine responsive local operations with synchronization, central multi-store visibility, security and rollout support."
+      description: "Compare store-service operations with a synchronised central view. Review connectivity, permissions and rollout requirements for your business."
     },
     contacto: {
       title: "Request an esPOS demonstration",
@@ -65,23 +57,19 @@ const seoCopy: Record<MarketingLanguage, Record<MarketingRoute, SeoCopy>> = {
   zh: {
     inicio: {
       title: "esPOS｜零售销售、管理与库存一体化",
-      description: "将收银、业务管理、仓库和多门店控制连接在同一平台，满足零售企业的日常运营需求。"
+      description: "连接收银、业务管理与仓库，并集中查询从已关联门店收到的信息。"
     },
     solucion: {
-      title: "互联的零售管理解决方案｜esPOS",
-      description: "连接收银台、办公室、仓库和管理层，减少手工操作，并全面掌握每家门店的运营情况。"
-    },
-    funcionalidades: {
-      title: "销售、库存与管理功能｜esPOS",
-      description: "了解收银、开票、商品、客户、仓库、权限、操作追踪和业务报告等功能。"
+      title: "零售管理解决方案与功能｜esPOS",
+      description: "连接销售、业务管理与仓库，了解收银、开票、商品、客户、库存及报表功能，减少手工操作并协同管理多家门店。"
     },
     apps: {
       title: "销售、管理、仓库与 SaaS 应用｜esPOS",
-      description: "了解 esPOS 销售、管理、PDA 和 SaaS 的日常任务、使用示例、连接要求与常见问题，选择适合业务的应用组合。"
+      description: "了解 esPOS 销售、管理、PDA 和 SaaS 的任务、连接与兼容要求，以及准备实施和咨询支持的步骤。"
     },
     ventajas: {
       title: "本地与云端零售管理优势｜esPOS",
-      description: "兼顾顺畅的本地运营、数据同步、多门店集中视图、安全保障和实施支持。"
+      description: "比较门店服务与同步后的中央查询方式，了解网络、权限及需按业务情况确认的实施事项。"
     },
     contacto: {
       title: "申请 esPOS 产品演示",
@@ -127,7 +115,8 @@ export type MarketingMetadata = SeoCopy & {
 
 const locales: Record<MarketingLanguage, string> = { es: "es_ES", en: "en_GB", zh: "zh_CN" };
 
-export function buildMarketingMetadata(language: MarketingLanguage, route: MarketingRoute, configuredUrl?: string | null, indexable = false): MarketingMetadata {
+export function buildMarketingMetadata(language: MarketingLanguage, routeInput: MarketingRouteInput, configuredUrl?: string | null, indexable = false): MarketingMetadata {
+  const route = normalizeMarketingRoute(routeInput);
   const publicUrl = safePublicSiteUrl(configuredUrl);
   const canonical = publicUrl ? new URL(marketingHref(language, route), publicUrl).href : null;
   const graph: Record<string, unknown>[] = [{

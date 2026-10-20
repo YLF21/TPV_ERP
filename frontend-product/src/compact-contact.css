@@ -1,0 +1,420 @@
+/* Compact contact layout: keep the complete enquiry flow readable at every size. */
+.mk-contact-page {
+  min-height: 0;
+  overflow: visible;
+}
+
+.mk-contact-page .mk-contact-stage {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+  width: min(100%, 1440px);
+  min-height: 0;
+  padding: 28px var(--mk-compact-gutter, clamp(20px, 4vw, 56px)) 32px;
+}
+
+.mk-contact-page .mk-contact-story,
+.mk-contact-page .mk-contact-form,
+.mk-contact-page .mk-contact-fields > label {
+  min-width: 0;
+}
+
+.mk-contact-page .mk-contact-story .mk-kicker {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.mk-contact-page .mk-contact-story h1 {
+  max-width: 24ch;
+  font-size: clamp(32px, 3.2vw, 44px);
+  letter-spacing: -.045em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.mk-contact-page .mk-contact-story > p:not(.mk-kicker) {
+  max-width: 70ch;
+  margin-top: 12px;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.mk-contact-page .mk-wechat-card {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 120px;
+  align-items: start;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 16px;
+  border-radius: 14px;
+}
+
+.mk-contact-page .mk-wechat-logo {
+  width: 32px;
+  height: 32px;
+}
+
+.mk-contact-page .mk-wechat-content {
+  min-width: 0;
+}
+
+.mk-contact-page .mk-wechat-content h2 {
+  margin-bottom: 5px;
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.mk-contact-page .mk-wechat-account-line,
+.mk-contact-page .mk-wechat-body,
+.mk-contact-page .mk-wechat-hint,
+.mk-contact-page .mk-wechat-status {
+  display: block;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.mk-contact-page .mk-wechat-id-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mk-contact-page .mk-wechat-id {
+  flex: 1 1 215px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.mk-contact-page .mk-wechat-copy {
+  flex: 0 1 auto;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.mk-contact-page .mk-wechat-status {
+  min-height: 21px;
+  margin-top: 4px;
+}
+
+.mk-contact-page .mk-wechat-qr-trigger {
+  width: 120px;
+  max-width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.mk-contact-page .mk-wechat-qr-trigger img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.mk-contact-page .mk-contact-products {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.mk-contact-page .mk-contact-product {
+  grid-template-columns: 26px minmax(0, 1fr) 18px;
+  gap: 10px;
+  min-height: 84px;
+  padding: 12px;
+  border-radius: 12px;
+  overflow: visible;
+}
+
+.mk-contact-page .mk-contact-product:hover,
+.mk-contact-page .mk-contact-product.is-selected {
+  transform: none;
+}
+
+.mk-contact-page .mk-contact-product > svg:first-child {
+  width: 26px;
+  height: 26px;
+}
+
+.mk-contact-page .mk-contact-product > svg:last-child {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.mk-contact-page .mk-contact-product small {
+  display: block;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.mk-contact-page .mk-contact-product strong {
+  font-size: 17px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.mk-contact-page .mk-contact-product em {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.mk-contact-page .mk-contact-trust {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.mk-contact-page .mk-contact-trust > span {
+  grid-template-columns: 32px minmax(0, 1fr);
+  column-gap: 8px;
+}
+
+.mk-contact-page .mk-contact-trust svg {
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+}
+
+.mk-contact-page .mk-contact-trust strong {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.mk-contact-page .mk-contact-trust small {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.mk-contact-page .mk-contact-form {
+  align-self: start;
+  justify-self: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 760px;
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 16px 38px rgba(14, 47, 91, .1);
+}
+
+.mk-contact-page .mk-contact-form-tag {
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.mk-contact-page .mk-contact-form h2 {
+  position: static;
+  width: auto;
+  height: auto;
+  clip-path: none;
+  overflow: visible;
+  white-space: normal;
+  font-size: 24px;
+  line-height: 1.25;
+  letter-spacing: -.03em;
+}
+
+.mk-contact-page .mk-contact-form > p:not(.mk-contact-form-tag):not(.mk-contact-prepared):not(.mk-contact-error) {
+  display: block;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.mk-contact-page .mk-contact-form label,
+.mk-contact-page .mk-contact-selection legend {
+  gap: 5px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.mk-contact-page .mk-contact-form input:not([type="checkbox"]):not([type="radio"]),
+.mk-contact-page .mk-contact-form select,
+.mk-contact-page .mk-contact-form textarea {
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.mk-contact-page .mk-contact-form textarea {
+  min-height: 96px;
+}
+
+.mk-contact-page .mk-contact-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.mk-contact-page .mk-contact-selection {
+  gap: 8px;
+}
+
+.mk-contact-page .mk-contact-selection legend {
+  margin-bottom: 8px;
+}
+
+.mk-contact-page .mk-contact-app-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mk-contact-page .mk-contact-form .mk-contact-package,
+.mk-contact-page .mk-contact-form .mk-contact-app-choice {
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.mk-contact-page .mk-contact-app-choice > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mk-contact-page .mk-contact-package strong {
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.mk-contact-page .mk-contact-package small,
+.mk-contact-page .mk-contact-form > small {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.mk-contact-page .mk-contact-form .mk-contact-consent {
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding-block: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mk-contact-page .mk-contact-submit,
+.mk-contact-page .mk-contact-talk {
+  min-height: 44px;
+  padding: 10px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.mk-contact-page .mk-contact-form .mk-delivery-status {
+  display: block;
+  padding: 10px 12px;
+}
+
+.mk-contact-page .mk-delivery-status p {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.mk-contact-page .mk-delivery-actions button {
+  max-width: 100%;
+  min-height: 44px;
+  padding: 10px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.mk-contact-page .mk-contact-selection-error,
+.mk-contact-page .mk-contact-prepared,
+.mk-contact-page .mk-contact-error {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (min-width: 1100px) {
+  .mk-contact-page .mk-contact-stage {
+    grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
+    gap: 28px;
+  }
+
+  .mk-contact-page .mk-contact-form {
+    justify-self: stretch;
+    max-width: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .mk-contact-page .mk-contact-stage {
+    gap: 24px;
+    padding-top: 24px;
+  }
+
+  .mk-contact-page .mk-contact-story > p:not(.mk-kicker),
+  .mk-contact-page .mk-contact-form > p:not(.mk-contact-form-tag):not(.mk-contact-prepared):not(.mk-contact-error) {
+    font-size: 16px;
+    line-height: 1.55;
+  }
+
+  .mk-contact-page .mk-contact-story h1 {
+    font-size: clamp(32px, 6vw, 40px);
+  }
+
+  .mk-contact-page .mk-contact-trust {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+}
+
+@media (max-width: 620px) {
+  .mk-contact-page .mk-wechat-card {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .mk-contact-page .mk-wechat-qr-trigger {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: 160px;
+  }
+}
+
+@media (max-width: 540px) {
+  .mk-contact-page .mk-contact-products,
+  .mk-contact-page .mk-contact-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mk-contact-page .mk-contact-product {
+    min-height: 76px;
+  }
+
+  .mk-contact-page .mk-contact-form {
+    padding: 18px 16px;
+  }
+}
+
+@media (max-width: 420px) {
+  .mk-contact-page .mk-contact-app-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mk-contact-page .mk-wechat-content {
+    grid-column: 1 / -1;
+  }
+
+  .mk-contact-page .mk-wechat-copy {
+    flex: 1 1 auto;
+  }
+}

@@ -10,6 +10,7 @@ const vite = fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.me
 const base = "http://127.0.0.1:5186/";
 // Keep this future browser suite plain Node-compatible; no TypeScript loader is required.
 const marketingHref = (language, route) => `/${language}/producto/${route}/`;
+const navigationRoutes = ["inicio", "solucion", "apps", "ventajas", "contacto"];
 const marketingUrl = (language, route, search = "") => new URL(`${marketingHref(language, route)}${search}`, base).href;
 const currentLanguage = async page => (await page.locator("html").getAttribute("lang")) === "zh-CN" ? "zh" : await page.locator("html").getAttribute("lang");
 
@@ -43,7 +44,7 @@ async function assertAccessibleRoutes(page) {
     await page.goto(`${base}#/producto/inicio`, { waitUntil: "networkidle" });
     for (const locale of tourLanguages) {
       await chooseLanguage(page, locale.language);
-      for (const route of ["inicio", "solucion", "funcionalidades", "apps", "ventajas", "contacto"]) {
+      for (const route of navigationRoutes) {
         const menu = page.locator(".mk-menu-button");
         if (await menu.getAttribute("aria-expanded") !== "true") await menu.click();
         await page.locator(`#mk-navigation a[href="${marketingHref(locale.language, route)}"]`).click();
@@ -87,6 +88,183 @@ async function assertAccessibleRoutes(page) {
   assert.equal(await trigger.evaluate(element => document.activeElement === element), true);
 }
 
+// Prepared for an authorized browser session. Merely checking this file's
+// syntax does not execute these layout or visibility assertions.
+async function assertCompactSolution(page) {
+  const viewports = [
+    { width: 320, height: 568 }, { width: 390, height: 844 },
+    { width: 768, height: 1024 }, { width: 1024, height: 768 },
+    { width: 1440, height: 900 }
+  ];
+  for (const locale of tourLanguages) {
+    let content;
+    for (const viewport of viewports) {
+      const context = `${locale.language}/${viewport.width}x${viewport.height} compact solution`;
+      await page.setViewportSize(viewport);
+      await page.goto(marketingUrl(locale.language, "solucion"), { waitUntil: "networkidle" });
+      await waitForMarketingRoute(page, locale.language, "solucion");
+      const main = page.locator("main");
+      await main.locator("h1").waitFor({ state: "visible" });
+      assert.equal(await main.locator("h1").count(), 1, `${context} must retain one primary heading`);
+      assert.equal(await main.locator(".mk-principles article h2").count(), 3);
+      const cards = main.locator(".mk-feature-list article");
+      assert.equal(await cards.count(), 4, `${context} must show every functional group`);
+      for (const card of await cards.all()) {
+        assert.equal(await card.locator(":scope > header h3").count(), 1);
+        assert.equal(await card.locator(":scope > p").count(), 1);
+        assert.equal(await card.locator("ul li").count(), 3);
+        assert.equal(await card.locator("details, summary, .mk-feature-number").count(), 0);
+      }
+      const currentContent = (await main.innerText()).replace(/\s+/g, " ").trim();
+      if (content) assert.equal(currentContent, content, `${context} must preserve the same complete copy at every viewport`);
+      else content = currentContent;
+      const layout = await main.evaluate(element => {
+        const tolerance = 2;
+        const describe = child => `${child.tagName.toLowerCase()}.${String(child.className).trim().replaceAll(" ", ".")}`;
+        const required = [...element.querySelectorAll("h1, .mk-principles h2, .mk-principles p, .mk-solution-features h2, .mk-feature-list article header, .mk-feature-list article h3, .mk-feature-list article > p, .mk-feature-list li, .mk-dark-band h2, .mk-dark-band p, .mk-dark-band a")];
+        const hidden = required.filter(child => !child.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) || child.getBoundingClientRect().width <= 0 || child.getBoundingClientRect().height <= 0).map(describe);
+        const cards = [...element.querySelectorAll(".mk-feature-list article")].map(card => {
+          const bounds = card.getBoundingClientRect();
+          const header = card.querySelector(":scope > header").getBoundingClientRect();
+          const body = card.querySelector(":scope > p").getBoundingClientRect();
+          const list = card.querySelector("ul").getBoundingClientRect();
+          const clipped = [...card.querySelectorAll("header, h3, p, li")].filter(child => {
+            const rect = child.getBoundingClientRect();
+            return rect.left < bounds.left - tolerance || rect.right > bounds.right + tolerance || rect.top < bounds.top - tolerance || rect.bottom > bounds.bottom + tolerance;
+          }).map(describe);
+          return { overflowX: card.scrollWidth - card.clientWidth, overflowY: card.scrollHeight - card.clientHeight, overlap: body.top < header.bottom - tolerance || list.top < body.bottom - tolerance, clipped };
+        });
+        const page = element.closest(".mk-page");
+        return { hidden, cards, pageOverflowX: page.scrollWidth - page.clientWidth };
+      });
+      assert.deepEqual(layout.hidden, [], `${context} must not hide text to appear compact`);
+      assert.ok(layout.pageOverflowX <= 1, `${context} must reflow without horizontal page scrolling`);
+      for (const card of layout.cards) {
+        assert.ok(card.overflowX <= 1 && card.overflowY <= 1, `${context} card must not clip its content (${JSON.stringify(card)})`);
+        assert.equal(card.overlap, false, `${context} header, description and capabilities must not overlap`);
+        assert.deepEqual(card.clipped, [], `${context} card text boxes must fit their parent`);
+      }
+      const action = main.locator(".mk-dark-band > a.mk-primary");
+      assert.equal(await action.count(), 1, `${context} application action must be a sibling of the band copy`);
+      assert.equal(await action.getAttribute("href"), marketingHref(locale.language, "apps"));
+      await action.scrollIntoViewIfNeeded();
+      assert.equal(await action.isVisible(), true);
+    }
+  }
+}
+
+// Future live layout checks, not evidence from a syntax-only or SSR run. The
+// existing compact-solution check above covers the fifth canonical route.
+async function assertCompactMarketingPages(page) {
+  const viewports = [
+    { width: 320, height: 568 }, { width: 390, height: 844 },
+    { width: 768, height: 1024 }, { width: 1024, height: 768 },
+    { width: 1440, height: 900 }
+  ];
+  const requiredByRoute = {
+    inicio: ".mk-hero-copy h1, .mk-lead, .mk-hero-copy .mk-actions a, .mk-checks li, .mk-app-strip article strong, .mk-app-strip article small, .mk-intro h2, .mk-intro > p, .mk-intro > a, .mk-home-sector-preview article p, .mk-home-sector-preview article h3, .mk-home-sector-preview article small",
+    apps: ".mk-page-heading h1, .mk-page-heading-support > p, .mk-app-explorer-tabs button, .mk-app-explorer-intro h2, .mk-app-explorer-intro p, .mk-app-explorer-facts dt, .mk-app-explorer-facts dd, .mk-app-explorer-description, .mk-app-explorer-sections button, .mk-app-explorer-content h3, .mk-app-explorer-content h4, .mk-app-explorer-content p, .mk-app-explorer-scope, .mk-app-explorer-actions > *, .mk-guide-start h2, .mk-guide-start h3, .mk-guide-start p",
+    ventajas: ".mk-page-heading h1, .mk-page-heading-support > p, .mk-comparison [role=rowheader], .mk-comparison [role=cell], .mk-note",
+    contacto: ".mk-contact-story > h1, .mk-contact-story > p, .mk-wechat-content h2, .mk-wechat-account-line, .mk-wechat-body, .mk-wechat-id, .mk-wechat-copy, .mk-wechat-hint, .mk-wechat-qr-trigger, .mk-contact-product, .mk-contact-trust strong, .mk-contact-trust small, .mk-contact-form-tag, .mk-contact-form h2, .mk-contact-form > p, .mk-delivery-status p, .mk-contact-selection legend, .mk-contact-package, .mk-contact-app-choice, .mk-contact-fields label, .mk-contact-form > label:not(.mk-contact-honeypot), .mk-contact-submit, .mk-contact-talk, .mk-contact-form > small"
+  };
+  const orderedByRoute = {
+    inicio: [".mk-hero-copy > h1", ".mk-lead", ".mk-hero-copy .mk-actions", ".mk-hero-copy .mk-checks"],
+    apps: [".mk-app-explorer-intro", ".mk-app-explorer-body", ".mk-app-explorer-scope"],
+    ventajas: [".mk-page-heading", ".mk-comparison", ".mk-note"],
+    contacto: [".mk-contact-form h2", ".mk-contact-form > p:not(.mk-contact-form-tag)", ".mk-delivery-status", ".mk-contact-selection", ".mk-contact-fields", ".mk-contact-form > label:not(.mk-contact-honeypot):not(.mk-contact-consent)", ".mk-contact-consent", ".mk-contact-submit", ".mk-contact-talk"]
+  };
+  const cardsByRoute = {
+    inicio: ".mk-app-strip article, .mk-home-sector-preview article",
+    apps: ".mk-app-explorer-panel, .mk-app-explorer-context, .mk-app-explorer-information, .mk-guide-start-steps li",
+    ventajas: ".mk-comparison-row:not(.is-head)",
+    contacto: ".mk-wechat-card, .mk-contact-product, .mk-contact-form"
+  };
+  for (const locale of tourLanguages) {
+    const contentByRoute = new Map();
+    for (const viewport of viewports) {
+      await page.setViewportSize(viewport);
+      for (const route of ["inicio", "apps", "ventajas", "contacto"]) {
+        const context = `${locale.language}/${viewport.width}x${viewport.height} compact ${route}`;
+        await page.goto(marketingUrl(locale.language, route), { waitUntil: "networkidle" });
+        await waitForMarketingRoute(page, locale.language, route);
+        const main = page.locator("main");
+        await main.locator("h1").waitFor({ state: "visible" });
+        assert.equal(await main.locator("h1").count(), 1, `${context} retains one primary heading`);
+        if (route === "contacto") await main.locator('.mk-delivery-status[data-state="available"]').waitFor({ state: "visible" });
+        const text = (await main.innerText()).replace(/\s+/g, " ").trim();
+        if (contentByRoute.has(route)) assert.equal(text, contentByRoute.get(route), `${context} cannot achieve compactness by removing explanatory copy`);
+        else contentByRoute.set(route, text);
+
+        const layout = await main.evaluate((element, { required, ordered, cardSelector }) => {
+          const tolerance = 2;
+          const describe = child => `${child.tagName.toLowerCase()}.${String(child.className).trim().replaceAll(" ", ".")}`;
+          const hidden = [...element.querySelectorAll(required)].filter(child => {
+            const bounds = child.getBoundingClientRect();
+            return !child.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) || bounds.width <= 0 || bounds.height <= 0;
+          }).map(describe);
+          const sequence = ordered.flatMap(selector => {
+            const child = element.querySelector(selector);
+            return child ? [{ selector, top: child.getBoundingClientRect().top, bottom: child.getBoundingClientRect().bottom }] : [];
+          });
+          const overlaps = sequence.slice(1).flatMap((item, index) => item.top < sequence[index].bottom - tolerance ? [`${sequence[index].selector} / ${item.selector}`] : []);
+          const clipped = [...element.querySelectorAll(cardSelector)].flatMap(card => {
+            const bounds = card.getBoundingClientRect();
+            const outside = [...card.querySelectorAll("h2, h3, h4, p, strong, small, li, input:not([type=checkbox]), textarea, button, a")].filter(child => {
+              if (child.closest(".mk-contact-honeypot") || child.classList.contains("mk-visually-hidden")) return false;
+              const rect = child.getBoundingClientRect();
+              return rect.width > 0 && rect.height > 0 && (rect.left < bounds.left - tolerance || rect.right > bounds.right + tolerance || rect.top < bounds.top - tolerance || rect.bottom > bounds.bottom + tolerance);
+            }).map(describe);
+            return outside.length ? [{ card: describe(card), outside }] : [];
+          });
+          const page = element.closest(".mk-page");
+          const heading = element.querySelector("h1");
+          const headingStyle = getComputedStyle(heading);
+          return {
+            hidden, overlaps, clipped,
+            overflowX: Math.max(page.scrollWidth - page.clientWidth, document.documentElement.scrollWidth - innerWidth),
+            headingFont: parseFloat(headingStyle.fontSize), headingLine: parseFloat(headingStyle.lineHeight)
+          };
+        }, { required: requiredByRoute[route], ordered: orderedByRoute[route], cardSelector: cardsByRoute[route] });
+        assert.deepEqual(layout.hidden, [], `${context} explanations and controls remain visible`);
+        assert.deepEqual(layout.overlaps, [], `${context} related content blocks do not overlap`);
+        assert.deepEqual(layout.clipped, [], `${context} card text and controls fit their region`);
+        assert.ok(layout.overflowX <= 1, `${context} permits natural vertical scrolling without horizontal overflow`);
+        assert.ok(layout.headingFont >= 28 && layout.headingLine >= layout.headingFont, `${context} retains a readable, non-overlapping heading (${JSON.stringify(layout)})`);
+
+        if (route === "inicio") {
+          assert.equal(await main.locator(".mk-app-strip article").count(), 4);
+          assert.equal(await main.locator(".mk-home-sector-preview article").count(), 4);
+          await assertReachableControl(main.locator(".mk-hero .mk-primary"), viewport, `${context} demo`);
+        } else if (route === "apps") {
+          assert.equal(await main.locator(".mk-app-explorer-tabs [role=tab]").count(), 4);
+          assert.equal(await main.locator(".mk-app-explorer-sections [role=tab]").count(), 4);
+          assert.equal(await main.locator(".mk-guide-start-steps li").count(), 3);
+          await assertReachableControl(main.locator(".mk-app-explorer-demo"), viewport, `${context} request`);
+        } else if (route === "ventajas") {
+          const rows = main.locator('.mk-comparison [role=row]:not(.is-head)');
+          for (const row of await rows.all()) {
+            assert.equal(await row.locator("[role=rowheader]").count(), 1);
+            assert.equal(await row.locator("[role=cell]").count(), 3);
+          }
+          for (const id of ["backups", "adding-stores", "fiscal-setup"]) {
+            const conditional = main.locator(`.mk-comparison [data-capability="${id}"] .is-ours`);
+            assert.equal(await conditional.getAttribute("data-status"), "to-confirm");
+            assert.ok((await conditional.locator("small").innerText()).trim(), "Conditional scope has a visible text label on desktop and mobile");
+          }
+          await assertReachableControl(main.locator(".mk-heading-actions .mk-primary"), viewport, `${context} demo`);
+        } else {
+          assert.equal(await main.locator('input[name="products"]').count(), 4);
+          assert.equal(await main.locator('input[name="fullPackage"]').count(), 1);
+          assert.equal(await main.locator('input[name="privacyAccepted"][required]').count(), 1);
+          assert.equal(await main.locator(".mk-wechat-qr-trigger img").getAttribute("src"), "/contact/wechat-espos.jpg");
+          await assertReachableControl(main.locator(".mk-contact-submit"), viewport, `${context} submit`);
+          await assertReachableControl(main.locator(".mk-wechat-qr-trigger"), viewport, `${context} original WeChat QR`);
+        }
+      }
+    }
+  }
+}
+
 async function assertBrand(page, route, language) {
   const context = `${language}/${route}`;
   const title = await page.title();
@@ -127,6 +305,21 @@ async function assertBrand(page, route, language) {
 
 async function assertTourContent(tour, locale, app, step) {
   const context = `${locale.language}/${app}/step ${step + 1}`;
+  const preview = tour.getByTestId("tour-step-preview");
+  assert.equal(await preview.getAttribute("data-step"), String(step), `${context} media must follow the selected step`);
+  const mediaKind = await preview.getAttribute("data-media-kind");
+  assert.ok(["application-overview", "step-capture"].includes(mediaKind), `${context} must declare what kind of image is shown`);
+  if (mediaKind === "application-overview") {
+    assert.match(await preview.locator("figcaption").innerText(), {
+      es: /vista general de referencia, no de este paso/i,
+      en: /general reference screen, not this step/i,
+      zh: /参考总览，并非当前步骤截图/
+    }[locale.language], `${context} must not present a general screenshot as a newly captured operation`);
+  }
+  const original = preview.locator("a");
+  assert.equal(await original.getAttribute("href"), await preview.locator("img").getAttribute("src"));
+  assert.equal(await original.getAttribute("target"), "_blank");
+  assert.equal(await original.getAttribute("rel"), "noreferrer");
   assert.equal(await tour.getAttribute("data-active-app"), app, `${context} must preserve the chosen application`);
   assert.match(await tour.locator('.mk-tour-tabs [role="tab"][aria-selected="true"]').innerText(), /^esPOS\s/, `${context} selected application tab must use the esPOS brand`);
   assert.match((await tour.locator(".mk-tour-context-copy > p").textContent()).trim(), /^esPOS\s/, `${context} preview must identify the branded application`);
@@ -205,13 +398,14 @@ async function assertReachableControl(control, viewport, context, verifyStable =
   await control.scrollIntoViewIfNeeded();
   const readPosition = () => control.evaluate(element => {
     const rect = element.getBoundingClientRect();
-    const dialog = element.closest(".mk-tour-dialog");
+    const dialog = element.closest(".mk-tour-dialog") ?? element.closest(".mk-page");
+    if (!dialog) throw new Error("Reachable controls must belong to a marketing page or tour dialog");
     const frame = dialog.getBoundingClientRect();
     return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, frame: { left: frame.left + dialog.clientLeft, top: frame.top + dialog.clientTop, right: frame.left + dialog.clientLeft + dialog.clientWidth, bottom: frame.top + dialog.clientTop + dialog.clientHeight }, scrollTop: dialog.scrollTop };
   });
   const assertPosition = position => {
     assert.ok(position.left >= -1 && position.top >= -1 && position.right <= viewport.width + 1 && position.bottom <= viewport.height + 1, `${context} must be reachable inside the viewport (${JSON.stringify(position)})`);
-    assert.ok(position.left >= position.frame.left - 1 && position.top >= position.frame.top - 1 && position.right <= position.frame.right + 1 && position.bottom <= position.frame.bottom + 1, `${context} must be visible inside the scrollable dialog (${JSON.stringify(position)})`);
+    assert.ok(position.left >= position.frame.left - 1 && position.top >= position.frame.top - 1 && position.right <= position.frame.right + 1 && position.bottom <= position.frame.bottom + 1, `${context} must be visible inside its scrollable container (${JSON.stringify(position)})`);
   };
   assertPosition(await readPosition());
   if (verifyStable) {
@@ -495,7 +689,7 @@ try {
   assert.ok(faviconBytes.length > 6, "The application icon must not be an empty placeholder");
   assert.deepEqual([...faviconBytes.subarray(0, 4)], [0, 0, 1, 0], "The application icon must be a valid ICO file");
   assert.deepEqual(faviconBytes, await readFile(new URL("../../frontend/branding/app-venta.ico", import.meta.url)), "The public favicon must preserve the official application icon byte for byte");
-  const tabs = ["inicio", "solucion", "funcionalidades", "apps", "ventajas", "contacto"];
+  const tabs = navigationRoutes;
   for (const tab of tabs) {
     await page.locator(`#mk-navigation a[href="${marketingHref("es", tab)}"]`).click();
     await waitForMarketingRoute(page, "es", tab);
@@ -512,6 +706,17 @@ try {
   for (const [language, htmlLanguage] of [["en", "en"], ["zh", "zh-CN"], ["es", "es"]]) {
     await chooseLanguage(page, language);
     await page.waitForFunction(value => document.documentElement.lang === value, htmlLanguage);
+    for (const alias of [marketingUrl(language, "funcionalidades"), `${marketingUrl(language, "inicio")}#/producto/funcionalidades`]) {
+      await page.goto(alias, { waitUntil: "networkidle" });
+      await page.locator("main .mk-solution-features").waitFor({ state: "visible" });
+      assert.equal(page.url(), alias, "Compatibility URLs render Solution without rewriting the original URL");
+      assert.equal(await currentLanguage(page), language);
+      assert.equal(await page.locator("#mk-navigation a").count(), 5, "Solution and features share a single navigation entry");
+      assert.equal(await page.locator(`#mk-navigation a[href="${marketingHref(language, "funcionalidades")}"]`).count(), 0);
+      assert.equal(await page.locator("main h1").count(), 1, "The merged solution must retain one primary heading");
+      assert.equal(await page.locator("main .mk-feature-list article h3").count(), 4, "All four functional groups remain in the merged solution");
+      assert.equal(await page.locator("#mk-navigation a[aria-current=page]").getAttribute("href"), marketingHref(language, "solucion"));
+    }
     for (const tab of tabs) {
       await page.goto(`${base}#/producto/${tab}`, { waitUntil: "networkidle" });
       assert.equal(await page.locator("html").getAttribute("lang"), htmlLanguage, `${language}/${tab} must preserve the chosen language after navigation`);
@@ -537,6 +742,8 @@ try {
     });
     assert.ok(desktopPageSize.scrollWidth <= desktopPageSize.clientWidth + 1, `${tab} must fit horizontally at 1920x953 (${JSON.stringify(desktopPageSize)})`);
   }
+  await assertCompactSolution(page);
+  await assertCompactMarketingPages(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${base}#/producto/apps`, { waitUntil: "networkidle" });
   const tourTriggers = page.locator(".mk-app-tour-action");
@@ -564,6 +771,19 @@ try {
         assert.ok((await panel.innerText()).trim().length > 30, `${locale.language}/${app}/${section} must explain more than a label`);
         assert.ok(await explorer.evaluate(element => element.scrollWidth <= element.clientWidth + 1), `${locale.language}/${app}/${section} must fit horizontally`);
       }
+      const preparation = explorer.getByTestId("guide-preparation-action");
+      assert.equal(await preparation.getAttribute("href"), `${marketingHref(locale.language, "apps")}#mk-implementation-journey`);
+      const locationBeforePreparation = page.url();
+      const requestsBeforePreparation = apiRequests.length;
+      await preparation.focus();
+      await page.keyboard.press("Enter");
+      const implementation = page.getByTestId("implementation-journey");
+      assert.equal(await implementation.evaluate(element => element.open), true, "Preparation opens the existing guide rather than another form");
+      assert.ok(await implementation.locator("summary").evaluate(element => element === document.activeElement), "Keyboard activation moves focus to the guide summary");
+      assert.equal(page.url(), locationBeforePreparation, "Reading the guide must not change the active route");
+      assert.equal(await explorer.getAttribute("data-active-app"), app, "Reading the guide preserves the selected app");
+      assert.equal(apiRequests.length, requestsBeforePreparation, "Reading the guide must not submit a request");
+      await implementation.locator("summary").press("Enter");
       const demo = explorer.locator(".mk-app-explorer-demo");
       assert.equal(await demo.getAttribute("href"), `${marketingHref(locale.language, "contacto")}?apps=${app}`, "Application demos must expose a shareable product choice");
       await demo.click();
@@ -757,9 +977,9 @@ try {
   assert.equal(await fullPackage.isChecked(), false, "A single-product request must not select the complete package");
   const selectionLabels = new Set();
   for (const [language, expectedLegend, expectedPackageLabel] of [
-    ["en", "Applications of interest", "Complete package"],
-    ["zh", "感兴趣的应用", "完整套装"],
-    ["es", "Aplicaciones de interés", "Paquete completo"]
+    ["en", "Applications for your demo", "I'm interested in all four apps"],
+    ["zh", "希望演示的应用", "我对全部四款应用感兴趣"],
+    ["es", "Aplicaciones para tu demo", "Me interesa el conjunto completo"]
   ]) {
     await chooseLanguage(page, language);
     const legend = (await page.locator(".mk-contact-selection legend").innerText()).trim();
