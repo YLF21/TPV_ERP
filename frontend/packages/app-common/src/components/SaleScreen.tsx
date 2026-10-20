@@ -1800,6 +1800,7 @@ function SaleScreenContent({
   const [actionDialog, setActionDialog] = useState<
     "quantity"
     | "discount"
+    | "discountBlocked"
     | "temporaryName"
     | "temporaryPrice"
     | "touchPrice"
@@ -2914,7 +2915,16 @@ function SaleScreenContent({
         );
       }
       if (column === "discount") {
-        return <td className="sale-cart-discount" data-column-key={column} key={column}>{discountText}</td>;
+        return (
+          <td className="sale-cart-discount" data-column-key={column} key={column}>
+            {discountText}
+            {saleProductBlocksManualDiscount(product) && (
+              <span className="sale-cart-discount-blocked" title={t("sale.discountBlocked")}>
+                {t("sale.discountBlockedShort")}
+              </span>
+            )}
+          </td>
+        );
       }
       if (column === "specialPrice") {
         const specialLabel = specialPrice?.type === "MEMBER_PRICE"
@@ -3739,6 +3749,11 @@ function SaleScreenContent({
     setDiscountInput(String(selectedLine.discountPercent));
     setActionError("");
     setActionDialog("discount");
+  }
+
+  function closeDiscountBlockedDialog() {
+    setActionDialog(null);
+    queueMicrotask(() => searchInputRef.current?.focus());
   }
 
   function openTemporaryNameDialog() {
@@ -5176,6 +5191,12 @@ function SaleScreenContent({
       return false;
     }
     if (saleCommandDisabled(command) && !keyboardReturnRemoval) return false;
+    if ((command === "line-discount" || command === "desired-price")
+        && canApplyManualDiscount && selectedLine
+        && saleProductBlocksManualDiscount(selectedLine.product)) {
+      setActionDialog("discountBlocked");
+      return false;
+    }
     switch (command) {
       case "reprint-last-ticket":
         void reprintLastTerminalTicket();
@@ -5622,8 +5643,7 @@ function SaleScreenContent({
         },
         {
           type: "action", id: "desired-price", label: commandLabels.desiredPrice, shortcut: "RePág",
-          disabled: !selectedLine || paymentLocked || !canApplyManualDiscount
-            || saleProductBlocksManualDiscount(selectedLine.product),
+          disabled: saleCommandDisabled("desired-price") || !canApplyManualDiscount,
           onSelect: () => executeSaleCommand("desired-price"),
         },
         {
@@ -5638,8 +5658,7 @@ function SaleScreenContent({
         },
         {
           type: "action", id: "line-discount", label: commandLabels.lineDiscount, shortcut: "/",
-          disabled: !selectedLine || paymentLocked || !canApplyManualDiscount
-            || saleProductBlocksManualDiscount(selectedLine.product),
+          disabled: saleCommandDisabled("line-discount") || !canApplyManualDiscount,
           onSelect: () => executeSaleCommand("line-discount"),
         },
       ],
@@ -5697,9 +5716,9 @@ function SaleScreenContent({
     else changeSelectedLineQuantity(next);
   }
 
-  const touchDiscountDisabled = saleCommandDisabled("line-discount") || !canApplyManualDiscount
-    || Boolean(selectedLine && saleProductBlocksManualDiscount(selectedLine.product));
-  const touchPriceDisabled = saleCommandDisabled("temporary-price") && touchDiscountDisabled;
+  const touchDiscountDisabled = saleCommandDisabled("line-discount") || !canApplyManualDiscount;
+  const touchPriceDisabled = saleCommandDisabled("temporary-price")
+    && (touchDiscountDisabled || Boolean(selectedLine && saleProductBlocksManualDiscount(selectedLine.product)));
   const hasManualDocumentDiscount = documentDiscountPercent > 0 || checkoutDiscountCents > 0;
 
   function openTouchPrice() {
@@ -6751,6 +6770,22 @@ function SaleScreenContent({
             {actionError && <strong className="sale-action-error">{actionError}</strong>}
             <div className="sale-action-buttons erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</DialogDismissButton><button className="erp-dialog-action-confirm" type="submit">{t("sale.dialog.save")}</button></div>
           </form>
+        </SaleActionDialog>
+      )}
+
+      {actionDialog === "discountBlocked" && selectedLine && (
+        <SaleActionDialog title={t("sale.discountBlockedShort")} closeLabel={t("sale.dialog.close")}
+          className="sale-business-dialog" onClose={closeDiscountBlockedDialog}
+          onConfirm={closeDiscountBlockedDialog}>
+          <div className="sale-action-form">
+            <strong>{selectedLine.product.code && `${selectedLine.product.code} · `}{selectedLine.temporaryName ?? selectedLine.product.name}</strong>
+            <p className="sale-action-error" role="alert">{t("sale.discountBlocked")}</p>
+            <div className="sale-action-buttons erp-dialog-actions-row">
+              <button type="button" className="erp-dialog-action-confirm" onClick={closeDiscountBlockedDialog}>
+                {t("sale.dialog.close")}
+              </button>
+            </div>
+          </div>
         </SaleActionDialog>
       )}
 

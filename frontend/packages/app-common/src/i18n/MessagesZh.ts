@@ -137,6 +137,7 @@ export class MessagesZh {
     "appVenta.escapeHome.message": "是否离开当前页面并返回首页？",
     "appVenta.escapeHome.shortcuts": "按 Enter 退出 · 按 Esc 取消",
     "appVenta.escapeHome.confirm": "返回首页",
+    "appVenta.escapeHome.blocked": "有未完成的销售或操作，暂时无法返回首页。",
     "common.apply": "应用",
     "common.save": "保存",
     "common.saving": "正在保存...",

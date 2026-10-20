@@ -137,6 +137,7 @@ export class MessagesEn {
     "appVenta.escapeHome.message": "Do you want to leave this screen and return to Home?",
     "appVenta.escapeHome.shortcuts": "Enter to exit · Esc to cancel",
     "appVenta.escapeHome.confirm": "Return to Home",
+    "appVenta.escapeHome.blocked": "Cannot return to Home while a sale or operation is pending.",
     "common.apply": "Apply",
     "common.save": "Save",
     "common.saving": "Saving...",

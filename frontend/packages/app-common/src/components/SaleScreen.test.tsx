@@ -3015,6 +3015,85 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: /Cafe molido/ })).not.toBeInTheDocument());
   });
 
+  it.each(["es", "en", "zh"] as const)(
+    "marks blocked discounts in the cart and explains both discount shortcuts in %s",
+    async (locale) => {
+      const blockedProduct = { ...products[0], discountType: "NONE" };
+      const t = createTranslator(locale);
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+        const path = new URL(url, "http://localhost").pathname;
+        const body = path.endsWith("/products/sale") ? [blockedProduct]
+          : path.endsWith("/pos/sales/quote") ? authoritativeQuote(blockedProduct)
+          : {};
+        return new Response(JSON.stringify(body), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }));
+      renderSaleScreen(vi.fn(), locale);
+      const search = await screen.findByRole("combobox", { name: t("sale.main.searchProduct") });
+      await waitFor(() => expect(search).toBeEnabled());
+      search.focus();
+      submitQuickEntry(search, "CAF-001");
+
+      const table = screen.getByRole("table", { name: t("sale.main.ticketLines") });
+      const indicator = within(table).getByText(t("sale.discountBlockedShort"));
+      expect(indicator.closest("td")).toHaveAttribute("data-column-key", "discount");
+      expect(indicator).toHaveClass("sale-cart-discount-blocked");
+      expect(indicator).toHaveAttribute("title", t("sale.discountBlocked"));
+
+      for (const [key, dismiss] of [["/", "Enter"], ["PageUp", "Escape"]]) {
+        fireEvent.change(search, { target: { value: "10" } });
+        fireEvent.keyDown(search, { key });
+        const dialog = screen.getByRole("dialog", { name: t("sale.discountBlockedShort") });
+        expect(within(dialog).getByRole("alert")).toHaveTextContent(t("sale.discountBlocked"));
+        expect(within(dialog).getByText(/CAF-001/)).toBeInTheDocument();
+        expect(within(dialog).queryByRole("spinbutton")).not.toBeInTheDocument();
+        expect(checkoutProps.current?.sale?.lines).toMatchObject([
+          { productId: "coffee", quantity: 1, discount: 0 },
+        ]);
+        fireEvent.keyDown(dialog, { key: dismiss });
+        await waitFor(() => expect(search).toHaveFocus());
+        expect(search).toHaveValue("10");
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      }
+    },
+  );
+
+  it.each(["KEYBOARD", "TOUCH"] as const)(
+    "explains a blocked discount from the %s action without opening the discount editor",
+    async (interfaceMode) => {
+      const blockedProduct = { ...products[0], discountType: "NONE" };
+      const t = createTranslator("es");
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+        const path = new URL(url, "http://localhost").pathname;
+        const body = path.endsWith("/products/sale") ? [blockedProduct]
+          : path.endsWith("/pos/sales/quote") ? authoritativeQuote(blockedProduct)
+          : {};
+        return new Response(JSON.stringify(body), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }));
+      renderSaleScreen(vi.fn(), "es", { interfaceMode });
+      const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+      await waitFor(() => expect(search).toBeEnabled());
+      submitQuickEntry(search, "CAF-001");
+
+      if (interfaceMode === "KEYBOARD") {
+        fireEvent.click(screen.getByRole("button", { name: t("sale.menu.product") }));
+        fireEvent.click(screen.getByRole("menuitem", { name: /Descuento de línea/ }));
+      } else {
+        expect(screen.getByRole("button", { name: t("sale.touch.price") })).toBeDisabled();
+        fireEvent.click(screen.getByRole("button", { name: t("sale.shortcut.lineDiscount") }));
+      }
+      const dialog = screen.getByRole("dialog", { name: t("sale.discountBlockedShort") });
+      expect(within(dialog).getByRole("alert")).toHaveTextContent(t("sale.discountBlocked"));
+      expect(screen.queryByRole("dialog", { name: t("sale.discount.title") })).not.toBeInTheDocument();
+      expect(checkoutProps.current?.sale?.lines[0].discount).toBe(0);
+      fireEvent.click(within(dialog).getAllByRole("button", { name: t("sale.dialog.close") }).at(-1)!);
+      await waitFor(() => expect(search).toHaveFocus());
+    },
+  );
+
   it("shows and consumes package quantity for the next scanned product", async () => {
     const packagedProduct = { ...products[0], packageQuantity: 6 };
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
