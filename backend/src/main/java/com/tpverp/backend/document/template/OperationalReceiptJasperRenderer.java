@@ -36,6 +36,12 @@ public class OperationalReceiptJasperRenderer {
                 "DOCUMENTO_ID", ticketId.toString()));
     }
 
+    /** A read-only printer test uses the current store header, without creating a sale. */
+    public RenderedReceipt renderPrinterTest(UUID storeId) {
+        Objects.requireNonNull(storeId, "storeId");
+        return render(Template.PRINTER_TEST, Map.of("TIENDA_ID", storeId.toString()));
+    }
+
     public RenderedReceipt renderPendingCollection(UUID documentId, UUID paymentId) {
         Objects.requireNonNull(documentId, "documentId");
         Objects.requireNonNull(paymentId, "paymentId");
@@ -90,7 +96,8 @@ public class OperationalReceiptJasperRenderer {
 
     private enum Template {
         CANCELLATION("ticket_anulado.jrxml"),
-        PENDING_COLLECTION("cobro_pendiente.jrxml");
+        PENDING_COLLECTION("cobro_pendiente.jrxml"),
+        PRINTER_TEST("PRUEBA_IMPRESORA_TICKET_80.jrxml");
 
         private final String filename;
 

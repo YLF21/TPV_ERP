@@ -7,7 +7,10 @@ export type TicketPrinterConnection = "WINDOWS_PRINTER" | "SERIAL" | "NETWORK";
 export type CashDrawerConnection = "NONE" | "PRINTER" | "SERIAL" | "NETWORK";
 export type CashDrawerCommandProfile = "ESCPOS_STANDARD";
 export type CashDrawerPaymentMethod = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "VALE" | "DESCUENTO" | "OTRO" | "PENDIENTE";
-export type CustomerDisplayMode = "COMPACT";
+export type CustomerDisplayMode = "DIGITAL_SCREEN" | "LINE_DISPLAY";
+export type CustomerDisplayConnection = "SERIAL" | "NETWORK";
+export type CustomerDisplayProtocol = "ESC_POS_DISPLAY" | "PLAIN_TEXT";
+export type CustomerDisplayEncoding = "CP858" | "ASCII";
 export type PrintableDocumentType = "TICKET" | "INVOICE" | "DELIVERY_NOTE" | "REPORT";
 export type PrinterTarget = "TICKET_PRINTER" | "A4_PRINTER";
 export type PaperSize = "TICKET_80" | "A4";
@@ -67,6 +70,14 @@ export type HardwareConfig = {
   customerDisplayIdleLine1: string;
   customerDisplayIdleLine2: string;
   customerDisplayScreenId: string;
+  customerDisplayConnection: CustomerDisplayConnection;
+  customerDisplayProtocol: CustomerDisplayProtocol;
+  customerDisplayEncoding: CustomerDisplayEncoding;
+  customerDisplayColumns: number;
+  customerDisplayDevicePath: string;
+  customerDisplaySerialBaudRate: number;
+  customerDisplayHost: string;
+  customerDisplayPort: number;
   a4PrinterName: string;
   documentPrintRoutes: DocumentPrintRoute[];
   defaultProductLabelProfileId: string;
@@ -78,6 +89,8 @@ export type HardwarePrinter = {
   displayName: string;
   isDefault: boolean;
 };
+
+export type HardwareSerialPort = { path: string };
 
 export type TicketPrinterHealthStatus =
   | "READY"
@@ -310,15 +323,49 @@ export type CustomerDisplayScreen = {
   width: number;
   height: number;
   primary: boolean;
+  operator?: boolean;
 };
 
 export type CustomerDisplayState = {
   line1: string;
   line2: string;
+  phase?: "IDLE" | "SALE" | "PAYMENT";
+  locale?: "es" | "en" | "zh";
+  identity?: CustomerDisplayIdentity;
+  sale?: {
+    items: Array<{
+      id: string;
+      name: string;
+      quantity: number;
+      unitPrice: number | null;
+      total: number | null;
+      discount: number | null;
+      discountPercent?: number | null;
+    }>;
+    lastItemId?: string;
+    subtotal: number | null;
+    discount: number | null;
+    total: number | null;
+    status: "READY" | "PENDING" | "ERROR";
+    adjustments?: Array<{
+      kind: "RETURN_ADJUSTMENT" | "MEMBER_BALANCE" | "OTHER";
+      amount: number;
+    }>;
+  };
+  payment?: { total: number; change?: number; pending?: boolean };
+};
+
+export type CustomerDisplayIdentity = {
+  storeName?: string;
+  companyName?: string;
+  logoDataUri?: string | null;
+  timeZone?: string;
+  currency?: string;
 };
 
 export type HardwareBridge = {
   listPrinters: () => Promise<HardwareResult<{ printers: HardwarePrinter[] }>>;
+  listSerialPorts: () => Promise<HardwareResult<{ ports: HardwareSerialPort[] }>>;
   getTicketPrinterHealth: () => Promise<TicketPrinterHealth>;
   listCustomerDisplays: () => Promise<HardwareResult<{ displays: CustomerDisplayScreen[] }>>;
   getHardwareConfig: () => Promise<HardwareConfig>;
@@ -365,10 +412,18 @@ export const defaultHardwareConfig: HardwareConfig = {
   cashDrawerHost: "",
   cashDrawerPort: 9100,
   customerDisplayEnabled: false,
-  customerDisplayMode: "COMPACT",
+  customerDisplayMode: "DIGITAL_SCREEN",
   customerDisplayIdleLine1: "BIENVENIDO",
   customerDisplayIdleLine2: "GRACIAS POR SU COMPRA",
   customerDisplayScreenId: "",
+  customerDisplayConnection: "SERIAL",
+  customerDisplayProtocol: "ESC_POS_DISPLAY",
+  customerDisplayEncoding: "CP858",
+  customerDisplayColumns: 20,
+  customerDisplayDevicePath: "",
+  customerDisplaySerialBaudRate: 9600,
+  customerDisplayHost: "",
+  customerDisplayPort: 9100,
   a4PrinterName: "",
   documentPrintRoutes: [
     {
@@ -454,10 +509,19 @@ export function normalizeHardwareConfigForUi(
   )
     ? requestedDefault
     : productLabelProfiles[0].id;
+  const customerDisplaySerialBaudRate = Number(config?.customerDisplaySerialBaudRate);
 
   return {
     ...defaultHardwareConfig,
     ...config,
+    customerDisplayMode: config?.customerDisplayMode === "LINE_DISPLAY" ? "LINE_DISPLAY" : "DIGITAL_SCREEN",
+    customerDisplayConnection: config?.customerDisplayConnection === "NETWORK" ? "NETWORK" : "SERIAL",
+    customerDisplayProtocol: config?.customerDisplayProtocol === "PLAIN_TEXT" ? "PLAIN_TEXT" : "ESC_POS_DISPLAY",
+    customerDisplayEncoding: config?.customerDisplayEncoding === "ASCII" ? "ASCII" : "CP858",
+    customerDisplayColumns: Math.min(80, Math.max(10, Math.trunc(Number(config?.customerDisplayColumns) || 20))),
+    customerDisplaySerialBaudRate: Number.isSafeInteger(customerDisplaySerialBaudRate)
+      && customerDisplaySerialBaudRate > 0 ? customerDisplaySerialBaudRate : 9600,
+    customerDisplayPort: Math.min(65535, Math.max(1, Math.trunc(Number(config?.customerDisplayPort) || 9100))),
     escposAdditionalFeedLines: Math.min(12, Math.max(0, Math.trunc(
       Number(config?.escposAdditionalFeedLines ?? defaultHardwareConfig.escposAdditionalFeedLines) || 0,
     ))),
@@ -510,26 +574,41 @@ function money(value: number) {
   return Number(value || 0).toFixed(2);
 }
 
-export function createCustomerDisplayIdleState(line1: string, line2: string): CustomerDisplayState {
-  return { line1, line2 };
+export function createCustomerDisplayIdleState(line1: string, line2: string, detailed = false): CustomerDisplayState {
+  return { line1, line2, ...(detailed ? { phase: "IDLE" as const } : {}) };
 }
 
-export function createCustomerDisplaySaleState(item: { name: string; quantity: number; price: number }): CustomerDisplayState {
+export function createCustomerDisplaySaleState(item: { name: string; quantity: number; price: number }, detailed = false): CustomerDisplayState {
   return {
     line1: item.name,
-    line2: `${item.quantity} x ${money(item.price)}`
+    line2: `${item.quantity} x ${money(item.price)}`,
+    ...(detailed ? { phase: "SALE" as const, sale: {
+      items: [{ id: "hardware-test-item", name: item.name, quantity: item.quantity,
+        unitPrice: item.price, total: item.quantity * item.price, discount: null }],
+      lastItemId: "hardware-test-item",
+      subtotal: item.quantity * item.price,
+      discount: null,
+      total: item.quantity * item.price,
+      status: "READY" as const,
+    } } : {}),
   };
 }
 
-export function createCustomerDisplayPaymentState(payment: { total: number; change?: number }): CustomerDisplayState {
+export function createCustomerDisplayPaymentState(payment: { total: number; change?: number }, detailed = false): CustomerDisplayState {
   return {
     line1: `TOTAL: ${money(payment.total)}`,
-    line2: typeof payment.change === "number" ? `CAMBIO: ${money(payment.change)}` : ""
+    line2: typeof payment.change === "number" ? `CAMBIO: ${money(payment.change)}` : "",
+    ...(detailed ? { phase: "PAYMENT" as const, payment: {
+      total: payment.total,
+      ...(typeof payment.change === "number" ? { change: payment.change } : {}),
+      pending: false,
+    } } : {}),
   };
 }
 
 const browserFallbackBridge: HardwareBridge = {
   listPrinters: async () => createHardwareUnavailableResult(),
+  listSerialPorts: async () => createHardwareUnavailableResult(),
   getTicketPrinterHealth: async () => ({
     status: "UNMONITORED",
     printerName: "",

@@ -1,0 +1,74 @@
+<!-- Editable with Jaspersoft Studio 7. Store header and full-width printhead test only. -->
+<jasperReport name="prueba_impresora_ticket_80" language="java" pageWidth="227" pageHeight="2000" columnWidth="227" leftMargin="0" rightMargin="0" topMargin="8" bottomMargin="8" ignorePagination="true">
+    <style name="Texto" default="true" fontName="SansSerif" fontSize="9" forecolor="#000000"/>
+    <parameter name="TIENDA_ID" class="java.lang.String"/>
+    <query language="sql"><![CDATA[
+        SELECT
+            CASE WHEN COALESCE(cdi.mostrar_nombre_tienda, TRUE)
+                THEN COALESCE(NULLIF(TRIM(t.nombre), ''), NULLIF(TRIM(e.razon_social), ''))
+                ELSE COALESCE(NULLIF(TRIM(e.razon_social), ''), NULLIF(TRIM(t.nombre), ''))
+            END AS nombre_cabecera,
+            CASE WHEN COALESCE(cdi.mostrar_nombre_tienda, TRUE)
+                THEN NULLIF(TRIM(e.razon_social), '') ELSE NULL
+            END AS nombre_empresa_secundario,
+            NULLIF(TRIM(e.tax_id), '') AS cif,
+            NULLIF(TRIM(t.telefono), '') AS telefono,
+            NULLIF(TRIM(t.email), '') AS email,
+            NULLIF(TRIM(t.direccion ->> 'linea1'), '') AS direccion,
+            NULLIF(TRIM(t.direccion ->> 'codigoPostal'), '') AS codigo_postal,
+            NULLIF(TRIM(t.direccion ->> 'ciudad'), '') AS ciudad,
+            NULLIF(TRIM(t.direccion ->> 'pais'), '') AS pais,
+            ldt.contenido AS logo_contenido
+        FROM tienda t
+        JOIN empresa e ON e.id = t.empresa_id
+        LEFT JOIN configuracion_documento_impreso_tienda cdi ON cdi.tienda_id = t.id
+        LEFT JOIN logo_documento_tienda ldt ON ldt.id = cdi.logo_id AND ldt.tienda_id = t.id
+        WHERE t.id = CAST($P{TIENDA_ID} AS uuid)
+    ]]></query>
+    <field name="nombre_cabecera" class="java.lang.String"/>
+    <field name="nombre_empresa_secundario" class="java.lang.String"/>
+    <field name="cif" class="java.lang.String"/>
+    <field name="telefono" class="java.lang.String"/>
+    <field name="email" class="java.lang.String"/>
+    <field name="direccion" class="java.lang.String"/>
+    <field name="codigo_postal" class="java.lang.String"/>
+    <field name="ciudad" class="java.lang.String"/>
+    <field name="pais" class="java.lang.String"/>
+    <field name="logo_contenido" class="byte[]"/>
+    <title height="50">
+        <printWhenExpression><![CDATA[$F{logo_contenido} != null && $F{logo_contenido}.length > 0]]></printWhenExpression>
+        <element kind="image" x="25" y="2" width="177" height="46" scaleImage="RetainShape" hImageAlign="Center" vImageAlign="Middle">
+            <expression><![CDATA[new java.io.ByteArrayInputStream($F{logo_contenido})]]></expression>
+        </element>
+    </title>
+    <detail>
+        <band height="128" splitType="Stretch">
+            <element kind="textField" positionType="Float" x="10" y="0" width="207" height="18" fontSize="12" bold="true" textAdjust="StretchHeight" hTextAlign="Center" blankWhenNull="true">
+                <expression><![CDATA[$F{nombre_cabecera}]]></expression>
+            </element>
+            <element kind="textField" positionType="Float" x="10" y="18" width="207" height="13" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center" blankWhenNull="true">
+                <expression><![CDATA[$F{nombre_empresa_secundario}]]></expression>
+            </element>
+            <element kind="textField" positionType="Float" x="10" y="31" width="207" height="13" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center">
+                <expression><![CDATA[($F{cif} == null ? "" : "NIF: " + $F{cif})
+                    + ($F{telefono} == null ? "" : ($F{cif} == null ? "Tel.: " : " · Tel.: ") + $F{telefono})]]></expression>
+            </element>
+            <element kind="textField" positionType="Float" x="10" y="44" width="207" height="13" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center">
+                <expression><![CDATA[($F{direccion} == null ? "" : $F{direccion})
+                    + ($F{codigo_postal} == null ? "" : ($F{direccion} == null ? "" : " · ") + $F{codigo_postal})
+                    + ($F{ciudad} == null ? "" : " " + $F{ciudad})
+                    + ($F{pais} == null ? "" : " · " + $F{pais})]]></expression>
+            </element>
+            <element kind="textField" positionType="Float" x="10" y="57" width="207" height="13" textAdjust="StretchHeight" removeLineWhenBlank="true" hTextAlign="Center" blankWhenNull="true">
+                <expression><![CDATA[$F{email}]]></expression>
+            </element>
+            <element kind="staticText" positionType="Float" x="10" y="82" width="207" height="20" fontSize="12" bold="true" hTextAlign="Center">
+                <text><![CDATA[IMPRESIÓN DE PRUEBA]]></text>
+            </element>
+            <!-- No lateral report margins: the solid bar exercises every raster column. -->
+            <element kind="rectangle" positionType="Float" x="0" y="110" width="227" height="12" mode="Opaque" backcolor="#000000" forecolor="#000000">
+                <pen lineWidth="0.0"/>
+            </element>
+        </band>
+    </detail>
+</jasperReport>

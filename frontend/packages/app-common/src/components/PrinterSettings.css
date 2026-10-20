@@ -1,0 +1,133 @@
+/* Impresoras y dispositivos: resaltar la pestaña activa con el mismo azul. */
+.sale-settings-screen .hardware-device-tabs.hardware-printing-tabs button:is(.selected, [aria-pressed="true"]),
+.sale-settings-screen .hardware-device-tabs.hardware-printing-tabs button:is(.selected, [aria-pressed="true"]):is(:hover, :focus, :focus-visible),
+.sale-settings-screen .hardware-settings-content-devices .hardware-device-tabs button:is(.selected, [aria-pressed="true"]),
+.sale-settings-screen .hardware-settings-content-devices .hardware-device-tabs button:is(.selected, [aria-pressed="true"]):is(:hover, :focus, :focus-visible) {
+  border-color: #0065fe;
+  background: #0065fe;
+  color: #fff;
+}
+
+/* La tabla sigue usando sus ocho columnas y sus anchos definidos en línea. */
+.sale-settings-screen .hardware-document-routes .hardware-route-table.erp-classic-tables {
+  overflow: auto;
+  border: 1px solid #cad7e4;
+  border-radius: 6px;
+  background: #fff;
+  color: #24384e;
+  font-family: inherit;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-header,
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-row {
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid #dce5ed;
+  border-radius: 0 !important;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-header {
+  height: 38px;
+  min-height: 38px;
+  background: #12385f !important;
+  color: #fff;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-header .table-layout-header-cell {
+  display: flex;
+  align-items: center;
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 8px !important;
+  background: #12385f !important;
+  color: #fff !important;
+  font-family: inherit;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-heading .table-layout-header-label {
+  min-width: 0;
+  padding: 0 !important;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table :is(.hardware-route-heading-copies, .hardware-route-heading-auto, .hardware-route-heading-dialog) .table-layout-header-label {
+  text-align: center;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-row {
+  height: 46px;
+  min-height: 46px;
+  background: #fff !important;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-row:nth-child(even of .hardware-route-row) {
+  background: #f2f6fa !important;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-row:hover {
+  background: #e8f1fa !important;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-row:focus-within {
+  outline: 2px solid #0065fe;
+  outline-offset: -2px;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-cell,
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-heading {
+  min-width: 0;
+  border-right: 1px solid #dce5ed;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-cell:last-child,
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-heading:last-child {
+  border-right: 0;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-cell {
+  padding: 5px 8px;
+  font-family: inherit;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-cell-copies {
+  justify-content: center;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-cell-copies input {
+  width: 100%;
+  max-width: 72px;
+  text-align: center;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-cell :is(input:not([type="checkbox"]), .erp-select__trigger) {
+  height: 32px !important;
+  min-height: 32px !important;
+  border: 1px solid #bdcddd;
+  border-radius: 6px !important;
+  background: #fff;
+  font-family: inherit;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-cell > .erp-select {
+  border-radius: 6px !important;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .erp-select__arrow {
+  min-height: 30px;
+  border-radius: 0 5px 5px 0;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .erp-select__value {
+  padding-inline: 6px !important;
+}
+
+.sale-settings-screen .hardware-document-routes .hardware-route-table .hardware-route-check input {
+  width: 18px;
+  height: 18px !important;
+  min-height: 18px !important;
+}
