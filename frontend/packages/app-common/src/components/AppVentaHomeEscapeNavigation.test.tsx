@@ -81,7 +81,7 @@ describe("AppVentaHomeEscapeNavigation", () => {
     expect(onBack).toHaveBeenCalledTimes(2);
   });
 
-  it("silently blocks Escape until navigation is allowed again", () => {
+  it("shows a text notice for blocked Escape until navigation is allowed again", () => {
     const onConfirmHome = vi.fn();
     const view = (navigationBlocked: boolean) => (
       <AppVentaHomeEscapeNavigation locale="es" onConfirmHome={onConfirmHome} navigationBlocked={navigationBlocked}>
@@ -93,14 +93,46 @@ describe("AppVentaHomeEscapeNavigation", () => {
     product.focus();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("hay una venta u operación pendiente");
     expect(onConfirmHome).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(product);
 
     rerender(view(false));
+    expect(screen.queryByRole("alert")).toBeNull();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.getByRole("alertdialog")).toBeTruthy();
     fireEvent.keyDown(window, { key: "Enter" });
     expect(onConfirmHome).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["es", "No se puede volver al inicio: hay una venta u operación pendiente.", "Cerrar"],
+    ["en", "Cannot return to Home while a sale or operation is pending.", "Close"],
+    ["zh", "有未完成的销售或操作，暂时无法返回首页。", "关闭"],
+  ] as const)("explains blocked Escape and logo navigation as text in %s without taking focus", (locale, message, close) => {
+    const onConfirmHome = vi.fn();
+    const directBack = vi.fn();
+    render(
+      <AppVentaHomeEscapeNavigation locale={locale} onConfirmHome={onConfirmHome} navigationBlocked>
+        <input aria-label="Producto" />
+        <button type="button" className="report-brand-back" onClick={directBack}>Logo</button>
+      </AppVentaHomeEscapeNavigation>,
+    );
+    const product = screen.getByRole("textbox", { name: "Producto" });
+    for (const source of ["Escape", "logo"]) {
+      product.focus();
+      if (source === "Escape") fireEvent.keyDown(window, { key: "Escape" });
+      else fireEvent.click(screen.getByRole("button", { name: "Logo" }));
+      expect(screen.getByRole("alert").textContent).toContain(message);
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+      expect(document.activeElement).toBe(product);
+      fireEvent.keyDown(window, { key: "Enter" });
+      expect(onConfirmHome).not.toHaveBeenCalled();
+      expect(directBack).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: close }));
+      expect(screen.queryByRole("alert")).toBeNull();
+    }
   });
 
   it("dismisses an existing confirmation when navigation becomes blocked", () => {

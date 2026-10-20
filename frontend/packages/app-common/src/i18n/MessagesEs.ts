@@ -137,6 +137,7 @@ export class MessagesEs {
     "appVenta.escapeHome.message": "¿Quieres salir de esta pantalla y volver al inicio?",
     "appVenta.escapeHome.shortcuts": "Enter para salir · Esc para cancelar",
     "appVenta.escapeHome.confirm": "Volver al inicio",
+    "appVenta.escapeHome.blocked": "No se puede volver al inicio: hay una venta u operación pendiente.",
     "common.apply": "Aplicar",
     "common.save": "Guardar",
     "common.saving": "Guardando...",

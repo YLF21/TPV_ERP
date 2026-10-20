@@ -556,9 +556,14 @@ describe("APP VENTA locale wiring", () => {
     expect(screen.queryByLabelText("home")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("login")).not.toBeInTheDocument();
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    if (exit === "Escape" || exit === "logo") {
+      expect(screen.getByRole("alert")).toHaveTextContent("No se puede volver al inicio: hay una venta u operación pendiente.");
+    } else {
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    }
 
     fireEvent.click(screen.getByRole("button", { name: "Report empty sale" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     leaveSale();
     if (exit === "Escape" || exit === "logo") {
       expect(screen.getByRole("alertdialog")).toHaveTextContent(/volver al inicio/i);
