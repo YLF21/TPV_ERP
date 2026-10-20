@@ -59,6 +59,37 @@ test("localized links and navigation contracts without browser effects", async s
       assert.match(markup, /href="\/es\/producto\/apps\/"/);
     });
 
+    await suite.test("old feature paths and hashes open the unified solution without rewriting history or query", () => {
+      define("localStorage", { getItem: () => preference });
+      for (const language of ["es", "en", "zh"]) {
+        location.pathname = `/${language}/producto/funcionalidades/`;
+        location.hash = "";
+        location.search = "?apps=venta&utm_source=bookmark";
+        const cleanMarkup = renderToStaticMarkup(createElement(App));
+        assert.ok(cleanMarkup.includes(getMarketingContent(language).solution.title));
+        assert.match(cleanMarkup, new RegExp(`href="/${language}/producto/solucion/"`));
+        assert.doesNotMatch(cleanMarkup, /href="[^"\s]*\/producto\/funcionalidades\//);
+        assert.equal(location.search, "?apps=venta&utm_source=bookmark");
+        assert.equal(location.pathname, `/${language}/producto/funcionalidades/`);
+        location.hash = "#/producto/funcionalidades";
+        const hashMarkup = renderToStaticMarkup(createElement(App));
+        assert.ok(hashMarkup.includes(getMarketingContent(language).solution.title));
+      }
+      assert.deepEqual(history, []);
+      assert.deepEqual(events, [], "SSR must not redirect compatibility entries");
+      location.search = "";
+    });
+
+    await suite.test("legacy and clean alias link declarations become canonical anchors with their query intact", () => {
+      const link = (href, language = "en") => renderToStaticMarkup(createElement(navigation.MarketingLanguageProvider, { value: language }, createElement(navigation.MarketingLink, { href }, "Solution")));
+      assert.match(link("#/producto/funcionalidades"), /href="\/en\/producto\/solucion\/"/);
+      assert.match(link("#/producto/funcionalidades?apps=venta"), /href="\/en\/producto\/solucion\/\?apps=venta"/);
+      assert.match(link("/zh/producto/funcionalidades/?apps=all#details"), /href="\/zh\/producto\/solucion\/\?apps=all#details"/);
+      assert.match(link("#mk-main-content"), /href="#mk-main-content"/);
+      assert.match(link("https://external.business/funcionalidades/"), /href="https:\/\/external\.business\/funcionalidades\/"/);
+      assert.match(link("#/producto/unknown"), /href="#\/producto\/unknown"/);
+    });
+
     await suite.test("blocked preference storage does not prevent a clean route render", () => {
       location.pathname = "/zh/producto/ventajas/";
       location.hash = "";

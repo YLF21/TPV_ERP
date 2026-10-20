@@ -115,7 +115,11 @@ test("application explorer server-render contract (no browser or HTTP)", async s
 
         for (const application of applications) requireText(markup, application.name);
         for (const label of [copy.tourAction, copy.demoAction, copy.consultAction, copy.scopeNote]) requireText(markup, label);
-        assert.ok(tags(markup, "a").some(anchor => anchor.href === `/${language}/producto/contacto/?apps=venta`));
+        const anchors = tags(markup, "a");
+        assert.equal(anchors.filter(anchor => anchor.href === `/${language}/producto/contacto/?apps=venta`).length, 1, "Only the demo action should request contact for the selected app");
+        const preparation = anchors.find(anchor => anchor["data-testid"] === "guide-preparation-action");
+        assert.equal(preparation?.href, `/${language}/producto/apps/#mk-implementation-journey`);
+        assert.equal(preparation?.["aria-controls"], "mk-implementation-journey");
         const gettingStarted = markup.match(/<ol class="mk-guide-start-steps">([\s\S]*?)<\/ol>/)?.[1];
         assert.ok(gettingStarted);
         assert.equal(tags(gettingStarted, "li").length, 3);

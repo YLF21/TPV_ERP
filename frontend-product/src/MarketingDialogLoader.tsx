@@ -31,6 +31,10 @@ const feedbackCopy = {
   }
 } satisfies Record<MarketingLanguage, Record<string, string>>;
 
+export function getMarketingDialogFeedbackContent(language: MarketingLanguage) {
+  return feedbackCopy[language];
+}
+
 class DialogLoadBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { failed: boolean }> {
   state = { failed: false };
 
@@ -46,7 +50,7 @@ class DialogLoadBoundary extends Component<{ children: ReactNode; fallback: Reac
 }
 
 export function MarketingDialogFeedback({ language, failed = false, onClose, onRetry }: { language: MarketingLanguage; failed?: boolean; onClose: () => void; onRetry?: () => void }) {
-  const copy = feedbackCopy[language];
+  const copy = getMarketingDialogFeedbackContent(language);
   const { dialogRef, closeRef } = useModalDialog(onClose);
   const id = useId();
   return <MarketingModalLayer><div className="mk-product-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); onClose(); } }}>

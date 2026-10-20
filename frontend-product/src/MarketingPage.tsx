@@ -1,5 +1,5 @@
 import {
-  ArrowRight, Buildings, CalendarCheck, ChartBar, Check,
+  ArrowRight, Buildings, CalendarCheck, Check,
   CloudArrowUp, CopySimple, Desktop, DownloadSimple, Headset,
   Globe, Package, PaperPlaneTilt, Question, Receipt, ShieldCheck,
   SquaresFour, Storefront, WechatLogo
@@ -10,18 +10,24 @@ import { getMarketingUiContent } from "./marketingUiI18n";
 import { productBrand } from "./brand";
 import { marketingContact } from "./contact";
 import { ApplicationExplorer } from "./ApplicationExplorer";
+import { ApplicationChooser } from "./ApplicationChooser";
+import { AdvantagesComparison } from "./AdvantagesComparison";
+import { ConnectionSummary } from "./ConnectionSummary";
+import { ImplementationJourney } from "./ImplementationJourney";
+import { CompatibilityChecklist } from "./CompatibilityChecklist";
+import { SupportInformation } from "./SupportInformation";
 import { MarketingImage } from "./MarketingImage";
 import { marketingImageSizes } from "./marketingImages";
 import { appMeta, type AppId, type MarketingCopy } from "./applicationMetadata";
 import { MarketingDialogLoader } from "./MarketingDialogLoader";
 import { MarketingLanguageProvider, MarketingLink, navigateMarketing } from "./MarketingNavigation";
-import { marketingHref, readMarketingLocation } from "./marketingRoutes";
+import { marketingHref, readMarketingLocation, routeIds, type MarketingRoute } from "./marketingRoutes";
 import { createCampaignAttribution, marketingContactSearch, parseRequestedApplications, type MarketingAttribution } from "./marketingCampaign";
 import { checkDemoAvailability, createDemoRequestAttempts, demoFieldLimits, DemoRequestError, submitDemoRequest, type DemoReceipt, type DemoRequestFailure } from "./demoRequests";
 
-type MarketingTab = "inicio" | "solucion" | "funcionalidades" | "apps" | "ventajas" | "contacto";
+type MarketingTab = MarketingRoute;
 
-const navigation: MarketingTab[] = ["inicio", "solucion", "funcionalidades", "apps", "ventajas", "contacto"];
+const navigation = routeIds;
 const featureIcons = [Receipt, Package, Buildings, ShieldCheck];
 const benefitIcons = [Storefront, CloudArrowUp, ShieldCheck, Headset];
 
@@ -80,6 +86,7 @@ export default function MarketingPage({ language, onLanguageChange }: { language
         previousSearchRef.current = window.location.search;
       }
     };
+    syncTab();
     window.addEventListener("hashchange", syncTab);
     window.addEventListener("popstate", syncTab);
     return () => { window.removeEventListener("hashchange", syncTab); window.removeEventListener("popstate", syncTab); };
@@ -118,8 +125,8 @@ export default function MarketingPage({ language, onLanguageChange }: { language
     setScrolled(event.currentTarget.scrollTop > 18);
   }
 
-  function requestApplications(apps: AppId[]) {
-    setPreferredApps(apps);
+  function requestApplications(apps: readonly AppId[]) {
+    setPreferredApps([...apps]);
     navigateMarketing(`${marketingHref(language, "contacto")}${marketingContactSearch(apps)}`);
   }
 
@@ -154,10 +161,9 @@ export default function MarketingPage({ language, onLanguageChange }: { language
 
     <main id="mk-main-content" className="mk-main-content" ref={mainRef} tabIndex={-1} aria-label={copy.navigation[navigation.indexOf(activeTab)]}>
     {activeTab === "inicio" && <HomePage copy={copy} />}
-    {activeTab === "solucion" && <SolutionPage copy={copy} />}
-    {activeTab === "funcionalidades" && <FeaturesPage copy={copy} />}
-    {activeTab === "apps" && <AppsPage copy={copy} language={language} onOpenTour={setTourApp} onRequestDemo={(app) => requestApplications([app])} />}
-    {activeTab === "ventajas" && <AdvantagesPage copy={copy} />}
+    {activeTab === "solucion" && <SolutionPage copy={copy} language={language} />}
+    {activeTab === "apps" && <AppsPage copy={copy} language={language} onOpenTour={setTourApp} onRequestDemo={(app) => requestApplications([app])} onRequestApplications={requestApplications} />}
+    {activeTab === "ventajas" && <AdvantagesPage copy={copy} language={language} />}
     {activeTab === "contacto" && <ContactPage copy={copy} language={language} initialApps={preferredApps} attribution={attribution} />}
     </main>
 
@@ -175,7 +181,7 @@ export default function MarketingPage({ language, onLanguageChange }: { language
 }
 
 function HomePage({ copy }: { copy: MarketingCopy }) {
-  return <>
+  return <div className="mk-home-page">
     <section className="mk-hero">
       <div className="mk-grid-decoration" aria-hidden="true" />
       <div className="mk-hero-copy">
@@ -199,50 +205,55 @@ function HomePage({ copy }: { copy: MarketingCopy }) {
       <p>{copy.home.introBody}</p>
       <MarketingLink href="#/producto/solucion">{copy.home.introLink} <ArrowRight /></MarketingLink>
       <div className="mk-home-sector-preview" aria-label={copy.growth.sectors.title}>
-        {copy.growth.sectors.items.map(([id, label, headline, , bullets], index) => <article key={id}><span>0{index + 1}</span><p>{label}</p><h3>{headline}</h3><small><Check weight="bold" />{bullets[0]}</small></article>)}
+        {copy.growth.sectors.items.map(([id, label, headline, , bullets]) => <article key={id}><p>{label}</p><h3>{headline}</h3><small><Check weight="bold" aria-hidden="true" />{bullets[0]}</small></article>)}
       </div>
     </section>
-  </>;
+  </div>;
 }
 
-function SolutionPage({ copy }: { copy: MarketingCopy }) {
-  return <section className="mk-inner-page">
+function SolutionPage({ copy, language }: { copy: MarketingCopy; language: MarketingLanguage }) {
+  return <section className="mk-inner-page mk-solution-page">
     <MarketingHeading kicker={copy.solution.kicker} title={copy.solution.title} accent={copy.solution.accent} body={copy.solution.body} secondaryHref="#/producto/apps" secondaryLabel={copy.common.seeApps} copy={copy} />
+    <ConnectionSummary language={language} />
     <div className="mk-principles">
       {copy.solution.principles.map(([title, body], index) => {
         const PrincipleIcon = [Desktop, CloudArrowUp, Storefront][index];
-        return <article key={title}><PrincipleIcon weight="duotone" /><span>0{index + 1}</span><h2>{title}</h2><p>{body}</p></article>;
+        return <article key={title}><PrincipleIcon weight="duotone" aria-hidden="true" /><div><h2>{title}</h2><p>{body}</p></div></article>;
       })}
     </div>
-    <div className="mk-dark-band"><div><p className="mk-kicker">{copy.solution.bandKicker}</p><h2>{copy.solution.bandTitle}</h2><p>{copy.solution.bandBody}</p><MarketingLink className="mk-primary" href="#/producto/apps">{copy.solution.bandAction} <ArrowRight /></MarketingLink></div><ChartBar weight="duotone" aria-hidden="true" /></div>
+    <FeaturesSection copy={copy} />
+    <div className="mk-dark-band"><div><p className="mk-kicker">{copy.solution.bandKicker}</p><h2>{copy.solution.bandTitle}</h2><p>{copy.solution.bandBody}</p></div><MarketingLink className="mk-primary" href="#/producto/apps">{copy.solution.bandAction} <ArrowRight aria-hidden="true" /></MarketingLink></div>
   </section>;
 }
 
-function FeaturesPage({ copy }: { copy: MarketingCopy }) {
-  return <section className="mk-inner-page mk-features-page">
-    <MarketingHeading kicker={copy.features.kicker} title={copy.features.title} accent={copy.features.accent} body={copy.features.body} secondaryHref="#/producto/apps" secondaryLabel={copy.common.seeApps} copy={copy} />
+function FeaturesSection({ copy }: { copy: MarketingCopy }) {
+  return <section id="mk-solution-features" className="mk-solution-features" aria-labelledby="mk-solution-features-title">
+    <header className="mk-solution-features-heading">
+      <div><p className="mk-kicker">{copy.features.kicker}</p><h2 id="mk-solution-features-title">{copy.features.title} <span>{copy.features.accent}</span></h2></div>
+      <p>{copy.features.body}</p>
+    </header>
     <div className="mk-feature-list">{copy.features.groups.map(([eyebrow, title, body, items], index) => {
       const FeatureIcon = featureIcons[index];
-      return <article key={title} className={index % 2 ? "is-dark" : ""}><div className="mk-feature-number">0{index + 1}</div><div className="mk-feature-icon"><FeatureIcon weight="duotone" /></div><div><p className="mk-kicker">{eyebrow}</p><h2>{title}</h2><p>{body}</p><ul>{items.map((item) => <li key={item}><Check weight="bold" /> {item}</li>)}</ul></div></article>;
+      return <article key={title} className="mk-solution-feature"><header className="mk-solution-feature-heading"><div className="mk-feature-icon"><FeatureIcon weight="duotone" aria-hidden="true" /></div><div><p className="mk-kicker">{eyebrow}</p><h3>{title}</h3></div></header><p className="mk-solution-feature-body">{body}</p><ul>{items.map((item) => <li key={item}><Check weight="bold" aria-hidden="true" /> {item}</li>)}</ul></article>;
     })}</div>
   </section>;
 }
 
-function AppsPage({ copy, language, onOpenTour, onRequestDemo }: { copy: MarketingCopy; language: MarketingLanguage; onOpenTour: (app: AppId) => void; onRequestDemo: (app: AppId) => void }) {
+function AppsPage({ copy, language, onOpenTour, onRequestDemo, onRequestApplications }: { copy: MarketingCopy; language: MarketingLanguage; onOpenTour: (app: AppId) => void; onRequestDemo: (app: AppId) => void; onRequestApplications: (apps: readonly AppId[]) => void }) {
   return <section className="mk-inner-page mk-apps-page">
     <MarketingHeading kicker={copy.apps.kicker} title={copy.apps.title} accent={copy.apps.accent} body={copy.apps.body} secondaryHref="#/producto/ventajas" secondaryLabel={copy.common.compareOptions} copy={copy} />
+    <ApplicationChooser language={language} onRequestApplications={onRequestApplications} />
     <ApplicationExplorer language={language} applications={appMeta.map(({ id }, index) => ({ id, name: copy.apps.items[index][0], label: copy.apps.items[index][1], description: copy.apps.items[index][2], previewAlt: copy.tour.previewAlts[index] }))} onOpenTour={onOpenTour} onRequestDemo={onRequestDemo} />
+    <ImplementationJourney language={language} />
+    <CompatibilityChecklist language={language} />
+    <SupportInformation language={language} />
   </section>;
 }
 
-function AdvantagesPage({ copy }: { copy: MarketingCopy }) {
+function AdvantagesPage({ copy, language }: { copy: MarketingCopy; language: MarketingLanguage }) {
   return <section className="mk-inner-page mk-advantages-page">
     <MarketingHeading kicker={copy.advantagesPage.kicker} title={copy.advantagesPage.title} accent={copy.advantagesPage.accent} body={copy.advantagesPage.body} secondaryHref="#/producto/apps" secondaryLabel={copy.common.seeApps} copy={copy} />
-    <div className="mk-comparison" role="table" aria-label={copy.advantagesPage.kicker}>
-      <div className="mk-comparison-row is-head" role="row">{copy.advantagesPage.headers.map((header, index) => index === 3 ? <strong role="columnheader" key={header}>{header}</strong> : <span role="columnheader" key={header}>{header}</span>)}</div>
-      {copy.advantagesPage.rows.map(([label, traditional, cloud, ours]) => <div className="mk-comparison-row" role="row" key={label}><strong role="rowheader">{label}</strong><span role="cell" data-label={copy.advantagesPage.headers[1]}>{traditional}</span><span role="cell" data-label={copy.advantagesPage.headers[2]}>{cloud}</span><span className="is-ours" role="cell" data-label={copy.advantagesPage.headers[3]}><Check weight="bold" aria-hidden="true" /> {ours}</span></div>)}
-    </div>
-    <p className="mk-note">{copy.advantagesPage.note}</p>
+    <AdvantagesComparison copy={copy.advantagesPage} language={language} />
   </section>;
 }
 
@@ -463,6 +474,8 @@ function ContactPage({ copy, language, initialApps, attribution }: { copy: Marke
             return <span key={title}><TrustIcon weight="duotone" /><strong>{title}</strong><small>{body}</small></span>;
           })}
         </div>
+        <ImplementationJourney language={language} />
+        <SupportInformation language={language} showAccount={false} onContactWechat={() => { setFaqOpen(false); setWechatQrOpen(true); }} />
       </div>
 
       <form className="mk-contact-form" onSubmit={prepareDemo} noValidate onInput={(event) => {
@@ -483,7 +496,7 @@ function ContactPage({ copy, language, initialApps, attribution }: { copy: Marke
             <button type="button" onClick={() => setWechatQrOpen(true)}>{copy.contact.delivery.viaWechat}</button>
           </div>}
         </div>
-        <fieldset className="mk-contact-selection" disabled={submitState === "submitting"} aria-invalid={selectionError || undefined} aria-describedby={selectionError ? "mk-contact-selection-error" : undefined}>
+        <fieldset className="mk-contact-selection" disabled={submitState === "submitting"} aria-invalid={selectionError || undefined} aria-describedby={`mk-contact-selection-hint${selectionError ? " mk-contact-selection-error" : ""}`}>
           <legend>{copy.contact.product}</legend>
           <label className={`mk-contact-package${fullPackageSelected ? " is-selected" : ""}`}>
             <input type="checkbox" name="fullPackage" checked={fullPackageSelected} onChange={(event) => selectApplications(event.target.checked ? appMeta.map(({ id }) => id) : [])} />
@@ -496,6 +509,7 @@ function ContactPage({ copy, language, initialApps, attribution }: { copy: Marke
               <span>{copy.apps.items[index][0]}</span>
             </label>)}
           </div>
+          <p id="mk-contact-selection-hint" className="mk-contact-selection-hint">{copy.contact.selectionHint}</p>
           {selectionError && <p id="mk-contact-selection-error" className="mk-contact-selection-error" role="alert">{copy.contact.selectionRequired}</p>}
         </fieldset>
         <div className="mk-contact-fields">

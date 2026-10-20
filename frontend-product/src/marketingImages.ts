@@ -20,9 +20,9 @@ export const marketingImages = {
 
 export type MarketingImageId = keyof typeof marketingImages;
 
-// Match the existing stacked hero (16/60px total horizontal padding) and the
-// desktop half-width column with its clamped 4vw / 64px padding on either side.
+// The compact hero stacks below 960px; its two desktop columns live in a
+// centered, padded 1440px container rather than growing with the full viewport.
 export const marketingImageSizes = {
-  home: "(max-width: 760px) calc(100vw - 16px), (max-width: 1120px) calc(100vw - 60px), (max-width: 1600px) 42vw, calc(50vw - 128px)",
+  home: "(max-width: 760px) calc(100vw - 32px), (max-width: 959px) 92vw, (max-width: 1440px) calc(46vw - 14px), 650px",
   contact: "100vw"
 } as const;
