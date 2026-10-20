@@ -1,4 +1,5 @@
 @import "../styles/DesktopTableSelection.css" screen;
+@import "./SaleDiscountBlockedDialog.css" screen;
 
 /* Tabla ERP Azul Clásica, limited to APP VENTA's live cart.
    Keep its row height, thumbnails, wrapping, column layout and operational cues. */
@@ -58,6 +59,13 @@
 
 .sale-cart-table.sale-cart-table--classic .sale-cart-row > .sale-cart-total { font-weight: 700; }
 .sale-cart-table.sale-cart-table--classic .sale-cart-row > .sale-cart-discount { color: #8a4d0a; }
+
+.sale-cart-table--classic .sale-cart-discount-blocked {
+  display: block;
+  color: #b91c1c;
+  font-weight: 700;
+  white-space: normal;
+}
 
 .sale-cart-table--classic .sale-cart-select:focus-visible {
   outline: 2px solid #1f5a94 !important;
