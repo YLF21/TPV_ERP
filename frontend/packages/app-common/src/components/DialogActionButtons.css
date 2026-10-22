@@ -34,7 +34,8 @@
     color: #fff !important;
   }
 
-  button.erp-dialog-action-confirm {
+  button.erp-dialog-action-confirm,
+  .sale-clear-current-dialog button.erp-dialog-dismiss {
     border-color: #07254f !important;
     background: #07254f !important;
   }
