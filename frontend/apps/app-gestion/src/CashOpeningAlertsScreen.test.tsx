@@ -32,9 +32,34 @@ beforeEach(() => {
   vi.mocked(alertsApi.loadCashAlertDetail).mockRejectedValue(new Error("detail unavailable"));
   vi.mocked(alertsApi.reviewCashAlert).mockResolvedValue({ ...alert, status: "REVIEWED", reviewerName: "ADMIN", reviewerId: "user-1", reviewerUsername: "admin", reviewedAt: "2026-10-01T09:00:00Z", comment: "Verified", version: 3 });
 });
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+afterEach(() => { vi.useRealTimers(); cleanup(); vi.clearAllMocks(); });
 
 describe("CashOpeningAlertsScreen", () => {
+  it("repeats row selection without opening a closed detail or reviewing an alert", async () => {
+    vi.mocked(alertsApi.loadCashAlerts).mockResolvedValue({ items: [alert, ...[2, 3, 4].map(index => ({ ...alert, id: `alert-${index}` }))], nextCursor: null, hasMore: false, pendingCount: 4 });
+    render(<CashOpeningAlertsScreen session={session(["GESTION_CUENTAS"])} t={t} locale="es" refreshSignal={0} onReviewed={vi.fn()} />);
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(5));
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(document.activeElement).toBe(rows[0]);
+    expect(rows[0].getAttribute("aria-selected")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "common.close" }));
+    expect(document.activeElement).toBe(rows[0]);
+    vi.useFakeTimers();
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(rows[1]);
+    await act(async () => { vi.advanceTimersByTime(180); });
+    expect(document.activeElement).toBe(rows[2]);
+    await act(async () => { vi.advanceTimersByTime(70); });
+    expect(document.activeElement).toBe(rows[3]);
+    expect(rows[3].getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByLabelText("gestion.cashOpeningAlerts.detail")).toBeNull();
+    fireEvent.keyUp(rows[3], { key: "ArrowDown" });
+    await act(async () => { vi.advanceTimersByTime(300); });
+    expect(document.activeElement).toBe(rows[3]);
+    expect(alertsApi.reviewCashAlert).not.toHaveBeenCalled();
+    fireEvent.keyDown(rows[3], { key: "Enter" });
+    expect(screen.getByLabelText("gestion.cashOpeningAlerts.detail")).not.toBeNull();
+  });
   it("loads all alerts by default, including an opening from the previous day", async () => {
     vi.mocked(alertsApi.loadCashAlerts).mockResolvedValue({ items: [{ ...alert, occurredAt: "2026-09-30T08:00:00Z" }], nextCursor: null, hasMore: false, pendingCount: 1 });
     render(<CashOpeningAlertsScreen session={session(["GESTION_CUENTAS"])} t={t} locale="es" refreshSignal={0} onReviewed={vi.fn()} />);

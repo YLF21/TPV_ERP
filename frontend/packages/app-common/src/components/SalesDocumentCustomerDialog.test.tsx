@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SaleCustomer } from "./SaleScreen";
 import { SalesDocumentCustomerDialog } from "./SalesDocumentCustomerDialog";
+import * as tableVisibility from "./ensureTableRowVisible";
 import { SaleTouchKeyboardScope } from "./SaleTouchKeyboardScope";
 
 const customers: SaleCustomer[] = [
@@ -12,9 +13,28 @@ const customers: SaleCustomer[] = [
   { id: "customer-two", clientId: "CLI-002", fiscalName: "Cliente Dos SL", documentNumber: "B22222222" },
 ];
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("SalesDocumentCustomerDialog", () => {
+  it("navigates from the focused row even before its highlight commits", () => {
+    const onSelect = vi.fn();
+    render(<SalesDocumentCustomerDialog locale="es" customers={customers} onSelect={onSelect} onClose={vi.fn()} />);
+    const first = screen.getByRole("option", { name: /Cliente Uno SL/ });
+    const last = screen.getByRole("option", { name: /Cliente Dos SL/ });
+
+    act(() => { last.focus(); fireEvent.keyDown(last, { key: "ArrowDown" }); });
+    expect(last).toHaveAttribute("aria-selected", "true");
+    expect(last).toHaveFocus();
+    fireEvent.keyUp(last, { key: "ArrowDown" });
+    fireEvent.keyDown(last, { key: "ArrowUp" });
+    expect(first).toHaveAttribute("aria-selected", "true");
+    expect(first).toHaveFocus();
+    fireEvent.keyUp(first, { key: "ArrowUp" });
+    act(() => { first.focus(); fireEvent.keyDown(first, { key: "ArrowUp" }); });
+    expect(first).toHaveAttribute("aria-selected", "true");
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it("shows identifying columns and selects a clicked row only after confirmation", () => {
     const onSelect = vi.fn();
     render(<SalesDocumentCustomerDialog locale="es" customers={customers} onSelect={onSelect} onClose={vi.fn()} />);
@@ -63,9 +83,9 @@ describe("SalesDocumentCustomerDialog", () => {
     fireEvent.keyDown(search, { key: "Insert" });
     expect(onSelect).toHaveBeenLastCalledWith(customers[1]);
     fireEvent.keyDown(search, { key: "ArrowDown" });
-    expect(first).toHaveAttribute("aria-selected", "true");
-    fireEvent.keyDown(search, { key: "ArrowUp" });
     expect(second).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(search, { key: "ArrowUp" });
+    expect(first).toHaveAttribute("aria-selected", "true");
 
     fireEvent.doubleClick(first);
     expect(onSelect).toHaveBeenLastCalledWith(customers[0]);
@@ -75,6 +95,52 @@ describe("SalesDocumentCustomerDialog", () => {
     await waitFor(() => expect(second).toHaveFocus());
     fireEvent.keyDown(second, { key: "Enter" });
     expect(onSelect).toHaveBeenLastCalledWith(customers[1]);
+  });
+
+  it("advances once per repeated arrow while keeping repeated actions inactive", () => {
+    const ensureVisible = vi.spyOn(tableVisibility, "ensureTableRowVisible");
+    const onSelect = vi.fn();
+    const onClose = vi.fn();
+    const third = { id: "customer-three", clientId: "CLI-003", fiscalName: "Cliente Tres SL" };
+    render(<SalesDocumentCustomerDialog locale="es" customers={[...customers, third]} onSelect={onSelect} onClose={onClose} />);
+    const search = screen.getByRole("textbox", { name: "Buscar cliente" });
+    const first = screen.getByRole("option", { name: /Cliente Uno SL/ });
+    const second = screen.getByRole("option", { name: /Cliente Dos SL/ });
+    const last = screen.getByRole("option", { name: /Cliente Tres SL/ });
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.keyDown(search, { key: "ArrowDown" });
+      expect(second).toHaveAttribute("aria-selected", "true");
+      fireEvent.keyDown(search, { key: "ArrowDown", repeat: true });
+      act(() => vi.advanceTimersByTime(179));
+      expect(second).toHaveAttribute("aria-selected", "true");
+      act(() => vi.advanceTimersByTime(1));
+      expect(last).toHaveAttribute("aria-selected", "true");
+      expect(ensureVisible.mock.lastCall?.[0]).toHaveClass("sales-document-customer-table");
+      expect(ensureVisible.mock.lastCall?.[1]).toBe(last);
+      act(() => vi.advanceTimersByTime(70));
+      expect(last).toHaveAttribute("aria-selected", "true");
+      fireEvent.keyUp(search, { key: "ArrowDown" });
+      act(() => vi.advanceTimersByTime(500));
+      expect(last).toHaveAttribute("aria-selected", "true");
+      fireEvent.keyDown(search, { key: "ArrowUp", isComposing: true });
+      expect(last).toHaveAttribute("aria-selected", "true");
+      fireEvent.keyDown(search, { key: "ArrowUp" });
+      expect(second).toHaveAttribute("aria-selected", "true");
+      expect(search).toHaveFocus();
+      screen.getByRole("button", { name: "Cerrar" }).focus();
+      act(() => vi.advanceTimersByTime(500));
+      expect(second).toHaveAttribute("aria-selected", "true");
+    } finally {
+      vi.useRealTimers();
+    }
+
+    for (const key of ["Enter", "Insert", "Escape"]) {
+      fireEvent.keyDown(search, { key, repeat: true });
+    }
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("keeps button keyboard actions separate from customer acceptance and ignores composing input", () => {

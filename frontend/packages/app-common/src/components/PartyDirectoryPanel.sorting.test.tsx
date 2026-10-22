@@ -29,6 +29,20 @@ beforeEach(() => {
 afterEach(() => { cleanup(); localStorage.clear(); });
 
 describe("Party directory default sorting", () => {
+  it.each(["venta", "gestion"] as const)("focuses the first %s directory row and moves down without opening details", async (app) => {
+    const { container } = render(<PartyDirectoryPanel app={app} kind="customers" locale="es" session={session} />);
+    await screen.findByText("Zoe");
+    const entries = container.querySelectorAll<HTMLButtonElement>("button.party-directory-selectable-row");
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toHaveFocus();
+    expect(entries[0]).toHaveClass("selected");
+    fireEvent.keyDown(entries[0], { key: "ArrowDown" });
+    expect(entries[1]).toHaveFocus();
+    expect(entries[1]).toHaveClass("selected");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.keyUp(window, { key: "ArrowDown" });
+  });
+
   it.each(kinds)("defaults venta %s to natural ascending code and preserves a later choice", async (kind) => {
     const props = { app: "venta" as const, kind, locale: "es" as const, session };
     const view = render(<PartyDirectoryPanel {...props} />);

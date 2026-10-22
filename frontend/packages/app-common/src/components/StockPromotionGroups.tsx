@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { AppKind, LocaleCode } from "../types";
 import { ArrowClockwise, CalendarBlank, CaretDown, ChartBar, Circle, MagnifyingGlass, Tag } from "@phosphor-icons/react";
 import type { PromotionView } from "./PromotionForm";
@@ -11,6 +11,9 @@ import type { UseTableLayoutPreferenceResult } from "./useTableLayoutPreference"
 import { useTableSortPreference, type TableSort } from "./tableSorting";
 import { sortProductTableRows } from "./productCodeSorting";
 import type { PromotionManagementActions, PromotionSelectionRequest } from "./usePromotionManagement";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import "./StockPromotionGroups.css";
 
 export const stockPromotionGroupsMessageKeys = {
@@ -211,10 +214,31 @@ export function StockPromotionGroups({
       ?? filteredGroups[0]?.promotion.id ?? ""
   );
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+  const listRef = useRef<HTMLDivElement>(null);
   const componentId = useId();
   const selectedGroup = filteredGroups.find((group) => group.promotion.id === activePromotionId)
     ?? filteredGroups[0];
   const selectedPromotion = selectedGroup?.promotion;
+  useTableInitialFocus(listRef, ".stock-promotion-list-row", {
+    ready: !loading && filteredGroups.length > 0,
+    onSelect: (row) => setActivePromotionId(row.dataset.promotionId ?? ""),
+  });
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const row = selectedPromotion ? rowRefs.current.get(selectedPromotion.id) : null;
+    if (list && row) ensureTableRowVisible(list, row);
+  }, [selectedPromotion?.id]);
+  const repeatGroupArrow = useTableArrowRepeat((direction) => {
+    const focused = document.activeElement;
+    const row = focused instanceof HTMLElement && listRef.current?.contains(focused)
+      ? focused.closest<HTMLElement>(".stock-promotion-list-row") : null;
+    const index = filteredGroups.findIndex((group) => group.promotion.id === row?.dataset.promotionId);
+    if (index < 0) return false;
+    const next = stockPromotionNavigationIndex(index, direction, filteredGroups.length);
+    if (next === index) return false;
+    focusGroup(next);
+    return true;
+  }, filteredGroups.length > 0);
   const expired = selectedPromotion ? isStockPromotionExpired(selectedPromotion) : false;
   const number = new Intl.NumberFormat(localeTag(locale), { maximumFractionDigits: 0 });
   const conditions = selectedPromotion ? stockPromotionConditionSentences(selectedPromotion, t, locale) : [];
@@ -254,12 +278,18 @@ export function StockPromotionGroups({
     const group = filteredGroups[index];
     if (!group) return;
     setActivePromotionId(group.promotion.id);
-    rowRefs.current.get(group.promotion.id)?.focus();
+    const row = rowRefs.current.get(group.promotion.id);
+    row?.focus({ preventScroll: true });
+    if (listRef.current && row) ensureTableRowVisible(listRef.current, row);
   }
 
   function handleRowKeyDown(event: KeyboardEvent<HTMLButtonElement>, groupIndex: number) {
     if (!isStockPromotionNavigationKey(event.key)) return;
     event.preventDefault();
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      repeatGroupArrow(event);
+      return;
+    }
     focusGroup(stockPromotionNavigationIndex(groupIndex, event.key, filteredGroups.length));
   }
 
@@ -294,7 +324,7 @@ export function StockPromotionGroups({
             {statusMessage || (loading ? t("common.loading") : t("promotion.list.empty"))}
           </p>
         ) : (
-          <div className="stock-promotion-list-scroll" role="list">
+          <div ref={listRef} className="stock-promotion-list-scroll" role="list">
             {filteredGroups.map((group, groupIndex) => {
               const promotion = group.promotion;
               const isExpired = isStockPromotionExpired(promotion);
@@ -308,6 +338,7 @@ export function StockPromotionGroups({
                     }}
                     className={"stock-promotion-list-row " + promotion.status.toLowerCase()
                       + (isExpired ? " expired" : "") + (selected ? " selected" : "")}
+                    data-promotion-id={promotion.id}
                     aria-pressed={selected} aria-controls={componentId + "-detail"}
                     tabIndex={selected ? 0 : -1}
                     onFocus={() => setActivePromotionId(promotion.id)}

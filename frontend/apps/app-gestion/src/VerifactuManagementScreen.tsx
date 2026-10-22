@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ErpFilterChips, type ErpFilterChip } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { ReportDateRangeSummary } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
+import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
 import {
   ErpSelect,
   TableLayoutHeaderCell,
@@ -799,6 +800,8 @@ function QueueView({
   t: Translator;
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const handleRowArrow = useTableRowArrowFocus(tableScrollRef, "tbody tr", !loading && !error && !filtersOpen, page.page);
   const visibleColumns = visibleTableColumns(tableLayout.layout);
   const statusOptions = useMemo(() => [
     { value: "", label: t("verifactu.management.allStatuses") },
@@ -920,7 +923,7 @@ function QueueView({
         ) : !loading && page.items.length === 0 ? (
           <div className="gestion-verifactu-message">{t("verifactu.management.emptyQueue")}</div>
         ) : (
-          <div className="gestion-verifactu-table-scroll gestion-module-table">
+          <div ref={tableScrollRef} className="gestion-verifactu-table-scroll gestion-module-table">
           <table className="gestion-verifactu-table" aria-rowcount={page.totalElements}>
             <colgroup>
               {visibleColumns.map((column) => <col key={column.key} style={{ width: `${column.width}px` }} />)}
@@ -946,7 +949,7 @@ function QueueView({
               <th>{t("verifactu.resolution.actions")}</th>
             </tr></thead>
             <tbody>{page.items.map((item) => (
-              <tr key={item.recordId}>
+              <tr key={item.recordId} tabIndex={0} onKeyDown={handleRowArrow}>
                 {visibleColumns.map((column) => <td data-column-key={column.key} key={column.key}>{renderQueueCell(item, column.key, locale, timezone, t)}</td>)}
                 <td>
                   <button

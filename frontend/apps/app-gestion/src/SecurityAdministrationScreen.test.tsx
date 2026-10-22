@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ApiError, type UserSession } from "@tpverp/app-common";
 import { SecurityAdministrationScreen, canManageRoles, canManageUsers } from "./SecurityAdministrationScreen";
 import * as api from "./securityAdministrationApi";
@@ -60,12 +60,39 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
 
 describe("SecurityAdministrationScreen", () => {
+  it("repeats through visible users, stops on release and does not open or save a dialog", async () => {
+    vi.mocked(api.loadSecurityUsers).mockResolvedValue([admin, cashier, { ...cashier, id: "third", userId: "00000003", name: "TERCERO" }, { ...cashier, id: "fourth", userId: "00000004", name: "CUARTO" }]);
+    render(<SecurityAdministrationScreen mode="users" session={session(["ADMIN"])} t={key => key} />);
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(5));
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(document.activeElement).toBe(rows[0]);
+    expect(rows[0].getAttribute("aria-selected")).toBe("true");
+    rows[0].focus();
+    vi.useFakeTimers();
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(rows[1]);
+    await act(async () => { vi.advanceTimersByTime(180); });
+    expect(document.activeElement).toBe(rows[2]);
+    await act(async () => { vi.advanceTimersByTime(70); });
+    expect(document.activeElement).toBe(rows[3]);
+    fireEvent.keyUp(rows[3], { key: "ArrowDown" });
+    await act(async () => { vi.advanceTimersByTime(300); });
+    expect(document.activeElement).toBe(rows[3]);
+    expect(rows[3].getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(api.updateSecurityUserIdentity).not.toHaveBeenCalled();
+    fireEvent.keyDown(rows[3], { key: "ArrowUp" });
+    screen.getByRole("button", { name: "gestion.users.new" }).focus();
+    await act(async () => { vi.advanceTimersByTime(300); });
+    expect(rows[2].getAttribute("aria-selected")).toBe("true");
+  });
   it("keeps user and role administration as independent permissions", () => {
     expect(canManageUsers(session(["GESTION_USUARIO"]))).toBe(true);
     expect(canManageUsers(session(["ROLES_MANAGE"]))).toBe(false);

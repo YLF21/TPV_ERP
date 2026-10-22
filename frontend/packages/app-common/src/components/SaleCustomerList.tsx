@@ -1,9 +1,10 @@
-import type { RefObject } from "react";
+import { useLayoutEffect, useRef, type RefObject } from "react";
 import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { TableSortButton } from "./TableSortButton";
 import type { TableSort } from "./tableSorting";
 import type { SaleCustomer } from "./SaleScreen";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 
 export type SaleCustomerSortColumn = "code" | "name" | "document" | "member" | "discount" | "debt" | "overdue";
 
@@ -43,6 +44,21 @@ export function SaleCustomerList({
   activeOnly = false,
 }: SaleCustomerListProps) {
   const t = createTranslator(locale);
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const table = tableRef.current;
+    if (!table || !selectedCustomerId) return;
+    const row = Array.from(table.querySelectorAll<HTMLElement>(".sale-customer-table-row"))
+      .find((candidate) => candidate.getAttribute("aria-current") === "true");
+    if (!row) return;
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && table.contains(focused)
+      && focused.closest(".sale-customer-table-row") && focused !== row) {
+      row.focus({ preventScroll: true });
+    }
+    ensureTableRowVisible(table, row);
+  }, [selectedCustomerId, customers, loading, error]);
 
   return <>
     <div className="sale-customer-toolbar">
@@ -51,8 +67,8 @@ export function SaleCustomerList({
         <input ref={inputRef} aria-label={t("sale.customer.search")} value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={t("sale.customer.placeholder")} />
       </label>
     </div>
-    <div className="sale-customer-table" role="table" aria-label={t("sale.customer.title")}>
-      <div className="sale-customer-table-header" role="row">
+    <div ref={tableRef} className="sale-customer-table" role="table" aria-label={t("sale.customer.title")}>
+      <div className="sale-customer-table-header header" role="row">
         {(["code", "name", "document", "member", "discount", "debt", "overdue"] as const).map((column) => (
           <span
             role="columnheader"
@@ -76,6 +92,7 @@ export function SaleCustomerList({
         {error && <p className="sale-action-error">{t("sale.customer.loadError")}</p>}
         {!loading && !error && includeNoCustomer && <button
           type="button"
+          data-customer-id={noCustomerId}
           aria-label={t("sale.customer.none")}
           className={`sale-customer-table-row sale-customer-none-row${selectedCustomerId === noCustomerId ? " selected" : ""}`}
           aria-current={selectedCustomerId === noCustomerId}
@@ -90,6 +107,7 @@ export function SaleCustomerList({
         {!loading && !error && customers.map((customer) => (
           <button
             type="button"
+            data-customer-id={customer.id}
             aria-label={[customer.clientId, customer.fiscalName, customer.documentNumber].filter(Boolean).join(" · ") || t("sale.customer.unnamed")}
             className={`sale-customer-table-row${customer.id === selectedCustomerId ? " selected" : ""}`}
             aria-current={customer.id === selectedCustomerId}

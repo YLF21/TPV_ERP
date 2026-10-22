@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
@@ -83,7 +83,32 @@ describe("WarehouseOperationsPanel", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     localStorage.clear();
+  });
+
+  it("moves one document per held-arrow tick without opening or saving it", async () => {
+    apiRequestMock.mockImplementation(async (path) => String(path).startsWith("/warehouse-inputs")
+      ? [draft, confirmed, { ...confirmed, id: "input-3", number: "ENT-2026-000002" }] : []);
+    const { container } = render(<WarehouseOperationsPanel mode="input" app="gestion" token="token"
+      products={products} warehouses={warehouses} customers={customers} suppliers={suppliers} t={t} />);
+    await waitFor(() => expect(container.querySelectorAll("tr[data-operation-id]")).toHaveLength(3));
+    const rows = [...container.querySelectorAll<HTMLTableRowElement>("tr[data-operation-id]")];
+    await waitFor(() => expect(rows[0].classList.contains("selected")).toBe(true));
+    expect(rows[0]).toBe(document.activeElement);
+    const requests = apiRequestMock.mock.calls.length;
+    vi.useFakeTimers();
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(rows[1]);
+    fireEvent.keyDown(rows[1], { key: "ArrowDown", repeat: true });
+    expect(document.activeElement).toBe(rows[1]);
+    act(() => vi.advanceTimersByTime(180));
+    expect(document.activeElement).toBe(rows[2]);
+    fireEvent.keyUp(rows[2], { key: "ArrowDown" });
+    act(() => vi.advanceTimersByTime(500));
+    expect(document.activeElement).toBe(rows[2]);
+    expect(apiRequestMock.mock.calls).toHaveLength(requests);
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it.each([

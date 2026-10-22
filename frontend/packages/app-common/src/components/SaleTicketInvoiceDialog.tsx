@@ -17,6 +17,7 @@ import {
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { SaleOperationAuthorizationFields } from "./SaleOperationAuthorizationFields";
 import { SaleInvoiceCustomerListDialog } from "./SaleInvoiceCustomerListDialog";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
 import "./SaleTicketInvoiceDialog.css";
 
 type Ticket = {
@@ -275,16 +276,19 @@ export function SaleTicketInvoiceDialog({
   }
 
   function moveCustomerResult(direction: 1 | -1) {
-    if (!customerResults.some((customer) => customer.active)) return;
-    let next = customerResultIndex;
-    for (let attempts = 0; attempts < customerResults.length; attempts += 1) {
-      next = (next + direction + customerResults.length) % customerResults.length;
-      if (customerResults[next]?.active) {
-        setCustomerResultIndex(next);
-        return;
-      }
-    }
+    const activeIndexes = customerResults.flatMap((customer, index) => customer.active ? [index] : []);
+    if (activeIndexes.length === 0) return false;
+    const position = activeIndexes.indexOf(customerResultIndex);
+    const nextPosition = position < 0 ? direction === 1 ? 0 : activeIndexes.length - 1
+      : Math.max(0, Math.min(activeIndexes.length - 1, position + direction));
+    if (nextPosition === position) return false;
+    setCustomerResultIndex(activeIndexes[nextPosition]);
+    return true;
   }
+  const repeatCustomerArrow = useTableArrowRepeat((direction) => {
+    if (document.activeElement !== customerSearchRef.current || !ticket || busy) return false;
+    return moveCustomerResult(direction === "ArrowDown" ? 1 : -1);
+  }, Boolean(ticket) && !busy && customerResults.some((customer) => customer.active));
 
   const canConvert = Boolean(ticket
     && customerId
@@ -473,7 +477,7 @@ export function SaleTicketInvoiceDialog({
                     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                       event.preventDefault();
                       setCustomerDropdownOpen(true);
-                      moveCustomerResult(event.key === "ArrowDown" ? 1 : -1);
+                      repeatCustomerArrow(event);
                     } else if (event.key === "Enter" || event.key === "Insert") {
                       const selected = customerResults[customerResultIndex];
                       if (showCustomerDropdown && selected?.active) {

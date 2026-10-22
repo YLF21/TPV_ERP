@@ -234,6 +234,88 @@ describe("CustomerDocumentsDialog", () => {
     view.unmount(); expect(trigger).toHaveFocus(); trigger.remove();
   });
 
+  it("focuses its table body when the first documents arrive and moves down without a click", async () => {
+    const second = { ...ticket, id: "store-1/t2", documentId: "t2", number: "T-002" };
+    vi.mocked(apiRequest).mockResolvedValueOnce(page([ticket, second]));
+    mount({ app: "gestion" });
+    await screen.findByText("T-002");
+    const body = screen.getByRole("rowgroup");
+    expect(body).toHaveFocus();
+    expect(screen.getByText("T-001").closest("[role=row]")).toHaveClass("selected");
+    fireEvent.keyDown(body, { key: "ArrowDown" });
+    expect(screen.getByText("T-002").closest("[role=row]")).toHaveClass("selected");
+    fireEvent.keyUp(window, { key: "ArrowDown" });
+  });
+
+  it("repeats from the current row, stops on keyup and requests the next page only at the tail", async () => {
+    const second = { ...ticket, id: "store-1/t2", documentId: "t2", number: "T-002" };
+    const third = { ...ticket, id: "store-1/t3", documentId: "t3", number: "T-003" };
+    vi.mocked(apiRequest).mockResolvedValueOnce(page([ticket, second, third], "next-page"))
+      .mockResolvedValueOnce(page([], null));
+    mount({ app: "gestion" });
+    await screen.findByText("T-003");
+    const body = screen.getByRole("rowgroup"); body.focus();
+    vi.useFakeTimers();
+    try {
+      fireEvent.keyDown(body, { key: "ArrowDown" });
+      expect(screen.getByText("T-002").closest("[role=row]")).toHaveClass("selected");
+      await act(async () => { vi.advanceTimersByTime(180); });
+      expect(screen.getByText("T-003").closest("[role=row]")).toHaveClass("selected");
+      expect(apiRequest).toHaveBeenCalledTimes(2);
+      fireEvent.keyUp(window, { key: "ArrowDown" });
+      await act(async () => { vi.advanceTimersByTime(500); });
+      expect(apiRequest).toHaveBeenCalledTimes(2);
+      expect(screen.getByText("T-003").closest("[role=row]")).toHaveClass("selected");
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("holds at the page tail and continues one row at a time after a deferred page arrives", async () => {
+    const row = (n: number) => ({ ...ticket, id: `store-1/t${n}`, documentId: `t${n}`, number: `T-00${n}` });
+    let finish!: (value: unknown) => void;
+    vi.mocked(apiRequest).mockResolvedValueOnce(page([row(1), row(2), row(3)], "next-page"))
+      .mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    mount({ app: "gestion" });
+    await screen.findByText("T-003");
+    const body = screen.getByRole("rowgroup"); body.focus();
+    vi.useFakeTimers();
+    try {
+      fireEvent.keyDown(body, { key: "ArrowDown" });
+      await act(async () => { vi.advanceTimersByTime(180); });
+      expect(screen.getByText("T-003").closest("[role=row]")).toHaveClass("selected");
+      expect(apiRequest).toHaveBeenCalledTimes(2);
+      await act(async () => { vi.advanceTimersByTime(210); });
+      expect(apiRequest).toHaveBeenCalledTimes(2);
+      expect(screen.getByText("T-003").closest("[role=row]")).toHaveClass("selected");
+      await act(async () => { finish(page([row(4), row(5)])); });
+      await act(async () => { vi.advanceTimersByTime(70); });
+      expect(screen.getByText("T-004").closest("[role=row]")).toHaveClass("selected");
+      fireEvent.keyUp(window, { key: "ArrowDown" });
+      await act(async () => { vi.advanceTimersByTime(300); });
+      expect(screen.getByText("T-004").closest("[role=row]")).toHaveClass("selected");
+      expect(apiRequest).toHaveBeenCalledTimes(2);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("does not advance after keyup while the next page is still loading", async () => {
+    const row = (n: number) => ({ ...ticket, id: `store-1/t${n}`, documentId: `t${n}`, number: `T-00${n}` });
+    let finish!: (value: unknown) => void;
+    vi.mocked(apiRequest).mockResolvedValueOnce(page([row(1), row(2), row(3)], "next-page"))
+      .mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    mount({ app: "gestion" });
+    await screen.findByText("T-003");
+    const body = screen.getByRole("rowgroup"); body.focus();
+    vi.useFakeTimers();
+    try {
+      fireEvent.keyDown(body, { key: "ArrowDown" });
+      await act(async () => { vi.advanceTimersByTime(180); });
+      fireEvent.keyUp(window, { key: "ArrowDown" });
+      await act(async () => { finish(page([row(4), row(5)])); });
+      await act(async () => { vi.advanceTimersByTime(300); });
+      expect(screen.getByText("T-003").closest("[role=row]")).toHaveClass("selected");
+      expect(apiRequest).toHaveBeenCalledTimes(2);
+    } finally { vi.useRealTimers(); }
+  });
+
   it("uses a fixed header outside the growing scroll body, without white frame padding", () => {
     const css = readFileSync("packages/app-common/src/components/CustomerDocumentsDialog.css", "utf8");
     expect(css).toMatch(/padding: 0; gap: 0; display: flex; flex-direction: column/);

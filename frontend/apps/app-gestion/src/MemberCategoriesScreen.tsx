@@ -1,6 +1,7 @@
 import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
 import {
   ApiError,
   ErpSelect,
@@ -61,6 +62,8 @@ export function MemberCategoriesScreen({ session, t, request = apiRequest }: {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
+  const tableRef = useRef<HTMLDivElement>(null);
+  const handleRowArrowFocus = useTableRowArrowFocus(tableRef, ".member-category-row[tabindex]", !loading && !error && !busy && !dialogOpen);
   const canManage = session.permissions.includes("ADMIN");
   const options = useMemo(() => ({ token: session.accessToken }), [session.accessToken]);
   const tableLayout = useTableLayoutPreference<CategoryColumnKey>({
@@ -203,14 +206,14 @@ export function MemberCategoriesScreen({ session, t, request = apiRequest }: {
       { key: "active", label: t("party.status"), value: filter === "all" ? "" : t(`party.${filter}`), onRemove: () => setFilter("all") }
     ]} onClear={() => { setQuery(""); setFilter("all"); }} />
 
-    <div className="party-directory-table member-categories-table" role="table" aria-label={t("gestion.memberCategories.title")}>
+    <div ref={tableRef} className="party-directory-table member-categories-table" role="table" aria-label={t("gestion.memberCategories.title")}>
       <div className="party-directory-row member-category-row header" role="row" style={gridStyle}>
         {visibleColumns.map((column) => <TableLayoutHeaderCell as="span" column={column} key={column.key} resizeLabel={`${t("stock.columns.resize")} ${columnLabel(column.key)}`} onReorder={tableLayout.reorderColumns} onMove={tableLayout.moveColumn} onResize={tableLayout.resizeColumn}>{columnLabel(column.key)}</TableLayoutHeaderCell>)}
         <span className="member-category-actions-header" role="columnheader">{t("common.actions")}</span>
       </div>
       {loading && <div className="stock-empty-state">{t("common.loading")}</div>}
       {!loading && error && !dialogOpen && <div className="party-directory-state error" role="alert"><span>{error}</span><button type="button" onClick={() => void load()}>{t("party.retry")}</button></div>}
-      {!loading && !error && visible.map((category) => <div className="party-directory-row member-category-row" role="row" style={gridStyle} key={category.id}>
+      {!loading && !error && visible.map((category) => <div className="party-directory-row member-category-row" role="row" tabIndex={0} onKeyDown={handleRowArrowFocus} style={gridStyle} key={category.id}>
         {visibleColumns.map((column) => renderCell(column.key, category))}
         <div className="party-member-row-actions member-category-row-actions"><button type="button" disabled={busy || !canManage} onClick={() => openEdit(category)}>{t("party.members.edit")}</button><button type="button" disabled={busy || !canManage} onClick={() => void toggle(category)}>{t(category.active ? "party.action.deactivate" : "party.action.activate")}</button></div>
       </div>)}

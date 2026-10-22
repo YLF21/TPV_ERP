@@ -30,6 +30,18 @@ beforeEach(() => {
 });
 
 describe("TicketManagementDialog", () => {
+  it("focuses the first ticket and moves with arrows without opening an action", async () => {
+    render(<TicketManagementDialog token="token" locale="es" terminalContext={{ storeName: "Tienda", terminalCode: "01" }} onClose={vi.fn()} />);
+    const first = await screen.findByRole("button", { name: /T-001/ });
+    const second = screen.getByRole("button", { name: /T-002/ });
+    await waitFor(() => expect(first).toHaveFocus());
+    expect(first).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    expect(second).toHaveFocus();
+    expect(second).toHaveAttribute("aria-pressed", "true");
+    expect(request.mock.calls.some(([path]) => String(path).includes("/returns"))).toBe(false);
+  });
+
   it("filters tickets by status and date without losing the selected result", async () => {
     render(<TicketManagementDialog token="token" locale="es" terminalContext={{ storeName: "Tienda", terminalCode: "01" }} onClose={vi.fn()} />);
 

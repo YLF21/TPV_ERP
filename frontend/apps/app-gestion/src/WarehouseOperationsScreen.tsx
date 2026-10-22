@@ -9,6 +9,7 @@ import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpF
 import { useWarehouseListShortcuts, WAREHOUSE_LIST_SHORTCUTS } from "../../../packages/app-common/src/components/useWarehouseListShortcuts";
 import { ReportDateRangeFilter, type ReportDateRange } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
 import { useReportDateOptions } from "../../../packages/app-common/src/components/useReportDateOptions";
+import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
 import { WarehouseSearchFrame } from "../../../packages/app-common/src/components/WarehouseSearchFrame";
 import { ArrowClockwise, FilePdf, FileXls, Plus } from "@phosphor-icons/react";
 import {
@@ -112,6 +113,8 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
   const [confirmingCount, setConfirmingCount] = useState(false);
   const countConfirmDialogRef = useRef<HTMLElement>(null);
   const screenRef = useRef<HTMLElement>(null);
+  const countTableRef = useRef<HTMLDivElement>(null);
+  const handleCountRowArrowFocus = useTableRowArrowFocus(countTableRef, "tbody tr[data-stock-count-row]", !loading && !saving && !confirmingCount);
 
   async function downloadCount(format: "pdf" | "xlsx") {
     if (!selectedCount) return;
@@ -596,9 +599,9 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
             <ErpFilterChips translate={t} focusRef={countStatusRef}
               chips={countStatus ? [{ key: "status", label: t("warehouse.count.status"), value: t(`warehouse.count.status.${countStatus}`), onRemove: () => setCountStatus("") }] : []}
               onClear={() => setCountStatus("")} />
-            <div className="gestion-stock-count-items erp-classic-tables warehouse-classic-table">
+            <div ref={countTableRef} className="gestion-stock-count-items erp-classic-tables warehouse-classic-table">
               <table className="report-table"><thead><tr><th>{t("warehouse.transfer.number")}</th><th>{t("warehouse.operations.warehouse")}</th><th>{t("warehouse.count.status")}</th><th>{t("warehouse.transfer.date")}</th></tr></thead>
-                <tbody>{counts.map((count) => <tr key={count.id} className={selectedCount?.id === count.id ? "selected" : ""}>
+                <tbody>{counts.map((count) => <tr key={count.id} data-stock-count-row tabIndex={0} onKeyDown={handleCountRowArrowFocus} className={selectedCount?.id === count.id ? "selected" : ""}>
                   <td>{count.number}</td><td><button type="button" onClick={() => void openCount(count.id)}>{warehouses.find((warehouse) => warehouse.id === count.warehouseId)?.name ?? count.warehouseId}</button></td>
                   <td><span className={`gestion-stock-count-status ${count.status.toLowerCase()}`}>{t(`warehouse.count.status.${count.status}`)}</span></td>
                   <td>{new Date(count.createdAt).toLocaleString()}</td>

@@ -1,6 +1,9 @@
 import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { useTableArrowRepeat } from "../../../packages/app-common/src/components/useTableArrowRepeat";
+import { ensureTableRowVisible } from "../../../packages/app-common/src/components/ensureTableRowVisible";
+import { useTableInitialFocus } from "../../../packages/app-common/src/components/useTableInitialFocus";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { GestionSearchFrame } from "../../../packages/app-common/src/components/GestionSearchFrame";
 import { GestionModuleHeading } from "./GestionModuleHeading";
@@ -79,6 +82,7 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
   const [error, setError] = useState(false);
   const [dialog, setDialog] = useState<UserDialogKind | null>(null);
   const [confirmActive, setConfirmActive] = useState<boolean | null>(null);
+  const tableRef = useRef<HTMLElement>(null);
   const tableLayout = useTableLayoutPreference({
     app: "gestion",
     username: session.username,
@@ -143,6 +147,26 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
     }, "es");
   }, [query, tableSort.sort, users]);
   const selected = users.find((user) => user.id === selectedId) ?? null;
+  useTableInitialFocus(tableRef, "button.gestion-security-row[data-security-user-id]", {
+    ready: !loading && !error && !dialog && confirmActive === null && filteredUsers.length > 0,
+    onSelect: (row) => setSelectedId(row.dataset.securityUserId ?? null)
+  });
+  const handleArrow = useTableArrowRepeat(direction => {
+    const active = document.activeElement;
+    if (loading || dialog || confirmActive !== null || document.querySelector('[aria-modal="true"]')
+      || !(active instanceof HTMLButtonElement) || !tableRef.current?.contains(active)
+      || !active.matches("button.gestion-security-row[data-security-user-id]")) return false;
+    const index = filteredUsers.findIndex(user => user.id === active.dataset.securityUserId);
+    const next = filteredUsers[index + (direction === "ArrowDown" ? 1 : -1)];
+    if (index < 0 || !next) return false;
+    const nextElement = Array.from(tableRef.current.querySelectorAll<HTMLButtonElement>("button.gestion-security-row[data-security-user-id]"))
+      .find(element => element.dataset.securityUserId === next.id);
+    if (!nextElement) return false;
+    setSelectedId(next.id);
+    nextElement.focus({ preventScroll: true });
+    ensureTableRowVisible(tableRef.current, nextElement);
+    return true;
+  }, !loading && !dialog && confirmActive === null);
 
   function replaceUser(updated: SecurityUser) {
     setUsers((current) => current.map((user) => user.id === updated.id ? updated : user));
@@ -179,7 +203,7 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
       ]} onClear={() => setQuery("")} />
 
       <div className="gestion-security-grid">
-        <section className="gestion-security-list gestion-module-panel gestion-module-table" aria-label={t("gestion.users.title")}>
+        <section ref={tableRef} className="gestion-security-list gestion-module-panel gestion-module-table" aria-label={t("gestion.users.title")}>
           <div className="gestion-security-table" role="table" aria-rowcount={filteredUsers.length}>
             <div className="gestion-security-row head" role="row" style={tableStyle}>
               {visibleColumns.map((column) => (
@@ -205,9 +229,13 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
                 role="row"
                 aria-selected={selectedId === user.id}
                 className={`gestion-security-row ${selectedId === user.id ? "selected" : ""}`}
+                data-security-user-id={user.id}
                 style={tableStyle}
                 key={user.id}
                 onClick={() => setSelectedId(user.id)}
+                onKeyDown={event => {
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); handleArrow(event); }
+                }}
               >
                 {visibleColumns.map((column) => (
                   <span role="cell" data-column-key={column.key} key={column.key}>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import "./TicketSerialNumberSearchDialog.css";
 import type { AppKind, LocaleCode } from "../types";
 import { formatEuroAmount } from "../money";
@@ -9,6 +9,9 @@ import { DialogDismissButton } from "./DialogDismissButton";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import type { TableColumnDefinition } from "./tableLayoutPreferences";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 
 type ColumnKey = "number" | "date" | "productCode" | "productName" | "serialNumber" | "total" | "status" | "action";
 type SearchSort = { key: Exclude<ColumnKey, "action">; direction: "asc" | "desc" };
@@ -39,7 +42,6 @@ export function TicketSerialNumberSearchDialog({ locale, token, app = "venta", u
   const root = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const generation = useRef(0);
-  const focusAfterInitialLoad = useRef(true);
   const scrollRoot = useRef<HTMLDivElement>(null);
   const loading = useRef(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -50,6 +52,38 @@ export function TicketSerialNumberSearchDialog({ locale, token, app = "venta", u
   const [error, setError] = useState("");
   const [sort, setSort] = useState<SearchSort | null>(null);
   const [selected, setSelected] = useState("");
+  const matches = result?.items ?? [];
+  useTableInitialFocus(scrollRoot, "tbody tr[data-match-key]", {
+    ready: !busy && matches.length > 0,
+    scopeKey: `${serial}:${sort?.key ?? ""}:${sort?.direction ?? ""}`,
+    onSelect: (row) => setSelected(row.dataset.matchKey ?? ""),
+    focusTarget: () => serial.trim() ? null : scrollRoot.current?.querySelector<HTMLElement>("tbody tr[data-match-key]") ?? null,
+  });
+  useLayoutEffect(() => {
+    const container = scrollRoot.current;
+    const row = Array.from(container?.querySelectorAll<HTMLElement>("tbody tr[data-match-key]") ?? [])
+      .find((candidate) => candidate.dataset.matchKey === selected);
+    if (!container || !row) return;
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && container.contains(focused)
+      && focused.closest("tbody tr[data-match-key]") && focused !== row) row.focus({ preventScroll: true });
+    ensureTableRowVisible(container, row);
+  }, [selected, result]);
+  const repeatMatchArrow = useTableArrowRepeat((direction) => {
+    const focused = document.activeElement;
+    const container = scrollRoot.current;
+    const focusedRow = focused instanceof HTMLElement && container?.contains(focused)
+      ? focused.closest<HTMLElement>("tbody tr[data-match-key]") : null;
+    if (!focusedRow && focused !== input.current) return false;
+    if (busy || matches.length < 2) return false;
+    const key = focusedRow?.dataset.matchKey ?? selected;
+    const index = matches.findIndex((match) => `${match.ticketId}-${match.lineId}-${match.serialNumber}` === key);
+    const nextIndex = Math.max(0, Math.min(matches.length - 1, index + (direction === "ArrowDown" ? 1 : -1)));
+    if (index < 0 || nextIndex === index) return false;
+    const next = matches[nextIndex];
+    setSelected(`${next.ticketId}-${next.lineId}-${next.serialNumber}`);
+    return true;
+  }, !busy && matches.length > 0);
   const tableLayout = useTableLayoutPreference({ app, username, accessToken: username ? token : undefined,
     tableKey: "sales.serial-number-search", definitions: columns });
   const labels: Record<ColumnKey, string> = {
@@ -77,12 +111,6 @@ export function TicketSerialNumberSearchDialog({ locale, token, app = "venta", u
     input.current?.focus();
     return () => { generation.current++; release?.(); };
   }, []);
-  useEffect(() => {
-    if (!busy && (result || error) && focusAfterInitialLoad.current) {
-      focusAfterInitialLoad.current = false;
-      input.current?.focus();
-    }
-  }, [busy, result, error]);
   useEffect(() => {
     const current = ++generation.current;
     loading.current = true;
@@ -132,6 +160,11 @@ export function TicketSerialNumberSearchDialog({ locale, token, app = "venta", u
       <section className="serial-search-body">
         <form className="serial-search-toolbar" onSubmit={(event) => { event.preventDefault(); clearTimeout(debounce.current); void search(serial); }}>
           <label>{t("salesReport.serialSearch.input")} <input ref={input} value={serial} maxLength={128}
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+              event.preventDefault();
+              repeatMatchArrow(event);
+            }}
             onChange={(event) => { generation.current++; loading.current = true; setSerial(event.target.value); setResult(null); setError(""); }} /></label>
           <button className="serial-search-primary" type="submit" disabled={busy || !token}>{t("salesReport.serialSearch.search")}</button>
         </form>
@@ -151,15 +184,14 @@ export function TicketSerialNumberSearchDialog({ locale, token, app = "venta", u
             {labels[column.key]}</TableLayoutHeaderCell>)}</tr></thead>
           <tbody>{(result?.items ?? []).map((match) => {
             const key = `${match.ticketId}-${match.lineId}-${match.serialNumber}`;
-            return <tr key={key} tabIndex={0} className={selected === key ? "selected" : ""}
-              onFocus={() => setSelected(key)} onClick={() => setSelected(key)}
+            return <tr key={key} data-match-key={key} tabIndex={0} className={selected === key ? "selected" : ""}
+              onFocus={(event) => { setSelected(key); if (scrollRoot.current) ensureTableRowVisible(scrollRoot.current, event.currentTarget); }} onClick={() => setSelected(key)}
               onDoubleClick={() => onOpenTicket(match)} onKeyDown={(event) => {
                 if (event.target !== event.currentTarget) return;
-                if (event.key === "Enter") { event.preventDefault(); onOpenTicket(match); }
+                if (event.key === "Enter" && !event.repeat) { event.preventDefault(); onOpenTicket(match); }
                 if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                   event.preventDefault();
-                  const next = event.key === "ArrowDown" ? event.currentTarget.nextElementSibling : event.currentTarget.previousElementSibling;
-                  (next as HTMLElement | null)?.focus();
+                  repeatMatchArrow(event);
                 }
               }}>
               {tableLayout.layout.map((column) => <td key={column.key} data-column-key={column.key}>{renderCell(match, column.key)}</td>)}

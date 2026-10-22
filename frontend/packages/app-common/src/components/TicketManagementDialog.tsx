@@ -1,6 +1,6 @@
 import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode, TerminalContext } from "../types";
@@ -13,6 +13,9 @@ import {
 } from "../sale/ticketPrinting";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { ReportDateRangeSummary } from "./ReportDateRangeFilter";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import "./NativeDateFilterSummary.css";
 
 type TicketPayment = {
@@ -60,6 +63,7 @@ type Props = {
 export function TicketManagementDialog({ token, locale, terminalContext, permissions = [], onClose, onFiscalMutation }: Props) {
   const t = createTranslator(locale);
   const dialogRef = useRef<HTMLElement>(null);
+  const ticketListRef = useRef<HTMLDivElement>(null);
   const isAdmin = permissions.includes("ADMIN");
   const canCancelTicket = isAdmin || permissions.some((permission) => permission === "GESTION_VENTAS" || permission === "TICKETS_CANCEL");
   const canRefundTicket = isAdmin || permissions.includes("PAYMENT_TERMINAL_REFUND");
@@ -103,6 +107,32 @@ export function TicketManagementDialog({ token, locale, terminalContext, permiss
   const pageSize = 20;
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pagedTickets = filtered.slice((page - 1) * pageSize, page * pageSize);
+  useTableInitialFocus(ticketListRef, "button[data-ticket-id]", {
+    ready: !busy && pagedTickets.length > 0,
+    scopeKey: page,
+    onSelect: (row) => setSelectedId(row.dataset.ticketId ?? ""),
+  });
+  useLayoutEffect(() => {
+    const list = ticketListRef.current;
+    const row = Array.from(list?.querySelectorAll<HTMLElement>("button[data-ticket-id]") ?? [])
+      .find((candidate) => candidate.dataset.ticketId === selectedId);
+    if (!list || !row) return;
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && list.contains(focused)
+      && focused.closest("button[data-ticket-id]") && focused !== row) row.focus({ preventScroll: true });
+    ensureTableRowVisible(list, row);
+  }, [selectedId, page]);
+  const repeatTicketArrow = useTableArrowRepeat((direction) => {
+    const focused = document.activeElement;
+    const row = focused instanceof HTMLElement && ticketListRef.current?.contains(focused)
+      ? focused.closest<HTMLElement>("button[data-ticket-id]") : null;
+    const index = pagedTickets.findIndex((ticket) => ticket.id === row?.dataset.ticketId);
+    if (index < 0) return false;
+    const next = Math.max(0, Math.min(pagedTickets.length - 1, index + (direction === "ArrowDown" ? 1 : -1)));
+    if (next === index) return false;
+    setSelectedId(pagedTickets[next].id);
+    return true;
+  }, !busy && pagedTickets.length > 0);
   const refundAmount = refundLines.reduce((sum, line) => {
     const option = refundOptions.find((candidate) => candidate.lineId === line.lineId);
     const quantity = Number(line.quantity);
@@ -364,13 +394,20 @@ export function TicketManagementDialog({ token, locale, terminalContext, permiss
         </div>
         <div className="ticket-management-layout">
           <aside className="ticket-management-list" aria-label={t("ticketManagement.listAria")}>
-            <div className="ticket-management-list-results">
+            <div ref={ticketListRef} className="ticket-management-list-results">
             {pagedTickets.map((ticket) => (
               <button
                 type="button"
+                data-ticket-id={ticket.id}
                 className={ticket.id === selectedId ? "selected" : ""}
                 aria-pressed={ticket.id === selectedId}
                 key={ticket.id}
+                onFocus={() => setSelectedId(ticket.id)}
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+                  event.preventDefault();
+                  repeatTicketArrow(event);
+                }}
                 onClick={() => setSelectedId(ticket.id)}
               >
                 <span className="ticket-list-main">

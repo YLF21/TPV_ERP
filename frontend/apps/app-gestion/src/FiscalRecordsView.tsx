@@ -34,6 +34,7 @@ import { FiscalExportJobsList, useFiscalExportJobs } from "./fiscalExportJobs";
 import { fiscalErrorMessage } from "./verifactuErrorPresentation";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { ReportDateRangeSummary } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
+import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
 
 const emptyFilters: FiscalRecordCursorFilters = {
   dateFrom: "",
@@ -109,6 +110,8 @@ export function FiscalRecordsView({
   const exportJobs = useFiscalExportJobs(token, canManage);
   const request = useRef(0);
   const detailRequest = useRef(0);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const handleRowArrowFocus = useTableRowArrowFocus(tableRef, "tbody tr[data-fiscal-record-row]", !loading);
 
   const tableLayout = useTableLayoutPreference({
     app: "gestion",
@@ -336,7 +339,7 @@ export function FiscalRecordsView({
         ]} />
         {selectionLimitReached && <div className="gestion-verifactu-message" role="alert">{t("verifactu.records.selectionLimit")}</div>}
         {initialLoading ? <div className="gestion-verifactu-message" role="status" aria-label={t("verifactu.records.loading")}>{t("verifactu.records.loading")}</div> : error ? <div className="gestion-verifactu-message error" role="alert"><span>{t("verifactu.records.loadError")}</span><button type="button" className="gestion-module-action" onClick={retry}>{t("verifactu.records.retry")}</button></div> : page.items.length === 0 ? <div className="gestion-verifactu-message">{t(activeFilterCount ? "verifactu.records.emptyFiltered" : "verifactu.records.empty")}</div> : (
-          <div className="gestion-verifactu-table-scroll gestion-module-table"><table className="gestion-verifactu-table"><colgroup>
+          <div ref={tableRef} className="gestion-verifactu-table-scroll gestion-module-table"><table className="gestion-verifactu-table"><colgroup>
             {canManage && <col style={{ width: 58 }} />}
             {visibleColumns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
             <col style={{ width: 110 }} />
@@ -344,7 +347,7 @@ export function FiscalRecordsView({
             {canManage && <th><span className="sr-only">{t("verifactu.records.selectRecord")}</span><input type="checkbox" aria-label={t("verifactu.records.selectAll")} checked={page.items.length > 0 && page.items.every((item) => selectedRecords.has(item.recordId))} onChange={(event) => selectVisibleRecords(event.target.checked)} /></th>}
             {visibleColumns.map((column) => <TableLayoutHeaderCell key={column.key} column={column} resizeLabel={`${t("verifactu.ui.resizeColumn")} ${columnLabel(column.key, t)}`} onReorder={tableLayout.reorderColumns} onMove={tableLayout.moveColumn} onResize={tableLayout.resizeColumn}>{columnLabel(column.key, t)}</TableLayoutHeaderCell>)}
             <th>{t("verifactu.records.detail")}</th>
-          </tr></thead><tbody>{page.items.map((item) => <tr key={item.recordId} aria-selected={selectedId === item.recordId}>
+          </tr></thead><tbody>{page.items.map((item) => <tr key={item.recordId} data-fiscal-record-row tabIndex={0} onKeyDown={handleRowArrowFocus} aria-selected={selectedId === item.recordId}>
             {canManage && <td><input type="checkbox" aria-label={`${t("verifactu.records.selectRecord")} ${item.number}`} checked={selectedRecords.has(item.recordId)} disabled={!selectedRecords.has(item.recordId) && selectedRecords.size >= 1000} onChange={() => toggleRecord(item.recordId)} /></td>}
             {visibleColumns.map((column) => <td key={column.key} className={column.key === "amount" ? "numeric" : undefined}>{renderRecordCell(column.key, item, locale, t)}</td>)}
             <td><button type="button" className="gestion-verifactu-link-button gestion-module-action" aria-haspopup="dialog" aria-expanded={selectedId === item.recordId} onClick={() => select(item)}>{selectedId === item.recordId ? t("verifactu.records.closeDetail") : t("verifactu.records.viewDetail")}</button></td>

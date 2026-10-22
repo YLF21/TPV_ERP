@@ -24,6 +24,34 @@ afterEach(() => {
 });
 
 describe("VoucherManagementScreen", () => {
+  it("moves focus through voucher rows without loading details", async () => {
+    const detailReads = vi.fn();
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), "http://localhost");
+      if (isDateOptions(url)) return dateOptions();
+      if (url.pathname.endsWith("/vouchers/management")) return response(voucherPage([voucher("V1"), voucher("V2"), voucher("V3"), voucher("V4")], 0, 1));
+      if (/\/vouchers\/[^/]+\/management$/.test(url.pathname)) detailReads(url.pathname);
+      return response({});
+    }));
+    renderVoucherScreen();
+    await screen.findByText("V1");
+    const rows = screen.getAllByRole("row");
+    const first = rows.find((row) => row.textContent?.includes("V1"))!;
+    const fourth = rows.find((row) => row.textContent?.includes("V4"))!;
+    expect(first).toHaveFocus();
+    expect(detailReads).not.toHaveBeenCalled();
+    first.focus();
+    vi.useFakeTimers();
+    try {
+      fireEvent.keyDown(first, { key: "ArrowDown" });
+      act(() => { vi.advanceTimersByTime(250); });
+      expect(fourth).toHaveFocus();
+      fireEvent.keyUp(fourth, { key: "ArrowDown" });
+      act(() => { vi.advanceTimersByTime(500); });
+      expect(fourth).toHaveFocus();
+      expect(detailReads).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
   it("applies search and status automatically while preserving dates, and removes one chip at a time", async () => {
     const requests: URL[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
@@ -106,11 +134,15 @@ describe("VoucherManagementScreen", () => {
     renderVoucherScreen();
     expect(await screen.findByText("V1")).toBeInTheDocument();
     const table = screen.getByRole("table");
+    expect(table.querySelector("button.gestion-voucher-row:not(.head)")).toHaveFocus();
+    const search = screen.getByRole("searchbox");
+    search.focus();
     fireEvent.scroll(table);
     fireEvent.scroll(table);
     expect(pages).toEqual([0, 1]);
     resolveSecond(await response(voucherPage([voucher("V1"), voucher("V2")], 1, 2)));
     expect(await screen.findByText("V2")).toBeInTheDocument();
+    expect(search).toHaveFocus();
     expect(screen.getAllByText("V1")).toHaveLength(1);
     fireEvent.scroll(table);
     expect(pages).toEqual([0, 1]);

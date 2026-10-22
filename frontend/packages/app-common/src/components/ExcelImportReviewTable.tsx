@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { revealExcelTableRow, useExcelTableHeader } from "./useExcelTableHeader";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
 
 export type ExcelReviewColumn = { key: string; label: string; source?: "current" | "excel" };
 export type ExcelReviewRow = { id: number; sourceRowNumber?: number; status: string; values: Record<string, string>; changedColumns?: string[]; details?: ReactNode };
@@ -25,6 +27,8 @@ export function ExcelImportReviewTable({ title, columns, rows, actions, onExport
   const [selected, setSelected] = useState<number | null>(null);
   const [highlighted, setHighlighted] = useState<number | null>(null);
   const selectedId = selectedRowId === undefined ? highlighted : selectedRowId;
+  const arrowSelectionRef = useRef<number | null>(selectedId);
+  arrowSelectionRef.current = selectedId;
   const header = useExcelTableHeader(viewport, rows.length);
   const dragged = useRef(false);
   const drag = useRef<{ x: number; y: number; left: number; top: number; pointer: number } | null>(null);
@@ -37,6 +41,7 @@ export function ExcelImportReviewTable({ title, columns, rows, actions, onExport
   const comparison = labels.comparison;
   const tableWidth = columns.reduce((sum, col) => sum + width(col.key), 0);
   function selectRow(id: number) {
+    arrowSelectionRef.current = id;
     setHighlighted(id);
     setSelected((current) => current === null ? null : id);
     onSelectRow?.(id);
@@ -46,6 +51,25 @@ export function ExcelImportReviewTable({ title, columns, rows, actions, onExport
     row?.changedColumns?.includes(column.key) ? "shared-excel-review-cell--changed" : ""
   ].filter(Boolean).join(" ");
   const changeMarker = <span className="shared-excel-review-change-mark" role="img" aria-label={comparison?.changed}>≠</span>;
+  useTableInitialFocus(viewport, ".shared-excel-result-row[data-row-id]", {
+    enabled: selectedId === null,
+    ready: rows.length > 0,
+    scopeKey: title,
+    focusTarget: "container",
+    onSelect: (row) => {
+      const id = Number(row.dataset.rowId);
+      if (Number.isFinite(id) && selectedId === null) selectRow(id);
+    },
+  });
+  const repeatRowArrow = useTableArrowRepeat((direction) => {
+    if (!rows.length) return false;
+    const current = rows.findIndex((row) => row.id === arrowSelectionRef.current);
+    const next = current < 0 ? direction === "ArrowDown" ? 0 : rows.length - 1
+      : Math.max(0, Math.min(rows.length - 1, current + (direction === "ArrowDown" ? 1 : -1)));
+    if (next === current) return false;
+    selectRow(rows[next].id);
+    return true;
+  }, rows.length > 0);
 
   useEffect(() => {
     if (!viewport.current || typeof ResizeObserver === "undefined") return;
@@ -94,9 +118,9 @@ export function ExcelImportReviewTable({ title, columns, rows, actions, onExport
       onScroll={(event) => { setScrollTop(event.currentTarget.scrollTop); header.syncHeader(); }}
       onKeyDown={(event) => {
         if (!["ArrowDown", "ArrowUp"].includes(event.key) || !rows.length) return;
+        if (event.target instanceof Element && event.target.closest("button,input,textarea,select,[contenteditable='true']")) return;
         event.preventDefault();
-        const current = rows.findIndex((row) => row.id === selectedId);
-        selectRow(rows[Math.max(0, Math.min(rows.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)))].id);
+        repeatRowArrow(event);
       }}
       onPointerDown={(event) => {
         dragged.current = false;
@@ -119,6 +143,7 @@ export function ExcelImportReviewTable({ title, columns, rows, actions, onExport
         <tbody>
           {start > 0 && <tr aria-hidden="true"><td colSpan={columns.length} style={{ height: start * rowHeight, padding: 0, border: 0 }} /></tr>}
           {rows.slice(start, end).map((row, index) => <tr key={row.id} aria-rowindex={start + index + 2}
+            data-row-id={row.id}
             aria-selected={selectedId === row.id} data-source-row={row.sourceRowNumber ?? row.id}
             onClick={() => { if (!dragged.current) selectRow(row.id); }}
             className={`shared-excel-result-row shared-excel-result-row--${row.status}`}>

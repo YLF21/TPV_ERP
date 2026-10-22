@@ -20,6 +20,19 @@ it("keeps print retry after two failures and clears only after success", async (
 });
 
 describe("CustomerReceivablesScreen", () => {
+  it("focuses the first debt and moves the visual cursor without collecting", async () => {
+    const request = vi.fn().mockResolvedValue([row, { ...row, documentId: "doc-2", documentNumber: "FV-2" }]);
+    render(<CustomerReceivablesScreen locale="es" session={session} terminalContext={{ storeName: "Tienda", terminalCode: "01" }} request={request as any} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    await screen.findByText("FV-2");
+    const table = await screen.findByRole("table", { name: "Deudas de clientes" });
+    const rows = Array.from(table.querySelectorAll<HTMLElement>('[role="row"]:not(.header)'));
+    await waitFor(() => expect(rows[0]).toHaveFocus());
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(rows[1]).toHaveFocus();
+    expect(screen.queryByRole("dialog", { name: /cobrar/i })).not.toBeInTheDocument();
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("only enables the management table theme when the caller opts in", async () => {
     const request = vi.fn().mockResolvedValue([]);
     const props = { locale: "es" as const, session, terminalContext: { storeName: "Tienda", terminalCode: "01" }, request: request as any, onBack: vi.fn(), onLocaleChange: vi.fn() };

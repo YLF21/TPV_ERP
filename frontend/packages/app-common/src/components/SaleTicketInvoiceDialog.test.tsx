@@ -52,6 +52,33 @@ describe("SaleTicketInvoiceDialog", () => {
 
   afterEach(cleanup);
 
+  it("prepares the first active customer and stops arrows at both ends without invoicing", async () => {
+    const original = request.getMockImplementation()!;
+    request.mockImplementation(async (path, options) => path === "/customers/sale-options/search?q=Cliente&limit=25"
+      ? [
+        { id: "first", clientId: "C1", fiscalName: "Cliente Primero", active: true },
+        { id: "inactive", clientId: "C2", fiscalName: "Cliente Baja", active: false },
+        { id: "last", clientId: "C3", fiscalName: "Cliente Último", active: true },
+      ] as never : original(path, options));
+    render(<SaleTicketInvoiceDialog token="token" locale="es" terminalContext={terminalContext} printInvoice={printInvoice} onClose={vi.fn()} />);
+    await screen.findByText("T-001");
+    const search = screen.getByLabelText("Buscar cliente fiscal");
+    fireEvent.change(search, { target: { value: "Cliente" } });
+    const first = await screen.findByText("Cliente Primero");
+    const last = screen.getByText("Cliente Último");
+    await waitFor(() => expect(first.closest("tr")).toHaveClass("is-current"));
+    search.focus();
+    fireEvent.keyDown(search, { key: "ArrowUp" });
+    expect(first.closest("tr")).toHaveClass("is-current");
+    fireEvent.keyUp(search, { key: "ArrowUp" });
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(last.closest("tr")).toHaveClass("is-current");
+    fireEvent.keyUp(search, { key: "ArrowDown" });
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(last.closest("tr")).toHaveClass("is-current");
+    expect(request.mock.calls.some(([path]) => String(path).endsWith("/invoice"))).toBe(false);
+  });
+
   it("dismisses fiscal customer results on Escape or an outside press without closing or converting the invoice", async () => {
     const onClose = vi.fn();
     render(<SaleTicketInvoiceDialog token="token" locale="es" terminalContext={terminalContext} printInvoice={printInvoice} onClose={onClose} />);

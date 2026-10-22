@@ -1,11 +1,13 @@
 import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import type { SaleCustomer } from "./SaleScreen";
 import "./SalesDocumentCustomerDialog.css";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 
 type SalesDocumentCustomerDialogProps = {
   locale: LocaleCode;
@@ -30,6 +32,8 @@ export function SalesDocumentCustomerDialog({
   const [highlightedId, setHighlightedId] = useState(selectedCustomerId);
   const dialogRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const focusMovedOptionRef = useRef<boolean | null>(null);
   const results = useMemo(() => {
     if (loading) return [];
     const normalized = query.trim().toLocaleLowerCase();
@@ -48,21 +52,32 @@ export function SalesDocumentCustomerDialog({
     return deactivate;
   }, []);
 
-  function moveSelection(offset: number) {
-    if (!selected) return;
-    const currentIndex = results.findIndex((customer) => customer.id === selected.id);
-    const next = results[(currentIndex + offset + results.length) % results.length];
-    const focusedOnResult = document.activeElement?.getAttribute("role") === "option";
-    setHighlightedId(next.id);
-    queueMicrotask(() => {
-      const option = document.getElementById(optionId(next.id));
-      if (focusedOnResult) option?.focus({ preventScroll: true });
-      option?.scrollIntoView?.({ block: "nearest" });
-    });
-  }
+  useLayoutEffect(() => {
+    if (focusMovedOptionRef.current === null || !selected) return;
+    const option = document.getElementById(optionId(selected.id));
+    const shouldFocus = focusMovedOptionRef.current;
+    focusMovedOptionRef.current = null;
+    if (shouldFocus) option?.focus({ preventScroll: true });
+    if (option && tableRef.current) ensureTableRowVisible(tableRef.current, option);
+  }, [highlightedId]);
+
+  const handleArrowRepeat = useTableArrowRepeat((direction) => {
+    const focused = document.activeElement;
+    if (loading || results.length < 2 || (focused !== inputRef.current
+        && focused !== dialogRef.current
+        && !dialogRef.current?.querySelector('[role="option"]:focus'))) return false;
+    const focusedOption = focused instanceof HTMLElement && dialogRef.current?.contains(focused)
+      ? focused.closest<HTMLElement>('[role="option"]') : null;
+    const currentIndex = results.findIndex((customer) => customer.id === (focusedOption?.dataset.customerId ?? selected?.id));
+    const nextIndex = Math.max(0, Math.min(results.length - 1, currentIndex + (direction === "ArrowUp" ? -1 : 1)));
+    if (nextIndex === currentIndex) return false;
+    focusMovedOptionRef.current = document.activeElement?.getAttribute("role") === "option";
+    setHighlightedId(results[nextIndex].id);
+    return true;
+  }, !loading && results.length > 0);
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.nativeEvent.isComposing || event.repeat) return;
+    if (event.nativeEvent.isComposing || (event.repeat && event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -77,7 +92,7 @@ export function SalesDocumentCustomerDialog({
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       event.preventDefault();
       event.stopPropagation();
-      moveSelection(event.key === "ArrowUp" ? -1 : 1);
+      handleArrowRepeat(event);
     } else if (event.key === "Insert" || event.key === "Enter") {
       event.preventDefault();
       event.stopPropagation();
@@ -118,8 +133,8 @@ export function SalesDocumentCustomerDialog({
           />
         </label>
 
-        <div className="sales-document-customer-table">
-          <div className="sales-document-customer-columns" aria-hidden="true">
+        <div ref={tableRef} className="sales-document-customer-table">
+          <div className="sales-document-customer-columns header" role="row" aria-hidden="true">
             <span>{t("sale.customer.column.code")}</span>
             <span>{t("party.field.fiscalName")}</span>
             <span>{t("sale.customer.column.document")}</span>
@@ -134,6 +149,7 @@ export function SalesDocumentCustomerDialog({
             {results.map((customer) => (
               <div
                 id={optionId(customer.id)}
+                data-customer-id={customer.id}
                 key={customer.id}
                 role="option"
                 tabIndex={-1}

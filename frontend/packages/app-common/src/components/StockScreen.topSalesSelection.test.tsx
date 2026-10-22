@@ -16,6 +16,9 @@ const topSalesRows: StockTopSalesRow[] = [
   { productId: "product-2", code: "TE-2", barcode: "8430000000002", name: "Té de prueba",
     familyId: null, familyName: "Bebidas", subfamilyId: null, subfamilyName: "Té", suppliers: [],
     soldQuantity: 8, netAmount: 32, currentStock: 7, warehouseId: "warehouse-2", warehouseName: "RESERVA" },
+  { productId: "product-3", code: "AGUA-3", barcode: "8430000000003", name: "Agua de prueba",
+    familyId: null, familyName: "Bebidas", subfamilyId: null, subfamilyName: "Agua", suppliers: [],
+    soldQuantity: 4, netAmount: 8, currentStock: 9, warehouseId: "warehouse-1", warehouseName: "GENERAL" },
 ];
 
 const products = [
@@ -61,13 +64,45 @@ function renderTopSales(app: "venta" | "gestion", permissions: UserSession["perm
 async function rows(container: HTMLElement) {
   await screen.findByText("Café de prueba");
   await screen.findByText("Té de prueba");
+  await screen.findByText("Agua de prueba");
   return [...container.querySelectorAll<HTMLElement>(".stock-top-sales-table article.stock-row")];
 }
 
 beforeEach(() => { localStorage.clear(); vi.mocked(apiRequest).mockReset(); setupApi(); });
-afterEach(() => { cleanup(); localStorage.clear(); vi.resetAllMocks(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); localStorage.clear(); vi.resetAllMocks(); });
 
 describe("Top ventas product selection", () => {
+  it.each(["venta", "gestion"] as const)("prepares current stock after loading and accepts an immediate arrow in %s", async app => {
+    const initialApi = vi.mocked(apiRequest).getMockImplementation()!;
+    vi.mocked(apiRequest).mockImplementation((path, options) => path.startsWith("/stock/page")
+      ? Promise.resolve({ items: products.map(product => ({ product: { ...product, active: true },
+        stock: [{ productId: product.id, warehouseId: "warehouse-1", quantity: 3 }] })), hasMore: false })
+      : initialApi(path, options));
+    const { container } = render(<StockScreen app={app} initialView="stock.current" locale="es"
+      session={{ username: `initial-${app}`, displayName: "Prueba", permissions: ["STOCK_READ"], accessToken: "test-token" }}
+      terminalContext={{ storeName: "Tienda", terminalCode: "001" }} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    await screen.findByText("Café de prueba");
+    await screen.findByText("Té de prueba");
+    const table = container.querySelector<HTMLElement>(".stock-table")!;
+    const rows = table.querySelectorAll<HTMLElement>(":scope > article.stock-row");
+    expect(rows[0].classList.contains("selected")).toBe(true);
+    expect(document.activeElement).toBe(table);
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    fireEvent.keyUp(table, { key: "ArrowDown" });
+    expect(rows[1].classList.contains("selected")).toBe(true);
+  });
+
+  it.each(["venta", "gestion"] as const)("starts on the first row and accepts arrows without a preceding click in %s", async app => {
+    const { container } = renderTopSales(app);
+    const [first, second] = await rows(container);
+    const table = container.querySelector<HTMLElement>(".stock-top-sales-table")!;
+    expect(first.classList.contains("selected")).toBe(true);
+    expect(document.activeElement).toBe(table);
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    fireEvent.keyUp(document.activeElement!, { key: "ArrowDown" });
+    expect(second.classList.contains("selected")).toBe(true);
+    expect(vi.mocked(apiRequest).mock.calls.some(([path]) => path.startsWith("/products/"))).toBe(false);
+  });
   it.each(["venta", "gestion"] as const)("keeps the same product selected through sorting and filtering in %s", async app => {
     const { container } = renderTopSales(app);
     const [, second] = await rows(container);
@@ -86,7 +121,7 @@ describe("Top ventas product selection", () => {
     expect(tableRows()).toHaveLength(1);
     expect(tableRows()[0].classList.contains("selected")).toBe(true);
     fireEvent.change(search, { target: { value: "" } });
-    expect(tableRows()).toHaveLength(2);
+    expect(tableRows()).toHaveLength(3);
     expect(tableRows().find(row => row.textContent?.includes("Té de prueba"))?.classList.contains("selected")).toBe(true);
   });
 
@@ -129,6 +164,49 @@ describe("Top ventas product selection", () => {
     const dialog = await screen.findByRole("dialog", { name: "Información del producto" });
     expect(within(dialog).getByText("Té verde completo")).toBeTruthy();
     expect(vi.mocked(apiRequest)).toHaveBeenCalledWith("/products/product-2", expect.anything());
+  });
+
+  it.each(["venta", "gestion"] as const)("repeats vertical selection at a controlled pace and stops at the edge in %s", async app => {
+    const { container } = renderTopSales(app);
+    const [first, second, third] = await rows(container);
+    const table = container.querySelector<HTMLElement>(".stock-top-sales-table")!;
+    const header = table.querySelector<HTMLElement>(".stock-row-head")!;
+    Object.defineProperties(table, {
+      clientHeight: { configurable: true, value: 80 },
+      scrollHeight: { configurable: true, value: 200 },
+    });
+    // The outer box includes a 15px horizontal scrollbar below the client viewport.
+    vi.spyOn(table, "getBoundingClientRect").mockReturnValue({ top: 0, bottom: 95 } as DOMRect);
+    vi.spyOn(header, "getBoundingClientRect").mockReturnValue({ bottom: 20 } as DOMRect);
+    [first, second, third].forEach((row, index) => {
+      vi.spyOn(row, "getBoundingClientRect").mockReturnValue({ top: 20 + index * 30, bottom: 50 + index * 30 } as DOMRect);
+    });
+    table.scrollLeft = 24;
+    table.focus();
+    vi.useFakeTimers();
+
+    fireEvent.keyDown(table, { key: "ArrowDown" });
+    expect(second.classList.contains("selected")).toBe(true);
+    fireEvent.keyDown(table, { key: "ArrowDown", repeat: true });
+    act(() => vi.advanceTimersByTime(179));
+    expect(second.classList.contains("selected")).toBe(true);
+    act(() => vi.advanceTimersByTime(1));
+    expect(third.classList.contains("selected")).toBe(true);
+    expect(table.scrollTop).toBe(30);
+    expect(table.scrollLeft).toBe(24);
+    act(() => vi.advanceTimersByTime(70));
+    expect(third.classList.contains("selected")).toBe(true);
+    fireEvent.keyUp(table, { key: "ArrowDown" });
+    act(() => vi.advanceTimersByTime(1000));
+    expect(third.classList.contains("selected")).toBe(true);
+
+    fireEvent.keyDown(table, { key: "ArrowUp" });
+    expect(second.classList.contains("selected")).toBe(true);
+    act(() => vi.advanceTimersByTime(180));
+    expect(first.classList.contains("selected")).toBe(true);
+    act(() => vi.advanceTimersByTime(70));
+    expect(first.classList.contains("selected")).toBe(true);
+    expect(vi.mocked(apiRequest).mock.calls.some(([path]) => path.startsWith("/products/"))).toBe(false);
   });
 
   it.each(["venta", "gestion"] as const)("returns focus to the table and keeps selection when the detail closes in %s", async app => {

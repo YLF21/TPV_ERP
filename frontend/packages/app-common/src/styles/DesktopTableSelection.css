@@ -11,10 +11,22 @@
       .warehouse-supplier-table-row, .sale-product-search-row,
       .sale-customer-table-row, .sale-customer-receivables-row,
       .gestion-warehouse-row
-    ):is(.selected, [aria-selected="true"], .warehouse-document-line-selected),
+    ):is(.selected, [aria-selected="true"], .warehouse-document-line-selected, :focus),
     html:is([data-app="gestion"], [data-app="venta"], :has(.sale-screen, .stock-screen--venta, .report-screen--desktop, .sales-document-screen)) .bulk-edit-row:not(.bulk-edit-head):has(> .bulk-check input:checked) {
       outline: 1px solid #0065fe !important;
       outline-offset: -1px !important;
+
+      /* Cell and editor skins can set a weight instead of inheriting the row. */
+      &, & :not(svg, svg *) {
+        font-weight: 700 !important;
+      }
+    }
+
+    /* Returns retain their existing selection frame and use the older marker. */
+    html:is([data-app="gestion"], [data-app="venta"], :has(.sale-screen, .stock-screen--venta, .report-screen--desktop, .sales-document-screen)) :is(tbody > tr, [role="row"]).is-selected {
+      &, & :not(svg, svg *) {
+        font-weight: 700 !important;
+      }
     }
 
     /* Positioned stock cells paint their separators above the row's outline. */

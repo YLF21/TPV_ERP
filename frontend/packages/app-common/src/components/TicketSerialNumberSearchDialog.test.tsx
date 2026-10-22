@@ -14,6 +14,24 @@ function bottom(element: Element) {
 }
 afterEach(() => { cleanup(); localStorage.clear(); });
 describe("Ticket serial search", () => {
+  it("prepares the first result and moves to the next ticket without opening it", async () => {
+    const open = vi.fn();
+    const request = vi.fn().mockResolvedValue({ items: [match, second], nextPage: null });
+    const { container } = render(<TicketSerialNumberSearchDialog locale="es" token="token" request={request}
+      onClose={vi.fn()} onOpenTicket={open} />);
+    await screen.findByText("T-002");
+    const rows = [...container.querySelectorAll<HTMLTableRowElement>(".serial-search-results tbody tr")];
+    await waitFor(() => expect(rows[0]).toHaveFocus());
+    expect(rows[0]).toHaveClass("selected");
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(rows[1]).toHaveClass("selected");
+    expect(rows[1]).toHaveFocus();
+    fireEvent.keyUp(rows[1], { key: "ArrowDown" });
+    fireEvent.keyDown(rows[1], { key: "ArrowDown" });
+    expect(rows[1]).toHaveClass("selected");
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it("loads on opening, filters while typing and restores all rows when cleared", async () => {
     const request = vi.fn().mockResolvedValue({ items: [match], nextPage: null });
     const open = vi.fn();

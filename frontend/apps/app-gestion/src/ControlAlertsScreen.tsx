@@ -8,6 +8,9 @@ import { createPortal } from "react-dom";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { GestionSearchFrame } from "../../../packages/app-common/src/components/GestionSearchFrame";
 import { ReportDateRangeSummary } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
+import { useTableArrowRepeat } from "../../../packages/app-common/src/components/useTableArrowRepeat";
+import { ensureTableRowVisible } from "../../../packages/app-common/src/components/ensureTableRowVisible";
+import { useTableInitialFocus } from "../../../packages/app-common/src/components/useTableInitialFocus";
 import { ArrowClockwise, ArrowRight, BellRinging, CashRegister, FileText, Gear, ListBullets, MinusCircle, Package, Percent, Plus, SlidersHorizontal, Tag, Trash } from "@phosphor-icons/react";
 import { classifyApiFailure, useTableLayoutPreference, TableLayoutHeaderCell, tableLayoutGridTemplate, visibleTableColumns, type LocaleCode, type TableColumnDefinition, type UserSession } from "@tpverp/app-common";
 import {
@@ -438,6 +441,7 @@ function AlertsTimelineView({ session, t, locale, range, defaultRange, onResetRa
   detailOpenRef.current = detailOpen;
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
+  const tableRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<ControlAlert | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -600,6 +604,24 @@ function AlertsTimelineView({ session, t, locale, range, defaultRange, onResetRa
     setDetailOpen(false);
     setSelectedId((current) => rows.some((row) => row.id === current) ? current : rows[0]?.id ?? null);
   }
+  useTableInitialFocus(tableRef, "button.gestion-alert-row[data-control-alert-row]", {
+    ready: !loading && !loadError && !detailOpen && rows.length > 0,
+    onSelect: (row) => setSelectedId(row.dataset.controlAlertId ?? null)
+  });
+  const handleArrow = useTableArrowRepeat(direction => {
+    const active = document.activeElement;
+    if (detailOpenRef.current || !(active instanceof HTMLButtonElement) || !tableRef.current?.contains(active)
+      || !active.matches("button.gestion-alert-row[data-control-alert-row]")) return false;
+    const siblings = Array.from(tableRef.current.querySelectorAll<HTMLButtonElement>("button.gestion-alert-row[data-control-alert-row]"));
+    const index = siblings.indexOf(active);
+    const nextIndex = index + (direction === "ArrowDown" ? 1 : -1);
+    const next = rows[nextIndex];
+    if (index < 0 || !next || !siblings[nextIndex]) return false;
+    setSelectedId(next.id);
+    siblings[nextIndex].focus({ preventScroll: true });
+    ensureTableRowVisible(tableRef.current, siblings[nextIndex]);
+    return true;
+  });
   function renderTimelineCell(key: string, alert: ControlAlert) {
     if (key === "time") return <span role="cell" title={formatDateTime(alert.occurredAt, locale, timeZone)}>{view.groupByDay ? new Date(alert.occurredAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", timeZone }) : formatDateTime(alert.occurredAt, locale, timeZone)}</span>;
     if (key === "operation") return <span role="cell" className={`gestion-alert-operation ${alertTypeClass(alert.type)}`}><AlertTypeIcon type={alert.type} /><span><strong>{t(`gestion.controlAlerts.type.${alert.type}`)}</strong><small>{alertSummary(alert, t, locale)}</small></span></span>;
@@ -639,7 +661,7 @@ function AlertsTimelineView({ session, t, locale, range, defaultRange, onResetRa
       <div className="gestion-control-grid without-detail">
         <section className="gestion-alert-list" aria-label={t("gestion.controlAlerts.list")}>
           <header className="gestion-alert-list-heading"><div className="gestion-alert-list-title"><h3>{t("gestion.controlAlerts.chronologyList")}</h3><small id="control-alert-open-hint">{t("gestion.controlAlerts.openDetailHint")}</small></div><div><details className="gestion-alert-columns"><summary aria-label={t("gestion.controlAlerts.columns")}><SlidersHorizontal size={18} /></summary><div>{timelineLayout.layout.map((column) => <label key={column.key}><input type="checkbox" checked={column.visible} disabled={column.visible && timelineColumnsVisible.length === 1} onChange={() => timelineLayout.toggleColumnVisibility(column.key)} />{t(`gestion.controlAlerts.${column.key === "status" ? "filterStatus" : column.key}`)}</label>)}</div></details><select aria-label={t("gestion.controlAlerts.sortOrder")} disabled={preferenceSaving} value={filters.sortDirection} onChange={(event) => onSortChange(event.target.value as "asc" | "desc")}><option value="desc">{t("gestion.controlAlerts.newestFirst")}</option><option value="asc">{t("gestion.controlAlerts.oldestFirst")}</option></select></div></header>
-          <div className="gestion-alert-table" role="table" aria-label={t("gestion.controlAlerts.chronologyList")} aria-busy={loading}>
+          <div className="gestion-alert-table" role="table" aria-label={t("gestion.controlAlerts.chronologyList")} aria-busy={loading} ref={tableRef}>
             <div className="gestion-alert-row gestion-alert-row-head" role="row" style={tableStyle}>{timelineColumnsVisible.map((column) => <TableLayoutHeaderCell key={column.key} as="span" column={column} resizeLabel={t("gestion.controlAlerts.resize")} onReorder={timelineLayout.reorderColumns} onMove={timelineLayout.moveColumn} onResize={timelineLayout.resizeColumn}>{t(`gestion.controlAlerts.${column.key === "status" ? "filterStatus" : column.key}`)}</TableLayoutHeaderCell>)}</div>
             {(loadError || staleRows) && <div className="gestion-control-inline-state" role={loadError ? "alert" : "status"}>{t(loadError ? "gestion.controlAlerts.loadError" : "gestion.controlAlerts.previousResults")} {loadError && <button type="button" onClick={onChanged}>{t("gestion.controlAlerts.retry")}</button>}</div>}
             {rows.map((alert, index) => {
@@ -647,13 +669,12 @@ function AlertsTimelineView({ session, t, locale, range, defaultRange, onResetRa
               const newDay = index === 0 || zonedDate(new Date(rows[index - 1].occurredAt), timeZone) !== day;
               return <Fragment key={alert.id}>
                 {view.groupByDay && newDay && <div className="gestion-alert-day" role="row"><span role="cell">{formatDayHeading(alert.occurredAt, t, locale, timeZone)}</span></div>}
-                <button type="button" role="row" className={`gestion-alert-row ${selectedId === alert.id ? "selected" : ""}`} aria-selected={selectedId === alert.id} aria-describedby="control-alert-open-hint" aria-haspopup="dialog" data-control-alert-row style={tableStyle}
+                <button type="button" role="row" className={`gestion-alert-row ${selectedId === alert.id ? "selected" : ""}`} aria-selected={selectedId === alert.id} aria-describedby="control-alert-open-hint" aria-haspopup="dialog" data-control-alert-row data-control-alert-id={alert.id} style={tableStyle}
                   onClick={() => setSelectedId(alert.id)} onDoubleClick={(event) => openDetail(alert, event.currentTarget)} onKeyDown={(event) => {
                     if (event.key === "Enter") { event.preventDefault(); openDetail(alert, event.currentTarget); return; }
                     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
                     event.preventDefault();
-                    const next = rows[index + (event.key === "ArrowDown" ? 1 : -1)];
-                    if (next) { setSelectedId(next.id); const siblings = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("button.gestion-alert-row"); siblings?.[index + (event.key === "ArrowDown" ? 1 : -1)]?.focus(); }
+                    handleArrow(event);
                   }}>
                   {timelineColumnsVisible.map((column) => <Fragment key={column.key}>{renderTimelineCell(column.key, alert)}</Fragment>)}
                 </button>

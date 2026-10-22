@@ -1,4 +1,5 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
 import { ApiError, apiRequest, type LocaleCode, type UserSession } from "@tpverp/app-common";
 import { GestionTableSearch, matchesGestionTableSearch } from "./GestionTableSearch";
 import { GestionModuleHeading } from "./GestionModuleHeading";
@@ -48,6 +49,8 @@ export function LicenseSaasManagementScreen({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"link" | "validate" | "refresh" | null>(null);
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const historyTableRef = useRef<HTMLDivElement>(null);
+  const handleHistoryArrow = useTableRowArrowFocus(historyTableRef, '[role="row"]:not(.head)', !loading);
   const canManage = session.permissions.includes("ADMIN");
   const activeLicense = useMemo(() => history.find((item) => item.active) ?? null, [history]);
 
@@ -221,7 +224,7 @@ export function LicenseSaasManagementScreen({
           <strong>{visibleHistory.length}</strong>
         </header>
         <GestionTableSearch value={query} onChange={setQuery} t={t} />
-        <div className="gestion-license-table gestion-module-table" role="table" aria-label={t("gestion.licenses.history") }>
+        <div ref={historyTableRef} className="gestion-license-table gestion-module-table" role="table" aria-label={t("gestion.licenses.history") }>
           <div className="head" role="row">
             <span role="columnheader">{t("gestion.licenses.reference")}</span>
             <span role="columnheader">{t("gestion.licenses.period")}</span>
@@ -231,7 +234,7 @@ export function LicenseSaasManagementScreen({
           {visibleHistory.length === 0 ? (
             <p>{loading ? t("common.loading") : t(query.trim() ? "stock.status.noResults" : "gestion.licenses.noHistory")}</p>
           ) : visibleHistory.map((item) => (
-            <div role="row" key={item.reference}>
+            <div role="row" key={item.reference} tabIndex={0} onKeyDown={handleHistoryArrow}>
               <span role="cell"><strong>{item.reference}</strong><small>{item.taxId}</small></span>
               <span role="cell"><time>{formatDate(item.validFrom, true)}</time><small>{formatDate(item.validUntil, true)}</small></span>
               <span role="cell">

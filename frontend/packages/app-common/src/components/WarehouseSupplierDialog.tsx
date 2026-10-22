@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode, UserSession } from "../types";
@@ -15,6 +15,9 @@ import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { ErpFilterChips } from "./ErpFilterChips";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import "./WarehouseDocumentClassicTables.css";
 
 type Props = {
@@ -49,6 +52,8 @@ export function WarehouseSupplierDialog({
   const t = createTranslator(locale);
   const dialogRef = useRef<HTMLElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const arrowOriginRef = useRef<"search" | "table" | null>(null);
   const [query, setQuery] = useState("");
   const [activeId, setActiveId] = useState(selectedId);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -58,6 +63,20 @@ export function WarehouseSupplierDialog({
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const canWrite = canWriteSuppliers(session);
+  const repeatArrow = useTableArrowRepeat((direction) => {
+    if (!open || editingId !== null || loading || saving || !dialogRef.current?.contains(document.activeElement)
+      || !(document.activeElement instanceof HTMLElement)) return false;
+    if (arrowOriginRef.current === "search" && document.activeElement !== searchRef.current) return false;
+    if (arrowOriginRef.current === "table" && !document.activeElement.closest(".warehouse-supplier-table-row")) return false;
+    if (!arrowOriginRef.current) return false;
+    const focusedRow = document.activeElement.closest<HTMLElement>(".warehouse-supplier-table-row");
+    const index = filteredSuppliers.findIndex((supplier) => supplier.id === (focusedRow?.dataset.supplierId ?? activeId));
+    const nextIndex = index < 0 ? direction === "ArrowDown" ? 0 : filteredSuppliers.length - 1
+      : Math.max(0, Math.min(filteredSuppliers.length - 1, index + (direction === "ArrowDown" ? 1 : -1)));
+    if (nextIndex === index || nextIndex < 0) return false;
+    setActiveId(filteredSuppliers[nextIndex].id);
+    return true;
+  }, open && editingId === null && !loading && !saving);
 
   const filteredSuppliers = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
@@ -73,10 +92,27 @@ export function WarehouseSupplierDialog({
   }, [query, suppliers]);
   const selectedSupplier = suppliers.find((supplier) => supplier.id === activeId);
   const canSelectSupplier = Boolean(selectedSupplier?.active);
+  useTableInitialFocus(tableRef, ".warehouse-supplier-table-row", {
+    enabled: open && editingId === null,
+    ready: filteredSuppliers.length > 0,
+    scopeKey: open,
+    onSelect: (row) => setActiveId(row.dataset.supplierId ?? ""),
+  });
+
+  useLayoutEffect(() => {
+    const container = tableRef.current;
+    const row = container?.querySelector<HTMLElement>('.warehouse-supplier-table-row[aria-selected="true"]');
+    if (container && row) {
+      const focused = document.activeElement;
+      if (focused instanceof HTMLElement && container.contains(focused)
+        && focused.closest(".warehouse-supplier-table-row") && focused !== row) row.focus({ preventScroll: true });
+      ensureTableRowVisible(container, row);
+    }
+  }, [activeId, open]);
 
   useEffect(() => {
     if (!open) return;
-    setActiveId(selectedId);
+    setActiveId(selectedId || suppliers[0]?.id || "");
     setEditingId(null);
     setQuery("");
     setStatus("");
@@ -159,12 +195,6 @@ export function WarehouseSupplierDialog({
     onClose();
   }
 
-  function moveSelection(offset: -1 | 1) {
-    if (filteredSuppliers.length === 0) return;
-    const index = Math.max(0, filteredSuppliers.findIndex((supplier) => supplier.id === activeId));
-    setActiveId(filteredSuppliers[Math.min(Math.max(index + offset, 0), filteredSuppliers.length - 1)].id);
-  }
-
   if (!open) return null;
 
   return (
@@ -194,7 +224,18 @@ export function WarehouseSupplierDialog({
               if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); return; }
               if (event.key === "F5") { event.preventDefault(); event.stopPropagation(); openNew(); return; }
               if (event.ctrlKey && event.key.toLocaleLowerCase() === "f7") { event.preventDefault(); event.stopPropagation(); void openEdit(); return; }
-              if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); event.stopPropagation(); moveSelection(event.key === "ArrowUp" ? -1 : 1); return; }
+              if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+                if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+                if (event.target === searchRef.current) {
+                  event.preventDefault(); event.stopPropagation();
+                  if (!event.repeat) arrowOriginRef.current = "search";
+                  repeatArrow(event);
+                  return;
+                }
+                if (!(event.target instanceof HTMLElement) || !event.target.closest(".warehouse-supplier-table-row")) return;
+                if (!event.repeat) arrowOriginRef.current = "table";
+                event.preventDefault(); event.stopPropagation(); repeatArrow(event); return;
+              }
               if (event.key === "Enter" || event.key === "Insert") { event.preventDefault(); event.stopPropagation(); selectActive(); }
             }}
           >
@@ -211,7 +252,7 @@ export function WarehouseSupplierDialog({
                 key: "search", label: t("warehouseDocument.supplierSearch"), value: query.trim(), onRemove: () => setQuery("")
               }] : []} onClear={() => setQuery("")} />}
             </div>
-            <div className="warehouse-supplier-table" role="table" aria-label={t("warehouseDocument.supplierListTitle")}>
+            <div ref={tableRef} className="warehouse-supplier-table" role="table" aria-label={t("warehouseDocument.supplierListTitle")}>
               <div className="warehouse-supplier-table-header" role="row">
                 <span role="columnheader">{t("warehouseDocument.supplierColumn.code")}</span>
                 <span role="columnheader">{t("warehouseDocument.supplierColumn.legalName")}</span>
@@ -226,10 +267,12 @@ export function WarehouseSupplierDialog({
                   <button
                     type="button"
                     role="row"
+                    data-supplier-id={supplier.id}
                     aria-selected={supplier.id === activeId}
                     aria-disabled={!supplier.active}
                     className={`warehouse-supplier-table-row${supplier.id === activeId ? " selected" : ""}${supplier.active ? "" : " inactive"}`}
                     key={supplier.id}
+                    onFocus={() => setActiveId(supplier.id)}
                     onClick={() => setActiveId(supplier.id)}
                     onDoubleClick={selectActive}
                   >

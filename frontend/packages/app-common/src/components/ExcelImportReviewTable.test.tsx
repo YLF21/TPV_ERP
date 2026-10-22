@@ -7,6 +7,25 @@ import { ExcelImportReviewTable } from "./ExcelImportReviewTable";
 
 afterEach(cleanup);
 describe("Excel import review table", () => {
+  it("prepares the first review row and advances without opening details or exporting", () => {
+    const onExport = vi.fn();
+    const { container } = render(<ExcelImportReviewTable title="Review" columns={[{ key: "rowNumber", label: "Row" }]}
+      rows={[2, 3, 4].map((id) => ({ id, status: "accepted", values: { rowNumber: String(id) } }))}
+      onExport={onExport} exportDisabled={false}
+      labels={{ export: "Export", empty: "Empty", review: "Review row", resize: (name) => "Resize " + name }} />);
+    const viewport = container.querySelector<HTMLElement>(".shared-excel-review-viewport")!;
+    const rows = [...container.querySelectorAll<HTMLTableRowElement>(".shared-excel-result-row")];
+    expect(viewport).toHaveFocus();
+    expect(rows[0]).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(viewport, { key: "ArrowDown" });
+    expect(rows[1]).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("region", { name: "Review row 3" })).not.toBeInTheDocument();
+    fireEvent.keyUp(viewport, { key: "ArrowDown" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Review row 3" }), { key: "ArrowDown" });
+    expect(rows[1]).toHaveAttribute("aria-selected", "true");
+    expect(onExport).not.toHaveBeenCalled();
+  });
+
   it.each([false, true])("keeps an immediate row-detail click before passive mount effects flush (controlled: %s)", (controlled) => {
     const props = { title: "Review", columns: [{ key: "rowNumber", label: "Row" }], onExport: vi.fn(), exportDisabled: false,
       labels: { export: "Export", empty: "Empty", review: "Review row", resize: (name: string) => "Resize " + name } };

@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTranslator, type UserSession } from "@tpverp/app-common";
 import { SupplierManagementScreen } from "./SupplierManagementScreen";
@@ -24,11 +24,45 @@ const operatorSession: UserSession = {
   permissions: ["APP_GESTION_ACCESS"],
 };
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   request.mockReset();
 });
 
 describe("SupplierManagementScreen", () => {
+  it("repeats representative selection without opening an editor or sending a mutation", async () => {
+    request.mockImplementation(async (path: string) => path.startsWith("/sales-representatives/management/page") ? {
+      items: [1, 2, 3, 4].map(index => ({ id: `rep-${index}`, version: 1, commercialId: `COM-00${index}`, name: `Comercial ${index}`, active: true, suppliers: [] })),
+      nextCursor: null, hasMore: false,
+    } : []);
+    render(<SupplierManagementScreen locale="es" session={adminSession} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Comerciales de proveedor" }));
+    await waitFor(() => expect(screen.getByRole("table", { name: "Comerciales de proveedor" }).querySelectorAll("button.representative-management-row")).toHaveLength(4));
+    const rows = Array.from(screen.getByRole("table", { name: "Comerciales de proveedor" }).querySelectorAll<HTMLButtonElement>("button.representative-management-row"));
+    expect(rows[0]).toHaveFocus();
+    expect(rows[0]).toHaveAttribute("aria-selected", "true");
+    rows[0].focus();
+    vi.useFakeTimers();
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(rows[1]);
+    await act(async () => { vi.advanceTimersByTime(180); });
+    expect(document.activeElement).toBe(rows[2]);
+    await act(async () => { vi.advanceTimersByTime(70); });
+    expect(document.activeElement).toBe(rows[3]);
+    expect(rows[3]).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(request.mock.calls.every(([, options]) => !options?.method || options.method === "GET")).toBe(true);
+    fireEvent.keyUp(rows[3], { key: "ArrowDown" });
+    await act(async () => { vi.advanceTimersByTime(300); });
+    expect(document.activeElement).toBe(rows[3]);
+    fireEvent.keyDown(rows[3], { key: "ArrowUp" });
+    expect(document.activeElement).toBe(rows[2]);
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo comercial F5" }));
+    await act(async () => { vi.advanceTimersByTime(300); });
+    expect(screen.getByRole("dialog", { name: "Nuevo comercial" })).toBeInTheDocument();
+    expect(rows[2]).toHaveAttribute("aria-selected", "true");
+    expect(request.mock.calls.every(([, options]) => !options?.method || options.method === "GET")).toBe(true);
+  });
   it("rejects a non-ADMIN session visibly before mounting management controls", () => {
     render(<SupplierManagementScreen locale="es" session={operatorSession} />);
 

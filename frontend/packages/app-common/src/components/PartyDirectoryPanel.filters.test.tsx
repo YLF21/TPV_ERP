@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
 import type { UserSession } from "../types";
@@ -20,9 +20,33 @@ beforeEach(() => {
   localStorage.clear();
   vi.mocked(apiRequest).mockReset().mockImplementation(async (path) => ["/customers", "/suppliers", "/members"].includes(path) ? entries : []);
 });
-afterEach(() => { cleanup(); localStorage.clear(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); localStorage.clear(); });
 
 describe("Party directory applied filter chips", () => {
+  it.each(["customers", "members", "suppliers"] as const)("moves one %s row per held-arrow tick without opening or changing records", async (kind) => {
+    vi.mocked(apiRequest).mockImplementation(async (path) => path.startsWith(`/${kind}/management/page`)
+      ? { items: entries, hasMore: false } : path === `/${kind}` ? entries : []);
+    const { container } = render(<PartyDirectoryPanel app="gestion" kind={kind} locale="es" session={session} />);
+    await screen.findByText("Zoe");
+    const rows = [...container.querySelectorAll<HTMLButtonElement>("button.party-directory-selectable-row")];
+    expect(rows).toHaveLength(3);
+    rows[0].focus();
+    const requests = vi.mocked(apiRequest).mock.calls.length;
+    vi.useFakeTimers();
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(rows[1]);
+    expect(rows[1]).toHaveClass("selected");
+    fireEvent.keyDown(rows[1], { key: "ArrowDown", repeat: true });
+    expect(document.activeElement).toBe(rows[1]);
+    act(() => vi.advanceTimersByTime(180));
+    expect(document.activeElement).toBe(rows[2]);
+    fireEvent.keyUp(rows[2], { key: "ArrowDown" });
+    act(() => vi.advanceTimersByTime(500));
+    expect(document.activeElement).toBe(rows[2]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(vi.mocked(apiRequest).mock.calls).toHaveLength(requests);
+  });
+
   it.each(["customers", "members", "suppliers"] as const)("removes only one criterion and restores matching %s rows", async (kind) => {
     render(<PartyDirectoryPanel app="venta" kind={kind} locale="es" session={session} />);
     await screen.findByText("Zoe");

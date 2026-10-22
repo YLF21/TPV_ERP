@@ -91,6 +91,8 @@ import {
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { userCanManageStockProducts } from "./stockAccess";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import "./SalesDocumentScreen.css";
 
 type DocumentType = "FACTURA_VENTA" | "ALBARAN_VENTA";
@@ -251,6 +253,7 @@ export function SalesDocumentScreen({
   const [cardPaymentMode, setCardPaymentMode] =
     useState<PendingCardPaymentMode | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const linesContainerRef = useRef<HTMLDivElement>(null);
   const linesRef = useRef(lines);
   const lineEditDialogRef = useRef<HTMLElement>(null);
   const lineEditInputRef = useRef<HTMLInputElement>(null);
@@ -306,6 +309,23 @@ export function SalesDocumentScreen({
   const ready = canWrite && Boolean(customer && warehouseId && lines.length > 0)
     && !quoteLoading && !quoteError && quotedTotal != null;
   const documentLocked = saving || Boolean(checkoutMode) || Boolean(recovery);
+  const handleLineArrowRepeat = useTableArrowRepeat((direction) => {
+    const focused = document.activeElement;
+    if (documentLocked || sortedLines.length === 0 || document.querySelector(
+      '[role="dialog"][aria-modal="true"], dialog[open]',
+    ) || (focused !== inputRef.current && focused !== document.body
+      && !linesContainerRef.current?.contains(focused))) return false;
+    if (saleLineSelectionAfterArrow(sortedLines, selectedLineId, direction) === selectedLineId) return false;
+    setSelectedLineId((current) => saleLineSelectionAfterArrow(sortedLines, current, direction));
+    return true;
+  }, !documentLocked && sortedLines.length > 0);
+
+  useLayoutEffect(() => {
+    const container = linesContainerRef.current;
+    const row = container?.querySelector<HTMLTableRowElement>('tr[aria-selected="true"]');
+    if (!container || !row) return;
+    ensureTableRowVisible(container, row);
+  }, [selectedLineId]);
   const createPendingAuthorization = findSaleOperationAuthorization(
     operationSecurity,
     "CREATE_PENDING_RECEIVABLE",
@@ -1112,7 +1132,7 @@ export function SalesDocumentScreen({
   // Keyboard commands must observe the same readiness as the committed buttons.
   useLayoutEffect(() => {
     function handleDocumentShortcut(event: KeyboardEvent) {
-      if (documentLocked || event.repeat || document.querySelector(
+      if (documentLocked || (event.repeat && event.key !== "ArrowUp" && event.key !== "ArrowDown") || document.querySelector(
         '[role="dialog"][aria-modal="true"], dialog[open]',
       )) return;
       const command = saleCommandFromKeyboard(event);
@@ -1143,12 +1163,8 @@ export function SalesDocumentScreen({
       if (shortcutTargetIsEditable(event.target) && event.target !== inputRef.current) return;
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         if (lines.length === 0) return;
-        setSelectedLineId(saleLineSelectionAfterArrow(
-          sortedLines,
-          selectedLineId,
-          event.key,
-        ));
         event.preventDefault();
+        handleLineArrowRepeat(event);
         return;
       }
       if (!event.altKey && !event.metaKey && !event.ctrlKey && event.key.length === 1
@@ -1356,7 +1372,7 @@ export function SalesDocumentScreen({
             <h2>{t("salesDocument.lines")}</h2>
             <span>{lines.length}</span>
           </header>
-          <div className="sales-document-lines">
+          <div ref={linesContainerRef} className="sales-document-lines">
             <table
               className="sales-document-lines-table"
               aria-label={t("salesDocument.lines")}

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
@@ -49,6 +49,22 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("Goods check ERP table filters", () => {
+  it.each(["venta", "gestion"] as const)("focuses the first document and moves with arrows without importing in %s", async app => {
+    const { container } = show(app);
+    await waitFor(() => expect(documentRows(container)).toHaveLength(4));
+    const rows = documentRows(container);
+    await waitFor(() => expect(rows[0]).toHaveFocus());
+    expect(rows[0]).toHaveClass("selected");
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(rows[1]).toHaveClass("selected");
+    expect(rows[1]).toHaveFocus();
+    fireEvent.keyUp(rows[1], { key: "ArrowDown" });
+    act(() => { rows[3].focus(); fireEvent.keyDown(rows[3], { key: "ArrowDown" }); });
+    expect(rows[3]).toHaveClass("selected");
+    expect(rows[3]).toHaveFocus();
+    expect(vi.mocked(apiRequest).mock.calls.filter(([path]) => path.endsWith("/import"))).toHaveLength(0);
+  });
+
   it.each(["venta", "gestion"] as const)("removes search separately and preserves sort/selection in %s", async app => {
     const { container } = show(app);
     await waitFor(() => expect(documentRows(container)).toHaveLength(4));

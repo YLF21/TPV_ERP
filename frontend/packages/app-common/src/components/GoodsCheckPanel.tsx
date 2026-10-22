@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { DownloadSimple } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode } from "../types";
@@ -6,6 +6,9 @@ import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
 import { TableSortButton } from "./TableSortButton";
 import { nextTableSort, sortTableRows, type TableSort } from "./tableSorting";
 import { WarehouseSearchFrame } from "./WarehouseSearchFrame";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import "./WarehouseClassicTables.css";
 import "./ErpSearchField.css";
 
@@ -226,6 +229,7 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
   const quantityRef = useRef<HTMLInputElement | null>(null);
   const focusCodeAfterRender = useRef(false);
   const searchRef = useRef<HTMLInputElement | null>(null);
+  const documentListRef = useRef<HTMLDivElement>(null);
   const allLinesRef = useRef<HTMLButtonElement | null>(null);
   const numberFormatter = useMemo(() => new Intl.NumberFormat(
     locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
@@ -255,6 +259,34 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
   const selectedDocument = visibleDocuments.find(
     (document) => document.id === selectedDocumentId
   ) ?? null;
+  useTableInitialFocus(documentListRef, "tbody tr[data-document-id]", {
+    enabled: app !== "pda" && (!separateWorkflow || workflowView === "documents"),
+    ready: !loading && visibleDocuments.length > 0,
+    scopeKey: `${token ?? ""}:${workflowView}`,
+    onSelect: (row) => setSelectedDocumentId(row.dataset.documentId ?? ""),
+  });
+  useLayoutEffect(() => {
+    const list = documentListRef.current;
+    const row = Array.from(list?.querySelectorAll<HTMLElement>("tbody tr[data-document-id]") ?? [])
+      .find((candidate) => candidate.dataset.documentId === selectedDocumentId);
+    if (!list || !row) return;
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && list.contains(focused)
+      && focused.closest("tbody tr[data-document-id]") && focused !== row) row.focus({ preventScroll: true });
+    ensureTableRowVisible(list, row);
+  }, [selectedDocumentId]);
+  const repeatDocumentArrow = useTableArrowRepeat((direction) => {
+    const list = documentListRef.current;
+    const focused = document.activeElement;
+    const row = focused instanceof HTMLElement && list?.contains(focused)
+      ? focused.closest<HTMLElement>("tbody tr[data-document-id]") : null;
+    if (!row || loading || busy || visibleDocuments.length < 2) return false;
+    const index = visibleDocuments.findIndex((candidate) => candidate.id === row.dataset.documentId);
+    const nextIndex = Math.max(0, Math.min(visibleDocuments.length - 1, index + (direction === "ArrowDown" ? 1 : -1)));
+    if (index < 0 || nextIndex === index) return false;
+    setSelectedDocumentId(visibleDocuments[nextIndex].id);
+    return true;
+  }, !loading && !busy && app !== "pda" && (!separateWorkflow || workflowView === "documents"));
   const visibleItems = useMemo(
     () => check ? filterGoodsCheckItems(check, lineFilter) : [],
     [check, lineFilter]);
@@ -479,7 +511,7 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
             </button>
           )}
         </header>
-        <div className={`stock-history-table-scroll goods-check-document-list${app !== "pda" ? " erp-classic-tables warehouse-classic-table" : ""}`}>
+        <div ref={documentListRef} className={`stock-history-table-scroll goods-check-document-list${app !== "pda" ? " erp-classic-tables warehouse-classic-table" : ""}`}>
           {loading ? (
             <div className="goods-check-empty" role="status" aria-live="polite">
               <strong>{t("common.loading")}</strong>
@@ -518,13 +550,21 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
               {visibleDocuments.map((document) => (
                 <tr
                   key={document.id}
+                  data-document-id={document.id}
                   className={selectedDocumentId === document.id ? "selected" : ""}
                   tabIndex={0}
+                  onFocus={(event) => { setSelectedDocumentId(document.id); if (documentListRef.current) ensureTableRowVisible(documentListRef.current, event.currentTarget); }}
                   onClick={() => setSelectedDocumentId(document.id)}
                   onDoubleClick={() => {
                     void importDocument(document);
                   }}
                   onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                      event.preventDefault();
+                      repeatDocumentArrow(event);
+                      return;
+                    }
                     if (event.key === "Enter") {
                       event.preventDefault();
                       setSelectedDocumentId(document.id);

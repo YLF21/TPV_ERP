@@ -1,6 +1,6 @@
 import { AppBrand } from "./AppBrand";
 import { DesktopHeaderContext } from "./DesktopHeaderContext";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ArrowClockwise, CalendarBlank, CaretDown, ChartBar, Circle, DotsThree, MagnifyingGlass, Tag } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -13,6 +13,9 @@ import type { TableColumnDefinition } from "./tableLayoutPreferences";
 import { ErpFilterChips } from "./ErpFilterChips";
 import { ErpSelect } from "./ErpSelect";
 import { useOutsidePointerDown } from "./useOutsidePointerDown";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import { formatPromotionDateRange, promotionTypeLabel, promotionConditionSentences, promotionDateRange, type PromotionTranslator } from "./promotionPresentation";
 export { promotionTypeLabel, promotionConditionSentences, promotionDateRange } from "./promotionPresentation";
 import "./PromotionListScreen.css";
@@ -86,6 +89,7 @@ export function PromotionListScreen({
   const actionsButtonRef = useRef<HTMLButtonElement>(null);
   useOutsidePointerDown(actionsOpen, actionsRef, () => setActionsOpen(false));
   const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const token = session.accessToken;
   const today = localIsoDate();
   const filteredPromotions = useMemo(() => {
@@ -100,6 +104,32 @@ export function PromotionListScreen({
   }, [locale, promotions, query, statusFilter, today]);
   const activePromotions = filteredPromotions.filter(promotion => !isPromotionExpired(promotion, today));
   const expiredPromotions = filteredPromotions.filter(promotion => isPromotionExpired(promotion, today));
+  const visiblePromotionIds = [...activePromotions, ...expiredPromotions].map(promotion => promotion.id);
+  useTableInitialFocus(listRef, ".promotion-list-row", {
+    ready: !loading && visiblePromotionIds.length > 0,
+    onSelect: (row) => setSelectedId(row.dataset.promotionId ?? null),
+  });
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const row = Array.from(list?.querySelectorAll<HTMLElement>(".promotion-list-row") ?? [])
+      .find((candidate) => candidate.dataset.promotionId === selectedId);
+    if (!list || !row) return;
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && list.contains(focused)
+      && focused.closest(".promotion-list-row") && focused !== row) row.focus({ preventScroll: true });
+    ensureTableRowVisible(list, row);
+  }, [selectedId]);
+  const repeatPromotionArrow = useTableArrowRepeat((direction) => {
+    const focused = document.activeElement;
+    const row = focused instanceof HTMLElement && listRef.current?.contains(focused)
+      ? focused.closest<HTMLElement>(".promotion-list-row") : null;
+    const index = visiblePromotionIds.indexOf(row?.dataset.promotionId ?? "");
+    if (index < 0) return false;
+    const next = Math.max(0, Math.min(visiblePromotionIds.length - 1, index + (direction === "ArrowDown" ? 1 : -1)));
+    if (next === index) return false;
+    setSelectedId(visiblePromotionIds[next]);
+    return true;
+  }, visiblePromotionIds.length > 0);
 
   const selectedPromotion = useMemo(
     () => promotions.find((promotion) => promotion.id === selectedId) ?? null,
@@ -219,9 +249,9 @@ export function PromotionListScreen({
               key: "search", label: t("salesReport.search"), value: query.trim(), onRemove: () => setQuery("")
             }] : []} onClear={() => setQuery("")} />
           </div>
-          <div className="promotion-list-scroll" aria-busy={loading}>
-            <PromotionGroup promotions={activePromotions} selectedId={selectedId} locale={locale} t={t} onSelect={setSelectedId} expired={false} />
-            <PromotionGroup promotions={expiredPromotions} selectedId={selectedId} locale={locale} t={t} onSelect={setSelectedId} expired />
+          <div ref={listRef} className="promotion-list-scroll" aria-busy={loading}>
+            <PromotionGroup promotions={activePromotions} selectedId={selectedId} locale={locale} t={t} onSelect={setSelectedId} onArrowKeyDown={repeatPromotionArrow} expired={false} />
+            <PromotionGroup promotions={expiredPromotions} selectedId={selectedId} locale={locale} t={t} onSelect={setSelectedId} onArrowKeyDown={repeatPromotionArrow} expired />
             {!loading && filteredPromotions.length === 0 && (
               <p className="promotion-empty">{promotions.length ? t("stock.status.noResults") : t("promotion.list.empty")}</p>
             )}
@@ -325,20 +355,28 @@ type PromotionCatalogProduct = {
 
 
 function PromotionGroup({
-  promotions, selectedId, locale, t, onSelect, expired
+  promotions, selectedId, locale, t, onSelect, onArrowKeyDown, expired
 }: {
   promotions: PromotionView[];
   selectedId: string | null;
   locale: LocaleCode;
   t: PromotionTranslator;
   onSelect: (id: string) => void;
+  onArrowKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
   expired: boolean;
 }) {
   if (promotions.length === 0) return null;
   return <div className={`promotion-list-group${expired ? " expired" : ""}`}>
     {promotions.map(promotion => (
       <button type="button" key={promotion.id} aria-label={promotion.name} aria-pressed={selectedId === promotion.id}
+        data-promotion-id={promotion.id}
         className={`promotion-list-row${selectedId === promotion.id ? " selected" : ""}${expired ? " expired" : ""} ${promotion.status.toLowerCase()}`}
+        onFocus={() => onSelect(promotion.id)}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+          event.preventDefault();
+          onArrowKeyDown(event);
+        }}
         onClick={() => onSelect(promotion.id)}
       >
         <Circle className="promotion-row-indicator" size={10} weight="fill" aria-hidden="true" />

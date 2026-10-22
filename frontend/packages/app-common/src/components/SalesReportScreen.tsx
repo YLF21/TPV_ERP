@@ -3,7 +3,10 @@ import { DialogDismissButton } from "./DialogDismissButton";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { AppBrand } from "./AppBrand";
 import { DesktopHeaderContext } from "./DesktopHeaderContext";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import { FilePdf, FileXls, Printer } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import { lazy, Suspense } from "react";
@@ -2086,6 +2089,8 @@ export function SalesReportScreen({
   const [selectedRowByReport, setSelectedRowByReport] = useState<Record<string, number>>(() =>
     Object.fromEntries(allReports.map((reportKey) => [reportKey, -1]))
   );
+  const selectedRowIdentityByReport = useRef<Record<string, string>>({});
+  const selectedReportRowHadFocus = useRef(false);
   const reports: Record<string, ReportSample> = { ...reportSamples, ...(remoteReports as Record<string, ReportSample>) };
   const sample = reports[selectedReport] ?? reportSamples["salesReport.dailySales"];
   const isDailySalesReport = selectedReport === "salesReport.dailySales";
@@ -2143,8 +2148,60 @@ export function SalesReportScreen({
     };
   })();
   const selectedDailySummary = sample.dailySummaries?.[filters.dateFrom] ?? emptyDailySalesSummary(filters.dateFrom);
-  const selectedRowIndex = selectedRowByReport[selectedReport] ?? -1;
+  const storedSelectedRowIndex = selectedRowByReport[selectedReport] ?? -1;
+  const selectedRowIdentity = selectedRowIdentityByReport.current[selectedReport];
+  const selectedRowIndex = storedSelectedRowIndex >= 0 && selectedRowIdentity
+    ? filteredRows.findIndex((row) => (row.__documentId || row.__warehouseDocumentId) === selectedRowIdentity)
+    : storedSelectedRowIndex;
   const selectedReportRow = filteredRows[selectedRowIndex];
+  useLayoutEffect(() => {
+    const container = reportTableScrollRef.current;
+    const row = selectedRowIndex >= 0
+      ? container?.querySelectorAll<HTMLTableRowElement>("tbody tr")[selectedRowIndex] : null;
+    if (container && row) {
+      if (selectedReportRowHadFocus.current && (document.activeElement === document.body || document.activeElement === row)) {
+        row.focus({ preventScroll: true });
+      }
+      ensureTableRowVisible(container, row);
+    }
+    selectedReportRowHadFocus.current = false;
+    return () => {
+      const previous = container?.querySelectorAll<HTMLTableRowElement>("tbody tr")[selectedRowIndex];
+      selectedReportRowHadFocus.current = Boolean(previous && document.activeElement === previous);
+    };
+  }, [selectedReport, selectedRowIndex, selectedRowIdentity]);
+  const repeatReportArrow = useTableArrowRepeat((direction) => {
+    const focused = document.activeElement;
+    const container = reportTableScrollRef.current;
+    if (reportLoading || reportLoadErrors[selectedReport] || document.querySelector('[aria-modal="true"]')
+      || !(focused instanceof HTMLTableRowElement) || !container?.contains(focused)) return false;
+    if (reportLoadingMore) return true;
+    const focusedIndex = Array.from(container.querySelectorAll<HTMLTableRowElement>("tbody tr")).indexOf(focused);
+    if (focusedIndex < 0) return false;
+    const nextIndex = Math.max(0, Math.min(filteredRows.length - 1,
+      focusedIndex + (direction === "ArrowDown" ? 1 : -1)));
+    if (nextIndex === focusedIndex) {
+      if (direction === "ArrowDown" && reportPages[reportPageKey(selectedReport)]?.hasMore) {
+        void loadMoreReportRows();
+        return true;
+      }
+      return false;
+    }
+    moveSelectedRow(nextIndex);
+    if (direction === "ArrowDown" && nextIndex === filteredRows.length - 1
+      && reportPages[reportPageKey(selectedReport)]?.hasMore) void loadMoreReportRows();
+    return nextIndex < filteredRows.length - 1
+      || direction === "ArrowUp" || Boolean(reportPages[reportPageKey(selectedReport)]?.hasMore);
+  }, !reportLoading && !Boolean(reportLoadErrors[selectedReport]));
+  useTableInitialFocus(reportTableScrollRef, "tbody tr", {
+    enabled: !isSalesActivityReport,
+    ready: !reportLoading && !Boolean(reportLoadErrors[selectedReport]),
+    scopeKey: selectedReport,
+    onSelect: (row) => {
+      const index = Array.from(reportTableScrollRef.current?.querySelectorAll("tbody tr") ?? []).indexOf(row);
+      if (index >= 0) selectRow(index);
+    },
+  });
   const canIssueGiftReceipt = Boolean(session.accessToken) && (
     session.permissions.some((permission) => ["ADMIN", "GESTION_VENTAS", "VENTA"].includes(permission))
     || (session.permissions.includes("TICKETS_CREATE") && session.permissions.includes("TICKETS_READ"))
@@ -3446,12 +3503,17 @@ export function SalesReportScreen({
   }
 
   function selectRow(rowIndex: number) {
+    const row = filteredRows[rowIndex];
+    selectedRowIdentityByReport.current[selectedReport] = row?.__documentId || row?.__warehouseDocumentId || "";
     setSelectedRowByReport((current) => ({ ...current, [selectedReport]: rowIndex }));
   }
 
-  function moveSelectedRow(rowIndex: number, direction: -1 | 1) {
-    const nextIndex = Math.max(0, Math.min(filteredRows.length - 1, rowIndex + direction));
+  function moveSelectedRow(nextIndex: number) {
     selectRow(nextIndex);
+    const container = reportTableScrollRef.current;
+    const row = container?.querySelectorAll<HTMLTableRowElement>("tbody tr")[nextIndex];
+    row?.focus({ preventScroll: true });
+    if (container && row) ensureTableRowVisible(container, row);
   }
 
   function toggleSort(attribute: string) {
@@ -4216,7 +4278,7 @@ export function SalesReportScreen({
                           && String(row.__documentStatus ?? "").toUpperCase() === "ANULADO";
                         return (
                           <tr
-                            key={`${selectedReport}-${rowIndex}`}
+                            key={`${selectedReport}-${row.__documentId || row.__warehouseDocumentId || rowIndex}`}
                             className={[
                               selectedRowIndex === rowIndex ? "selected" : "",
                               isCancelledTicket ? "report-table-row--cancelled" : ""
@@ -4230,13 +4292,14 @@ export function SalesReportScreen({
                               if (canOpenDocumentPreview(row)) void openDocumentPreview(row);
                             }}
                             onKeyDown={(event) => {
+                              if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
                               if (event.key === "ArrowUp") {
                                 event.preventDefault();
-                                moveSelectedRow(rowIndex, -1);
+                                repeatReportArrow(event);
                               }
                               if (event.key === "ArrowDown") {
                                 event.preventDefault();
-                                moveSelectedRow(rowIndex, 1);
+                                repeatReportArrow(event);
                               }
                               if (event.key === "Enter" && canOpenDocumentPreview(row)) {
                                 event.preventDefault();

@@ -6,6 +6,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { retryPrintSucceeded } from "../sale/printRetry";
+import * as tableVisibility from "./ensureTableRowVisible";
 import {
   SaleScreen,
   SaleDeletionControlSequence,
@@ -1928,12 +1929,8 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(preview).not.toHaveTextContent("Cafe molido"));
   });
 
-  it("uses only the minimum nearest scroll whenever a new line is added", async () => {
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: scrollIntoView,
-    });
+  it("reveals added lines in the cart scroll container", async () => {
+    const ensureVisible = vi.spyOn(tableVisibility, "ensureTableRowVisible");
     const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/products/sale")) {
@@ -1971,20 +1968,17 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(search).toBeEnabled());
 
     submitQuickEntry(search, "CAF-001");
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
-    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest", inline: "nearest" });
-    const callsAfterFirstProduct = scrollIntoView.mock.calls.length;
+    await waitFor(() => expect(ensureVisible).toHaveBeenCalled());
+    expect(ensureVisible.mock.lastCall?.[0]).toHaveClass("sale-cart-table-scroll");
+    const callsAfterFirstProduct = ensureVisible.mock.calls.length;
     submitQuickEntry(search, "PAN-001");
-    await waitFor(() => expect(scrollIntoView.mock.calls.length).toBeGreaterThan(callsAfterFirstProduct));
-    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest", inline: "nearest" });
+    await waitFor(() => expect(ensureVisible.mock.calls.length).toBeGreaterThan(callsAfterFirstProduct));
+    expect(ensureVisible.mock.lastCall?.[0]).toHaveClass("sale-cart-table-scroll");
+    ensureVisible.mockRestore();
   });
 
   it("makes one minimal correction after the promotions panel appears", async () => {
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: scrollIntoView,
-    });
+    const ensureVisible = vi.spyOn(tableVisibility, "ensureTableRowVisible");
     let resolveQuote!: (response: Response) => void;
     const pendingQuote = new Promise<Response>((resolve) => { resolveQuote = resolve; });
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
@@ -2009,7 +2003,7 @@ describe("SaleScreen", () => {
     const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
     submitQuickEntry(search, "CAF-001");
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(ensureVisible).toHaveBeenCalledTimes(1));
 
     const quote = {
       ...authoritativeQuote(products[0], "6.50"),
@@ -2023,8 +2017,9 @@ describe("SaleScreen", () => {
     }));
 
     expect(await screen.findByText("PROMOCION A")).toBeInTheDocument();
-    expect(scrollIntoView).toHaveBeenCalledTimes(2);
-    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest", inline: "nearest" });
+    expect(ensureVisible).toHaveBeenCalledTimes(2);
+    expect(ensureVisible.mock.lastCall?.[0]).toHaveClass("sale-cart-table-scroll");
+    ensureVisible.mockRestore();
   });
 
   it("does not expose or send promotional coupons from the sales screen", async () => {
@@ -3788,7 +3783,7 @@ describe("SaleScreen", () => {
       .toBeChecked();
   });
 
-  it("selects the highlighted customer with Insert", async () => {
+  it("keeps moving the highlighted customer while arrows repeat and selects once with Insert", async () => {
     const customerWithFinancials: SaleCustomer = {
       ...customers[1],
       activeMember: true,
@@ -3828,7 +3823,37 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(
       within(dialog).getByRole("button", { name: /Cliente Pruebas/ }),
     ).toHaveAttribute("aria-current", "true"));
+    const lastCustomer = within(dialog).getByRole("button", { name: /Maria Lopez/ });
+    act(() => { lastCustomer.focus(); fireEvent.keyDown(lastCustomer, { key: "ArrowDown" }); });
+    expect(lastCustomer).toHaveAttribute("aria-current", "true");
+    expect(lastCustomer).toHaveFocus();
+    fireEvent.keyUp(lastCustomer, { key: "ArrowDown" });
+    const noCustomer = within(dialog).getByRole("button", { name: "Sin cliente" });
+    fireEvent.click(noCustomer);
+    fireEvent.keyDown(dialog, { key: "ArrowUp" });
+    expect(noCustomer).toHaveAttribute("aria-current", "true");
+    fireEvent.keyUp(dialog, { key: "ArrowUp" });
     fireEvent.keyDown(dialog, { key: "ArrowDown" });
+    expect(within(dialog).getByRole("button", { name: /Cliente Pruebas/ }))
+      .toHaveAttribute("aria-current", "true");
+    fireEvent.keyUp(dialog, { key: "ArrowDown" });
+    vi.useFakeTimers();
+    fireEvent.keyDown(dialog, { key: "ArrowDown" });
+    fireEvent.keyDown(dialog, { key: "ArrowDown", repeat: true });
+    expect(within(dialog).getByRole("button", { name: /Maria Lopez/ }))
+      .toHaveAttribute("aria-current", "true");
+    act(() => vi.advanceTimersByTime(320));
+    expect(within(dialog).getByRole("button", { name: /Maria Lopez/ }))
+      .toHaveAttribute("aria-current", "true");
+    expect(within(dialog).getByRole("button", { name: /Cliente Pruebas/ }))
+      .toHaveAttribute("aria-current", "false");
+    fireEvent.keyUp(dialog, { key: "ArrowDown" });
+    act(() => vi.advanceTimersByTime(500));
+    expect(within(dialog).getByRole("button", { name: /Maria Lopez/ }))
+      .toHaveAttribute("aria-current", "true");
+    fireEvent.keyDown(dialog, { key: "Insert", repeat: true });
+    expect(dialog).toBeInTheDocument();
+    vi.useRealTimers();
     fireEvent.keyDown(dialog, { key: "Insert" });
 
     expect(checkoutProps.current?.sale?.customerId).toBe(customers[1].id);
@@ -4524,8 +4549,8 @@ describe("SaleScreen", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("moves ticket-line selection with vertical arrows without wrapping", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(products.slice(0, 2)), {
+  it("moves ticket-line selection one row at a time at a steady held-arrow pace", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(products), {
       status: 200,
       headers: { "Content-Type": "application/json" }
     })));
@@ -4536,19 +4561,48 @@ describe("SaleScreen", () => {
     await confirmProductSearchWithInsert(/Cafe molido/);
     submitQuickEntry(search, "Pan");
     await confirmProductSearchWithInsert(/Pan integral/);
+    submitQuickEntry(search, "Leche");
+    await confirmProductSearchWithInsert(/Leche fresca/);
     const coffee = screen.getByRole("button", { name: /Cafe molido.*1 x 10,00/s });
     const bread = screen.getByRole("button", { name: /Pan integral.*1 x 2,50/s });
+    const milk = screen.getByRole("button", { name: /Leche fresca.*1 x 1,75/s });
 
-    expect(bread).toHaveAttribute("aria-pressed", "true");
+    vi.useFakeTimers();
+    expect(milk).toHaveAttribute("aria-pressed", "true");
     const handledArrow = new KeyboardEvent("keydown", { key: "ArrowUp", cancelable: true });
     act(() => window.dispatchEvent(handledArrow));
     expect(handledArrow.defaultPrevented).toBe(true);
-    expect(coffee).toHaveAttribute("aria-pressed", "true");
-    fireEvent.keyDown(window, { key: "ArrowUp" });
-    expect(coffee).toHaveAttribute("aria-pressed", "true");
-    fireEvent.keyDown(window, { key: "ArrowDown" });
     expect(bread).toHaveAttribute("aria-pressed", "true");
-    fireEvent.keyDown(window, { key: "ArrowDown" });
+    fireEvent.keyDown(window, { key: "ArrowUp", repeat: true });
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+    act(() => vi.advanceTimersByTime(179));
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+    act(() => vi.advanceTimersByTime(1));
+    expect(coffee).toHaveAttribute("aria-pressed", "true");
+    act(() => vi.advanceTimersByTime(70));
+    expect(coffee).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyUp(window, { key: "ArrowUp" });
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+    act(() => vi.advanceTimersByTime(180));
+    expect(milk).toHaveAttribute("aria-pressed", "true");
+    act(() => vi.advanceTimersByTime(70));
+    expect(milk).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyUp(search, { key: "ArrowDown" });
+    fireEvent.keyDown(search, { key: "ArrowUp" });
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyUp(search, { key: "ArrowUp" });
+    act(() => vi.advanceTimersByTime(500));
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    fireEvent.keyUp(search, { key: "ArrowDown" });
+    fireEvent.keyDown(search, { key: "ArrowUp" });
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+    coffee.focus();
+    act(() => vi.advanceTimersByTime(180));
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+    search.focus();
+    act(() => vi.advanceTimersByTime(500));
     expect(bread).toHaveAttribute("aria-pressed", "true");
   });
 
@@ -4585,10 +4639,13 @@ describe("SaleScreen", () => {
       expect(bread).toHaveAttribute("aria-pressed", "true");
     }
 
-    fireEvent.keyDown(window, { key: "ArrowUp", repeat: true });
-    expect(bread).toHaveAttribute("aria-pressed", "true");
-    act(() => checkoutProps.current?.onLockedChange?.(true, 1250));
     fireEvent.keyDown(window, { key: "ArrowUp" });
+    expect(coffee).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyUp(search, { key: "ArrowDown" });
+    act(() => checkoutProps.current?.onLockedChange?.(true, 1250));
+    fireEvent.keyDown(window, { key: "ArrowUp", repeat: true });
     expect(bread).toHaveAttribute("aria-pressed", "true");
     act(() => checkoutProps.current?.onLockedChange?.(false));
     fireEvent.keyDown(window, { key: "End" });
