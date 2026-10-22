@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useTableRowArrowFocus } from "./useTableRowArrowFocus";
 import { FilePdf, FileXls, Printer } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import { apiBaseUrl } from "../api/runtime";
@@ -228,6 +229,9 @@ export function SalesActivityPanel({
   const [errorKey, setErrorKey] = useState<SalesActivityMessageKey | null>(null);
   const [reload, setReload] = useState(0);
   const [viewMode, setViewMode] = useState<PrintGrouping>("DAY");
+  const tableRef = useRef<HTMLDivElement>(null);
+  const navigateRow = useTableRowArrowFocus(tableRef, "tbody tr[data-sales-activity-row]",
+    app !== "pda" && mode === "documents" && !loading && !error && !errorKey, `${mode}:${viewMode}`);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{
     kind: "success" | "error" | "info";
@@ -710,7 +714,8 @@ export function SalesActivityPanel({
         <th scope="col">{t("invoiceCount")}</th>
         <th scope="col" className="sales-documents-column--total">{t("total")}</th>
       </tr></thead>
-      <tbody>{dailyRows.map((row) => <tr key={row.date}>
+      <tbody>{dailyRows.map((row) => <tr key={row.date} data-sales-activity-row
+        tabIndex={app !== "pda" ? 0 : undefined} onKeyDown={navigateRow}>
         <td>{formatDate(row.date, locale)}</td>
         <td>{row.ticketCount}</td>
         <td>{row.invoiceCount}</td>
@@ -818,7 +823,7 @@ export function SalesActivityPanel({
       </div> : toolbar}
       {loading && <p className="sales-activity-state" role="status">{t("loading")}</p>}
       {(error || errorKey) && <div className="sales-activity-state sales-activity-state--error" role="alert"><span>{errorKey ? t(errorKey) : error}</span><button type="button" onClick={retry}>{t("retry")}</button></div>}
-      {!loading && !error && !errorKey && <div className={`sales-documents-table-scroll${app !== "pda" ? " erp-classic-tables report-classic-document-table" : ""}`}>
+      {!loading && !error && !errorKey && <div ref={tableRef} className={`sales-documents-table-scroll${app !== "pda" ? " erp-classic-tables report-classic-document-table" : ""}`}>
         {app === "pda" && emptyDocuments && <p className="sales-activity-state">{t("noDocuments")}</p>}
         {(app !== "pda" || !emptyDocuments) && (viewMode === "DAY" ? dailyDocumentTable() : <table className="sales-documents-table" style={documentTableStyle}>
           <colgroup>{visibleDocumentColumns.map((column) => <col
@@ -852,7 +857,8 @@ export function SalesActivityPanel({
               {t(definition.labelKey)}
             </TableLayoutHeaderCell>;
           })}</tr></thead>
-          <tbody>{sortedDocumentRows.map((row) => <tr key={row.id} className={`sales-document-row--${row.kind.toLowerCase()}`}>
+          <tbody>{sortedDocumentRows.map((row) => <tr key={row.id} data-sales-activity-row
+            tabIndex={app !== "pda" ? 0 : undefined} onKeyDown={navigateRow} className={`sales-document-row--${row.kind.toLowerCase()}`}>
             {visibleDocumentColumns.map((column) => <td
               key={column.key}
               className={column.key === "total" ? "sales-documents-column--total" : ""}

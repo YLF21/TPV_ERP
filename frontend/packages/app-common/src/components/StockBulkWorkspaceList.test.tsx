@@ -1,4 +1,8 @@
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
+import { useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserSession } from "../types";
 import type { StockBulkDraftView } from "./stockBulkEdit";
@@ -57,7 +61,33 @@ describe("StockBulkWorkspaceList", () => {
     vi.stubGlobal("localStorage", storage);
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    cleanup(); vi.useRealTimers(); vi.unstubAllGlobals();
+    delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
+  });
+
+  it("advances from the live selection at a fixed rate and stops after keyup", async () => {
+    const drafts = [draft("1"), draft("2"), draft("3"), draft("4")];
+    function ControlledList() {
+      const [selectedId, setSelectedId] = useState<string | null>(null);
+      return <StockBulkWorkspaceList locale="es" session={admin} app="gestion" drafts={drafts}
+        selectedId={selectedId} busy={false} onSelect={setSelectedId} onNew={vi.fn()} onOpen={vi.fn()}
+        onComments={vi.fn()} onRename={vi.fn()} onDelete={vi.fn()} />;
+    }
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    const { container } = render(<ControlledList />);
+    const table = container.querySelector<HTMLElement>(".stock-bulk-workspace-table-wrap")!;
+    expect(table).toHaveFocus();
+    expect(screen.getByText("Lista 1").closest("tr")).toHaveClass("selected");
+    vi.useFakeTimers();
+    fireEvent.keyDown(table, { key: "ArrowDown" });
+    expect(screen.getByText("Lista 2").closest("tr")).toHaveClass("selected");
+    await act(async () => { vi.advanceTimersByTime(180); });
+    expect(screen.getByText("Lista 3").closest("tr")).toHaveClass("selected");
+    fireEvent.keyUp(window, { key: "ArrowDown" });
+    await act(async () => { vi.advanceTimersByTime(300); });
+    expect(screen.getByText("Lista 3").closest("tr")).toHaveClass("selected");
+  });
 
   it("moves a stable selection with the arrow direction", () => {
     const drafts = [draft("1"), draft("2"), draft("3")];

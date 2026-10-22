@@ -1,5 +1,7 @@
 import { DialogDismissButton } from "./DialogDismissButton";
 import { WindowCloseButton } from "./WindowCloseButton";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import { AppBrand } from "./AppBrand";
 import { DesktopHeaderContext } from "./DesktopHeaderContext";
 /// <reference types="vite/client" />
@@ -2184,13 +2186,14 @@ function SaleScreenContent({
       setCheckoutDiscountCents(0);
     }
   }, [checkoutDiscountCents, lines, previousTicketImportBatch]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!selectedLineId) return;
     const escaped = globalThis.CSS?.escape
       ? globalThis.CSS.escape(selectedLineId)
       : selectedLineId.replace(/["\\]/g, "\\$&");
-    document.querySelector<HTMLElement>(`[data-cart-line-id="${escaped}"]`)
-      ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    const container = document.querySelector<HTMLElement>(".sale-cart-table-scroll");
+    const row = container?.querySelector<HTMLElement>(`[data-cart-line-id="${escaped}"]`);
+    if (container && row) ensureTableRowVisible(container, row);
   }, [selectedLineId]);
   useLayoutEffect(() => {
     const previousCount = previousCartLineCountRef.current;
@@ -2532,8 +2535,9 @@ function SaleScreenContent({
       const escaped = globalThis.CSS?.escape
         ? globalThis.CSS.escape(lineId)
         : lineId.replace(/["\\]/g, "\\$&");
-      document.querySelector<HTMLElement>(`[data-cart-line-id="${escaped}"]`)
-        ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+      const container = document.querySelector<HTMLElement>(".sale-cart-table-scroll");
+      const row = container?.querySelector<HTMLElement>(`[data-cart-line-id="${escaped}"]`);
+      if (container && row) ensureTableRowVisible(container, row);
     }
     pendingLastCartLineVisibilityRef.current = false;
   }, [commercialQuoteReady, lines.length, visiblePromotionPreview]);
@@ -4013,25 +4017,29 @@ function SaleScreenContent({
     setCustomerReceivablesOpen(customer);
   }
 
+  const repeatCustomerArrow = useTableArrowRepeat((direction) => {
+      const dialog = customerSearchInputRef.current?.closest('[role="dialog"]');
+      if (!dialog?.contains(document.activeElement) || customerSelectionIds.length === 0) return false;
+      const focused = document.activeElement;
+      const focusedRow = focused instanceof HTMLElement
+        ? focused.closest<HTMLElement>(".sale-customer-table-row") : null;
+      const currentIndex = customerSelectionIds.indexOf(focusedRow?.dataset.customerId ?? selectedCustomerResultId);
+      const nextIndex = currentIndex < 0
+        ? direction === "ArrowDown" ? 0 : customerSelectionIds.length - 1
+        : Math.max(0, Math.min(customerSelectionIds.length - 1,
+          currentIndex + (direction === "ArrowDown" ? 1 : -1)));
+      if (nextIndex === currentIndex) return false;
+      setSelectedCustomerResultId(customerSelectionIds[nextIndex]);
+  }, actionDialog === "customer" && !customerCreateOpen && !customerEditId && !customerReceivablesOpen);
+
   function handleCustomerDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
-    if (event.repeat) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       event.stopPropagation();
-      setSelectedCustomerResultId((current) => {
-        if (customerSelectionIds.length === 0) return "";
-        const currentIndex = customerSelectionIds.indexOf(current);
-        const nextIndex = currentIndex < 0
-          ? event.key === "ArrowDown" ? 0 : customerSelectionIds.length - 1
-          : (
-            currentIndex
-            + (event.key === "ArrowDown" ? 1 : -1)
-            + customerSelectionIds.length
-          ) % customerSelectionIds.length;
-        return customerSelectionIds[nextIndex];
-      });
+      repeatCustomerArrow(event);
       return;
     }
+    if (event.repeat) return;
     if (event.key === "F5" && saleCustomerCreationAllowed) {
       event.preventDefault();
       event.stopPropagation();
@@ -5371,9 +5379,19 @@ function SaleScreenContent({
     return true;
   }
 
+  const cartArrowFocusRef = useRef<Element | null>(null);
+  const repeatCartArrow = useTableArrowRepeat((direction) => {
+    if (document.activeElement !== cartArrowFocusRef.current) return false;
+    if (document.querySelector('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]')) return false;
+    if (saleShortcutTargetIsEditable(document.activeElement) && document.activeElement !== searchInputRef.current) return false;
+    if (saleLineSelectionAfterArrow(lines, selectedLineId, direction) === selectedLineId) return false;
+    setSelectedLineId((current) => saleLineSelectionAfterArrow(lines, current, direction));
+  }, cashSessionReady && !paymentLocked && !pendingRecoveryBlocked && !previousTicketImportBusy && lines.length > 0);
+
   saleShortcutHandlerRef.current = (event: KeyboardEvent) => {
       if (!cashSessionReady) return;
-      if (event.repeat || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      if ((event.repeat && event.key !== "ArrowUp" && event.key !== "ArrowDown")
+          || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (pendingRecoveryBlocked) return;
       if (previousTicketImportBusyRef.current) return;
       const command = saleCommandFromKeyboard(event);
@@ -5400,7 +5418,8 @@ function SaleScreenContent({
       }
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         if (paymentLocked || lines.length === 0) return;
-        setSelectedLineId(saleLineSelectionAfterArrow(lines, selectedLineId, event.key));
+        if (!event.repeat) cartArrowFocusRef.current = document.activeElement;
+        repeatCartArrow(event);
         event.preventDefault();
         return;
       }

@@ -67,6 +67,26 @@ function installHardwareBridge(overrides: Partial<HardwareBridge> = {}) {
 }
 
 describe("WarehouseDocumentDialog", () => {
+  it("prepares the first document line and accepts arrows directly from the scanner", async () => {
+    const documentProducts = [1, 2, 3].map(n => ({ ...products[0], id: `product-${n}`, code: `P${n}`, name: `Producto ${n}` }));
+    const save = vi.fn();
+    const confirm = vi.fn();
+    const view = render(<WarehouseDocumentDialog mode="output" open app="venta" products={documentProducts}
+      warehouses={warehouses} customers={customers} suppliers={suppliers} onClose={vi.fn()} onConfirmed={confirm}
+      persistence={{ save, confirm }} document={{ ...existingDocument,
+        lines: documentProducts.map(product => ({ productId: product.id, quantity: 1 })) }} />);
+    const rows = view.container.querySelectorAll<HTMLTableRowElement>("tr[data-line-index]");
+    expect(rows[0].classList.contains("warehouse-document-line-selected")).toBe(true);
+    const scanner = view.getByRole("textbox", { name: "Buscar producto" });
+    expect(globalThis.document.activeElement).toBe(scanner);
+    fireEvent.keyDown(globalThis.document.activeElement!, { key: "ArrowDown" });
+    fireEvent.keyUp(scanner, { key: "ArrowDown" });
+    expect(rows[1].classList.contains("warehouse-document-line-selected")).toBe(true);
+    expect(globalThis.document.activeElement).toBe(scanner);
+    expect(save).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => {
     localStorage.clear();
     vi.mocked(apiRequest).mockReset();

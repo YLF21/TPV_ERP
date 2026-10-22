@@ -968,7 +968,13 @@ describe("SalesReportScreen", () => {
             hasMore: false
           });
         }
-        return Promise.resolve({ items: [], nextCursor: "invoice-page-2", hasMore: true });
+        return Promise.resolve({
+          items: [{
+            id: "invoice-1", tipo: "FACTURA_VENTA", estado: "CONFIRMADO",
+            numero: "FV-AUTO-1", fecha: todayIso, total: "12.10"
+          }],
+          nextCursor: "invoice-page-2", hasMore: true
+        });
       }
       if (path === "/tickets" || path === "/warehouses") return Promise.resolve([]);
       return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
@@ -988,6 +994,10 @@ describe("SalesReportScreen", () => {
     );
 
     expect(await screen.findByText("FV-AUTO-2")).toBeVisible();
+    const firstRow = screen.getByText("FV-AUTO-1").closest("tr");
+    await waitFor(() => expect(firstRow).toHaveFocus());
+    expect(firstRow).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("FV-AUTO-2").closest("tr")).toHaveAttribute("aria-selected", "false");
     expect(request).toHaveBeenCalledWith(
       expect.stringContaining("cursor=invoice-page-2"),
       { token: "token" }
@@ -2065,7 +2075,7 @@ describe("SalesReportScreen", () => {
     expect(screen.queryByText("F5: selecciona una fila · F6/F7: líneas visibles")).not.toBeInTheDocument();
   });
 
-  it("does not select the first warehouse row automatically and opens its lines on double click", async () => {
+  it("selects and focuses the first warehouse row without opening its lines until double click", async () => {
     const now = new Date();
     const today = [
       now.getFullYear(),
@@ -2124,10 +2134,11 @@ describe("SalesReportScreen", () => {
     expect(within(reconciliation).getByText("Unidades de entrada").parentElement).toHaveTextContent("1");
     expect(within(reconciliation).getByText("Unidades de salida").parentElement).toHaveTextContent("No disponible");
     expect(within(reconciliation).getByText("Balance de unidades").parentElement).toHaveTextContent("No disponible");
-    expect(row).not.toHaveClass("selected");
-    expect(row).toHaveAttribute("aria-selected", "false");
-    fireEvent.click(row!);
+    await waitFor(() => expect(row).toHaveFocus());
     expect(row).toHaveClass("selected");
+    expect(row).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("dialog", { name: "ENT-NO-SELECT" })).not.toBeInTheDocument();
+    expect(request).not.toHaveBeenCalledWith(expect.stringMatching(/^\/documents\//), expect.anything());
     fireEvent.doubleClick(row!);
     expect(await screen.findByRole("heading", { name: "ENT-NO-SELECT" })).toBeVisible();
     expect(await screen.findByText("CAF-001")).toBeVisible();

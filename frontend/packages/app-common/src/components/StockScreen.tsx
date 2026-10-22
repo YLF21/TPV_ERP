@@ -7,7 +7,7 @@ import { ReportDateRangeFilter, isValidReportDate, type ReportDateRange } from "
 import "./ErpClassicWindow.css";
 import "./StockTopSales.css";
 import "./StockListControls.css";
-import { Children, Fragment, cloneElement, isValidElement, useEffect, useMemo, useRef, useState } from "react";
+import { Children, Fragment, cloneElement, isValidElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, CSSProperties, FocusEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement, ReactNode, UIEvent } from "react";
 import {
   ChartLineUp,
@@ -113,6 +113,9 @@ import { sortTableRows, useTableSortPreference, type TableSort } from "./tableSo
 import { sortProductTableRows } from "./productCodeSorting";
 import { tableLayoutGridTemplate, visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
+import { useTableArrowRepeat, type TableArrowDirection } from "./useTableArrowRepeat";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
+import { useTableInitialFocus } from "./useTableInitialFocus";
 import {
   SharedExcelImportDialog,
   type SharedExcelImportAcceptedRow,
@@ -2244,6 +2247,10 @@ export function StockScreen({
   const [selectedFamily, setSelectedFamily] = useState({ family: "", subfamily: "" });
   const [selectedStockIndex, setSelectedStockIndex] = useState(0);
   const [selectedTopSalesKey, setSelectedTopSalesKey] = useState<string | null>(null);
+  const selectedStockIndexRef = useRef(selectedStockIndex);
+  const selectedTopSalesKeyRef = useRef(selectedTopSalesKey);
+  selectedStockIndexRef.current = selectedStockIndex;
+  selectedTopSalesKeyRef.current = selectedTopSalesKey;
   const [topSalesDetailRows, setTopSalesDetailRows] = useState<StockInventoryRow[]>([]);
   const [topSalesDetailNotice, setTopSalesDetailNotice] = useState("");
   const topSalesDetailRequest = useRef<AbortController | null>(null);
@@ -2831,9 +2838,65 @@ export function StockScreen({
   }, locale), [filteredTopSalesRows, locale, topSalesRanks, topSalesSorting.sort]);
   const selectedTopSalesRow = visibleTopSalesRows.find((row) => topSalesRowKey(row) === selectedTopSalesKey)
     ?? visibleTopSalesRows[0] ?? null;
+  useTableInitialFocus(stockTableRef, ":scope > article.stock-row", {
+    enabled: app !== "pda" && !partyDirectory
+      && (selectedView === "stock.topSales" || isStockInventoryTableView(selectedView)),
+    ready: selectedView === "stock.topSales" ? visibleTopSalesRows.length > 0 : stockDataCurrent,
+    scopeKey: `${app}:${selectedView}:${partyDirectory ?? ""}:${stockSettingsMode ?? ""}`,
+    focusTarget: "container",
+    onSelect: () => {
+      if (selectedView === "stock.topSales") {
+        const key = visibleTopSalesRows[0] ? topSalesRowKey(visibleTopSalesRows[0]) : null;
+        selectedTopSalesKeyRef.current = key;
+        setSelectedTopSalesKey(key);
+      } else {
+        selectedStockIndexRef.current = 0;
+        setSelectedStockIndex(0);
+      }
+    },
+  });
+  const handleTableArrowRepeat = useTableArrowRepeat((direction: TableArrowDirection) => {
+    const table = stockTableRef.current;
+    const focus = document.activeElement;
+    if (app === "pda" || partyDirectory || !table || !focus || !table.contains(focus)
+      || (focus instanceof Element && focus.closest('[role="columnheader"], [role="menu"]'))
+      || document.querySelector('[aria-modal="true"], [role="dialog"], [role="alertdialog"], [role="menu"]')
+      || detailRow || productCreateOpen || retirementRow || inventoryFilterOpen || topSalesFilterOpen) return false;
+
+    if (selectedView === "stock.topSales") {
+      const current = visibleTopSalesRows.findIndex((row) => topSalesRowKey(row) === selectedTopSalesKeyRef.current);
+      if (current < 0) return false;
+      const next = nextStockSelectedIndex(current, visibleTopSalesRows.length, direction);
+      if (next === current) return false;
+      const key = topSalesRowKey(visibleTopSalesRows[next]);
+      selectedTopSalesKeyRef.current = key;
+      setSelectedTopSalesKey(key);
+      return;
+    }
+    if (!isStockInventoryTableView(selectedView) || visibleRows.length === 0) return false;
+    const current = selectedStockIndexRef.current;
+    const next = nextStockSelectedIndex(current, visibleRows.length, direction);
+    if (next === current) return false;
+    selectedStockIndexRef.current = next;
+    setSelectedStockIndex((index) => nextStockSelectedIndex(index, visibleRows.length, direction));
+  }, app !== "pda" && !partyDirectory
+    && (selectedView === "stock.topSales" || isStockInventoryTableView(selectedView)));
   useEffect(() => {
-    setSelectedTopSalesKey(selectedTopSalesRow ? topSalesRowKey(selectedTopSalesRow) : null);
-  }, [selectedTopSalesRow]);
+    setSelectedTopSalesKey(current => visibleTopSalesRows.some(row => topSalesRowKey(row) === current)
+      ? current : visibleTopSalesRows[0] ? topSalesRowKey(visibleTopSalesRows[0]) : null);
+  }, [visibleTopSalesRows]);
+  useLayoutEffect(() => {
+    if (app === "pda" || partyDirectory) return;
+    const table = stockTableRef.current;
+    if (!table) return;
+    const rowIndex = selectedView === "stock.topSales"
+      ? visibleTopSalesRows.findIndex((row) => topSalesRowKey(row) === selectedTopSalesKey)
+      : isStockInventoryTableView(selectedView) ? selectedStockIndex : -1;
+    if (rowIndex < 0) return;
+    const row = table.querySelectorAll<HTMLElement>(":scope > article.stock-row")[rowIndex];
+    if (!row) return;
+    ensureTableRowVisible(table, row);
+  }, [app, partyDirectory, selectedStockIndex, selectedTopSalesKey, selectedView, visibleRows, visibleTopSalesRows]);
   useEffect(() => {
     topSalesDetailRequest.current?.abort();
     setTopSalesDetailNotice("");
@@ -3381,9 +3444,12 @@ export function StockScreen({
     if (selectedView === "stock.topSales") {
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         event.preventDefault();
-        const current = visibleTopSalesRows.indexOf(selectedTopSalesRow!);
-        const row = visibleTopSalesRows[nextStockSelectedIndex(current, visibleTopSalesRows.length, event.key)];
-        if (row) selectTopSalesRow(row);
+        if (app !== "pda") handleTableArrowRepeat(event);
+        else {
+          const current = visibleTopSalesRows.indexOf(selectedTopSalesRow!);
+          const row = visibleTopSalesRows[nextStockSelectedIndex(current, visibleTopSalesRows.length, event.key)];
+          if (row) selectTopSalesRow(row);
+        }
       } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
         event.preventDefault();
         event.currentTarget.scrollLeft += event.key === "ArrowRight" ? 96 : -96;
@@ -3395,7 +3461,8 @@ export function StockScreen({
     }
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       event.preventDefault();
-      setSelectedStockIndex((current) => nextStockSelectedIndex(current, visibleRows.length, event.key));
+      if (app !== "pda") handleTableArrowRepeat(event);
+      else setSelectedStockIndex((current) => nextStockSelectedIndex(current, visibleRows.length, event.key));
       return;
     }
     if (event.key === "ArrowLeft" || event.key === "ArrowRight") {

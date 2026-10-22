@@ -18,6 +18,7 @@ import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpF
 import { GestionSearchFrame } from "../../../packages/app-common/src/components/GestionSearchFrame";
 import { ReportDateRangeFilter, type ReportDateRange } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
 import { useReportDateOptions } from "../../../packages/app-common/src/components/useReportDateOptions";
+import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
 import {
   loadVoucherDetail,
   loadVoucherPrintDocument,
@@ -73,6 +74,7 @@ export function VoucherManagementScreen({ locale, session, terminalContext, t }:
   const [reactivating, setReactivating] = useState(false);
   const [reload, setReload] = useState(0);
   const tableRef = useRef<HTMLDivElement>(null);
+  const handleRowArrowFocus = useTableRowArrowFocus(tableRef, ".gestion-voucher-row[role='row']:not(.head)", !loading && !reactivating);
   const requestId = useRef(0);
   const listBusy = useRef(false);
   const nextPage = useRef(0);
@@ -275,7 +277,7 @@ export function VoucherManagementScreen({ locale, session, terminalContext, t }:
                   <div className="gestion-voucher-row head" role="row" style={tableStyle}>
                     {visibleColumns.map((column) => <TableLayoutHeaderCell as="span" column={column} key={column.key} resizeLabel={`${t("gestion.vouchers.resize")} ${t(`gestion.vouchers.column.${column.key}`)}`} onReorder={tableLayout.reorderColumns} onMove={tableLayout.moveColumn} onResize={tableLayout.resizeColumn}>{t(`gestion.vouchers.column.${column.key}`)}</TableLayoutHeaderCell>)}
                   </div>
-                  {rows.map((voucher) => <button type="button" className={`gestion-voucher-row ${selected?.voucher.code === voucher.code ? "selected" : ""}`} role="row" style={tableStyle} key={voucher.code} onClick={() => void openDetail(voucher.code)}>{visibleColumns.map((column) => <span role="cell" data-column-key={column.key} key={column.key}>{renderCell(voucher, column.key)}</span>)}</button>)}
+                  {rows.map((voucher) => <button type="button" className={`gestion-voucher-row ${selected?.voucher.code === voucher.code ? "selected" : ""}`} role="row" style={tableStyle} key={voucher.code} onKeyDown={handleRowArrowFocus} onClick={() => void openDetail(voucher.code)}>{visibleColumns.map((column) => <span role="cell" data-column-key={column.key} key={column.key}>{renderCell(voucher, column.key)}</span>)}</button>)}
                   {loading && <div className={`gestion-voucher-state${rows.length ? " gestion-voucher-state--more" : ""}`} role="status">{t("common.loading")}</div>}
                   {!loading && error && <div className={`gestion-voucher-state error${rows.length ? " gestion-voucher-state--more" : ""}`} role="alert">{t("gestion.vouchers.loadError")}</div>}
                   {!loading && !error && rows.length === 0 && <div className="gestion-voucher-state">{t("gestion.vouchers.empty")}</div>}

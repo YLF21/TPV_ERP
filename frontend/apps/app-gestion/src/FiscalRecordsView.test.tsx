@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import "@testing-library/jest-dom/vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { addFiscalRecordIdsWithinLimit, FiscalRecordsView, trustedQrUrl } from "./FiscalRecordsView";
 import * as api from "./fiscalRecordsApi";
@@ -35,6 +36,31 @@ describe("FiscalRecordsView", () => {
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
     vi.mocked(api.loadFiscalRecordsCursor).mockResolvedValue({ items: [{ recordId: "record-1", installationId: "i", storeId: "s", sequence: 1, operation: "ALTA", documentType: "F1", number: "T-1", issueDate: "2026-08-26", generatedAt: "2026-08-26T10:00:00Z", fiscalMode: "NO_VERIFACTU", totalAmount: 12.5, hash: "1234567890ABCDEF1234567890ABCDEF", submissionStatus: "ACEPTADO" }], size: 25, nextCursor: "cursor-2", previousCursor: null, hasNext: true, hasPrevious: false, snapshotSequence: 1 });
     vi.mocked(api.loadFiscalRecord).mockResolvedValue({ recordId: "record-1", installationId: "i", storeId: "s", sequence: 1, operation: "ALTA", documentType: "F1", number: "T-1", issueDate: "2026-08-26", generatedAt: "2026-08-26T10:00:00Z", fiscalMode: "NO_VERIFACTU", hash: "1234567890ABCDEF1234567890ABCDEF", snapshotHash: "snapshot-hash-1234567890", chainId: "chain", companyId: "company", timezone: "Europe/Madrid", issuerTaxId: "B12345678", formatVersion: "1", algorithmVersion: "1", applicationVersion: "dev", relations: [{ relatedRecordId: "record-2", type: "RECTIFICA" }], adjacentChainStatus: "ADJACENT_VALID", nextRecordId: "record-2", artifact: { fiscalMode: "NO_VERIFACTU", environment: "TEST", sandbox: true, xmlHash: "xml-hash", qrHash: "qr-hash", qrUrl: "https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQRNoVerifactu?nif=B12345678&numserie=T-1&fecha=26-08-2026&importe=12.50" }, document: { id: "doc-1", storeId: "s", type: "F1", status: "CONFIRMADO", number: "T-1", issueDate: "2026-08-26" }, submission: { status: "ACEPTADO", updatedAt: "2026-08-26T10:00:00Z" } });
+  });
+
+  it("moves row focus without opening fiscal detail or selecting checkboxes", async () => {
+    const items = Array.from({ length: 4 }, (_, index) => ({ recordId: `record-${index}`, installationId: "i", storeId: "s",
+      sequence: index + 1, operation: "ALTA" as const, documentType: "F1" as const, number: `T-${index}`, issueDate: "2026-08-26",
+      generatedAt: "2026-08-26T10:00:00Z", fiscalMode: "NO_VERIFACTU" as const, totalAmount: 12.5, hash: `hash-${index}` }));
+    vi.mocked(api.loadFiscalRecordsCursor).mockResolvedValue({ items, size: 25, nextCursor: null, previousCursor: null,
+      hasNext: false, hasPrevious: false, snapshotSequence: 4 });
+    render(<FiscalRecordsView locale="es" revision={0} t={t} canManage />);
+    await screen.findByText("T-0");
+    const rows = Array.from(document.querySelectorAll<HTMLTableRowElement>("tr[data-fiscal-record-row]"));
+    expect(rows[0]).toHaveFocus();
+    expect(api.loadFiscalRecord).not.toHaveBeenCalled();
+    rows[0].focus();
+    vi.useFakeTimers();
+    try {
+      fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+      act(() => { vi.advanceTimersByTime(250); });
+      expect(rows[3]).toHaveFocus();
+      fireEvent.keyUp(rows[3], { key: "ArrowDown" });
+      act(() => { vi.advanceTimersByTime(500); });
+      expect(rows[3]).toHaveFocus();
+      expect(api.loadFiscalRecord).not.toHaveBeenCalled();
+      expect(screen.getAllByRole("checkbox").every((checkbox) => !(checkbox as HTMLInputElement).checked)).toBe(true);
+    } finally { vi.useRealTimers(); }
   });
 
   it("diferencia la carga inicial y no pinta una tabla vacía", () => {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -44,6 +44,21 @@ beforeEach(() => {
 afterEach(() => { cleanup(); localStorage.clear(); });
 
 describe("Promotion list filters and detail", () => {
+  it("focuses the first promotion and moves with arrows without running actions", async () => {
+    render(<PromotionListScreen {...props} app="gestion" locale="es" />);
+    const first = await screen.findByRole("button", { name: "Pack café" });
+    const second = screen.getByRole("button", { name: "Agua" });
+    await waitFor(() => expect(first).toHaveFocus());
+    expect(first).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    expect(second).toHaveFocus();
+    expect(second).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyUp(second, { key: "ArrowDown" });
+    fireEvent.keyDown(second, { key: "ArrowUp" });
+    expect(first).toHaveFocus();
+    expect(vi.mocked(apiRequest).mock.calls.some(([path]) => String(path).includes("/activate"))).toBe(false);
+  });
+
   it("filters without accents and clearing the query preserves the selected promotion", async () => {
     render(<PromotionListScreen {...props} app="gestion" locale="es" />);
     const water = await screen.findByRole("button", { name: "Agua" });

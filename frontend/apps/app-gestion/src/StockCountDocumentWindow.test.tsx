@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserSession } from "../../../packages/app-common/src/types";
 import { apiRequest } from "../../../packages/app-common/src/api/client";
@@ -55,6 +55,32 @@ describe("StockCountDocumentWindow", () => {
       ...draft, version: input.expectedVersion + 1,
       lines: input.lines.map((line) => ({ ...draft.lines.find((item) => item.productId === line.productId)!, ...line }))
     }));
+  });
+
+  it("repeats only the product suggestion highlight while the arrow is held", async () => {
+    const catalog = Array.from({ length: 5 }, (_, index) => ({ ...products[0], id: `item-${index}`, code: `ITEM-${index}`, name: `Artículo ${index}` }));
+    vi.mocked(apiRequest).mockImplementation(async (path) => {
+      if (path === "/stock-counts/resources") return { products: catalog, families: [], warehouses } as never;
+      if (path.startsWith("/stock-counts/balances?")) return [] as never;
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    mount();
+    const input = screen.getByRole("combobox");
+    await waitFor(() => expect(input).toBeEnabled());
+    input.focus();
+    vi.useFakeTimers();
+    try {
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      expect(input).toHaveAttribute("aria-activedescendant", "inventory-product-1");
+      act(() => { vi.advanceTimersByTime(250); });
+      expect(input).toHaveAttribute("aria-activedescendant", "inventory-product-3");
+      fireEvent.keyUp(input, { key: "ArrowDown" });
+      act(() => { vi.advanceTimersByTime(500); });
+      expect(input).toHaveAttribute("aria-activedescendant", "inventory-product-3");
+      expect(screen.queryByText("Artículo 3", { exact: false })).toBeInTheDocument();
+      expect(api.saveStockCountDraft).not.toHaveBeenCalled();
+      expect(screen.queryByRole("textbox", { name: "Cantidad contada ITEM-3" })).not.toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
   });
 
   it("keeps a blank count pending and an explicit zero counted when saving a draft", async () => {

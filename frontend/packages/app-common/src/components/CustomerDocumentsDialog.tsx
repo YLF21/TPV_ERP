@@ -14,6 +14,9 @@ import { customerDocumentAmount } from "./customerDocumentAmount";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
 import { ReportDateRangeSummary } from "./ReportDateRangeFilter";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import "./CustomerDocumentsDialog.css";
 import "./NativeDateFilterSummary.css";
 
@@ -97,6 +100,32 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
   const rowHeight = app === "gestion" ? 36 : 44;
   const start = Math.max(0, Math.floor(scrollTop / rowHeight) - 5);
   const end = Math.min(rows.length, start + Math.ceil(viewportHeight / rowHeight) + 12);
+  const arrowContext = JSON.stringify([customer.id, session.accessToken, tab, allowed, filters, sort]);
+  const repeatArrow = useTableArrowRepeat((direction) => {
+    if (!active || !allowed || model347Open || errorKey || !page
+      || readContextRef.current?.key !== arrowContext
+      || document.activeElement !== bodyRef.current || !rows.length) return false;
+    if (loading) return true;
+    const index = rows.findIndex((row) => row.id === selectedId);
+    const next = Math.max(0, Math.min(rows.length - 1, index + (direction === "ArrowDown" ? 1 : -1)));
+    if (next === index) {
+      if (direction === "ArrowDown" && next === rows.length - 1) loadMore();
+      return direction === "ArrowDown" && Boolean(page.hasMore);
+    }
+    setSelectedId(rows[next].id);
+    if (next === rows.length - 1) {
+      loadMore();
+      return Boolean(page.hasMore);
+    }
+  }, active && allowed && !model347Open && !Boolean(errorKey) && Boolean(page)
+    && readContextRef.current?.key === arrowContext);
+  useTableInitialFocus(bodyRef, '[role="row"][aria-rowindex="2"]', {
+    enabled: active && allowed && !model347Open,
+    ready: !loading && !Boolean(errorKey) && Boolean(page),
+    scopeKey: `${customer.id}:${tab}`,
+    onSelect: () => setSelectedId(rows[0]?.id ?? null),
+    focusTarget: "container",
+  });
 
   useLayoutEffect(() => {
     // Moving a DOM node can clear browser focus even though React keeps its key.
@@ -246,6 +275,12 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
     setScrollTop(body.scrollTop);
   }, [selectedId]);
 
+  useLayoutEffect(() => {
+    if (bodyRef.current && selectedRowRef.current) {
+      ensureTableRowVisible(bodyRef.current, selectedRowRef.current);
+    }
+  }, [selectedId, start, end]);
+
   function label(column: Column) {
     if (column === "number") return t("receivables.column.document");
     if (column === "type") return t("customerDocuments.type");
@@ -387,12 +422,13 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
             <div role="rowgroup" className="customer-documents-table-body" ref={bodyRef} tabIndex={0} aria-label={t("customerDocuments.navigate")}
               onScroll={(event) => { const body = event.currentTarget; setScrollTop(body.scrollTop); if (body.scrollHeight - body.scrollTop - body.clientHeight < 160) loadMore(); }}
               onKeyDown={(event) => {
-                if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || event.ctrlKey || event.altKey || event.metaKey) return;
+                if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+                if (event.target !== event.currentTarget) return;
                 event.preventDefault(); event.stopPropagation();
+                if (event.key === "ArrowDown" || event.key === "ArrowUp") { repeatArrow(event); return; }
                 const rows = page?.items ?? [];
                 const index = rows.findIndex((row) => row.id === selectedId);
-                const next = event.key === "Home" ? 0 : event.key === "End" ? rows.length - 1
-                  : Math.max(0, Math.min(rows.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)));
+                const next = event.key === "Home" ? 0 : rows.length - 1;
                 setSelectedId(rows[next]?.id ?? null);
                 if (next >= rows.length - 1) loadMore();
               }}>

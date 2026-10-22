@@ -27,6 +27,7 @@ import {
 import { fiscalErrorMessage } from "./verifactuErrorPresentation";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { ReportDateRangeSummary } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
+import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
 
 const defectiveStatuses = ["RECHAZADO", "DEFECTUOSO", "ACEPTADO_CON_ERRORES"] as const;
 const defectiveSortColumns = ["sequence", "document", "documentType", "fiscalOperation", "issueDate", "status", "updatedAt", "errorCode"] as const;
@@ -100,6 +101,8 @@ export function VerifactuDefectiveRecordsView({
   const [filterError, setFilterError] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const request = useRef(0);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const handleRowArrow = useTableRowArrowFocus(tableScrollRef, "tbody tr", !loading && !error && !filtersOpen, filters.page);
 
   useEffect(() => {
     const requestId = ++request.current;
@@ -256,7 +259,7 @@ export function VerifactuDefectiveRecordsView({
         ) : !loading && page.items.length === 0 ? (
           <div className="gestion-verifactu-message">{t("verifactu.management.emptyDefective")}</div>
         ) : (
-          <div className="gestion-verifactu-table-scroll gestion-module-table">
+          <div ref={tableScrollRef} className="gestion-verifactu-table-scroll gestion-module-table">
           <table className="gestion-verifactu-table" aria-rowcount={page.totalElements}>
             <colgroup>
               {visibleColumns.map((column) => <col key={column.key} style={{ width: `${column.width}px` }} />)}
@@ -282,7 +285,7 @@ export function VerifactuDefectiveRecordsView({
               <th>{t("verifactu.resolution.actions")}</th>
             </tr></thead>
             <tbody>{page.items.map((item) => (
-              <tr key={item.recordId}>
+              <tr key={item.recordId} tabIndex={0} onKeyDown={handleRowArrow}>
                 {visibleColumns.map((column) => <td data-column-key={column.key} key={column.key}>{renderDefectiveCell(item, column.key, locale, timezone, t)}</td>)}
                 <td>
                     <button

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
+import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
 import {
   TableLayoutHeaderCell,
   useTableLayoutPreference,
@@ -139,6 +140,13 @@ export function FiscalComplianceView({
   const integrityController = useRef<AbortController | null>(null);
   const observedRequirementJobs = useRef(new Set<string>());
   const historyScope = useRef<{ revision: number; token?: string }>({ revision, token });
+  const eventsTableRef = useRef<HTMLDivElement>(null);
+  const exportHistoryTableRef = useRef<HTMLDivElement>(null);
+  const requirementsTableRef = useRef<HTMLDivElement>(null);
+  const [activeTable, setActiveTable] = useState<"events" | "exports" | "requirements">("events");
+  const handleEventArrow = useTableRowArrowFocus(eventsTableRef, "tbody tr", activeTable === "events" && !eventsLoading && !eventsError && !exportDialogOpen, eventsCursor);
+  const handleExportArrow = useTableRowArrowFocus(exportHistoryTableRef, "tbody tr", activeTable === "exports" && !exportHistoryLoading && !exportHistoryError && !exportDialogOpen, exportHistoryCursor);
+  const handleRequirementArrow = useTableRowArrowFocus(requirementsTableRef, "tbody tr", activeTable === "requirements" && !requirementsLoading && !requirementsError && !exportDialogOpen, requirementsCursor);
   const eventsTableLayout = useTableLayoutPreference({
     app: "gestion",
     username,
@@ -443,7 +451,7 @@ export function FiscalComplianceView({
           <div className="gestion-verifactu-message">{t("verifactu.compliance.eventsEmpty")}</div>
         ) : (
           <>
-          <div className="gestion-verifactu-table-scroll gestion-module-table">
+          <div ref={eventsTableRef} onFocusCapture={() => setActiveTable("events")} className="gestion-verifactu-table-scroll gestion-module-table">
             <table className="gestion-verifactu-table">
               <colgroup>{visibleEventColumns.map((column) => <col key={column.key} style={{ width: `${column.width}px` }} />)}</colgroup>
               <thead><tr>
@@ -461,7 +469,7 @@ export function FiscalComplianceView({
                 ))}
               </tr></thead>
               <tbody>{events.map((item) => (
-                <tr key={item.id}>
+                <tr key={item.id} tabIndex={0} onKeyDown={handleEventArrow}>
                   {visibleEventColumns.map((column) => (
                     <td className={column.key === "sequence" ? "numeric" : undefined} key={column.key}>
                       {column.key === "sequence" && item.sequence}
@@ -494,7 +502,7 @@ export function FiscalComplianceView({
         {exportHistoryError && <p className="gestion-verifactu-message error" role="alert">{t("verifactu.compliance.exportHistoryError")} <button type="button" className="gestion-module-action" onClick={() => setHistoryRefresh((value) => value + 1)}>{t("verifactu.exportJobs.retry")}</button></p>}
         {exportHistoryLoading && <p className="gestion-verifactu-message" role="status">{t("verifactu.exportJobs.loading")}</p>}
         {!exportHistoryLoading && !exportHistoryError && exportHistory.length === 0 && <p className="gestion-verifactu-message">{t("verifactu.exportJobs.empty")}</p>}
-        {!exportHistoryLoading && !exportHistoryError && exportHistory.length > 0 && <><div className="gestion-verifactu-table-scroll gestion-module-table">
+        {!exportHistoryLoading && !exportHistoryError && exportHistory.length > 0 && <><div ref={exportHistoryTableRef} onFocusCapture={() => setActiveTable("exports")} className="gestion-verifactu-table-scroll gestion-module-table">
           <table className="gestion-verifactu-table">
             <colgroup>{visibleExportColumns.map((column) => <col key={column.key} style={{ width: `${column.width}px` }} />)}</colgroup>
             <thead><tr>{visibleExportColumns.map((column) => (
@@ -509,7 +517,7 @@ export function FiscalComplianceView({
                 {exportColumnLabel(column.key, t)}
               </TableLayoutHeaderCell>
             ))}</tr></thead>
-            <tbody>{exportHistory.map((item) => <tr key={item.exportId}>
+            <tbody>{exportHistory.map((item) => <tr key={item.exportId} tabIndex={0} onKeyDown={handleExportArrow}>
               {visibleExportColumns.map((column) => (
                 <td className={column.key === "records" ? "numeric" : undefined} key={column.key}>
                   {column.key === "kind" && (item.kind === "BILLING" ? t("verifactu.compliance.exportBilling") : t("verifactu.compliance.exportEvents"))}
@@ -595,7 +603,7 @@ export function FiscalComplianceView({
           {requirementsError && <p className="gestion-verifactu-message error" role="alert">{t("verifactu.compliance.requirementsError")} <button type="button" className="gestion-module-action" onClick={() => setHistoryRefresh((value) => value + 1)}>{t("verifactu.exportJobs.retry")}</button></p>}
           {requirementsLoading && <p className="gestion-verifactu-message" role="status">{t("verifactu.exportJobs.loading")}</p>}
           {!requirementsLoading && !requirementsError && requirements.length === 0 && <p className="gestion-verifactu-message">{t("verifactu.exportJobs.empty")}</p>}
-          {!requirementsLoading && !requirementsError && requirements.length > 0 && <><div className="gestion-verifactu-table-scroll gestion-module-table">
+          {!requirementsLoading && !requirementsError && requirements.length > 0 && <><div ref={requirementsTableRef} onFocusCapture={() => setActiveTable("requirements")} className="gestion-verifactu-table-scroll gestion-module-table">
             <table className="gestion-verifactu-table">
               <colgroup>{visibleRequirementColumns.map((column) => <col key={column.key} style={{ width: `${column.width}px` }} />)}</colgroup>
               <thead><tr>{visibleRequirementColumns.map((column) => (
@@ -610,7 +618,7 @@ export function FiscalComplianceView({
                   {requirementColumnLabel(column.key, t)}
                 </TableLayoutHeaderCell>
               ))}</tr></thead>
-              <tbody>{requirements.map((item) => <tr key={item.id}>
+              <tbody>{requirements.map((item) => <tr key={item.id} tabIndex={0} onKeyDown={handleRequirementArrow}>
                 {visibleRequirementColumns.map((column) => (
                   <td key={column.key}>
                     {column.key === "reference" && <strong>{item.reference}</strong>}

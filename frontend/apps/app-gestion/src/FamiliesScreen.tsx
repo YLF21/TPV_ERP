@@ -1,5 +1,6 @@
 import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
+import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
 import { ArrowsLeftRight, PencilSimple, Plus, Trash } from "@phosphor-icons/react";
 import {
   useCallback,
@@ -313,6 +314,7 @@ function ProductTable({
   const visible = page?.items ?? [];
   const selection = selectedProducts;
   const selectedVisible = visible.filter((row) => selection.has(row.id)).length;
+  const repeatProductArrow = useTableRowArrowFocus(scrollRef, "tbody > tr[tabindex]", !loading && !error);
   useEffect(() => {
     if (headerRef.current)
       headerRef.current.indeterminate =
@@ -464,6 +466,11 @@ function ProductTable({
                     }}
                     onKeyDown={(event) => {
                       if (isInteractiveProductRowTarget(event.target)) return;
+                      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+                        event.preventDefault();
+                        repeatProductArrow(event);
+                        return;
+                      }
                       if (event.key !== "Enter" && event.key !== " ") return;
                       event.preventDefault();
                       onToggle(product);

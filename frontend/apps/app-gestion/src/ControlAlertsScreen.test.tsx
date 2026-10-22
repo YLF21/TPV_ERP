@@ -81,9 +81,34 @@ beforeEach(() => {
   vi.mocked(api.deleteControlRule).mockResolvedValue(undefined);
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 404 })));
 });
-afterEach(() => { cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { vi.useRealTimers(); cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
 
 describe("control alert timeline", () => {
+  it("repeats through current rows and stops when focus leaves the list", async () => {
+    vi.mocked(api.loadControlAlerts).mockResolvedValue(page([currentAlert, ...[2, 3, 4].map(index => ({ ...currentAlert, id: `alert-${index}`, documentNumber: `T-${index}` }))]));
+    renderScreen();
+    await waitFor(() => expect(screen.getAllByRole("row", { name: /T-/ })).toHaveLength(4));
+    const rows = screen.getAllByRole("row", { name: /T-/ });
+    expect(document.activeElement).toBe(rows[0]);
+    expect(api.loadControlAlert).not.toHaveBeenCalled();
+    rows[0].focus();
+    vi.useFakeTimers();
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(rows[1]);
+    await act(async () => { vi.advanceTimersByTime(180); });
+    expect(document.activeElement).toBe(rows[2]);
+    await act(async () => { vi.advanceTimersByTime(70); });
+    expect(document.activeElement).toBe(rows[3]);
+    fireEvent.keyUp(rows[3], { key: "ArrowDown" });
+    await act(async () => { vi.advanceTimersByTime(300); });
+    expect(document.activeElement).toBe(rows[3]);
+    expect(api.loadControlAlert).not.toHaveBeenCalled();
+    fireEvent.keyDown(rows[3], { key: "ArrowUp" });
+    expect(document.activeElement).toBe(rows[2]);
+    screen.getByRole("button", { name: "gestion.controlAlerts.refresh" }).focus();
+    await act(async () => { vi.advanceTimersByTime(300); });
+    expect(rows[2].getAttribute("aria-selected")).toBe("true");
+  });
   it.each(["en", "zh"] as const)("formats recorded amounts with the selected %s locale", async (locale) => {
     currentAlert = { ...currentAlert, type: "SALE_SCREEN_CLEARED", data: { lineCount: 4, total: 32.5 } };
     const t = createTranslator(locale);

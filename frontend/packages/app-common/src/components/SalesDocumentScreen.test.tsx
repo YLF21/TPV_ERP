@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TerminalContext, UserSession } from "../types";
 import { SalesDocumentScreen } from "./SalesDocumentScreen";
@@ -132,6 +132,68 @@ afterEach(() => {
 });
 
 describe("SalesDocumentScreen", () => {
+  it("moves across document lines for every repeated arrow and ignores repeated commands", async () => {
+    configureDocumentApi(["uno", "dos", "tres"].map((name, index) => ({
+      id: `product-${index + 1}`,
+      code: `P-00${index + 1}`,
+      name: `Producto ${name}`,
+      salePrice: 5,
+      active: true,
+      taxesIncluded: true,
+      taxRegime: "IVA",
+      taxPercentage: 21,
+    })));
+    render(<SalesDocumentScreen locale="es" session={session} terminalContext={terminalContext} />);
+    const quickEntry = await screen.findByLabelText(/entrada.*c.digo/i);
+    await waitFor(() => expect(quickEntry).toBeEnabled());
+    for (const code of ["P-001", "P-002", "P-003"]) {
+      fireEvent.change(quickEntry, { target: { value: code } });
+      fireEvent.submit(quickEntry.closest("form")!);
+    }
+    const first = screen.getByText("Producto uno").closest("tr")!;
+    const second = screen.getByText("Producto dos").closest("tr")!;
+    const last = screen.getByText("Producto tres").closest("tr")!;
+    expect(last).toHaveClass("selected");
+    const linesViewport = document.querySelector<HTMLElement>(".sales-document-lines")!;
+    linesViewport.scrollTop = 100;
+    Object.defineProperties(linesViewport, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 500 },
+    });
+    vi.spyOn(linesViewport, "getBoundingClientRect").mockReturnValue({ top: 0, bottom: 100 } as DOMRect);
+    vi.spyOn(first, "getBoundingClientRect").mockReturnValue({ top: -20, bottom: 0 } as DOMRect);
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.keyDown(window, { key: "ArrowUp" });
+      expect(second).toHaveClass("selected");
+      fireEvent.keyDown(window, { key: "ArrowUp", repeat: true });
+      act(() => vi.advanceTimersByTime(179));
+      expect(second).toHaveClass("selected");
+      act(() => vi.advanceTimersByTime(1));
+      expect(first).toHaveClass("selected");
+      expect(linesViewport.scrollTop).toBe(80);
+      act(() => vi.advanceTimersByTime(70));
+      expect(first).toHaveClass("selected");
+      fireEvent.keyUp(window, { key: "ArrowUp" });
+      fireEvent.keyDown(window, { key: "ArrowDown" });
+      expect(second).toHaveClass("selected");
+      act(() => vi.advanceTimersByTime(180));
+      expect(last).toHaveClass("selected");
+      fireEvent.keyUp(window, { key: "ArrowDown" });
+      act(() => vi.advanceTimersByTime(500));
+      expect(last).toHaveClass("selected");
+    } finally {
+      vi.useRealTimers();
+    }
+
+    fireEvent.keyDown(window, { key: "End", repeat: true });
+    fireEvent.keyDown(window, { key: "PageDown", repeat: true });
+    fireEvent.keyDown(window, { key: "+", code: "NumpadAdd", ctrlKey: true, repeat: true });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(within(last).getByText("1")).toBeInTheDocument();
+  });
+
   it("shows the actual SaaS store code in its own footer and omits invalid values", () => {
     configureDocumentApi([]);
     const view = render(<SalesDocumentScreen locale="es" session={session}

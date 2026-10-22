@@ -53,6 +53,23 @@ afterEach(() => {
 });
 
 describe("CashCurrentBalancesScreen", () => {
+  it("starts on the first balance row and repeats focus without changing the snapshot", async () => {
+    vi.mocked(api.loadCashCurrentBalances).mockResolvedValue({ ...snapshot, terminals: Array.from({ length: 4 }, (_, index) => ({
+      ...snapshot.terminals[0], terminalId: `terminal-${index}`, terminalName: `TPV ${index}`
+    })) });
+    render(<CashCurrentBalancesScreen session={session(["CASH_READ"])} t={(key) => key} />);
+    await screen.findByText("TPV 0");
+    const rows = Array.from(document.querySelectorAll<HTMLElement>(".gestion-cash-balances-body > [role='row']"));
+    expect(document.activeElement).toBe(rows[0]);
+    vi.useFakeTimers();
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    act(() => { vi.advanceTimersByTime(250); });
+    expect(document.activeElement).toBe(rows[3]);
+    fireEvent.keyUp(rows[3], { key: "ArrowDown" });
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(document.activeElement).toBe(rows[3]);
+    expect(api.loadCashCurrentBalances).toHaveBeenCalledTimes(1);
+  });
   it("shows the complete expected cash instead of cash sales alone", async () => {
     render(<CashCurrentBalancesScreen session={session(["APP_GESTION_ACCESS", "CASH_READ"])} t={(key) => key} />);
 
@@ -81,10 +98,13 @@ describe("CashCurrentBalancesScreen", () => {
     render(<CashCurrentBalancesScreen session={session(["APP_GESTION_ACCESS", "CASH_READ"])} t={(key) => key} />);
     await act(async () => { await Promise.resolve(); });
     expect(api.loadCashCurrentBalances).toHaveBeenCalledTimes(1);
+    const rows = Array.from(document.querySelectorAll<HTMLElement>(".gestion-cash-balances-body > [role='row']"));
+    rows[1].focus();
 
     await act(async () => { await vi.advanceTimersByTimeAsync(3_000); });
 
     expect(api.loadCashCurrentBalances).toHaveBeenCalledTimes(2);
+    expect(document.activeElement).toBe(rows[1]);
   });
 
   it("keeps the last snapshot visible when a later refresh fails", async () => {

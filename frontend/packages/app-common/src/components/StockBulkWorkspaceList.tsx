@@ -8,6 +8,9 @@ import { visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import { sortTableRows, useTableSortPreference } from "./tableSorting";
 import { userCanManageStockProducts } from "./stockAccess";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 
 export const STOCK_BULK_NEW_SHORTCUT = "F5" as const;
 
@@ -118,9 +121,24 @@ export function StockBulkWorkspaceList({
     dateStyle: "short",
     timeStyle: "short"
   });
+  const tableRef = useRef<HTMLDivElement>(null);
+  const repeatArrow = useTableArrowRepeat((direction) => {
+    if (busy || document.activeElement !== tableRef.current) return false;
+    const nextId = nextStockBulkDraftId(sortedDrafts, selectedId, direction === "ArrowDown" ? 1 : -1);
+    if (!nextId || nextId === selectedId) return false;
+    onSelect(nextId);
+  }, !busy);
+  useTableInitialFocus(tableRef, "tbody tr[data-draft-id]", {
+    enabled: app !== "pda",
+    ready: !busy,
+    scopeKey: "workspaces",
+    onSelect: (row) => { if (row.dataset.draftId) onSelect(row.dataset.draftId); },
+    focusTarget: "container",
+  });
 
   useEffect(() => {
-    if (selectedId) rowRefs.current.get(selectedId)?.scrollIntoView({ block: "nearest" });
+    const row = selectedId ? rowRefs.current.get(selectedId) : null;
+    if (tableRef.current && row) ensureTableRowVisible(tableRef.current, row);
   }, [selectedId]);
 
   useEffect(() => {
@@ -141,10 +159,10 @@ export function StockBulkWorkspaceList({
     if (event.target !== event.currentTarget) {
       return;
     }
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+    if ((event.key === "ArrowUp" || event.key === "ArrowDown")
+      && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
       event.preventDefault();
-      const nextId = nextStockBulkDraftId(sortedDrafts, selectedId, event.key === "ArrowDown" ? 1 : -1);
-      if (nextId) onSelect(nextId);
+      repeatArrow(event);
       return;
     }
     if (event.key === "Enter" && selectedDraft) {
@@ -227,8 +245,8 @@ export function StockBulkWorkspaceList({
       </header>
 
       <div
+        ref={tableRef}
         className="stock-bulk-workspace-table-wrap"
-        autoFocus
         tabIndex={0}
         onKeyDown={handleKeyDown}
         aria-label={t("stock.bulkEdit.workspace.table")}
@@ -266,6 +284,7 @@ export function StockBulkWorkspaceList({
               return (
                 <tr
                   key={draft.id}
+                  data-draft-id={draft.id}
                   ref={(element) => {
                     if (element) rowRefs.current.set(draft.id, element);
                     else rowRefs.current.delete(draft.id);

@@ -3,6 +3,9 @@ import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { ErpSelect, type LocaleCode, type UserSession } from "@tpverp/app-common";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { ReportDateRangeFilter, type ReportDateRange } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
+import { useTableArrowRepeat } from "../../../packages/app-common/src/components/useTableArrowRepeat";
+import { ensureTableRowVisible } from "../../../packages/app-common/src/components/ensureTableRowVisible";
+import { useTableInitialFocus } from "../../../packages/app-common/src/components/useTableInitialFocus";
 import { loadCashActivityFilterOptions, type CashActivityFilterOptions } from "./cashActivityApi";
 import { loadCashAlertDetail, loadCashAlerts, reviewCashAlert, type CashAlert, type CashAlertDetail, type CashAlertFilters } from "./cashOpeningAlertsApi";
 
@@ -32,6 +35,10 @@ export function CashOpeningAlertsScreen({ session, t, locale, refreshSignal, onR
   const detailGeneration = useRef(0);
   const moreRef = useRef(false);
   const tableRef = useRef<HTMLDivElement>(null);
+  useTableInitialFocus(tableRef, "[data-cash-alert-key]", {
+    ready: !loading && !error && !saving && rows.length > 0,
+    onSelect: (row) => setSelectedId(row.dataset.cashAlertKey ?? null)
+  });
   const selected = rows.find(row => alertKey(row) === selectedId) ?? null;
   const showDetail = detailOpen && selected !== null;
   const canReview = session.permissions.includes("ADMIN") || session.permissions.includes("GESTION_CUENTAS");
@@ -138,6 +145,22 @@ export function CashOpeningAlertsScreen({ session, t, locale, refreshSignal, onR
     setDetailSelectionSignal(value => value + 1);
   }
 
+  const handleArrow = useTableArrowRepeat(direction => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || !tableRef.current?.contains(active)) return false;
+    const currentKey = active.dataset.cashAlertKey;
+    const index = rows.findIndex(row => alertKey(row) === currentKey);
+    const next = rows[index + (direction === "ArrowDown" ? 1 : -1)];
+    if (index < 0 || !next) return false;
+    const nextElement = Array.from(tableRef.current.querySelectorAll<HTMLElement>("[data-cash-alert-key]"))
+      .find(element => element.dataset.cashAlertKey === alertKey(next));
+    if (!nextElement) return false;
+    setSelectedId(alertKey(next));
+    nextElement.focus({ preventScroll: true });
+    ensureTableRowVisible(tableRef.current, nextElement);
+    return true;
+  });
+
   function closeDetail() {
     if (saving) return;
     setDetailOpen(false);
@@ -177,7 +200,7 @@ export function CashOpeningAlertsScreen({ session, t, locale, refreshSignal, onR
     <div className="gestion-cash-alerts-list">
     <div className="gestion-cash-alerts-table-wrap" role="table" aria-rowcount={rows.length} onScroll={onScroll} ref={tableRef}>
       <div className="gestion-cash-alert-row head" role="row">{["date", "time", "type", "terminal", "user", "expected", "counted", "difference", "status"].map(key => <span key={key} role="columnheader">{t(key === "date" || key === "time" || key === "terminal" || key === "user" ? `gestion.cashClosures.column.${key}` : `gestion.cashOpeningAlerts.${key}`)}</span>)}</div>
-      {rows.map(row => <div className={`gestion-cash-alert-row${alertKey(row) === selectedId ? " selected" : ""}`} role="row" aria-selected={alertKey(row) === selectedId} tabIndex={0} key={alertKey(row)} onClick={() => selectAlert(row)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectAlert(row); } }}>
+      {rows.map(row => <div className={`gestion-cash-alert-row${alertKey(row) === selectedId ? " selected" : ""}`} role="row" aria-selected={alertKey(row) === selectedId} tabIndex={0} data-cash-alert-key={alertKey(row)} key={alertKey(row)} onClick={() => selectAlert(row)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectAlert(row); } else if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); handleArrow(event); } }}>
         <span role="cell">{date.format(new Date(row.occurredAt))}</span><span role="cell">{time.format(new Date(row.occurredAt))}</span><span role="cell">{t(`gestion.cashOpeningAlerts.type.${row.type.toLowerCase()}`)}</span><span role="cell">{row.terminalName}</span><span role="cell">{row.userName}</span><span role="cell">{amount(row.expectedFund)}</span><span role="cell">{amount(row.countedFund)}</span><span role="cell" className={row.difference === null ? "" : row.difference < 0 ? "shortage" : row.difference > 0 ? "surplus" : ""}>{amount(row.difference)}</span><span role="cell">{t(`gestion.cashOpeningAlerts.${row.status.toLowerCase()}`)}</span>
       </div>)}
       {loading && <div className="gestion-cash-closures-state">{t("common.loading")}</div>}

@@ -6,6 +6,9 @@ import {
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { Eye, FilePdf, FileXls, PencilSimple, Plus, Trash } from "@phosphor-icons/react";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import {
@@ -370,6 +373,7 @@ export function WarehouseOperationsPanel({
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLElement>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const onErrorRef = useRef(onError);
 
@@ -686,6 +690,28 @@ export function WarehouseOperationsPanel({
     rowRefs.current.get(nextId)?.focus();
   }
 
+  const repeatDocumentArrow = useTableArrowRepeat((direction) => {
+    const focused = globalThis.document.activeElement;
+    const row = focused instanceof HTMLElement ? focused.closest<HTMLElement>("tr[data-operation-id]") : null;
+    if (!row || !panelRef.current?.contains(row)
+      || globalThis.document.querySelector('[aria-modal="true"], dialog[open]')) return false;
+    const currentId = row.dataset.operationId ?? "";
+    const nextId = warehouseOperationsNextId(visibleDocuments, currentId, direction);
+    if (!nextId || nextId === currentId) return false;
+    setSelectedId(nextId);
+    const nextRow = rowRefs.current.get(nextId);
+    nextRow?.focus({ preventScroll: true });
+    const container = nextRow?.closest("table")?.parentElement;
+    if (container && nextRow) ensureTableRowVisible(container, nextRow);
+    return true;
+  }, app !== "pda" && !dialogOpen && !deleting);
+  useTableInitialFocus(tableScrollRef, "tbody tr[data-operation-id]", {
+    enabled: app !== "pda" && !dialogOpen && !deleting,
+    ready: !loading && !Boolean(error),
+    scopeKey: `${mode}:${documentType ?? ""}`,
+    onSelect: (row) => setSelectedId(row.dataset.operationId ?? ""),
+  });
+
   function handleRowKeyDown(
     event: ReactKeyboardEvent<HTMLTableRowElement>,
     document: WarehouseOperationView
@@ -697,7 +723,8 @@ export function WarehouseOperationsPanel({
     }
     if (warehouseOperationsIsNavigationKey(event.key)) {
       event.preventDefault();
-      moveSelection(document, event.key);
+      if (app !== "pda" && (event.key === "ArrowUp" || event.key === "ArrowDown")) repeatDocumentArrow(event);
+      else moveSelection(document, event.key);
     }
   }
 
@@ -825,7 +852,7 @@ export function WarehouseOperationsPanel({
       {error && <p className="stock-operation-status error" role="alert">{error}</p>}
       {notice && <p className="stock-operation-status" aria-live="polite">{notice}</p>}
 
-      <div className={`stock-history-table-scroll${app !== "pda" ? " erp-classic-tables warehouse-classic-table" : ""}`}>
+      <div ref={tableScrollRef} className={`stock-history-table-scroll${app !== "pda" ? " erp-classic-tables warehouse-classic-table" : ""}`}>
         <table className="report-table warehouse-document-table">
           <colgroup>
             {visibleColumns.map((column) => (

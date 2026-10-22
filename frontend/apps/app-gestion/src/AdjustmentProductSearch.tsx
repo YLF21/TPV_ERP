@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { searchWarehouseProducts, type ProductOption } from "./warehouseOperationsApi";
+import { useTableArrowRepeat } from "../../../packages/app-common/src/components/useTableArrowRepeat";
+import { ensureTableRowVisible } from "../../../packages/app-common/src/components/ensureTableRowVisible";
 
 export function AdjustmentProductSearch({ token, value, selected, onChange, onSelect, t }: {
   token: string; value: string; selected: boolean; onChange: (value: string) => void;
@@ -11,8 +13,20 @@ export function AdjustmentProductSearch({ token, value, selected, onChange, onSe
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<ProductOption[]>([]);
   const [active, setActive] = useState(-1);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const handleArrowRepeat = useTableArrowRepeat((direction) => {
+    if (document.activeElement !== input.current) return false;
+    setOpen(true);
+    if (!items.length) return false;
+    const next = Math.max(0, Math.min(items.length - 1, activeRef.current + (direction === "ArrowDown" ? 1 : -1)));
+    if (next === activeRef.current) return false;
+    activeRef.current = next;
+    setActive(next);
+    return true;
+  });
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -27,7 +41,11 @@ export function AdjustmentProductSearch({ token, value, selected, onChange, onSe
     }, 200);
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [open, selected, value, token]);
-  useEffect(() => { list.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView?.({ block: "nearest" }); }, [active]);
+  useEffect(() => {
+    const container = list.current;
+    const option = container?.querySelector<HTMLElement>(`[data-index="${active}"]`);
+    if (container && option) ensureTableRowVisible(container, option);
+  }, [active]);
   function choose(product: ProductOption) { onSelect(product); setOpen(false); input.current?.focus(); }
   return <div className="wide adjustment-product-search" onBlur={(event) => {
     if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
@@ -42,8 +60,7 @@ export function AdjustmentProductSearch({ token, value, selected, onChange, onSe
         onKeyDown={(event) => {
           if (event.key === "Escape" && open) { event.preventDefault(); event.stopPropagation(); setOpen(false); }
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            event.preventDefault(); setOpen(true);
-            if (items.length) setActive((index) => Math.max(0, Math.min(items.length - 1, index + (event.key === "ArrowDown" ? 1 : -1))));
+            event.preventDefault(); handleArrowRepeat(event);
           }
           if (event.key === "Enter") { event.preventDefault(); if (open && items[active]) choose(items[active]); else setOpen(true); }
         }} />

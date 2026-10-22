@@ -1,7 +1,10 @@
 import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import "../../../packages/app-common/src/components/ErpClassicTables.css";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useTableArrowRepeat } from "../../../packages/app-common/src/components/useTableArrowRepeat";
+import { ensureTableRowVisible } from "../../../packages/app-common/src/components/ensureTableRowVisible";
+import { useTableInitialFocus } from "../../../packages/app-common/src/components/useTableInitialFocus";
 import { Plus } from "@phosphor-icons/react";
 import {
   ErpSelect,
@@ -169,6 +172,7 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
   const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
   const [supplierId, setSupplierId] = useState("");
   const [primaryLink, setPrimaryLink] = useState(false);
+  const tableRef = useRef<HTMLDivElement>(null);
   const tableLayout = useTableLayoutPreference({
     app: "gestion",
     username: session.username,
@@ -409,6 +413,26 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   });
+  useTableInitialFocus(tableRef, "button.representative-management-row[data-representative-id]", {
+    ready: !loading && !loadError && !dialogOpen && !retirementOpen && !confirmation && sortedRows.length > 0,
+    onSelect: (row) => setSelectedRowId(row.dataset.representativeId ?? null)
+  });
+  const handleArrow = useTableArrowRepeat(direction => {
+    const active = document.activeElement;
+    if (loading || loadingMore || saving || dialogOpen || retirementOpen || confirmation || document.querySelector('[aria-modal="true"]')
+      || !(active instanceof HTMLButtonElement) || !tableRef.current?.contains(active)
+      || !active.matches("button.representative-management-row[data-representative-id]")) return false;
+    const index = sortedRows.findIndex(row => row.id === active.dataset.representativeId);
+    const next = sortedRows[index + (direction === "ArrowDown" ? 1 : -1)];
+    if (index < 0 || !next) return false;
+    const nextElement = Array.from(tableRef.current.querySelectorAll<HTMLButtonElement>("button.representative-management-row[data-representative-id]"))
+      .find(element => element.dataset.representativeId === next.id);
+    if (!nextElement) return false;
+    setSelectedRowId(next.id);
+    nextElement.focus({ preventScroll: true });
+    ensureTableRowVisible(tableRef.current, nextElement);
+    return true;
+  }, !loading && !loadingMore && !saving && !dialogOpen && !retirementOpen && !confirmation);
 
   async function completeRetirement(result: RetirementResult) {
     await load(false, true);
@@ -448,7 +472,7 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
         { key: "active", label: t("party.status"), value: activeFilter === "all" ? "" : t(`party.filter.status.${activeFilter}`), onRemove: () => setActiveFilter("all") }
       ]} onClear={() => { setQuery(""); setActiveFilter("all"); }} />
       {status && <p className="product-create-status safe-management-notice" role={loadError ? "alert" : "status"}>{status}</p>}
-      <div className="representative-management-table-wrap gestion-module-table">
+      <div ref={tableRef} className="representative-management-table-wrap gestion-module-table">
       <div className="representative-management-table" role="table" aria-label={t("safeManagement.representatives.title")}
         style={{ minWidth: visibleColumns.reduce((total, column) => total + column.width, 0) }}>
         <div className="representative-management-row header" role="row" style={{ gridTemplateColumns }}>
@@ -472,7 +496,8 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
         {!loading && loadError && <div className="party-directory-state error" role="alert"><button type="button" className="gestion-module-action" onClick={() => void load()}>{t("party.retry")}</button></div>}
         {!loading && !loadError && sortedRows.map((row) => (
           <button type="button" className={`representative-management-row${selectedRowId === row.id ? " selected" : ""}`}
-            role="row" aria-selected={selectedRowId === row.id} key={row.id} style={{ gridTemplateColumns }} onClick={(event) => { setSelectedRowId(row.id); if (event.detail === 0) openRepresentative(row); }} onDoubleClick={() => openRepresentative(row)}>
+            role="row" aria-selected={selectedRowId === row.id} data-representative-id={row.id} key={row.id} style={{ gridTemplateColumns }} onClick={(event) => { setSelectedRowId(row.id); if (event.detail === 0) openRepresentative(row); }} onDoubleClick={() => openRepresentative(row)}
+            onKeyDown={event => { if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); handleArrow(event); } }}>
             {visibleColumns.map((column) => <span role="cell" data-column-key={column.key} key={column.key}>{representativeCell(row, column.key)}</span>)}
           </button>
         ))}

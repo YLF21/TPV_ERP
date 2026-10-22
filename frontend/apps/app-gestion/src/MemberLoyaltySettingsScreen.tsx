@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
 import { apiRequest, type UserSession } from "@tpverp/app-common";
 import "./MemberLoyaltySettingsScreen.css";
 import { GestionTableSearch, matchesGestionTableSearch } from "./GestionTableSearch";
@@ -64,6 +65,8 @@ export function MemberLoyaltySettingsScreen({ session, t, request = apiRequest }
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<"saved" | "loadError" | "saveError" | "invalid" | null>(null);
+  const channelTableRef = useRef<HTMLDivElement>(null);
+  const handleChannelRowArrowFocus = useTableRowArrowFocus(channelTableRef, "[role='row'][tabindex]", !loading && !saving && feedback !== "loadError");
   const canManage = session.permissions.includes("ADMIN");
 
   useEffect(() => {
@@ -286,9 +289,9 @@ export function MemberLoyaltySettingsScreen({ session, t, request = apiRequest }
         </form>
         {channelFeedback && <p className={channelFeedback === "party.members.channelSaved" ? "is-success" : "is-error"} role="status">{t(channelFeedback)}</p>}
         <GestionTableSearch value={channelQuery} onChange={setChannelQuery} t={t} />
-        <div className="member-settings-channel-table gestion-module-table" role="table" aria-label={t("party.members.channelsTitle")}>
+        <div ref={channelTableRef} className="member-settings-channel-table gestion-module-table" role="table" aria-label={t("party.members.channelsTitle")}>
           <div className="header" role="row"><span>{t("party.code")}</span><span>{t("party.name")}</span><span>{t("party.status")}</span><span>{t("common.actions")}</span></div>
-          {channels.filter(channel => matchesGestionTableSearch(channelQuery, [channel.code, channel.name, t(channel.active ? "party.active" : "party.inactive")])).map((channel) => <div role="row" key={channel.id}><code>{channel.code}</code><strong>{channel.name}</strong><span>{t(channel.active ? "party.active" : "party.inactive")}</span><div className="gestion-toolbar-actions"><button type="button" disabled={disabled} onClick={() => { setChannelDraft({ ...channel }); setChannelFeedback(""); }}>{t("party.members.edit")}</button></div></div>)}
+          {channels.filter(channel => matchesGestionTableSearch(channelQuery, [channel.code, channel.name, t(channel.active ? "party.active" : "party.inactive")])).map((channel) => <div role="row" tabIndex={0} onKeyDown={handleChannelRowArrowFocus} key={channel.id}><code>{channel.code}</code><strong>{channel.name}</strong><span>{t(channel.active ? "party.active" : "party.inactive")}</span><div className="gestion-toolbar-actions"><button type="button" disabled={disabled} onClick={() => { setChannelDraft({ ...channel }); setChannelFeedback(""); }}>{t("party.members.edit")}</button></div></div>)}
         </div>
       </section>
 

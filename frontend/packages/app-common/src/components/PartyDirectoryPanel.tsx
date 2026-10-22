@@ -1,4 +1,7 @@
 import { ErpConfirmDialog } from "./ErpConfirmDialog";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, Permission, UserSession } from "../types";
@@ -396,6 +399,7 @@ export function PartyDirectoryPanel({
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [historyCustomer, setHistoryCustomer] = useState<CustomerView | null>(null);
   const selectedRowRef = useRef<HTMLButtonElement>(null);
+  const directoryTableRef = useRef<HTMLDivElement>(null);
   const [form, setForm] = useState<PartyForm>(emptyPartyForm);
   const [initialForm, setInitialForm] = useState<PartyForm>(emptyPartyForm);
   const [formErrors, setFormErrors] = useState<string[]>([]);
@@ -670,6 +674,26 @@ export function PartyDirectoryPanel({
     }
     setStatus(""); setDialogOpen(true);
   }
+  const repeatDirectoryArrow = useTableArrowRepeat((direction) => {
+    const table = directoryTableRef.current;
+    if (!table || document.querySelector('[aria-modal="true"], dialog[open]')) return false;
+    const elements = Array.from(table.querySelectorAll<HTMLButtonElement>("button.party-directory-selectable-row"));
+    const index = elements.findIndex((row) => row === document.activeElement);
+    if (index < 0) return false;
+    const next = Math.max(0, Math.min(elements.length - 1, index + (direction === "ArrowDown" ? 1 : -1)));
+    if (next === index || !rows[next]) return false;
+    setSelectedRowId(rows[next].id);
+    elements[next].focus({ preventScroll: true });
+    ensureTableRowVisible(table, elements[next]);
+    return true;
+  }, app !== "pda" && !loading && !loadError && !dialogOpen && !retirementOpen && !historyCustomer);
+  useTableInitialFocus(directoryTableRef, "button.party-directory-selectable-row", {
+    enabled: app !== "pda" && !dialogOpen && !retirementOpen && !historyCustomer,
+    ready: !loading && !loadError,
+    scopeKey: kind,
+    onSelect: (row) => setSelectedRowId(row.dataset.entryId ?? null),
+  });
+
   const toolbarEntry = rows.find(entry => entry.id === selectedRowId) ?? null;
   async function exportDirectory(format: "xlsx" | "pdf") {
     if (app !== "gestion" || exportBusyRef.current || loading || loadError) return;
@@ -1052,7 +1076,7 @@ export function PartyDirectoryPanel({
       {app !== "pda" && <ErpFilterChips locale={locale} chips={filterChips} focusRef={searchRef}
         className="party-directory-active-filters" onClear={clearDirectoryFilters} />}
     </div>
-    <div className={`party-directory-table${app !== "pda" ? " party-desktop-table" : ""}`} role="table" aria-label={title}>
+    <div ref={directoryTableRef} className={`party-directory-table${app !== "pda" ? " party-desktop-table" : ""}`} role="table" aria-label={title}>
       <div className="party-directory-row header" role="row" style={gridStyle}>
         {visibleColumns.map((column) => (
           <TableLayoutHeaderCell
@@ -1080,7 +1104,14 @@ export function PartyDirectoryPanel({
       {!loading && loadError && <div className="party-directory-state error" role="alert"><span>{status || t("party.loadError")}</span><button type="button" onClick={() => void load()}>{t("party.retry")}</button></div>}
       {!loading && !loadError && rows.map((entry) => {
         return <button type="button" className={`party-directory-row party-directory-selectable-row${selectedRowId === entry.id ? " selected" : ""}`} role="row" style={gridStyle} key={entry.id}
+          data-entry-id={entry.id}
           ref={selectedRowId === entry.id ? selectedRowRef : undefined}
+          onFocus={() => { if (app !== "pda") setSelectedRowId(entry.id); }}
+          onKeyDown={(event) => {
+            if (app === "pda" || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+            event.preventDefault();
+            repeatDirectoryArrow(event);
+          }}
           onClick={(event) => {
             if (classicWindow) setSelectedRowId(entry.id);
             if (app === "gestion" && classicWindow && kind === "suppliers") { setSelectedRowId(entry.id); if (event.detail === 0) openEntry(entry); return; }

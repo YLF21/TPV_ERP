@@ -57,6 +57,31 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
+it("repeats row navigation from the focused transfer and stops on keyup", async () => {
+  vi.mocked(api.loadTransferDocuments).mockResolvedValue({
+    items: Array.from({ length: 5 }, (_, index) => ({
+      id: `transfer-${index}`, storeId: "store", sourceWarehouseId: "source", targetWarehouseId: "target",
+      number: `TRA-${index}`, notes: "", status: "CONFIRMED" as const, createdAt: "2026-09-22T10:00:00Z",
+      version: 1, lineCount: 1, totalUnits: 1
+    })), hasMore: false, nextCursor: null
+  });
+  render(<WarehouseTransferScreen session={{ username: "admin", displayName: "Admin", accessToken: "token", permissions: ["GESTION_ALMACEN"] }} t={(key) => key} />);
+  const first = await screen.findByRole("row", { name: /TRA-0/ });
+  const third = screen.getByRole("row", { name: /TRA-3/ });
+  first.focus();
+  vi.useFakeTimers();
+  try {
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    act(() => { vi.advanceTimersByTime(250); });
+    expect(third).toHaveFocus();
+    expect(third).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyUp(third, { key: "ArrowDown" });
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(third).toHaveFocus();
+    expect(api.loadTransferDocument).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
+});
+
 it("opens a new transfer document from the warehouse screen", async () => {
   render(<WarehouseTransferScreen session={{ username: "admin", displayName: "Admin",
     accessToken: "token", permissions: ["GESTION_ALMACEN"] }} t={(key) => key} createOnMount />);
@@ -83,7 +108,10 @@ it("lists transfer documents like warehouse entries and opens the selected one",
   render(<WarehouseTransferScreen session={{ username: "admin", displayName: "Admin",
     accessToken: "token", permissions: ["GESTION_ALMACEN"] }} t={(key) => key} />);
   const row = await screen.findByRole("row", { name: /TRA-2026-000001/ });
-  expect(screen.getByRole("button", { name: "warehouseDocument.open" })).toBeDisabled();
+  expect(row).toHaveFocus();
+  expect(row).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("button", { name: "warehouseDocument.open" })).toBeEnabled();
+  expect(api.loadTransferDocument).not.toHaveBeenCalled();
   expect(within(row).getByText("Reposición")).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: /warehouse.transfer.lines/ })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: /warehouse.transfer.units/ })).toBeInTheDocument();

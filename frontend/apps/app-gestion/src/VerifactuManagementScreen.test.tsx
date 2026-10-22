@@ -179,6 +179,23 @@ afterEach(() => {
 });
 
 describe("VerifactuManagementScreen", () => {
+  it.each(["queue", "defective"] as const)("navigates %s rows without opening fiscal actions", async (view) => {
+    const firstPage = view === "queue" ? queuePage : defectivePage;
+    const twoRows = { ...firstPage, items: [firstPage.items[0], { ...firstPage.items[0], recordId: "record-2", documentNumber: "T-2026-0043" }], totalElements: 2 };
+    if (view === "queue") vi.mocked(api.loadVerifactuAdminSubmissions).mockResolvedValue(twoRows as api.VerifactuAdminSubmissionPage);
+    else vi.mocked(api.loadVerifactuAdminDefectiveRecords).mockResolvedValue(twoRows as api.VerifactuAdminDefectiveRecordPage);
+    render(<VerifactuManagementScreen locale="es" session={session} t={t} />);
+    await screen.findByText("Voluntary");
+    fireEvent.click(screen.getByRole("tab", { name: `verifactu.management.${view}` }));
+    await screen.findByText("T-2026-0043");
+    const rows = Array.from(document.querySelectorAll<HTMLElement>(".gestion-verifactu-table tbody tr"));
+    await waitFor(() => expect(rows[0]).toHaveFocus());
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(rows[1]).toHaveFocus();
+    expect(api.loadVerifactuAdminAttempts).not.toHaveBeenCalled();
+    expect(api.loadVerifactuResolution).not.toHaveBeenCalled();
+  });
+
   it("formats queue age through translated full unit labels", () => {
     vi.setSystemTime(new Date("2026-08-26T12:00:00Z"));
     const translated = (key: string) => ({

@@ -8,6 +8,7 @@ import { nextTableSort, sortTableRows, type TableSort } from "./tableSorting";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
 
 export function SaleInvoiceCustomerListDialog({ token, locale, selectedCustomerId, onSelect, onClose }: {
   token?: string;
@@ -36,6 +37,18 @@ export function SaleInvoiceCustomerListDialog({ token, locale, selectedCustomerI
   }, locale), [customers, sort, locale]);
   const available = results.filter((customer) => customer.active === true);
   const selected = available.find((customer) => customer.id === highlightedId) ?? available[0];
+  const handleArrowRepeat = useTableArrowRepeat((direction) => {
+    const focused = document.activeElement;
+    if (loading || error || available.length < 2 || (focused !== inputRef.current
+        && !dialogRef.current?.querySelector(".sale-customer-table-row:focus"))) return false;
+    const focusedRow = focused instanceof HTMLElement && dialogRef.current?.contains(focused)
+      ? focused.closest<HTMLElement>(".sale-customer-table-row") : null;
+    const index = available.findIndex((customer) => customer.id === (focusedRow?.dataset.customerId ?? selected?.id));
+    const nextIndex = Math.max(0, Math.min(available.length - 1, index + (direction === "ArrowDown" ? 1 : -1)));
+    if (nextIndex === index) return false;
+    setHighlightedId(available[nextIndex].id);
+    return true;
+  }, !loading && !error && available.length > 0);
 
   useEffect(() => {
     let current = true;
@@ -64,7 +77,7 @@ export function SaleInvoiceCustomerListDialog({ token, locale, selectedCustomerI
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.nativeEvent.isComposing || event.repeat) return;
+    if (event.nativeEvent.isComposing || (event.repeat && event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -77,11 +90,7 @@ export function SaleInvoiceCustomerListDialog({ token, locale, selectedCustomerI
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       event.stopPropagation();
-      if (!selected) return;
-      const index = available.findIndex((customer) => customer.id === selected.id);
-      const next = available[(index + (event.key === "ArrowDown" ? 1 : -1) + available.length) % available.length];
-      setHighlightedId(next.id);
-      queueMicrotask(() => dialogRef.current?.querySelector<HTMLElement>(".sale-customer-table-row.selected")?.scrollIntoView?.({ block: "nearest" }));
+      handleArrowRepeat(event);
     } else if (event.key === "Enter" || event.key === "Insert") {
       event.preventDefault();
       event.stopPropagation();

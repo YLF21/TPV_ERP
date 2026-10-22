@@ -66,7 +66,7 @@ const DRINK_PRODUCTS_PRICE_ASC =
 const WATER_PRODUCTS_NAME_ASC =
   "/families/products?subfamilyId=water&limit=25&sortBy=name&sortDirection=asc";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 function renderScreen(request: typeof apiRequest) {
   return render(
@@ -79,6 +79,34 @@ function renderScreen(request: typeof apiRequest) {
 }
 
 describe("FamiliesScreen", () => {
+  it("moves focus steadily across product rows without toggling their multiple selection", async () => {
+    const products = ["Uno", "Dos", "Tres"].map((name, index) => ({
+      id: `arrow-product-${index}`, code: `A-${index}`, name, salePrice: 1, active: true, version: 1,
+    }));
+    const request = vi.fn(async (path: string) => path === "/families" ? families
+      : path === DRINK_PRODUCTS_NAME_ASC ? { items: products, hasMore: false } : []);
+    const { container } = renderScreen(request as unknown as typeof apiRequest);
+    fireEvent.click(await screen.findByText("Bebidas"));
+    await screen.findByText("Tres");
+    const rows = [...container.querySelectorAll<HTMLTableRowElement>(".gestion-families-products-table tbody tr")];
+    expect(rows[0]).toHaveFocus();
+    expect(within(rows[0]).getByRole("checkbox")).not.toBeChecked();
+    rows[0].focus();
+    vi.useFakeTimers();
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(rows[1]);
+    fireEvent.keyDown(rows[1], { key: "ArrowDown", repeat: true });
+    expect(document.activeElement).toBe(rows[1]);
+    act(() => vi.advanceTimersByTime(180));
+    expect(document.activeElement).toBe(rows[2]);
+    fireEvent.keyUp(rows[2], { key: "ArrowDown" });
+    act(() => vi.advanceTimersByTime(500));
+    expect(document.activeElement).toBe(rows[2]);
+    for (const checkbox of container.querySelectorAll('.gestion-families-products-table tbody input[type="checkbox"]')) {
+      expect(checkbox).not.toBeChecked();
+    }
+  });
+
   it.each(["family", "subfamily"])("removes the selected %s criterion without loading an unbounded product list", async kind => {
     const request = vi.fn(async (path: string) => {
       if (path === "/families") return families;
