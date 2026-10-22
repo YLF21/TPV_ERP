@@ -94,6 +94,8 @@ describe("Gestión directory export actions", () => {
     expect(screen.queryByRole("button", { name: /F5/ })).not.toBeInTheDocument();
     fireEvent.keyDown(window, { key: "F5" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: /F6/ })).toBeEnabled());
+    await act(async () => {});
     fireEvent.keyDown(window, { key: "F6" });
     await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("xlsx", expect.anything(), expect.any(String)));
   });
