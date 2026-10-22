@@ -6589,7 +6589,7 @@ function SaleScreenContent({
           onClose={() => setActionDialog(null)}
           onKeyDown={handleClearSaleKeyDown}
           initialFocusRef={clearSaleCancelButtonRef}
-          className="sale-business-dialog sale-clear-sale-dialog"
+          className="sale-business-dialog sale-clear-sale-dialog sale-clear-current-dialog"
         >
           <div className="sale-clear-sale-warning" role="note">
             <span className="sale-clear-sale-warning-icon" aria-hidden="true">!</span>
@@ -6612,7 +6612,7 @@ function SaleScreenContent({
           onClose={() => setActionDialog(null)}
           onKeyDown={handleClearLinesKeyDown}
           initialFocusRef={clearLinesCancelButtonRef}
-          className="sale-business-dialog sale-clear-sale-dialog sale-clear-lines-dialog"
+          className="sale-business-dialog sale-clear-sale-dialog sale-clear-lines-dialog sale-clear-current-dialog"
         >
           <div className="sale-clear-sale-warning" role="note">
             <span className="sale-clear-sale-warning-icon" aria-hidden="true">!</span>
