@@ -32,7 +32,7 @@
 		<java.version>25</java.version>
 		<springdoc.version>3.1.1</springdoc.version>
 		<jna.version>5.19.1</jna.version>
-		<jasperreports.version>7.0.8</jasperreports.version>
+		<jasperreports.version>7.1.0</jasperreports.version>
 		<dss.version>6.5</dss.version>
 		<!-- Default artifact is the non-promotable DEV laboratory build. -->
 		<tpv.release.id>tpv-erp-dev-v274</tpv.release.id>

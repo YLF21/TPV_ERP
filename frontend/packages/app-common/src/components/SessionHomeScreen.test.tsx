@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionHomeScreen } from "./SessionHomeScreen";
 import type { TerminalContext, UserSession } from "../types";
@@ -275,6 +275,7 @@ describe("SessionHomeScreen", () => {
     const callbacks = renderHome();
     await waitFor(() => expect(screen.getByRole("button", { name: "VENTA" })).toBeEnabled());
     expect(screen.queryByRole("button", { name: "Abrir caja y turno" })).toBeNull();
+    await act(async () => {});
     dispatchShortcut("F1");
     expect(callbacks.onOpenSales).toHaveBeenCalledOnce();
   });

@@ -18656,7 +18656,8 @@ textarea:focus,
   color: #ffffff;
 }
 
-.sale-sales-history-dialog > header {
+.sale-sales-history-dialog > header,
+.sale-clear-current-dialog > header {
   border-bottom: 0;
 }
 
