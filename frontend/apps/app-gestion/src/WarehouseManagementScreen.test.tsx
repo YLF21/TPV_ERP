@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ApiError, type UserSession } from "@tpverp/app-common";
 import { WarehouseManagementScreen } from "./WarehouseManagementScreen";
 import * as api from "./warehouseManagementApi";
@@ -54,6 +54,8 @@ describe("WarehouseManagementScreen", () => {
     await screen.findByRole("region", { name: "warehouse.management.list" });
     const command = screen.getByRole("button", { name: "warehouse.management.create" });
     expect(command).toHaveAttribute("aria-keyshortcuts", "F5");
+    await waitFor(() => expect(command).toBeEnabled());
+    await act(async () => {});
     fireEvent.keyDown(window, { key: "F5" });
     expect(screen.getByRole("dialog", { name: "warehouse.management.dialog.create" })).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "F5" });
