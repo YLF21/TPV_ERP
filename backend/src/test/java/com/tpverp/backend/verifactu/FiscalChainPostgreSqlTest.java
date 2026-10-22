@@ -11,6 +11,7 @@ import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -18,12 +19,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import org.aopalliance.intercept.MethodInterceptor;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.aop.framework.Advised;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -67,6 +72,8 @@ class FiscalChainPostgreSqlTest {
     @Autowired private FiscalSubmissionStateRepository states;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private PlatformTransactionManager transactionManager;
+    @Autowired private FiscalModeTransitionRepository transitions;
+    @Autowired private VerifactuConfigurationRepository configurations;
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     private FiscalEventService fiscalEvents;
 
@@ -169,6 +176,70 @@ class FiscalChainPostgreSqlTest {
                 .allMatch(state -> state.getStatus() == FiscalSubmissionStatus.PENDIENTE);
         assertThat(jdbc.queryForObject(
                 "select ultima_secuencia from cadena_fiscal", Long.class)).isEqualTo(20L);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = FiscalMode.class,
+            names = {"PRE_SIF", "NO_VERIFACTU"})
+    void concurrentMandatoryActivationKeepsBothEmissionsAndOneTransition(
+            FiscalMode initialMode) throws Exception {
+        var fixture = insertFixture(2);
+        jdbc.update("update configuracion_verifactu set modo_actual = ? where empresa_id = ?",
+                initialMode.name(), fixture.companyId());
+        var beforeLock = new CyclicBarrier(2);
+        // Both issuers must observe the old mode before either can acquire the row lock.
+        // Intercept before the real repository query; keep its transaction and lock intact.
+        var repositoryProxy = (Advised) configurations;
+        MethodInterceptor gate = invocation -> {
+            if (invocation.getMethod().getName().equals("findForUpdateByCompanyId")
+                    && fixture.companyId().equals(invocation.getArguments()[0])) {
+                beforeLock.await(10, TimeUnit.SECONDS);
+            }
+            return invocation.proceed();
+        };
+        repositoryProxy.addAdvice(0, gate);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var futures = new ArrayList<java.util.concurrent.Future<FiscalRecord>>();
+            for (var documentId : fixture.documentIds()) {
+                futures.add(executor.submit(() -> inNewTransaction(() -> service.register(
+                        command(fixture, documentId, Map.of())))));
+            }
+            for (var future : futures) {
+                assertThat(future.get(20, TimeUnit.SECONDS).getFiscalMode())
+                        .isEqualTo(FiscalMode.VERIFACTU);
+            }
+        } finally {
+            repositoryProxy.removeAdvice(gate);
+        }
+
+        var chainId = jdbc.queryForObject("select id from cadena_fiscal", UUID.class);
+        var persisted = records.findAllByChainIdOrderBySequence(chainId);
+        assertThat(persisted).extracting(FiscalRecord::getSequence).containsExactly(1L, 2L);
+        assertThat(persisted).extracting(FiscalRecord::getDocumentId)
+                .containsExactlyInAnyOrderElementsOf(fixture.documentIds());
+        assertThat(persisted.getFirst().getPreviousHash()).isNull();
+        assertThat(persisted.getLast().getPreviousHash()).isEqualTo(persisted.getFirst().getHash());
+        assertThat(persisted).allSatisfy(record -> {
+            assertThat(record.getHash()).isEqualTo(new OfficialHashService().hash(new AltaHashInput(
+                    record.getIssuerTaxId(), record.getNumber(),
+                    record.getIssueDate().format(java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy")),
+                    record.getDocumentType().name(), record.getTotalTax(), record.getTotalAmount(),
+                    record.getPreviousHash(),
+                    record.getGeneratedAt().atZone(ZoneId.of(record.getTimezone())).toOffsetDateTime())));
+            assertThat(record.getSnapshotHash()).isEqualTo(new FiscalJsonHasher().hash(record.getSnapshot()));
+            assertThat(record.getFiscalMode()).isEqualTo(FiscalMode.VERIFACTU);
+        });
+        assertThat(states.findAll()).hasSize(2)
+                .allMatch(state -> state.getStatus() == FiscalSubmissionStatus.PENDIENTE);
+        assertThat(jdbc.queryForObject("select ultima_secuencia from cadena_fiscal", Long.class))
+                .isEqualTo(2L);
+        assertThat(transitions.findTop50ByCompanyIdOrderByEffectiveAtDesc(fixture.companyId()))
+                .singleElement().satisfies(transition -> {
+                    assertThat(transition.getPreviousMode()).isEqualTo(initialMode);
+                    assertThat(transition.getNewMode()).isEqualTo(FiscalMode.VERIFACTU);
+                    assertThat(transition.getExpectedVersion()).isZero();
+                    assertThat(transition.getStatus()).isEqualTo(FiscalModeTransitionStatus.APLICADA);
+                });
     }
 
     @org.junit.jupiter.params.ParameterizedTest
