@@ -32,6 +32,11 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); localStorage.clear(); });
 
+async function waitForReadyExportShortcut(key: "F6" | "F7") {
+  await waitFor(() => expect(screen.getByRole("button", { name: new RegExp(key) })).toBeEnabled());
+  await act(async () => {});
+}
+
 describe("Gestión directory export actions", () => {
   it("routes directory shortcuts through its StockScreen parent", async () => {
     render(<StockScreen app="gestion" locale="es" session={writer}
@@ -39,17 +44,17 @@ describe("Gestión directory export actions", () => {
       onBack={vi.fn()} onLocaleChange={vi.fn()}
       initialPartyDirectory="customers" allowSafeRetirement />);
     await screen.findByText("Ana");
-    // Flush the directory's keyboard effect after the async row render.
-    await act(async () => {});
+    await waitForReadyExportShortcut("F6");
 
     fireEvent.keyDown(document.body, { key: "F6" });
     await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("xlsx", expect.anything(), expect.stringMatching(/\.xlsx$/)));
-    await waitFor(() => expect(screen.getByRole("button", { name: /F7/ })).toBeEnabled());
+    await waitForReadyExportShortcut("F7");
     fireEvent.keyDown(document.body, { key: "F7" });
     await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("pdf", expect.anything(), expect.stringMatching(/\.pdf$/)));
     expect(screen.queryByRole("dialog", { name: "Añadir producto" })).not.toBeInTheDocument();
     expect(vi.mocked(apiRequest).mock.calls.some(([path]) => path.startsWith("/stock/exports"))).toBe(false);
 
+    await waitForReadyExportShortcut("F7");
     fireEvent.keyDown(document.body, { key: "F5" });
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByRole("textbox", { name: "Nombre o razón social" })).toHaveValue("");
@@ -77,13 +82,14 @@ describe("Gestión directory export actions", () => {
     expect(screen.getByRole("button", { name: /F5/ })).toHaveAttribute("aria-keyshortcuts", "F5");
     expect(screen.getByRole("button", { name: /F6/ })).toHaveAttribute("aria-keyshortcuts", "F6");
     expect(screen.getByRole("button", { name: /F7/ })).toHaveAttribute("aria-keyshortcuts", "F7");
+    await waitForReadyExportShortcut("F7");
     fireEvent.keyDown(window, { key: "F7" });
     await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("pdf", expect.anything(), expect.stringMatching(/\.pdf$/)));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("button", { name: /F6/ })).toBeEnabled());
+    await waitForReadyExportShortcut("F6");
     fireEvent.keyDown(window, { key: "F6" });
     await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("xlsx", expect.anything(), expect.stringMatching(/\.xlsx$/)));
-    await waitFor(() => expect(screen.getByRole("button", { name: /F7/ })).toBeEnabled());
+    await waitForReadyExportShortcut("F7");
     fireEvent.keyDown(window, { key: "F5" });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
@@ -91,11 +97,10 @@ describe("Gestión directory export actions", () => {
   it("lets read-only users export but not open a new record", async () => {
     render(<PartyDirectoryPanel app="gestion" kind="customers" locale="es" session={reader} />);
     await screen.findByText("Ana");
+    await waitForReadyExportShortcut("F6");
     expect(screen.queryByRole("button", { name: /F5/ })).not.toBeInTheDocument();
     fireEvent.keyDown(window, { key: "F5" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("button", { name: /F6/ })).toBeEnabled());
-    await act(async () => {});
     fireEvent.keyDown(window, { key: "F6" });
     await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("xlsx", expect.anything(), expect.any(String)));
   });
@@ -103,6 +108,7 @@ describe("Gestión directory export actions", () => {
   it("ignores new and export shortcuts while a record dialog is open", async () => {
     render(<PartyDirectoryPanel app="gestion" kind="customers" locale="es" session={writer} />);
     await screen.findByText("Ana");
+    await waitForReadyExportShortcut("F6");
     fireEvent.keyDown(window, { key: "F5" });
     const dialog = screen.getByRole("dialog");
     const name = within(dialog).getByRole("textbox", { name: "Nombre o razón social" });
@@ -132,6 +138,7 @@ describe("Gestión directory export actions", () => {
     render(<PartyDirectoryPanel app="gestion" kind={kind} locale="es" session={writer} allowSafeRetirement />);
     const table = screen.getByRole("table");
     await within(table).findByText(kind === "customers" ? "Ana" : "Proveedor");
+    await waitForReadyExportShortcut("F6");
     fireEvent.keyDown(window, { key: "F6" });
     await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledOnce());
     const paths = vi.mocked(apiRequest).mock.calls.map(([path]) => path).filter(path => path.startsWith(`/${kind}/management/page?`));
@@ -163,6 +170,7 @@ describe("Gestión directory export actions", () => {
     });
     render(<PartyDirectoryPanel app="gestion" kind="customers" locale="es" session={writer} allowSafeRetirement />);
     await screen.findByText("Ana");
+    await waitForReadyExportShortcut("F7");
     fireEvent.keyDown(window, { key: "F7" });
     expect(await screen.findByRole("status")).toHaveTextContent(createTranslator("es")("salesReport.exportFailed"));
     expect(savePartyDirectoryExport).not.toHaveBeenCalled();
@@ -177,6 +185,7 @@ describe("Gestión directory export actions", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     const nameHeader = screen.getByRole("columnheader", { name: "Nombre / Razón social" });
     fireEvent.keyDown(nameHeader, { key: "ArrowLeft", ctrlKey: true });
+    await waitForReadyExportShortcut("F6");
     fireEvent.keyDown(window, { key: "F6" });
     await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledOnce());
     const report = vi.mocked(savePartyDirectoryExport).mock.calls[0][1];
@@ -194,6 +203,7 @@ describe("Gestión directory export actions", () => {
     await screen.findByText("Zoe");
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Ana" } });
     await waitFor(() => expect(screen.queryByText("Zoe")).not.toBeInTheDocument());
+    await waitForReadyExportShortcut("F6");
     fireEvent.keyDown(window, { key: "F6" });
     await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledOnce());
     const report = vi.mocked(savePartyDirectoryExport).mock.calls[0][1];
