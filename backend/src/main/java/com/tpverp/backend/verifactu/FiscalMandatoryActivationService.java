@@ -141,8 +141,10 @@ public class FiscalMandatoryActivationService {
         configurations.insertIfMissingWithMode(
                 UUID.randomUUID(), companyId, initialMode().name());
         boolean dueBeforeLock = !observedAt.isBefore(effectiveAt);
-        boolean alreadyVerifactu = configurations.findByCompanyId(companyId)
-                .map(value -> value.getCurrentMode() == FiscalMode.VERIFACTU)
+        // Read only the mode: hydrating the versioned entity before locking can leave
+        // a stale instance when another issuer commits the mandatory transition first.
+        boolean alreadyVerifactu = configurations.findCurrentModeByCompanyId(companyId)
+                .map(mode -> mode == FiscalMode.VERIFACTU)
                 .orElse(false);
         boolean requiresWriteLock = dueBeforeLock && !alreadyVerifactu;
         var configuration = (requiresWriteLock

@@ -147,6 +147,8 @@ class FiscalMandatoryActivationServiceTest {
         assertThat(prepared).isSameAs(fixture.configuration);
         assertThat(prepared.getCurrentMode()).isEqualTo(FiscalMode.VERIFACTU);
         verify(fixture.configurations).findForUpdateByCompanyId(fixture.companyId);
+        verify(fixture.configurations).findCurrentModeByCompanyId(fixture.companyId);
+        verify(fixture.configurations, never()).findByCompanyId(fixture.companyId);
     }
 
     @Test
@@ -233,8 +235,8 @@ class FiscalMandatoryActivationServiceTest {
             configuration.changeMode(mode, Instant.parse("2026-01-01T00:00:00Z"), null);
         }
         var configurations = mock(VerifactuConfigurationRepository.class);
-        when(configurations.findByCompanyId(company.getId()))
-                .thenReturn(Optional.of(configuration));
+        when(configurations.findCurrentModeByCompanyId(company.getId()))
+                .thenAnswer(ignored -> Optional.of(configuration.getCurrentMode()));
         when(configurations.findForUpdateByCompanyId(company.getId()))
                 .thenReturn(Optional.of(configuration));
         when(configurations.findForEmissionByCompanyId(company.getId()))

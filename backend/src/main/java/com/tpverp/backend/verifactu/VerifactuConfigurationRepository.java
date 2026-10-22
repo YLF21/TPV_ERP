@@ -15,6 +15,12 @@ public interface VerifactuConfigurationRepository
 
     Optional<VerifactuConfiguration> findByCompanyId(UUID companyId);
 
+    @Query("""
+            select configuration.currentMode from VerifactuConfiguration configuration
+            where configuration.companyId = :companyId
+            """)
+    Optional<FiscalMode> findCurrentModeByCompanyId(@Param("companyId") UUID companyId);
+
     List<VerifactuConfiguration> findAllByCurrentMode(FiscalMode mode);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
