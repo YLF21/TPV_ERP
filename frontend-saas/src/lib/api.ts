@@ -168,6 +168,20 @@ export async function request<T>(credentials: Credentials, path: string, options
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }
 
+export async function requestBinary(credentials: Credentials, path: string): Promise<Blob> {
+  const response = await fetchWithTimeout(`${API_BASE}${path}`, {
+    method: "GET",
+    cache: "no-store",
+    headers: { Authorization: authHeader(credentials),
+      ...(credentials.companyId ? { "X-TPV-Company-Id": credentials.companyId } : {}) }
+  }, REQUEST_TIMEOUT_MS, async value => value);
+  if (!response.ok) {
+    if (response.status === 401) unauthorizedHandler?.(credentials);
+    throw new ApiError(response.status, response.statusText || "No se pudo descargar el archivo autorizado");
+  }
+  return response.blob();
+}
+
 // The inbox keeps its deadline active through JSON/error body consumption.
 async function inboxRequest<T>(credentials: Credentials, path: string, options: RequestOptions = {}): Promise<T> {
   return fetchWithTimeout(`${API_BASE}${path}`, {

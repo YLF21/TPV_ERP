@@ -22,6 +22,8 @@ import java.util.zip.ZipOutputStream;
 /** Creates and validates the non-fiscal file part of a backup. */
 public class BackupArchiveService {
     private static final String DATABASE_ENTRY = "database.backup";
+    private static final String MANIFEST_ENTRY = "manifest.json";
+    private static final String PORTABLE_ENTRY = "recovery-secrets.bin";
     private static final String IMAGES_PREFIX = "images/";
     private static final String TEMPLATES_PREFIX = "templates/";
     private static final int DEFAULT_MAX_ENTRIES = 100_000;
@@ -65,6 +67,16 @@ public class BackupArchiveService {
 
     public BackupArchiveInfo create(Path databaseDump, Path imagesRoot, Path templatesRoot, Path archive)
             throws IOException {
+        return create(databaseDump, imagesRoot, templatesRoot, archive, null);
+    }
+
+    public BackupArchiveInfo create(Path databaseDump, Path imagesRoot, Path templatesRoot, Path archive,
+            java.util.Map<String, Object> manifest) throws IOException {
+        return create(databaseDump, imagesRoot, templatesRoot, archive, manifest, null);
+    }
+
+    public BackupArchiveInfo create(Path databaseDump, Path imagesRoot, Path templatesRoot, Path archive,
+            java.util.Map<String, Object> manifest, byte[] portableCapsule) throws IOException {
         Path normalizedArchive = archive.toAbsolutePath().normalize();
         Path normalizedDump = databaseDump.toAbsolutePath().normalize();
         requireRegularFile(normalizedDump, "El volcado de base de datos no es un archivo regular");
@@ -86,6 +98,24 @@ public class BackupArchiveService {
                 totalBytes += databaseBytes;
             }
             output.closeEntry();
+            if (portableCapsule != null) {
+                if (portableCapsule.length > 33L * 1024 * 1024 || portableCapsule.length > maxEntryBytes
+                        || totalBytes + portableCapsule.length > maxTotalBytes) throw new IOException("Portable capsule exceeds archive limits");
+                entries = requireEntryCapacity(entries);
+                output.putNextEntry(new ZipEntry(PORTABLE_ENTRY));
+                output.write(portableCapsule); output.closeEntry(); totalBytes += portableCapsule.length;
+            }
+            if (manifest != null) {
+                byte[] bytes = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsBytes(manifest);
+                if (bytes.length > Math.min(maxEntryBytes, 16L * 1024 * 1024) || totalBytes + bytes.length > maxTotalBytes) {
+                    throw new IOException("El manifiesto de la copia supera el límite permitido");
+                }
+                entries = requireEntryCapacity(entries);
+                output.putNextEntry(new ZipEntry(MANIFEST_ENTRY));
+                output.write(bytes);
+                output.closeEntry();
+                totalBytes += bytes.length;
+            }
             var imageResult = writeOptionalTree(imagesRoot, IMAGES_PREFIX, output, entries, totalBytes);
             imageFiles = imageResult.fileCount();
             entries = imageResult.entries();
@@ -129,7 +159,15 @@ public class BackupArchiveService {
                     continue;
                 }
                 Path target;
-                if (DATABASE_ENTRY.equals(name)) {
+                if (PORTABLE_ENTRY.equals(name)) {
+                    totalBytes += copyLimited(input, (Path) null, Math.min(maxEntryBytes, 33L * 1024 * 1024), maxTotalBytes - totalBytes);
+                    continue;
+                } else if (MANIFEST_ENTRY.equals(name)) {
+                    var bytes = new java.io.ByteArrayOutputStream();
+                    totalBytes += copyLimited(input, bytes, Math.min(maxEntryBytes, 16L * 1024 * 1024), maxTotalBytes - totalBytes);
+                    validateManifest(bytes.toByteArray());
+                    continue;
+                } else if (DATABASE_ENTRY.equals(name)) {
                     databaseSeen = true;
                     target = normalizedDump;
                 } else if (name.startsWith(IMAGES_PREFIX)) {
@@ -160,6 +198,29 @@ public class BackupArchiveService {
             throw new IOException("El archivo de backup no contiene database.backup");
         }
         return new BackupArchiveInfo(databaseBytes, imageFiles, templateFiles);
+    }
+
+    private static void validateManifest(byte[] bytes) throws IOException {
+        var manifest = new com.fasterxml.jackson.databind.ObjectMapper().readTree(bytes);
+        if (manifest == null || !manifest.isObject() || manifest.path("schemaVersion").asInt() != 1
+                || !manifest.path("installationId").isTextual() || !manifest.path("tableCounts").isObject()) {
+            throw new IOException("El manifiesto de la copia no es compatible o está incompleto");
+        }
+        try { java.util.UUID.fromString(manifest.path("installationId").asText()); }
+        catch (IllegalArgumentException ex) { throw new IOException("Identidad inválida en el manifiesto", ex); }
+    }
+
+    /** Bounded encrypted entry read; extraction never writes decrypted secret material. */
+    public byte[] readPortableCapsule(Path archive) throws IOException {
+        try (var zip = new java.util.zip.ZipFile(archive.toFile())) {
+            var matches = zip.stream().filter(entry -> PORTABLE_ENTRY.equals(entry.getName())).toList();
+            if (matches.size() != 1 || matches.getFirst().isDirectory()) throw new IOException("Portable capsule missing or duplicated");
+            try (var input = zip.getInputStream(matches.getFirst())) {
+                byte[] result = input.readNBytes(33 * 1024 * 1024 + 1);
+                if (result.length > 33 * 1024 * 1024) throw new IOException("Portable capsule too large");
+                return result;
+            }
+        }
     }
 
     /** Compatibility wrapper: stages and promotes only after full validation. */

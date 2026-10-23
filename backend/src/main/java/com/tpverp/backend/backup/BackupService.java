@@ -3,9 +3,15 @@ package com.tpverp.backend.backup;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.backup.application.BackupFileCrypto;
+import com.tpverp.backend.backup.application.BackupSnapshotService;
 import com.tpverp.backend.backup.application.BackupArchiveService;
 import com.tpverp.backend.backup.application.BackupKeyStore;
 import com.tpverp.backend.backup.application.PostgreSqlBackupCommands;
+import com.tpverp.backend.backup.cloud.CloudBackupDescriptor;
+import com.tpverp.backend.backup.cloud.CloudBackupQueue;
+import com.tpverp.backend.backup.cloud.CloudBackupStatus;
+import com.tpverp.backend.disasterrecovery.RecoverySecretsCodec;
+import com.tpverp.backend.servertransfer.ServerTransferSecrets;
 import com.tpverp.backend.installation.Installation;
 import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.organization.Store;
@@ -56,6 +62,33 @@ public class BackupService {
     private final Path documentTemplatesDirectory;
     private final boolean restoreOnlineEnabled;
     private final BackupExecutionLeaseService leaseService;
+    private BackupSnapshotService snapshots;
+    private String applicationVersion = "UNKNOWN";
+    private Map<String, Object> release = Map.of();
+    private CloudBackupQueue cloudQueue;
+    private ServerTransferSecrets portableSecrets;
+    private CloudBackupRepairService cloudRepair;
+    private Path workspaceDirectory;
+
+    public void configureWorkspace(Path directory) {
+        this.workspaceDirectory = java.util.Objects.requireNonNull(directory).toAbsolutePath().normalize();
+    }
+
+    public void configureCloud(CloudBackupQueue queue, ServerTransferSecrets secrets, CloudBackupRepairService repair) {
+        this.cloudQueue = java.util.Objects.requireNonNull(queue);
+        this.portableSecrets = java.util.Objects.requireNonNull(secrets);
+        this.cloudRepair = java.util.Objects.requireNonNull(repair);
+    }
+
+    public void configureSnapshots(BackupSnapshotService snapshots, String applicationVersion) {
+        this.snapshots = java.util.Objects.requireNonNull(snapshots);
+        this.applicationVersion = applicationVersion;
+    }
+
+    public void configureRelease(com.tpverp.backend.verifactu.FiscalReleaseManifest manifest) {
+        release = Map.of("releaseId", manifest.releaseId(), "databaseSchemaVersion", manifest.schemaVersion(),
+                "releaseSequence", manifest.releaseSequence(), "buildSequence", manifest.buildSequence());
+    }
 
     public BackupService(
             BackupSettingsRepository configurationRepository,
@@ -173,7 +206,10 @@ public class BackupService {
 
     @Transactional(readOnly = true)
     public BackupConfigurationItem configuration() {
-        return BackupConfigurationItem.from(currentConfiguration());
+        return configurationRepository.findByInstalacionId(currentInstallation().getId())
+                .map(BackupConfigurationItem::from)
+                .orElseGet(() -> new BackupConfigurationItem(LocalTime.NOON, 30, 72, false,
+                        defaultDirectory.toAbsolutePath().normalize().toString(), false));
     }
 
     @Transactional
@@ -183,17 +219,39 @@ public class BackupService {
     }
 
     public ExecutionItem executeNow() {
+        return executePrepared(prepare("MANUAL"));
+    }
+
+    public Prepared prepare(String origin) {
         BackupSettings configuration = currentConfiguration();
         BackupExecutionLeaseService.Lease lease = null;
         BackupExecution execution;
         if (leaseService != null) {
-            lease = leaseService.claim(configuration);
+            lease = leaseService.claim(configuration, origin);
             execution = executionRepository.findById(lease.executionId())
                     .orElseThrow(() -> new IllegalStateException("No se pudo crear la ejecución de backup"));
         } else {
             // Compatibility path for isolated unit tests and old embedders.
-            execution = executionRepository.save(new BackupExecution(configuration, Instant.now(clock)));
+            execution = new BackupExecution(configuration, Instant.now(clock));
+            execution.setOrigin(origin);
+            execution = executionRepository.save(execution);
         }
+        return new Prepared(configuration, execution, lease, Map.of());
+    }
+
+    public Prepared prepareTransfer(Map<String, Object> transfer) {
+        var prepared = prepare("TRANSFER");
+        return new Prepared(prepared.configuration(), prepared.execution(), prepared.lease(), Map.copyOf(transfer));
+    }
+
+    public void reject(Prepared prepared) {
+        if (prepared.lease() != null) leaseService.fail(prepared.lease(), "No se pudo iniciar el proceso de copia");
+    }
+
+    public ExecutionItem executePrepared(Prepared prepared) {
+        BackupSettings configuration = prepared.configuration();
+        BackupExecution execution = prepared.execution();
+        BackupExecutionLeaseService.Lease lease = prepared.lease();
         Path dump = null;
         Path archive = null;
         Path encrypted = null;
@@ -202,34 +260,113 @@ public class BackupService {
         boolean executionCommitted = false;
         boolean completionAttempted = false;
         boolean preserveEncrypted = false;
+        boolean ownsEncrypted = false;
+        byte[] portableCapsule = null;
         BackupExecutionLeaseService.LeaseHeartbeat leaseHeartbeat = lease == null
                 ? null : leaseService.startHeartbeat(lease);
         try {
             Path destination = destination(configuration);
             Path daily = destination.resolve("daily");
             Files.createDirectories(daily);
-            dump = Files.createTempFile(destination, ".tpv-dump-", ".backup");
-            archive = Files.createTempFile(destination, ".tpv-archive-", ".zip");
-            commands.dump(dump);
-            if (leaseHeartbeat != null) leaseHeartbeat.check();
-            if (lease != null) leaseService.heartbeat(lease);
-            var archiveInfo = archives.create(
-                    dump, productImagesDirectory, documentTemplatesDirectory, archive);
+            // The selected output folder may be a shared drive; clear database/ZIP material stays private.
+            Path workspace = workspaceDirectory == null ? destination : workspaceDirectory;
+            for (Path parent = workspace; parent != null; parent = parent.getParent()) {
+                if (Files.exists(parent, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                    var attributes = Files.readAttributes(parent, java.nio.file.attribute.BasicFileAttributes.class,
+                            java.nio.file.LinkOption.NOFOLLOW_LINKS);
+                    if (attributes.isSymbolicLink() || attributes.isOther())
+                        throw new IllegalStateException("El directorio temporal de backup no puede contener enlaces");
+                }
+            }
+            Files.createDirectories(workspace);
+            if (Files.getFileStore(workspace).supportsFileAttributeView("posix"))
+                Files.setPosixFilePermissions(workspace, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
+            dump = Files.createTempFile(workspace, ".tpv-dump-", ".backup");
+            archive = Files.createTempFile(workspace, ".tpv-archive-", ".zip");
+            phase(lease, "DATABASE");
+            brk = keyStore.loadForScheduledBackup();
+            Map<String, Object> manifest = null;
+            BackupArchiveService.BackupArchiveInfo archiveInfo;
+            if (snapshots != null) {
+                var encryptedPortable = new java.util.concurrent.atomic.AtomicReference<byte[]>();
+                byte[] backupKey = brk;
+                UUID installationId = currentInstallation().getId();
+                try (var capture = snapshots.capture(commands, dump, installationId, applicationVersion, (connection, values) -> {
+                    if (portableSecrets == null) return;
+                    try (var portable = portableSecrets.capturePortable(connection)) {
+                        encryptedPortable.set(RecoverySecretsCodec.seal(portable.material(), backupKey,
+                                installationId, execution.getId()));
+                        values.put("portableSecretsVersion", RecoverySecretsCodec.VERSION);
+                        values.put("portableSecretsComplete", portable.complete());
+                        values.put("portableSecretsWarnings", portable.warnings());
+                    }
+                })) {
+                    portableCapsule = encryptedPortable.get();
+                    manifest = new java.util.LinkedHashMap<>(capture.manifest());
+                    manifest.putAll(release);
+                    manifest.put("executionId", execution.getId().toString());
+                    if (execution.getSequenceNumber() != null) manifest.put("sequenceNumber", execution.getSequenceNumber());
+                    manifest.put("origin", execution.getOrigin());
+                    if (!prepared.transfer().isEmpty()) manifest.put("serverTransfer", prepared.transfer());
+                    phase(lease, "ARCHIVE");
+                    archiveInfo = archives.create(dump, productImagesDirectory, documentTemplatesDirectory, archive, manifest, portableCapsule);
+                }
+            } else {
+                // Retained for unit-test embedders. Production always configures the snapshot service.
+                commands.dump(dump);
+                archiveInfo = archives.create(dump, productImagesDirectory, documentTemplatesDirectory, archive);
+            }
             if (leaseHeartbeat != null) leaseHeartbeat.check();
             if (lease != null) leaseService.heartbeat(lease);
             String fileTime = BACKUP_FILE_TIME.format(clock.instant().atZone(clock.getZone()));
-            encrypted = daily.resolve("tpv-erp-" + fileTime + "-" + execution.getId() + ".tpvb");
-            brk = keyStore.loadForScheduledBackup();
+            encrypted = daily.resolve(execution.getSequenceNumber() == null
+                    ? "tpv-erp-" + fileTime + "-" + execution.getId() + ".tpvb"
+                    : "%06d.tpvb".formatted(execution.getSequenceNumber()));
+            long needed = Math.addExact(Math.multiplyExact(Files.size(archive), 2), 1024L * 1024);
+            if (Files.getFileStore(destination).getUsableSpace() < needed) {
+                throw new IllegalStateException("No hay espacio suficiente para cifrar y verificar la copia");
+            }
+            // Reserve a new name. Neither encryption nor failure cleanup may replace an older backup.
+            if (Files.exists(destination.resolve("monthly").resolve(encrypted.getFileName()), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                throw new IllegalStateException("El ID de copia ya existe en la carpeta mensual; seleccione otra carpeta de destino");
+            }
+            Files.createFile(encrypted);
+            ownsEncrypted = true;
+            phase(lease, "ENCRYPTING");
             var info = fileCrypto.encrypt(archive, encrypted, brk);
+            phase(lease, "VERIFYING");
+            fileCrypto.verify(encrypted, brk);
             if (leaseHeartbeat != null) leaseHeartbeat.check();
             if (lease != null) leaseService.heartbeat(lease);
-            Map<String, Object> metadata = Map.of(
+            Map<String, Object> metadata = new java.util.LinkedHashMap<>(Map.of(
                             "path", encrypted.toString(),
                             "plaintextBytes", info.plaintextLength(),
                             "chunks", info.chunkCount(),
+                            "formatVersion", info.version(),
                             "databaseBytes", archiveInfo.databaseBytes(),
                             "imageFiles", archiveInfo.imageFiles(),
-                            "templateFiles", archiveInfo.templateFiles());
+                            "templateFiles", archiveInfo.templateFiles(),
+                            "sizeBytes", Files.size(encrypted),
+                            "verifiedAt", Instant.now(clock).toString()));
+            if (manifest != null) metadata.put("manifest", manifest);
+            metadata.put("monthlyPath", destination.resolve("monthly").resolve(encrypted.getFileName()).toString());
+            CloudBackupDescriptor cloudDescriptor = null;
+            byte[] wrappedRecovery = null;
+            if (cloudQueue != null) {
+                metadata.put("cloudRequired", true);
+                try {
+                    wrappedRecovery = keyStore.exportWrappedRecoveryKey();
+                    cloudDescriptor = new CloudBackupDescriptor(execution.getId(), currentInstallation().getId(),
+                            execution.getSequenceNumber(), Instant.parse(manifest.get("capturedAt").toString()),
+                            applicationVersion, info.version(), portableCapsule == null ? 0 : RecoverySecretsCodec.VERSION,
+                            Files.size(encrypted), CloudBackupRepairService.sha256(encrypted),
+                            CloudBackupRepairService.sha256(wrappedRecovery), 2);
+                    metadata.put("cloudDescriptor", CloudBackupRepairService.descriptorMetadata(cloudDescriptor));
+                    metadata.put("cloudRecoveryKey", java.util.Base64.getEncoder().encodeToString(wrappedRecovery));
+                } catch (Exception cloudPreparationFailure) {
+                    metadata.put("cloudPreparationError", "CLOUD_BACKUP_PREPARATION_FAILED");
+                }
+            }
             if (lease != null) {
                 completionAttempted = true;
                 execution.completar(BackupResult.EXITO, Instant.now(clock), metadata, null);
@@ -239,19 +376,30 @@ public class BackupService {
                 executionRepository.saveAndFlush(execution);
             }
             executionCommitted = true;
+            boolean cloudQueued = cloudQueue == null;
+            if (cloudQueue != null && cloudDescriptor != null) {
+                try {
+                    cloudQueue.enqueue(cloudDescriptor, encrypted, wrappedRecovery);
+                    cloudQueued = true;
+                } catch (RuntimeException cloudSpoolFailure) {
+                    // The verified local copy remains successful and is repaired from its durable metadata.
+                    // Do not run retention while its independent cloud spool is still missing.
+                }
+            }
+            if (wrappedRecovery != null) Arrays.fill(wrappedRecovery, (byte) 0);
             // Housekeeping is deliberately after confirmation. A worker that
             // loses its lease must never delete a valid backup or replace a
             // confirmed monthly copy.
             try {
                 monthlyCopy = createMonthlyCopyIfNeeded(encrypted, destination, configuration);
-                enforceRetention(daily, configuration.getRetencionDiaria());
+                if (cloudQueued) enforceRetention(daily, configuration.getRetencionDiaria());
                 enforceRetention(destination.resolve("monthly"), configuration.getRetencionMensual());
             } catch (Exception housekeepingFailure) {
                 try { auditService.record("BACKUP_HOUSEKEEPING_FAILED", AuditResult.FALLO,
                         Map.of("executionId", execution.getId().toString())); }
                 catch (RuntimeException ignored) { }
             }
-            auditService.record(
+            if (!execution.getOrigin().equals("TRANSFER")) auditService.record(
                     "BACKUP_COMPLETED", AuditResult.EXITO, Map.of("path", encrypted.toString()));
         } catch (Exception exception) {
             if (executionCommitted) {
@@ -275,7 +423,7 @@ public class BackupService {
                 execution.completar(BackupResult.FALLO, Instant.now(clock), null, safeMessage(exception));
                 executionRepository.saveAndFlush(execution);
             }
-            if (!executionCommitted) {
+            if (!executionCommitted && !execution.getOrigin().equals("TRANSFER")) {
                 auditService.record(
                         "BACKUP_FAILED", AuditResult.FALLO, Map.of("reason", safeMessage(exception)));
             }
@@ -284,6 +432,7 @@ public class BackupService {
             if (brk != null) {
                 Arrays.fill(brk, (byte) 0);
             }
+            if (portableCapsule != null) Arrays.fill(portableCapsule, (byte) 0);
             if (dump != null) {
                 try {
                     Files.deleteIfExists(dump);
@@ -299,101 +448,117 @@ public class BackupService {
                 }
             }
             if (!executionCommitted && !preserveEncrypted && encrypted != null) {
-                try { Files.deleteIfExists(encrypted); } catch (Exception ignored) { }
+                if (ownsEncrypted) {
+                    try { Files.deleteIfExists(encrypted); } catch (Exception ignored) { }
+                }
             }
             if (!executionCommitted && monthlyCopy != null) {
                 try { Files.deleteIfExists(monthlyCopy); } catch (Exception ignored) { }
             }
         }
-        return ExecutionItem.from(execution);
+        return withCloud(ExecutionItem.from(execution));
     }
 
+    /** Exceptional recovery is maintenance-only; HTTP and runtime feature flags cannot enable it. */
     public void restore(Path encryptedBackup, Path recoveryFile, String recoverySecret) {
-        if (!restoreOnlineEnabled) {
-            throw new IllegalStateException(
-                    "La restauracion online esta bloqueada; detenga el backend y use el procedimiento offline documentado");
-        }
-        if (recoverySecret == null || recoverySecret.length() < 16) {
-            throw new IllegalArgumentException("La clave de recuperación v2 no es válida");
-        }
-        byte[] brk = keyStore.loadForRestore(recoveryFile, recoverySecret.toCharArray());
-        Path dump = null;
-        Path archive = null;
-        try {
-            Files.createDirectories(defaultDirectory.toAbsolutePath());
-            dump = Files.createTempFile(defaultDirectory.toAbsolutePath(), ".tpv-restore-", ".backup");
-            archive = Files.createTempFile(defaultDirectory.toAbsolutePath(), ".tpv-restore-", ".zip");
-            fileCrypto.decrypt(encryptedBackup, archive, brk);
-            Path stagingRoot = Files.createTempDirectory(defaultDirectory.toAbsolutePath(), ".tpv-restore-staging-");
-            Path stagedImages = stagingRoot.resolve("images");
-            Path stagedTemplates = stagingRoot.resolve("templates");
-            try {
-                archives.extractToStaging(archive, dump, stagedImages, stagedTemplates);
-                commands.restore(dump);
-                archives.replaceTrees(
-                        stagedImages, productImagesDirectory, stagedTemplates, documentTemplatesDirectory);
-            } catch (Exception exception) {
-                throw new IllegalStateException(
-                        "La base de datos puede haberse restaurado, pero no se pudieron aplicar los arboles; revise el estado", exception);
-            } finally {
-                try (var paths = Files.walk(stagingRoot)) {
-                    paths.sorted(Comparator.reverseOrder()).forEach(path -> {
-                        try { Files.deleteIfExists(path); } catch (Exception ignored) { }
-                    });
-                } catch (Exception ignored) { }
-            }
-            recordFiscalRestorationEvent();
-            auditService.record(
-                    "BACKUP_RESTORED",
-                    AuditResult.EXITO,
-                    Map.of("path", encryptedBackup.toAbsolutePath().toString()));
-        } catch (Exception exception) {
-            auditService.record(
-                    "BACKUP_RESTORE_FAILED",
-                    AuditResult.FALLO,
-                    Map.of("reason", safeMessage(exception)));
-            throw new IllegalStateException("No se pudo restaurar el backup", exception);
-        } finally {
-            Arrays.fill(brk, (byte) 0);
-            if (dump != null) {
-                try {
-                    Files.deleteIfExists(dump);
-                } catch (Exception ignored) {
-                    // The original encrypted backup remains untouched.
-                }
-            }
-            if (archive != null) {
-                try {
-                    Files.deleteIfExists(archive);
-                } catch (Exception ignored) {
-                    // The original encrypted backup remains untouched.
-                }
-            }
-        }
+        throw new IllegalStateException("La restauración libre no está disponible; utilice el traslado controlado del servidor");
     }
 
-    /**
-     * A managed restore is an official NO VERI*FACTU event. It is deliberately
-     * executed only after PostgreSQL has restored the fiscal chain, so event 07
-     * becomes the first new immutable record in the restored installation.
-     */
-    private void recordFiscalRestorationEvent() {
-        var installation = currentInstallation();
-        verifactuConfigurations.findAllByCurrentMode(FiscalMode.NO_VERIFACTU)
-                .forEach(configuration -> fiscalEvents.create(
-                        configuration.getCompanyId(), installation.getId(),
-                        FiscalMode.NO_VERIFACTU, FiscalEventType.BACKUP_RESTORED,
-                        "BACKUP_RESTORED"));
+    private void phase(BackupExecutionLeaseService.Lease lease, String phase) {
+        if (lease != null) leaseService.progress(lease, phase);
     }
+
+    public record Prepared(BackupSettings configuration, BackupExecution execution,
+            BackupExecutionLeaseService.Lease lease, Map<String, Object> transfer) { }
 
     @Transactional(readOnly = true)
     public List<ExecutionItem> history() {
         BackupSettings configuration = currentConfiguration();
         return executionRepository.findTop100ByConfiguracionIdOrderByIniciadaEnDesc(configuration.getId())
                 .stream()
-                .map(ExecutionItem::from)
+                .map(value -> withCloud(ExecutionItem.from(value)))
                 .toList();
     }
+
+    @Transactional(readOnly = true)
+    public HistoryPage history(int page, int size) {
+        if (page < 0 || size < 1 || size > 100) throw new IllegalArgumentException("Paginación inválida");
+        var configured = configuration();
+        if (!configured.configured()) return new HistoryPage(List.of(), 0, page, size, null, null, false, false);
+        var settings = currentConfiguration();
+        var rows = executionRepository.findByConfiguracionIdOrderBySequenceNumberDesc(settings.getId(),
+                org.springframework.data.domain.PageRequest.of(page, size));
+        Instant last = executionRepository.findTopByConfiguracionIdAndResultadoOrderByFinalizadaEnDesc(
+                settings.getId(), BackupResult.EXITO).map(BackupExecution::getFinalizadaEn).orElse(null);
+        Instant now = Instant.now(clock);
+        Instant next = null;
+        if (settings.isActiva()) {
+            ZoneId zone = backupZone();
+            LocalDate today = now.atZone(zone).toLocalDate();
+            var scheduled = today.atTime(settings.getHora()).atZone(zone);
+            Instant start = today.atStartOfDay(zone).toInstant();
+            boolean succeeded = executionRepository.existsByConfiguracionIdAndResultadoAndIniciadaEnGreaterThanEqual(
+                    settings.getId(), BackupResult.EXITO, start);
+            if (succeeded) scheduled = scheduled.plusDays(1);
+            next = scheduled.toInstant().isBefore(now) ? now.plusSeconds(60) : scheduled.toInstant();
+        }
+        var cloudStates = cloudQueue == null ? Map.<UUID, CloudBackupStatus>of()
+                : cloudQueue.statuses(rows.getContent().stream().map(BackupExecution::getId).toList());
+        return new HistoryPage(rows.getContent().stream().map(ExecutionItem::from)
+                .map(value -> value.withCloud(cloudStates.getOrDefault(value.id(), pendingCloud(value.metadata())))).toList(), rows.getTotalElements(),
+                page, size, last, next, settings.isActiva() && (last == null || last.isBefore(now.minusSeconds(86_400))), true);
+    }
+
+    @Transactional(readOnly = true)
+    public ExecutionItem detail(UUID id) {
+        var row = executionRepository.findById(id).filter(value -> value.configurationId().equals(currentConfiguration().getId()))
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));
+        return withCloud(ExecutionItem.from(row));
+    }
+
+    public CloudBackupStatus retryCloud(UUID id) {
+        detail(id); // Enforces ownership of this installation's backup.
+        if (cloudQueue == null) throw new IllegalStateException("El envío a SaaS no está configurado");
+        if (cloudQueue.status(id) == null) {
+            cloudRepair.requestRepair(id);
+            return new CloudBackupStatus("PENDING", 0, null, Instant.now(clock), null);
+        }
+        return cloudQueue.retry(id);
+    }
+
+    public void ensureCloudCopy(Path file) {
+        if (cloudQueue == null) throw new IllegalStateException("La copia final debe enviarse a SaaS antes del traslado");
+        UUID id = executionRepository.findIdByArtifactPath(file.toAbsolutePath().toString())
+                .orElseThrow(() -> new IllegalStateException("No se encontró la copia final del traslado"));
+        if (cloudQueue.status(id) == null) {
+            try { cloudRepair.repairOne(id); }
+            catch (Exception failure) { throw new IllegalStateException("No se pudo preparar el envío final a SaaS", failure); }
+        }
+        cloudQueue.retry(id);
+        if (!cloudRepair.repairAllForTransfer() || !cloudQueue.runAllForTransfer() || !cloudQueue.runOneForTransfer(id)) {
+            throw new IllegalStateException("La copia final sigue pendiente de envío a SaaS; el origen permanece bloqueado");
+        }
+    }
+
+    private ExecutionItem withCloud(ExecutionItem item) {
+        return item.withCloud(cloudQueue == null ? null : java.util.Optional.ofNullable(cloudQueue.status(item.id()))
+                .orElseGet(() -> pendingCloud(item.metadata())));
+    }
+
+    private static CloudBackupStatus pendingCloud(Map<String, Object> metadata) {
+        if (Boolean.TRUE.equals(metadata.get("cloudAlreadyStored"))) {
+            return new CloudBackupStatus("SENT", 0, null, null, null);
+        }
+        if (Boolean.TRUE.equals(metadata.get("restoreSourceUnavailable"))) {
+            return new CloudBackupStatus("RETIRED", 0, null, null, "SOURCE_SPOOL_NOT_RECOVERED");
+        }
+        if (!Boolean.TRUE.equals(metadata.get("cloudRequired"))) return null;
+        return new CloudBackupStatus(metadata.containsKey("cloudPreparationError") ? "FAILED" : "PENDING", 0,
+                null, null, metadata.getOrDefault("cloudPreparationError", "CLOUD_BACKUP_QUEUING_PENDING").toString());
+    }
+
+    public record HistoryPage(List<ExecutionItem> items, long total, int page, int size,
+            Instant lastSuccessfulAt, Instant nextScheduledAt, boolean overdue, boolean configured) { }
 
     @Transactional(readOnly = true)
     public boolean isDue() {
@@ -401,12 +566,21 @@ public class BackupService {
         if (!configuration.isActiva()) {
             return false;
         }
-        ZoneId zone = ZoneId.systemDefault();
-        Instant startOfToday = LocalDate.now(clock).atStartOfDay(zone).toInstant();
+        ZoneId zone = backupZone();
+        Instant now = clock.instant();
+        LocalDate today = now.atZone(zone).toLocalDate();
+        Instant startOfToday = today.atStartOfDay(zone).toInstant();
         boolean ranToday = executionRepository
                 .existsByConfiguracionIdAndResultadoAndIniciadaEnGreaterThanEqual(
                         configuration.getId(), BackupResult.EXITO, startOfToday);
-        return !ranToday && !LocalTime.now(clock).isBefore(configuration.getHora());
+        return !ranToday && !now.isBefore(today.atTime(configuration.getHora()).atZone(zone).toInstant());
+    }
+
+    private ZoneId backupZone() {
+        var stores = storeRepository.findAll();
+        // Local installations have one store. Retain the injected clock for
+        // bootstrap and standalone tools that do not yet have a store.
+        return stores.size() == 1 ? ZoneId.of(stores.getFirst().getTimezone()) : clock.getZone();
     }
 
     private void verifyAdminPassword(String password) {
@@ -439,16 +613,23 @@ public class BackupService {
             Path dailyBackup,
             Path destination,
             BackupSettings configuration) throws Exception {
-        LocalDate today = LocalDate.now(clock);
-        if (today.getDayOfMonth() != 1) {
-            return null;
-        }
+        ZoneId zone = backupZone();
+        LocalDate today = LocalDate.now(clock.withZone(zone));
         Path monthly = destination.resolve("monthly");
         Files.createDirectories(monthly);
-        Path monthlyBackup = monthly.resolve(
-                "tpv-erp-" + today.getYear() + "-" + "%02d".formatted(today.getMonthValue()) + ".tpvb");
+        try (var files = Files.list(monthly)) {
+            boolean exists = files.filter(this::isBackupFile).anyMatch(path ->
+                    java.time.YearMonth.from(Instant.ofEpochMilli(lastModified(path)).atZone(zone))
+                            .equals(java.time.YearMonth.from(today)));
+            if (exists) return null;
+        }
+        Path monthlyBackup = monthly.resolve(dailyBackup.getFileName());
+        boolean promoted = false;
+        boolean ownsMonthly = false;
         Path temporary = Files.createTempFile(monthly, ".tpv-monthly-", ".tmp");
         try {
+            Files.createFile(monthlyBackup);
+            ownsMonthly = true;
             Files.copy(dailyBackup, temporary, StandardCopyOption.REPLACE_EXISTING);
             try {
                 Files.move(
@@ -456,11 +637,13 @@ public class BackupService {
                         monthlyBackup,
                         StandardCopyOption.ATOMIC_MOVE,
                         StandardCopyOption.REPLACE_EXISTING);
+                promoted = true;
             } catch (java.nio.file.AtomicMoveNotSupportedException exception) {
                 throw new IllegalStateException("El destino mensual no admite promocion atomica", exception);
             }
         } finally {
             Files.deleteIfExists(temporary);
+            if (ownsMonthly && !promoted) Files.deleteIfExists(monthlyBackup);
         }
         enforceRetention(monthly, configuration.getRetencionMensual());
         return monthlyBackup;
@@ -472,15 +655,22 @@ public class BackupService {
         }
         List<Path> files;
         try (var stream = Files.list(directory)) {
-            files = stream.filter(Files::isRegularFile)
-                    .filter(path -> path.getFileName().toString().startsWith("tpv-erp-"))
-                    .filter(path -> path.getFileName().toString().endsWith(".tpvb"))
+            files = stream.filter(this::isBackupFile)
                     .sorted(Comparator.comparingLong(this::lastModified).reversed())
                     .toList();
         }
         for (int index = retention; index < files.size(); index++) {
-            Files.deleteIfExists(files.get(index));
+            Path candidate = files.get(index);
+            if (cloudQueue == null || !executionRepository.needsCloudSpool(candidate.toString())) {
+                Files.deleteIfExists(candidate);
+            }
         }
+    }
+
+    private boolean isBackupFile(Path path) {
+        String name = path.getFileName().toString();
+        return Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                && (name.matches("[0-9]{6,}\\.tpvb") || name.matches("tpv-erp-[A-Za-z0-9-]+\\.tpvb"));
     }
 
     private long lastModified(Path path) {
@@ -492,6 +682,12 @@ public class BackupService {
     }
 
     private String safeMessage(Exception exception) {
+        if (exception instanceof java.nio.file.AccessDeniedException) {
+            return "No hay permisos para leer o escribir en la carpeta de copias";
+        }
+        if (exception instanceof java.nio.file.FileAlreadyExistsException) {
+            return "El archivo de copia ya existe; se ha conservado sin sobrescribirlo";
+        }
         return exception.getMessage() == null
                 ? exception.getClass().getSimpleName()
                 : exception.getMessage();
@@ -502,14 +698,15 @@ public class BackupService {
             int dailyRetention,
             int monthlyRetention,
             boolean active,
-            String directory) {
+            String directory,
+            boolean configured) {
         static BackupConfigurationItem from(BackupSettings configuration) {
             return new BackupConfigurationItem(
                     configuration.getHora(),
                     configuration.getRetencionDiaria(),
                     configuration.getRetencionMensual(),
                     configuration.isActiva(),
-                    configuration.getDestino().get("path").toString());
+                    configuration.getDestino().get("path").toString(), true);
         }
     }
 
@@ -519,15 +716,51 @@ public class BackupService {
             Instant finishedAt,
             BackupResult result,
             Map<String, Object> metadata,
-            String errorReason) {
+            String errorReason,
+            Long sequenceNumber,
+            Long sizeBytes,
+            boolean available,
+            String origin,
+            String phase,
+            CloudBackupStatus cloud) {
+        ExecutionItem withCloud(CloudBackupStatus value) {
+            return new ExecutionItem(id, startedAt, finishedAt, result, metadata, errorReason,
+                    sequenceNumber, sizeBytes, available, origin, phase, value);
+        }
         static ExecutionItem from(BackupExecution execution) {
+            Map<String, Object> metadata = execution.getMetadata();
+            Path file = availablePath(metadata);
+            Long size = metadata.get("sizeBytes") instanceof Number number ? number.longValue() : null;
+            if (file != null) {
+                try { size = Files.size(file); } catch (java.io.IOException ignored) { file = null; }
+            }
             return new ExecutionItem(
                     execution.getId(),
                     execution.getIniciadaEn(),
                     execution.getFinalizadaEn(),
                     execution.getResultado(),
-                    execution.getMetadata(),
-                    execution.getMotivoError());
+                    publicMetadata(execution.getMetadata()),
+                    execution.getMotivoError(), execution.getSequenceNumber(), size, file != null,
+                    execution.getOrigin(), execution.getPhase(), null);
+        }
+
+        private static Map<String, Object> publicMetadata(Map<String, Object> values) {
+            var result = new java.util.LinkedHashMap<>(values);
+            result.remove("cloudRecoveryKey");
+            result.remove("cloudDescriptor");
+            return java.util.Collections.unmodifiableMap(result);
+        }
+
+        private static Path availablePath(Map<String, Object> metadata) {
+            for (String key : List.of("path", "monthlyPath")) {
+                if (metadata.get(key) instanceof String text) {
+                    try {
+                        Path path = Path.of(text);
+                        if (Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return path;
+                    } catch (java.nio.file.InvalidPathException ignored) { }
+                }
+            }
+            return null;
         }
     }
 }

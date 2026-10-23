@@ -140,6 +140,8 @@ $defaultSni    ocsp_stapling off
 
 $PublicOrigin {
     tls `"$cert`" `"$key`"
+    @localTransfer path /api/v1/server-transfer/*
+    respond @localTransfer 403
     reverse_proxy $BackendOrigin
 }
 "@

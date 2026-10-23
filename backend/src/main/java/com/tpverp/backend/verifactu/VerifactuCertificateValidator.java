@@ -27,6 +27,26 @@ public class VerifactuCertificateValidator {
                 notBefore,
                 notAfter);
     }
+
+    /** Validate transported key material without replacing historical certificate identities. */
+    public void verifyTransferred(byte[] encodedChain,byte[] privateBytes,String fingerprint,boolean active) throws Exception {
+        var path=java.security.cert.CertificateFactory.getInstance("X.509")
+                .generateCertPath(new java.io.ByteArrayInputStream(encodedChain),"PKCS7");
+        if(path.getCertificates().isEmpty() || !(path.getCertificates().getFirst() instanceof X509Certificate leaf))
+            throw new IllegalStateException("Transferred fiscal certificate chain is empty");
+        String actual=java.util.HexFormat.of().withUpperCase().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(leaf.getEncoded()));
+        if(!actual.equals(fingerprint))throw new IllegalStateException("Transferred fiscal certificate fingerprint mismatch");
+        if(active && !validate(leaf).valid())throw new IllegalStateException("Transferred active fiscal certificate is invalid: "+validate(leaf).warning());
+        var key=java.security.KeyFactory.getInstance(leaf.getPublicKey().getAlgorithm())
+                .generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(privateBytes));
+        var signature=java.security.Signature.getInstance("EC".equals(key.getAlgorithm())?"SHA256withECDSA":"SHA256withRSA");
+        byte[] challenge=new byte[32];new java.security.SecureRandom().nextBytes(challenge);
+        signature.initSign(key);signature.update(challenge);byte[] signed=signature.sign();
+        signature.initVerify(leaf.getPublicKey());signature.update(challenge);
+        if(!signature.verify(signed))throw new IllegalStateException("Transferred fiscal private key does not match its certificate");
+        for(int i=0;i+1<path.getCertificates().size();i++)
+            path.getCertificates().get(i).verify(path.getCertificates().get(i+1).getPublicKey());
+    }
     // Evalua si el certificado puede usarse y devuelve avisos no bloqueantes para pantalla.
 
     private static String warning(

@@ -46,16 +46,29 @@ public class BackupExecutionLeaseService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Lease claim(BackupSettings configuration) {
+        return claim(configuration, "MANUAL");
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Lease claim(BackupSettings configuration, String origin) {
         Instant now = Instant.now(clock);
         executions.expireStaleLeases(configuration.getId(), now);
         UUID token = UUID.randomUUID();
         BackupExecution execution = new BackupExecution(configuration, now, token, now,
                 now.plus(LEASE_DURATION));
+        execution.setOrigin(origin);
         try {
             executions.saveAndFlush(execution);
             return new Lease(execution.getId(), token);
         } catch (DataIntegrityViolationException ex) {
             throw new IllegalStateException("Ya existe otro worker de backup activo", ex);
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void progress(Lease lease, String phase) {
+        if (executions.progress(lease.executionId(), lease.workerToken(), phase) != 1) {
+            throw new IllegalStateException("El worker de backup perdió su lease");
         }
     }
 

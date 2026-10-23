@@ -10,7 +10,10 @@ FROM eclipse-temurin:25-jre@sha256:fcd7fd7b387f94bb2ac461478a7436ad8e349924c374e
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/lib/tpv-saas/backup-vault \
+    && chown -R 10001:10001 /var/lib/tpv-saas \
+    && chmod 700 /var/lib/tpv-saas/backup-vault
 COPY --from=build /workspace/backend-saas/target/tpv-erp-saas-backend-*.jar /app/app.jar
 USER 10001:10001
 EXPOSE 8090

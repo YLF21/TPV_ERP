@@ -50,6 +50,9 @@ public class SaasInstallation {
     @Column(name = "current_pairing_code_id")
     private UUID currentPairingCodeId;
 
+    @Column(name = "link_recovery_invalidated",nullable=false)
+    private boolean linkRecoveryInvalidated;
+
     @Column(name = "linked_at", nullable = false)
     private Instant linkedAt;
 
@@ -215,7 +218,7 @@ public class SaasInstallation {
     }
 
     public boolean isCurrentPairing(UUID pairingCodeId) {
-        return currentPairingCodeId == null || currentPairingCodeId.equals(pairingCodeId);
+        return !linkRecoveryInvalidated && (currentPairingCodeId == null || currentPairingCodeId.equals(pairingCodeId));
     }
 
     public void usePairing(UUID pairingCodeId) {
@@ -226,6 +229,7 @@ public class SaasInstallation {
             throw new IllegalArgumentException("pairingCodeId es obligatorio");
         }
         currentPairingCodeId = pairingCodeId;
+        linkRecoveryInvalidated = false;
     }
 
     String tokenHashSnapshot() {
@@ -240,6 +244,12 @@ public class SaasInstallation {
             throw new IllegalArgumentException("tokenHash es obligatorio");
         }
         tokenHash = value;
+    }
+
+    /** A transferred server must not be recoverable using the retired host's pairing secret. */
+    public void invalidateLinkRecovery() {
+        linkRecoveryTokenHash = null;
+        linkRecoveryInvalidated = true;
     }
 
     public void validatedAt(Instant now) {

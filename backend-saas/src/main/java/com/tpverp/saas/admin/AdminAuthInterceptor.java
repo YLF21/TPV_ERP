@@ -95,6 +95,7 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         String method = request.getMethod();
         Object matched = request.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
         String path = matched == null ? request.getRequestURI() : matched.toString();
+        if (path.contains("/backup-recoveries")) return AdminPermission.MANAGE_SUPPORT_TICKETS;
         if ("PUT".equals(method) && path.startsWith("/api/v1/admin/demo-requests/")
                 && path.endsWith("/status")) {
             return AdminPermission.MANAGE_OPERATIONS;

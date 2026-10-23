@@ -12,6 +12,9 @@ public class FiscalExportJobLauncher {
     private final FiscalExportJobService jobs;
     private final ThreadPoolTaskExecutor executor;
     private final Set<UUID> dispatched = ConcurrentHashMap.newKeySet();
+    private com.tpverp.backend.servertransfer.ServerTransferFence transferFence;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setTransferFence(com.tpverp.backend.servertransfer.ServerTransferFence fence) { transferFence=fence; }
 
     public FiscalExportJobLauncher(FiscalExportJobService jobs,
             @Qualifier("fiscalExportJobExecutor") ThreadPoolTaskExecutor executor) {
@@ -23,7 +26,10 @@ public class FiscalExportJobLauncher {
         if (jobId == null || !dispatched.add(jobId)) return;
         try {
             executor.execute(() -> {
-                try { jobs.run(jobId); }
+                try {
+                    if(transferFence!=null && !transferFence.enter()) return;
+                    try {jobs.run(jobId);} finally {if(transferFence!=null)transferFence.leave();}
+                }
                 finally { dispatched.remove(jobId); }
             });
         } catch (RuntimeException rejected) {

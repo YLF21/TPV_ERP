@@ -209,6 +209,11 @@ class MemberWalletSyncWakeListenerTest {
         var context = new AnnotationConfigApplicationContext();
         context.registerBean(TestConfiguration.class);
         context.registerBean(SyncOutboxWorker.class, () -> worker);
+        context.registerBean(com.tpverp.backend.servertransfer.ServerTransferFence.class, () -> {
+            var fence = mock(com.tpverp.backend.servertransfer.ServerTransferFence.class);
+            org.mockito.Mockito.when(fence.enter()).thenReturn(true);
+            return fence;
+        });
         context.registerBean(Environment.class, () -> new MockEnvironment()
                 .withProperty("tpv.sync.worker-enabled", Boolean.toString(enabled)));
         context.registerBean(MemberWalletSyncWakeConfiguration.class);

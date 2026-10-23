@@ -26,6 +26,22 @@ type BackendConnectionResult<T> = ({ ok: true } & T) | { ok: false; code: string
 declare global {
   interface Window {
     tpvDesktop?: {
+      backups?: { openDirectory: (token: string) => Promise<DesktopResult> };
+      serverTransfer?: {
+        requestOrigin: (request: { action: "status" | "prepare" | "seal" | "cancel"; token: string;
+          transferId?: string; adminPassword?: string; destinationPublicKey?: string; destinationProof?: string }) =>
+          Promise<({ ok: true; status: { transferId: string | null; state: "NONE" | "PREPARED" | "FROZEN" | "SEALED" | "RECEIVED" | "ACTIVE" | "ACTIVATED" | "CANCELLED";
+            destinationKeyFingerprint: string | null; backupSha256: string | null } } | { ok: false; code: string; message: string })>;
+        startMaintenance: (request: { action: "request" | "receive" | "activate" | "status" | "cancel" }) => Promise<DesktopResult & { started?: boolean }>;
+        readStatus: () => Promise<DesktopResult & { state?: string; transferId?: string; destinationKeyFingerprint?: string;
+          destinationPublicKey?: string; destinationProof?: string; releaseId?: string; checkedAt?: string }>;
+        openRequest: () => Promise<DesktopResult & { destinationPublicKey?: string; destinationProof?: string }>;
+      };
+      disasterRecovery?: {
+        startMaintenance: (request: { action: "request" | "receive" | "activate" | "status" }) => Promise<DesktopResult & { started?: boolean }>;
+        readStatus: () => Promise<DesktopResult & { state?: string; recoveryId?: string;
+          destinationKeyFingerprint?: string; destinationPublicKey?: string; checkedAt?: string }>;
+      };
       display?: {
         load: () => Promise<{ ok: true; mode: "FULLSCREEN" | "WINDOWED" } | { ok: false; code: string; message: string }>;
         setMode: (mode: "FULLSCREEN" | "WINDOWED") => Promise<{ ok: true; mode: "FULLSCREEN" | "WINDOWED" } | { ok: false; code: string; message: string }>;

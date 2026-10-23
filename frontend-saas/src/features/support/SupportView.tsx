@@ -3,6 +3,7 @@ import { repairSession } from "../supervision/repair-session";
 import { useSupportLabels, type SupportTarget } from "./support-labels";
 import "./support-workflow.css";
 import { TicketInterventionsPanel } from "../supervision/TicketInterventionsPanel";
+import { TicketBackupRecoveryPanel } from "./TicketBackupRecoveryPanel";
 import { useInterventionLabels } from "../supervision/intervention-labels";
 import { useRefreshVersion } from "../../app/RefreshContext";
 import { FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -302,11 +303,13 @@ export function SupportView({
               onReturnToFailure={onReturnToFailure}
               canManage={canManage}
               busy={busy}
-              renderWorkflow={ticket => <TicketInterventionsPanel key={session.id + ":" + ticket.id}
+              renderWorkflow={ticket => <><TicketInterventionsPanel key={session.id + ":" + ticket.id}
                 credentials={credentials} companyId={ticket.companyId} ticketId={ticket.id} ticketStatus={ticket.status}
                 canManage={canManage} blocked={(!!busy && busy !== "workflow:" + ticket.id) || session.tickets.has(ticket.id) || (canManage && commentsBlocked[ticket.id] !== false)} refreshVersion={refreshVersion + workflowRevision}
                 onBusyChange={value => { if (current()) setBusy(value ? "workflow:" + ticket.id : null); }}
-                onChanged={() => { if (current()) void Promise.all([loadTickets(ticket.companyId), loadOverview()]); }} />}
+                onChanged={() => { if (current()) void Promise.all([loadTickets(ticket.companyId), loadOverview()]); }} />
+                <TicketBackupRecoveryPanel credentials={credentials} companyId={ticket.companyId} ticketId={ticket.id}
+                  canManage={canManage} blocked={!!busy || session.tickets.has(ticket.id)} /></>}
               renderComposer={ticket => <TicketCommentComposer key={session.id + ":comment:" + ticket.id} credentials={credentials} ticketId={ticket.id}
                 disabled={!!busy && busy !== "comment:" + ticket.id}
                 onBlockedChange={value => { if (current()) setCommentsBlocked(previous => previous[ticket.id] === value ? previous : {...previous, [ticket.id]: value}); }}

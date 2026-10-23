@@ -1,5 +1,5 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, safeStorage, screen } = require("electron");
-const { execFile } = require("node:child_process");
+const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, safeStorage, screen, shell } = require("electron");
+const { execFile, spawn } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { renderA4DocumentHtml } = require("./a4-renderer.cjs");
@@ -30,6 +30,9 @@ const { productionBackendConfigPath, readBackendConfig, resolveBackendConfig } =
 const { createDesktopServer } = require("./loopback-server.cjs");
 const { resolveRendererAppUrl } = require("./renderer-runtime-config.cjs");
 const { createPrivilegedIpcRegistrar } = require("./electron-security.cjs");
+const { isSafeBackupDirectory } = require("./backup-folder.cjs");
+const { ACTIONS: SERVER_TRANSFER_MAINTENANCE_ACTIONS, validOriginRequest, installedMaintenanceScript, installedLocalEndpoint, nonLinkedFile } = require("./server-transfer-maintenance.cjs");
+const { ACTIONS: DISASTER_RECOVERY_ACTIONS, installedDisasterRecoveryScript, publicStatusPath, sanitizeStatus } = require("./disaster-recovery-maintenance.cjs");
 const { createSaleControlOutbox } = require("./sale-control-outbox.cjs");
 const { createTerminalLinking } = require("./terminal-linking.cjs");
 const { createLinkingStorage } = require("./linking-storage.cjs");
@@ -1278,6 +1281,168 @@ registerIpc("tpv:work-recovery:save", (_event, value) => workRecoveryCall(store 
 registerIpc("tpv:work-recovery:clear", () => workRecoveryCall(store => { store.clear(); return {}; }));
 
 registerIpc("tpv:terminal-identity:load", () => readTerminalIdentity());
+registerIpc("tpv:server-transfer:origin", async (_event, request) => {
+  try {
+    if (process.platform !== "win32" || desktopAppConfig.key !== "gestion")
+      return structuredError("TRANSFER_ORIGIN_LOCAL_ONLY", "Traslado disponible solo en el servidor local");
+    const identity = await readTerminalIdentity();
+    if (!identity.ok || identity.identity?.terminalCode !== "001")
+      return structuredError("TRANSFER_ORIGIN_SERVER_ONLY", "Solo el servidor 001 puede iniciar el traslado");
+    if (!validOriginRequest(request))
+      return structuredError("TRANSFER_ORIGIN_INVALID", "Solicitud de traslado no válida");
+    const endpoint = installedLocalEndpoint();
+    if (!endpoint) return structuredError("TRANSFER_ORIGIN_UNAVAILABLE", "Servicio local de traslado no disponible");
+    const suffix = request.action === "status" ? "/status"
+      : request.action === "prepare" ? "/prepare" : `/${request.transferId}/${request.action}`;
+    const body = request.action === "prepare"
+      ? { adminPassword: request.adminPassword, destinationPublicKey: request.destinationPublicKey,
+        destinationProof: request.destinationProof }
+      : request.action === "status" ? undefined : { adminPassword: request.adminPassword };
+    const response = await fetch(`${endpoint}/api/v1/server-transfer${suffix}`, {
+      method: body ? "POST" : "GET",
+      headers: { Authorization: `Bearer ${request.token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      signal: AbortSignal.timeout(request.action === "seal" ? 1800000 : 30000)
+    });
+    if (!response.ok) return structuredError("TRANSFER_ORIGIN_REJECTED", "El servidor rechazó la operación de traslado");
+    const valueText = await response.text();
+    if (valueText.length > 16384) return structuredError("TRANSFER_ORIGIN_INVALID_RESPONSE", "Respuesta de traslado no válida");
+    const value = JSON.parse(valueText);
+    if (!value || !["NONE", "PREPARED", "FROZEN", "SEALED", "RECEIVED", "ACTIVE", "ACTIVATED", "CANCELLED"].includes(value.state)
+        || (value.transferId !== null && (typeof value.transferId !== "string" || value.transferId.length > 128)))
+      return structuredError("TRANSFER_ORIGIN_INVALID_RESPONSE", "Respuesta de traslado no válida");
+    return { ok: true, status: {
+      transferId: value.transferId,
+      state: value.state,
+      destinationKeyFingerprint: typeof value.destinationKeyFingerprint === "string"
+        ? value.destinationKeyFingerprint.slice(0, 256) : null,
+      backupSha256: typeof value.backupSha256 === "string" ? value.backupSha256.slice(0, 256) : null
+    } };
+  } catch { return structuredError("TRANSFER_ORIGIN_FAILED", "No se pudo completar la operación de traslado"); }
+});
+registerIpc("tpv:backups:open-directory", async (_event, token) => {
+  try {
+    if (process.platform !== "win32" || desktopAppConfig.key !== "gestion")
+      return structuredError("BACKUP_FOLDER_LOCAL_ONLY", "La carpeta solo se abre en el servidor local");
+    const endpoint = installedLocalEndpoint();
+    if (!endpoint) return structuredError("BACKUP_FOLDER_LOCAL_ONLY", "No hay servidor local instalado");
+    const identity = await readTerminalIdentity();
+    if (!identity.ok || identity.identity?.terminalCode !== "001")
+      return structuredError("BACKUP_FOLDER_SERVER_ONLY", "Solo el servidor 001 puede abrir la carpeta");
+    if (typeof token !== "string" || !token || token.length > 8192)
+      return structuredError("BACKUP_FOLDER_UNAUTHORIZED", "Sesión no válida");
+    const response = await fetch(`${endpoint}/api/v1/backups/configuration`, {
+      headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000)
+    });
+    if (!response.ok) return structuredError("BACKUP_FOLDER_UNAUTHORIZED", "No se puede consultar la configuración");
+    const config = await response.json();
+    if (!config?.configured || !isSafeBackupDirectory(config.directory))
+      return structuredError("BACKUP_FOLDER_UNAVAILABLE", "Carpeta no disponible");
+    const result = await shell.openPath(config.directory);
+    return result ? structuredError("BACKUP_FOLDER_OPEN_FAILED", "No se pudo abrir la carpeta") : { ok: true };
+  } catch { return structuredError("BACKUP_FOLDER_OPEN_FAILED", "No se pudo abrir la carpeta"); }
+});
+registerIpc("tpv:server-transfer:maintenance", async (_event, request) => {
+  if (process.platform !== "win32" || desktopAppConfig.key !== "gestion"
+      || !request
+      || typeof request !== "object" || Array.isArray(request)
+      || Object.keys(request).length !== 1
+      || !SERVER_TRANSFER_MAINTENANCE_ACTIONS.has(request.action)) {
+    return structuredError("TRANSFER_MAINTENANCE_DENIED", "Mantenimiento no autorizado");
+  }
+  const script = installedMaintenanceScript();
+  if (!installedLocalEndpoint() || !script)
+    return structuredError("TRANSFER_MAINTENANCE_UNAVAILABLE", "Herramienta de mantenimiento no instalada");
+  try {
+    await new Promise((resolve, reject) => {
+      const process = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
+        "-Action", request.action], { detached: true, stdio: "ignore", windowsHide: false });
+      process.once("error", reject);
+      process.once("spawn", () => { process.unref(); resolve(); });
+    });
+    return { ok: true, started: true };
+  } catch { return structuredError("TRANSFER_MAINTENANCE_START_FAILED", "No se pudo iniciar el mantenimiento"); }
+});
+registerIpc("tpv:server-transfer:read-status", () => {
+  if (process.platform !== "win32" || desktopAppConfig.key !== "gestion" || !installedLocalEndpoint()
+      || !installedMaintenanceScript()
+      || !/^[a-z]:\\ProgramData\\?$/i.test(process.env.ProgramData || "")) {
+    return structuredError("TRANSFER_STATUS_DENIED", "Estado no disponible");
+  }
+  const directory = path.join(process.env.ProgramData, "TPV ERP", "transfer", "public");
+  const statusFile = path.join(directory, "status.json");
+  if (!fs.existsSync(statusFile)) return { ok: true, state: "NONE" };
+  try {
+    if (!nonLinkedFile(statusFile, process.env.ProgramData) || fs.statSync(statusFile).size > 32768)
+      return structuredError("TRANSFER_STATUS_INVALID", "Estado local no válido");
+    const value = JSON.parse(fs.readFileSync(statusFile, "utf8"));
+    if (!value || typeof value !== "object"
+        || !["NONE", "DESTINATION_READY", "VALIDATING", "DATABASE_RESTORED", "RECEIVED", "ACTIVATING", "ACTIVE",
+          "ACTIVE_SERVICE_UNREADY", "CANCELLED"].includes(value.state))
+      return structuredError("TRANSFER_STATUS_INVALID", "Estado local no válido");
+    const result = { ok: true, state: value.state };
+    for (const key of ["transferId", "destinationKeyFingerprint", "destinationPublicKey", "destinationProof", "releaseId", "checkedAt"]) {
+      if (typeof value[key] === "string" && value[key].length <= 8192) result[key] = value[key];
+    }
+    return result;
+  } catch { return structuredError("TRANSFER_STATUS_INVALID", "Estado local no válido"); }
+});
+registerIpc("tpv:disaster-recovery:maintenance", async (_event, request) => {
+  if (process.platform !== "win32" || desktopAppConfig.key !== "gestion"
+      || !request || typeof request !== "object" || Array.isArray(request)
+      || Object.keys(request).length !== 1 || !DISASTER_RECOVERY_ACTIONS.has(request.action))
+    return structuredError("RECOVERY_MAINTENANCE_DENIED", "Recuperación no autorizada");
+  const script = installedDisasterRecoveryScript();
+  if (!installedLocalEndpoint() || !script)
+    return structuredError("RECOVERY_MAINTENANCE_UNAVAILABLE", "Herramienta de recuperación no instalada");
+  try {
+    await new Promise((resolve, reject) => {
+      const process = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
+        "-Action", request.action], { detached: true, stdio: "ignore", windowsHide: false });
+      process.once("error", reject);
+      process.once("spawn", () => { process.unref(); resolve(); });
+    });
+    return { ok: true, started: true };
+  } catch { return structuredError("RECOVERY_MAINTENANCE_START_FAILED", "No se pudo iniciar la recuperación"); }
+});
+registerIpc("tpv:disaster-recovery:read-status", () => {
+  if (process.platform !== "win32" || desktopAppConfig.key !== "gestion"
+      || !installedLocalEndpoint() || !installedDisasterRecoveryScript())
+    return structuredError("RECOVERY_STATUS_DENIED", "Estado de recuperación no disponible");
+  const statusFile = publicStatusPath();
+  if (!statusFile) return structuredError("RECOVERY_STATUS_DENIED", "Estado de recuperación no disponible");
+  if (!fs.existsSync(statusFile)) return { ok: true, state: "NONE" };
+  try {
+    if (!nonLinkedFile(statusFile, process.env.ProgramData) || fs.statSync(statusFile).size > 32768)
+      return structuredError("RECOVERY_STATUS_INVALID", "Estado de recuperación no válido");
+    const status = sanitizeStatus(JSON.parse(fs.readFileSync(statusFile, "utf8")));
+    return status ? { ok: true, ...status } : structuredError("RECOVERY_STATUS_INVALID", "Estado de recuperación no válido");
+  } catch { return structuredError("RECOVERY_STATUS_INVALID", "Estado de recuperación no válido"); }
+});
+registerIpc("tpv:server-transfer:open-request", async () => {
+  if (process.platform !== "win32" || desktopAppConfig.key !== "gestion" || !installedLocalEndpoint())
+    return structuredError("TRANSFER_REQUEST_DENIED", "Solicitud no disponible");
+  const identity = await readTerminalIdentity();
+  if (!identity.ok || identity.identity?.terminalCode !== "001")
+    return structuredError("TRANSFER_REQUEST_DENIED", "Solo el servidor 001 puede importar solicitudes");
+  const picked = await dialog.showOpenDialog(mainWindow, {
+    title: "Seleccionar solicitud del servidor destino", properties: ["openFile"],
+    filters: [{ name: "Solicitud de traslado", extensions: ["json"] }]
+  });
+  if (picked.canceled || picked.filePaths.length !== 1) return { ok: false, canceled: true, code: "CANCELLED" };
+  const file = picked.filePaths[0];
+  try {
+    if (path.basename(file).toLowerCase() !== "destination-request.json"
+        || !nonLinkedFile(file, path.parse(file).root) || fs.statSync(file).size > 32768)
+      return structuredError("TRANSFER_REQUEST_INVALID", "Solicitud no válida");
+    const request = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (request?.state !== "DESTINATION_READY"
+        || typeof request.destinationPublicKey !== "string" || request.destinationPublicKey.length > 2048
+        || typeof request.destinationProof !== "string" || request.destinationProof.length > 2048)
+      return structuredError("TRANSFER_REQUEST_INVALID", "Solicitud no válida");
+    return { ok: true, destinationPublicKey: request.destinationPublicKey, destinationProof: request.destinationProof };
+  } catch { return structuredError("TRANSFER_REQUEST_INVALID", "Solicitud no válida"); }
+});
 const controlStorageCall = (action) => {
   try {
     if (!saleControlOutbox) throw new Error("CONTROL_STORAGE_UNAVAILABLE");

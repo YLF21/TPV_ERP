@@ -1,2 +1,4 @@
 org.springframework.boot.env.EnvironmentPostProcessor=\
-com.tpverp.backend.backup.BackupRestoreEarlyGuard
+com.tpverp.backend.disasterrecovery.DisasterRecoveryEarlyGuard,\
+com.tpverp.backend.backup.BackupRestoreEarlyGuard,\
+com.tpverp.backend.servertransfer.ServerTransferEarlyGuard

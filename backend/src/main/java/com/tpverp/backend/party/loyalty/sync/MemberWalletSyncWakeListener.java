@@ -16,6 +16,9 @@ public class MemberWalletSyncWakeListener {
 
     private final SyncOutboxWorker worker;
     private final Environment environment;
+    private com.tpverp.backend.servertransfer.ServerTransferFence transferFence;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setTransferFence(com.tpverp.backend.servertransfer.ServerTransferFence fence) { transferFence=fence; }
 
     public MemberWalletSyncWakeListener(SyncOutboxWorker worker, Environment environment) {
         this.worker = worker;
@@ -28,12 +31,13 @@ public class MemberWalletSyncWakeListener {
         if (!environment.getProperty("tpv.sync.worker-enabled", Boolean.class, false)) {
             return;
         }
+        if(transferFence!=null && !transferFence.enter())return;
         try {
             worker.runEvent(request.eventId());
         } catch (RuntimeException exception) {
             // El scheduler y el estado durable del outbox siguen siendo el fallback.
             log.warn("No se pudo despertar la sincronizacion del lote {}", request.eventId(), exception);
-        }
+        } finally {if(transferFence!=null)transferFence.leave();}
     }
 
     /**

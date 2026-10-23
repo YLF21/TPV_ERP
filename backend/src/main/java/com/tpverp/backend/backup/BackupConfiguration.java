@@ -2,6 +2,7 @@ package com.tpverp.backend.backup;
 
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.backup.application.BackupArchiveService;
+import com.tpverp.backend.backup.application.BackupSnapshotService;
 import com.tpverp.backend.backup.application.BackupFileCrypto;
 import com.tpverp.backend.backup.application.BackupKeyStore;
 import com.tpverp.backend.backup.application.PostgreSqlBackupCommands;
@@ -78,12 +79,18 @@ class BackupConfiguration {
             VerifactuConfigurationRepository verifactuConfigurations,
             FiscalEventService fiscalEvents,
             Clock clock,
+            @Value("${tpv.installation.key-directory}") Path keyDirectory,
             @Value("${tpv.backup.default-directory}") Path defaultDirectory,
             @Value("${tpv.product-images.directory:${tpv.backup.default-directory}/product-images}") Path productImagesDirectory,
             @Value("${tpv.document-templates.directory:${tpv.backup.default-directory}/document-templates}") Path documentTemplatesDirectory,
             @Value("${tpv.backup.restore-online-enabled:false}") boolean restoreOnlineEnabled,
-            BackupExecutionLeaseService leaseService) {
-        return new BackupService(
+            BackupExecutionLeaseService leaseService,
+            BackupSnapshotService snapshots,
+            com.tpverp.backend.backup.cloud.CloudBackupQueue cloudQueue,
+            com.tpverp.backend.servertransfer.ServerTransferSecrets portableSecrets,
+            CloudBackupRepairService cloudRepair,
+            @Value("${tpv.verifactu.system-version:DEV}") String applicationVersion) {
+        var service = new BackupService(
                 configurationRepository,
                 executionRepository,
                 installationRepository,
@@ -103,11 +110,16 @@ class BackupConfiguration {
                 documentTemplatesDirectory,
                 restoreOnlineEnabled,
                 leaseService);
+        service.configureSnapshots(snapshots, applicationVersion);
+        service.configureWorkspace(keyDirectory.resolve("backup-work"));
+        service.configureRelease(com.tpverp.backend.verifactu.FiscalReleaseManifest.load());
+        service.configureCloud(cloudQueue, portableSecrets, cloudRepair);
+        return service;
     }
 
     @Bean
-    BackupJobLauncher backupJobLauncher(BackupService backupService) {
-        return new BackupJobLauncher(backupService);
+    BackupJobLauncher backupJobLauncher(BackupService backupService, BackupWorker worker) {
+        return new BackupJobLauncher(backupService, worker);
     }
 
     @Bean
@@ -162,7 +174,7 @@ class BackupConfiguration {
         void runDueBackup() {
             try {
                 if (backupService.isDue()) {
-                    launcher.launch();
+                    launcher.launchAutomatic();
                 }
             } catch (IllegalStateException ignored) {
                 // Backups are optional until the administrator configures them.

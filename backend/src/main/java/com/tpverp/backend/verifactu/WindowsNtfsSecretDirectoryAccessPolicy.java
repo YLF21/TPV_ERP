@@ -23,12 +23,18 @@ final class WindowsNtfsSecretDirectoryAccessPolicy implements SecretDirectoryAcc
     static final String BUILTIN_ADMINISTRATORS_SID = "S-1-5-32-544";
 
     private final String applicationAccount;
+    private final java.util.Set<AclEntryPermission> applicationPermissions;
 
     WindowsNtfsSecretDirectoryAccessPolicy(String applicationAccount) {
+        this(applicationAccount,EnumSet.allOf(AclEntryPermission.class));
+    }
+
+    WindowsNtfsSecretDirectoryAccessPolicy(String applicationAccount,java.util.Set<AclEntryPermission> permissions) {
         if (applicationAccount == null || applicationAccount.isBlank()) {
             throw new IllegalArgumentException("La cuenta Windows del backend es obligatoria");
         }
         this.applicationAccount = applicationAccount.trim();
+        this.applicationPermissions=java.util.Set.copyOf(permissions);
     }
 
     static WindowsNtfsSecretDirectoryAccessPolicy forCurrentAccount() {
@@ -110,17 +116,21 @@ final class WindowsNtfsSecretDirectoryAccessPolicy implements SecretDirectoryAcc
                     unique.add(principal);
                 }
             }
-            return unique.stream().map(principal -> allowFullControl(principal, directory)).toList();
+            var application=principals.getFirst();
+            var system=principals.get(1);var administrators=principals.get(2);
+            return unique.stream().map(principal -> allow(principal, directory,
+                    principal.equals(application) && !principal.equals(system) && !principal.equals(administrators)
+                            ?applicationPermissions:EnumSet.allOf(AclEntryPermission.class))).toList();
         } catch (IOException exception) {
             throw failure("No se pudo resolver la cuenta Windows autorizada para VERI*FACTU", exception);
         }
     }
 
-    private static AclEntry allowFullControl(UserPrincipal principal, boolean directory) {
+    private static AclEntry allow(UserPrincipal principal, boolean directory,java.util.Set<AclEntryPermission> permissions) {
         var builder = AclEntry.newBuilder()
                 .setType(AclEntryType.ALLOW)
                 .setPrincipal(principal)
-                .setPermissions(EnumSet.allOf(AclEntryPermission.class));
+                .setPermissions(permissions);
         if (directory) {
             builder.setFlags(AclEntryFlag.FILE_INHERIT, AclEntryFlag.DIRECTORY_INHERIT);
         }

@@ -8,7 +8,7 @@ import "./BackendConnectionRecovery.css";
 type RecoveryState = "CONNECTED" | "OFFLINE" | "CHECKING";
 type RecoveryResult = { ok: boolean; state: RecoveryState; backendIp?: string; errorCode?: string };
 
-export function BackendConnectionRecovery({ locale, onRecovered }: { locale: LocaleCode; onRecovered?: () => void }) {
+export function BackendConnectionRecovery({ locale, onRecovered, onOpenMaintenance }: { locale: LocaleCode; onRecovered?: () => void; onOpenMaintenance?: () => void }) {
   const bridge = window.tpvDesktop?.connectionRecovery;
   const [visible, setVisible] = useState(false);
   const [connectedOnce, setConnectedOnce] = useState(false);
@@ -143,6 +143,7 @@ export function BackendConnectionRecovery({ locale, onRecovered }: { locale: Loc
         <div className="backend-recovery-actions">
           <button ref={retryButton} type="button" className="backend-recovery-retry" disabled={busy !== null}
             onClick={() => void retry()}>{busy === "retry" ? t("connectionRecovery.retrying") : t("connectionRecovery.retry")}</button>
+          {onOpenMaintenance && <button type="button" disabled={busy !== null} onClick={onOpenMaintenance}>{t("gestion.transfer.maintenanceTitle")}</button>}
           <button ref={closeButton} type="button" className="backend-recovery-close" disabled={busy !== null}
             onClick={() => void close()}>{busy === "close" ? t("connectionRecovery.closing") : t("connectionRecovery.close")}</button>
         </div>

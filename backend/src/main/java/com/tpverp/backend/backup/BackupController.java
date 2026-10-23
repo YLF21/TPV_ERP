@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -48,25 +50,25 @@ public class BackupController {
     }
 
     @PostMapping("/run")
-    public ResponseEntity<Void> run() {
-        launcher.launch();
-        return ResponseEntity.accepted().build();
-    }
-
-    @PostMapping("/restore")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> restore(@Valid @RequestBody RestoreBackupRequest request) {
-        backupService.restore(
-                Path.of(request.backupFile()),
-                Path.of(request.recoveryFile()),
-                request.recoverySecret());
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<RunResponse> run() {
+        return ResponseEntity.accepted().body(new RunResponse(launcher.launch()));
     }
 
     @GetMapping
-    public List<BackupService.ExecutionItem> history() {
-        return backupService.history();
+    public BackupService.HistoryPage history(@RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return backupService.history(page, size);
     }
+
+    @GetMapping("/{id}")
+    public BackupService.ExecutionItem detail(@PathVariable java.util.UUID id) { return backupService.detail(id); }
+
+    @PostMapping("/{id}/cloud/retry")
+    public com.tpverp.backend.backup.cloud.CloudBackupStatus retryCloud(@PathVariable java.util.UUID id) {
+        return backupService.retryCloud(id);
+    }
+
+    public record RunResponse(java.util.UUID id) { }
 
     public record ConfigureBackupRequest(
             @NotNull LocalTime time,
@@ -78,9 +80,4 @@ public class BackupController {
             @NotBlank String recoverySecret) {
     }
 
-    public record RestoreBackupRequest(
-            @NotBlank String backupFile,
-            @NotBlank String recoveryFile,
-            @NotBlank String recoverySecret) {
-    }
 }

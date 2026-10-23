@@ -1,5 +1,6 @@
 package com.tpverp.backend.document.template;
 
+import com.tpverp.backend.backup.application.SharedFileSnapshotGuard;
 import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -50,48 +51,50 @@ public class DocumentTemplateArtifactService {
     @Transactional
     public DocumentTemplateCatalogService.TemplateView uploadAndValidate(
             UUID templateId, List<MultipartFile> files) {
-        Objects.requireNonNull(files, "files");
-        var template = currentStoreTemplateForUpdate(templateId);
-        if (template.getStatus() != DocumentTemplateStatus.DRAFT) {
-            throw new IllegalStateException("document_template_not_draft");
-        }
-        DocumentTemplateArtifactStorage.StoredArtifact artifact;
-        String sha256;
-        try {
-            if (template.getType() == DocumentTemplateType.TICKET) {
-                var compiled = ticketCompiler.compileUpload(readBundle(files));
-                artifact = storage.writeBundle(template.getId(),
-                        TicketJrxmlBundleCompiler.MASTER_FILENAME, compiled.reports());
-                deleteArtifactOnRollback(artifact.reference());
-                sha256 = compiled.sha256();
-                var sources = new LinkedHashMap<String, byte[]>();
-                compiled.reports().forEach((name, report) -> sources.put(name, report.source()));
-                FiscalJrxmlConformityValidator.require(sources, template.getType());
-            } else {
-                if (files.size() != 1) {
-                    throw new IllegalArgumentException(
-                            "document_template_single_jrxml_required");
-                }
-                var compiled = compiler.compile(read(files.getFirst()));
-                artifact = storage.write(
-                        template.getId(), compiled.source(), compiled.compiled());
-                deleteArtifactOnRollback(artifact.reference());
-                sha256 = compiled.sha256();
-                FiscalJrxmlConformityValidator.require(
-                        Map.of("template.jrxml", compiled.source()), template.getType());
+        try (var snapshotGuard = SharedFileSnapshotGuard.transactionalMutation()) {
+            Objects.requireNonNull(files, "files");
+            var template = currentStoreTemplateForUpdate(templateId);
+            if (template.getStatus() != DocumentTemplateStatus.DRAFT) {
+                throw new IllegalStateException("document_template_not_draft");
             }
-        } catch (IOException exception) {
-            throw new IllegalStateException(
-                    "document_template_artifact_storage_failed", exception);
+            DocumentTemplateArtifactStorage.StoredArtifact artifact;
+            String sha256;
+            try {
+                if (template.getType() == DocumentTemplateType.TICKET) {
+                    var compiled = ticketCompiler.compileUpload(readBundle(files));
+                    artifact = storage.writeBundle(template.getId(),
+                            TicketJrxmlBundleCompiler.MASTER_FILENAME, compiled.reports());
+                    deleteArtifactOnRollback(artifact.reference());
+                    sha256 = compiled.sha256();
+                    var sources = new LinkedHashMap<String, byte[]>();
+                    compiled.reports().forEach((name, report) -> sources.put(name, report.source()));
+                    FiscalJrxmlConformityValidator.require(sources, template.getType());
+                } else {
+                    if (files.size() != 1) {
+                        throw new IllegalArgumentException(
+                                "document_template_single_jrxml_required");
+                    }
+                    var compiled = compiler.compile(read(files.getFirst()));
+                    artifact = storage.write(
+                            template.getId(), compiled.source(), compiled.compiled());
+                    deleteArtifactOnRollback(artifact.reference());
+                    sha256 = compiled.sha256();
+                    FiscalJrxmlConformityValidator.require(
+                            Map.of("template.jrxml", compiled.source()), template.getType());
+                }
+            } catch (IOException exception) {
+                throw new IllegalStateException(
+                        "document_template_artifact_storage_failed", exception);
+            }
+            template.validateArtifact(
+                    SafeJrxmlCompiler.DATA_SCHEMA_VERSION,
+                    artifact.reference(),
+                    sha256,
+                    clock.instant());
+            var saved = templates.saveAndFlush(template);
+            audit.record("DOCUMENT_TEMPLATE_VALIDATED", AuditResult.EXITO, auditDetails(saved));
+            return DocumentTemplateCatalogService.TemplateView.from(saved);
         }
-        template.validateArtifact(
-                SafeJrxmlCompiler.DATA_SCHEMA_VERSION,
-                artifact.reference(),
-                sha256,
-                clock.instant());
-        var saved = templates.saveAndFlush(template);
-        audit.record("DOCUMENT_TEMPLATE_VALIDATED", AuditResult.EXITO, auditDetails(saved));
-        return DocumentTemplateCatalogService.TemplateView.from(saved);
     }
 
     @Transactional(readOnly = true)

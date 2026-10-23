@@ -68,6 +68,18 @@ function translatedSetup() {
 describe("ServerTerminalSetupScreen", () => {
   afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); delete window.tpvDesktop; });
 
+  it("offers offline recovery from a backup at first installation", async () => {
+    backend();
+    const onRecoverFromBackup = vi.fn();
+    Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { disasterRecovery: {
+      readStatus: vi.fn(), startMaintenance: vi.fn()
+    } } });
+    render(<ServerTerminalSetupScreen locale="es" onOrganizationReady={() => {}}
+      onConfigureConnection={() => {}} onRecoverFromBackup={onRecoverFromBackup} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Recuperar desde copia" }));
+    expect(onRecoverFromBackup).toHaveBeenCalledOnce();
+  });
+
   it("translates the existing error and keeps the code without checking the backend again", async () => {
     const fetchMock = backend({ "POST /licenses/link-saas/bootstrap-initial": () => response({ code: "INVALID_LICENSE" }, 422) });
     translatedSetup(); await link();
