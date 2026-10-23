@@ -405,9 +405,21 @@ try {
         $arguments.RecoveryId = $recoveryId
     }
     if ($Action -ne 'status') { $arguments.Execute = $true }
-    $lines = @(& $wrapper @arguments)
-    if ($lines.Count -eq 0) { throw 'La herramienta no devolvió estado verificable.' }
-    $result = $lines[-1] | ConvertFrom-Json -ErrorAction Stop
+    # Do not capture/pipeline this invocation: Java readPassword requires inherited console handles.
+    $resultName = 'maintenance-result-' + [guid]::NewGuid().ToString('N') + '.json'
+    $resultPath = Join-Path $privateDirectory $resultName
+    $arguments.ResultFileName = $resultName
+    try {
+        & $wrapper @arguments
+        Assert-PlainFile $resultPath 'El resultado privado de mantenimiento' | Out-Null
+        if ((Get-Item -LiteralPath $resultPath).Length -gt 32768) { throw 'El resultado de mantenimiento excede el límite.' }
+        $result = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    } finally {
+        if (Test-Path -LiteralPath $resultPath) {
+            Assert-PlainFile $resultPath 'El resultado privado de mantenimiento' | Out-Null
+            Remove-Item -LiteralPath $resultPath -Force
+        }
+    }
     if ([string]::IsNullOrWhiteSpace([string]$result.state)) { throw 'La herramienta devolvió un estado inválido.' }
     if ($Action -eq 'status' -and $result.state -ceq 'DESTINATION_READY' -and
             $null -eq $result.PSObject.Properties['destinationPublicKey']) {

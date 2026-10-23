@@ -6,6 +6,7 @@ param(
     [Parameter(Mandatory = $true)] [string] $MaintenanceDirectory,
     [string] $RecoveryId = '',
     [string] $JavaExecutable = 'java',
+    [ValidatePattern('^maintenance-result-[0-9a-f]{32}\.json$')] [string] $ResultFileName,
     [switch] $Execute
 )
 $ErrorActionPreference = 'Stop'
@@ -33,5 +34,6 @@ $cliArgs = @('-Dloader.main=com.tpverp.backend.disasterrecovery.OfflineDisasterR
     '-cp',$bundle.Jar,'org.springframework.boot.loader.launch.PropertiesLauncher',
     '--action',$Action,'--directory',$directory)
 if ($Action -eq 'receive') { $cliArgs += @('--recovery-id',$RecoveryId) }
+if ($ResultFileName) { $cliArgs += @('--result-file', $ResultFileName) }
 & $JavaExecutable @cliArgs
 if ($LASTEXITCODE -ne 0) { throw "La recuperación no se completó (código $LASTEXITCODE); conserve el journal y la cuarentena." }

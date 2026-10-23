@@ -41,12 +41,29 @@ public final class OfflineDisasterRecoveryCli {
         RecoverySecretHandoff.requireProtectedDirectory(cli.directory);RecoverySecretHandoff.requireProtectedDirectory(cli.keys);
         try(var channel=java.nio.channels.FileChannel.open(cli.directory.resolve("maintenance.lock"),StandardOpenOption.CREATE,StandardOpenOption.WRITE);var lock=channel.tryLock()) {
             if(lock==null)throw new IOException("Another recovery operation is running");
-            Object result=switch(action){
-                case "request"->cli.request();case "status"->cli.status();
-                case "receive"->cli.receive(UUID.fromString(required(args,"recovery-id")));
-                case "activate"->cli.activate();default->throw new IllegalArgumentException("Unsupported recovery action");};
-            System.out.println(JSON.writeValueAsString(result));
+            try(var output=openResultFile(cli.directory,args.get("result-file"))) {
+                Object result=switch(action){
+                    case "request"->cli.request();case "status"->cli.status();
+                    case "receive"->cli.receive(UUID.fromString(required(args,"recovery-id")));
+                    case "activate"->cli.activate();default->throw new IllegalArgumentException("Unsupported recovery action");};
+                if(output==null)System.out.println(JSON.writeValueAsString(result));
+                else output.write(publicResult(result));
+            }
         }
+    }
+    // Reserve a fresh private result before executing any action; stdout remains attached to the console.
+    static OutputStream openResultFile(Path directory,String name)throws Exception {
+        if(name==null)return null;
+        if(!name.matches("maintenance-result-[0-9a-f]{32}\\.json"))throw new IllegalArgumentException("Invalid maintenance result name");
+        RecoverySecretHandoff.requireProtectedDirectory(directory);
+        return Files.newOutputStream(directory.resolve(name),StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS);
+    }
+    static byte[] publicResult(Object result)throws IOException {
+        JsonNode source=JSON.valueToTree(result);
+        var output=JSON.createObjectNode();
+        for(String name:List.of("state","transferId","recoveryId","destinationPublicKey","destinationKeyFingerprint"))
+            if(source.hasNonNull(name))output.set(name,source.get(name));
+        return JSON.writeValueAsBytes(output);
     }
     private JsonNode request()throws Exception {
         requireEmptyDatabase();requireEmptyTree(Path.of(env("TPV_PRODUCT_IMAGE_DIRECTORY")));requireEmptyTree(Path.of(env("TPV_DOCUMENT_TEMPLATE_DIRECTORY")));

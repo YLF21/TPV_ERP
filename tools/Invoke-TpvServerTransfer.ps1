@@ -6,6 +6,7 @@ param(
     [Parameter(Mandatory = $true)] [string] $DestinationDirectory,
     [string] $BackupFile = '',
     [string] $JavaExecutable = 'java',
+    [ValidatePattern('^maintenance-result-[0-9a-f]{32}\.json$')] [string] $ResultFileName,
     [switch] $Execute
 )
 $ErrorActionPreference = 'Stop'
@@ -42,5 +43,6 @@ $cliArgs = @('-Dloader.main=com.tpverp.backend.servertransfer.OfflineServerTrans
     '-cp',$bundle.Jar,'org.springframework.boot.loader.launch.PropertiesLauncher',
     '--action',$Action,'--directory',$destination)
 if ($Action -eq 'receive') { $cliArgs += @('--backup',(Resolve-Path -LiteralPath $BackupFile).Path) }
+if ($ResultFileName) { $cliArgs += @('--result-file', $ResultFileName) }
 & $JavaExecutable @cliArgs
 if ($LASTEXITCODE -ne 0) { throw "El traslado no se completó (código $LASTEXITCODE); conserve journal y bloqueo para reintentar." }
