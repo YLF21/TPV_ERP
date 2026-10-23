@@ -378,7 +378,7 @@ class StoreRepairPostgreSqlTest {
     }
     private <T> T whileWaiting(Site site, Callable<T> action, Runnable mutation) throws Exception {
         String key = "store-repair-installation:" + site.installation().getId();
-        var executor = Executors.newSingleThreadExecutor();
+        var executor = Executors.newFixedThreadPool(2);
         try (var blocker = jdbc.getDataSource().getConnection()) {
             blocker.setAutoCommit(false);
             try (var statement = blocker.prepareStatement("select pg_advisory_xact_lock(hashtextextended(?,0))")) {
@@ -399,7 +399,9 @@ class StoreRepairPostgreSqlTest {
                     Thread.sleep(20);
                 }
                 assertThat(blocked).as("operation is waiting after its initial read").isTrue();
-                mutation.run();
+                // A row/advisory inversion must fail this test, not block the test thread forever.
+                // On timeout the finally rollback releases the advisory lock and both workers can finish.
+                executor.submit(mutation).get(10, TimeUnit.SECONDS);
                 blocker.commit();
                 return waiting.get(15, TimeUnit.SECONDS);
             } finally { blocker.rollback(); }

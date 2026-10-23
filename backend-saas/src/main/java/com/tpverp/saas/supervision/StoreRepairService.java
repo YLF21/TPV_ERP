@@ -179,7 +179,8 @@ public class StoreRepairService {
         if (publicId == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Instalacion no autorizada");
         SaasInstallation installation = installations.findByInstallationId(publicId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Instalacion no autorizada"));
-        authenticator.requireToken(installation, token);
+        // Authentication retains a shared row lock. Always acquire the repair advisory lock first,
+        // matching the administrative repair paths and allowing revocation/rebinding while we wait.
         lockInstallation(installation.getId());
         // Waiting for another command must not retain an old token, active flag or site mapping.
         entityManager.refresh(installation);
