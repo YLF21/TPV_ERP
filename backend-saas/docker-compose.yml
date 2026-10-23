@@ -62,12 +62,16 @@ services:
       TPV_SAAS_SECURITY_PAYLOAD_PURGE_DELAY: ${TPV_SAAS_SECURITY_PAYLOAD_PURGE_DELAY:-86400000}
       TPV_SAAS_CORS_ALLOWED_ORIGINS: ${TPV_SAAS_CORS_ALLOWED_ORIGINS:-http://localhost:8088}
       TPV_SAAS_FORWARD_HEADERS_STRATEGY: ${TPV_SAAS_FORWARD_HEADERS_STRATEGY:-framework}
+      TPV_SAAS_BACKUP_VAULT_DIRECTORY: /var/lib/tpv-saas/backup-vault
+      TPV_SAAS_BACKUP_VAULT_MAX_OBJECT_BYTES: ${TPV_SAAS_BACKUP_VAULT_MAX_OBJECT_BYTES:-21474836480}
     depends_on:
       postgres:
         condition: service_healthy
     expose:
       - "8090"
     read_only: true
+    volumes:
+      - tpv_erp_saas_backup_vault:/var/lib/tpv-saas/backup-vault
     cpus: ${TPV_SAAS_BACKEND_CPU_LIMIT:-1.0}
     mem_limit: ${TPV_SAAS_BACKEND_MEMORY_LIMIT:-768m}
     pids_limit: ${TPV_SAAS_BACKEND_PIDS_LIMIT:-200}
@@ -130,6 +134,7 @@ services:
 
 volumes:
   tpv_erp_saas_pgdata:
+  tpv_erp_saas_backup_vault:
 
 networks:
   saas-edge:

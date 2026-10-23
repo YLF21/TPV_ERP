@@ -1,7 +1,18 @@
 $ErrorActionPreference = 'Stop'
 
+function Remove-ContractBundle([string] $Directory) {
+    $resolved = (Resolve-Path -LiteralPath $Directory).Path
+    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\','/')
+    if (-not [string]::Equals([IO.Path]::GetDirectoryName($resolved), $tempRoot,
+            [StringComparison]::OrdinalIgnoreCase) -or
+            [IO.Path]::GetFileName($resolved) -notmatch '^tpv-backend-contract-[0-9a-f]{32}$') {
+        throw 'El directorio de pruebas no pertenece al espacio temporal autorizado.'
+    }
+    Remove-Item -LiteralPath $resolved -Recurse -Force
+}
+
 function New-ContractBundle {
-    param([string] $ReleaseId = 'tpv-erp-4.2.0')
+    param([string] $ReleaseId = 'tpv-erp-4.2.0', [switch] $WithTransfer, [switch] $WithRecovery)
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $directory = Join-Path ([IO.Path]::GetTempPath()) ('tpv-backend-contract-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $directory | Out-Null
@@ -40,6 +51,16 @@ manifest.hash=$manifestHash
             try { if ($entryName -notmatch '/$') { $stream.WriteByte(0) } }
             finally { $stream.Dispose() }
         }
+        if ($WithTransfer) {
+            $entry = $archive.CreateEntry('BOOT-INF/classes/com/tpverp/backend/servertransfer/OfflineServerTransferCli.class')
+            $stream = $entry.Open()
+            try { $stream.WriteByte(0) } finally { $stream.Dispose() }
+        }
+        if ($WithRecovery) {
+            $entry = $archive.CreateEntry('BOOT-INF/classes/com/tpverp/backend/disasterrecovery/OfflineDisasterRecoveryCli.class')
+            $stream = $entry.Open()
+            try { $stream.WriteByte(0) } finally { $stream.Dispose() }
+        }
         $entry = $archive.CreateEntry('META-INF/tpv-erp-release.properties')
         $stream = $entry.Open()
         try { $bytes = [Text.Encoding]::UTF8.GetBytes($manifest); $stream.Write($bytes, 0, $bytes.Length) }
@@ -70,6 +91,68 @@ Describe 'Despliegue productivo backend Windows' {
                 $path, [ref]$tokens, [ref]$errors) | Out-Null
             $errors | Should BeNullOrEmpty
         }
+    }
+
+    It 'no distribuye traslado sin herramientas verificadas ni acepta un helper alterado' {
+        $directory = New-ContractBundle -WithTransfer
+        try {
+            $verifier = Join-Path $PSScriptRoot 'Test-TpvBackendProductionBundle.ps1'
+            $rejected = $false
+            try { & $verifier -BundleDirectory $directory -AsObject | Out-Null }
+            catch { $rejected = $true }
+            $rejected | Should Be $true
+            $tools = Join-Path $directory 'tools'
+            New-Item -ItemType Directory -Path $tools | Out-Null
+            $hashes = [ordered]@{}
+            foreach ($name in @('Invoke-TpvServerTransfer.ps1','Start-TpvServerTransferMaintenance.ps1',
+                    'Test-TpvBackendProductionBundle.ps1','Invoke-TpvBackupRestoreOffline.ps1','Test-TpvBackupRestoreOfflinePreflight.ps1')) {
+                $target = Join-Path $tools $name
+                Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $target
+                $hashes[$name] = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
+            }
+            [IO.File]::WriteAllText((Join-Path $directory 'maintenance-tools.sha256.json'),
+                ($hashes | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+            $result = & $verifier -BundleDirectory $directory -AsObject
+            $result.Status | Should Be 'PROMOTABLE'
+            Add-Content -LiteralPath (Join-Path $tools 'Start-TpvServerTransferMaintenance.ps1') -Value '# changed'
+            $rejected = $false
+            try { & $verifier -BundleDirectory $directory -AsObject | Out-Null }
+            catch { $rejected = $true }
+            $rejected | Should Be $true
+        }
+        finally { Remove-ContractBundle $directory }
+    }
+
+    It 'exige y verifica los helpers de recuperacion solo cuando la release los incorpora' {
+        $directory = New-ContractBundle -WithTransfer -WithRecovery
+        try {
+            $verifier = Join-Path $PSScriptRoot 'Test-TpvBackendProductionBundle.ps1'
+            $tools = Join-Path $directory 'tools'
+            New-Item -ItemType Directory -Path $tools | Out-Null
+            $hashes = [ordered]@{}
+            foreach ($name in @('Invoke-TpvServerTransfer.ps1','Start-TpvServerTransferMaintenance.ps1',
+                    'Test-TpvBackendProductionBundle.ps1','Invoke-TpvBackupRestoreOffline.ps1','Test-TpvBackupRestoreOfflinePreflight.ps1')) {
+                $target = Join-Path $tools $name
+                Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $target
+                $hashes[$name] = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
+            }
+            $manifestPath = Join-Path $directory 'maintenance-tools.sha256.json'
+            [IO.File]::WriteAllText($manifestPath, ($hashes | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+            $rejected = $false
+            try { & $verifier -BundleDirectory $directory -AsObject | Out-Null } catch { $rejected = $true }
+            $rejected | Should Be $true
+            foreach ($name in @('Invoke-TpvDisasterRecovery.ps1','Start-TpvDisasterRecoveryMaintenance.ps1')) {
+                $target = Join-Path $tools $name
+                Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $target
+                $hashes[$name] = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
+            }
+            [IO.File]::WriteAllText($manifestPath, ($hashes | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+            (& $verifier -BundleDirectory $directory -AsObject).Status | Should Be 'PROMOTABLE'
+            Add-Content -LiteralPath (Join-Path $tools 'Start-TpvDisasterRecoveryMaintenance.ps1') -Value '# changed'
+            $rejected = $false
+            try { & $verifier -BundleDirectory $directory -AsObject | Out-Null } catch { $rejected = $true }
+            $rejected | Should Be $true
+        } finally { Remove-ContractBundle $directory }
     }
 
     It 'exige controles de release, hash, PDF y capacidad fiscal' {

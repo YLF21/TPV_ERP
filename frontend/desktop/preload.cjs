@@ -1,6 +1,19 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("tpvDesktop", {
+  backups: {
+    openDirectory: (token) => ipcRenderer.invoke("tpv:backups:open-directory", token)
+  },
+  serverTransfer: {
+    requestOrigin: (request) => ipcRenderer.invoke("tpv:server-transfer:origin", request),
+    startMaintenance: (request) => ipcRenderer.invoke("tpv:server-transfer:maintenance", request),
+    readStatus: () => ipcRenderer.invoke("tpv:server-transfer:read-status"),
+    openRequest: () => ipcRenderer.invoke("tpv:server-transfer:open-request")
+  },
+  disasterRecovery: {
+    startMaintenance: (request) => ipcRenderer.invoke("tpv:disaster-recovery:maintenance", request),
+    readStatus: () => ipcRenderer.invoke("tpv:disaster-recovery:read-status")
+  },
   closeApplication: () => ipcRenderer.invoke("tpv:close-application"),
   connectionRecovery: {
     status: () => ipcRenderer.invoke("tpv:connection-recovery:status"),

@@ -1,0 +1,53 @@
+.gestion-backups-workspace { display: flex; flex-direction: column; gap: 12px; color: #172e4c; background: #f5f7f9; }
+.gestion-backups-workspace .gestion-security-header { margin: 0; }
+.gestion-backups-workspace button { min-height: 30px; padding: 4px 10px; border: 1px solid #aebfd2; border-radius: 0; background: #f5f8fb; color: #0a2a52; font: inherit; font-weight: 700; cursor: pointer; }
+.gestion-backups-workspace button.primary { border-color: #193c66; background: #193c66; color: white; }
+.gestion-backups-workspace button:disabled { cursor: default; opacity: .55; }
+.gestion-backups-feedback { margin: 0; padding: 8px 10px; border: 1px solid #8bb79b; background: #e9f4eb; }
+.gestion-backups-feedback.error { border-color: #c39393; background: #fbeeee; color: #7e2525; }
+.gestion-backups-feedback.warning { border-color: #bfaa73; background: #fff8e5; }
+.gestion-backups-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; padding: 9px 12px; border: 1px solid #aebfd2; background: #e9eef2; }
+.gestion-backups-summary button { margin-left: auto; }
+.gestion-backups-config { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 10px; padding: 12px; border: 1px solid #aebfd2; background: white; }
+.gestion-backups-config label { display: grid; gap: 4px; font-weight: 700; }
+.gestion-backups-config input { min-width: 0; padding: 6px; border: 1px solid #aebfd2; border-radius: 0; font: inherit; }
+.gestion-backups-config .gestion-backups-check { display: flex; align-items: center; }
+.gestion-backups-config p { margin: 0; grid-column: span 3; color: #566b7b; }
+.gestion-backups-history { min-width: 0; min-height: 0; overflow: auto; flex: 1; border: 1px solid #aebfd2; background: white; }
+.gestion-backups-history table { width: 100%; border-collapse: collapse; white-space: nowrap; font-size: 12px; }
+.gestion-backups-history th, .gestion-backups-history td { padding: 8px; border-right: 1px solid #dce2e7; border-bottom: 1px solid #dce2e7; text-align: left; }
+.gestion-backups-history th { position: sticky; top: 0; background: #dfe6ec; color: #243a50; text-transform: uppercase; }
+.gestion-backups-history tr:nth-child(even) { background: #f8f9fa; }
+.gestion-backups-history tr:hover { background: #dceaf6; }
+.gestion-backups-pager { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 8px; }
+.gestion-backups-unavailable { margin-left: 8px; padding: 2px 5px; border: 1px solid #bfaa73; background: #fff8e5; color: #705c24; }
+.gestion-backups-cloud-state { display: inline-block; margin-left: 8px; padding: 2px 5px; border: 1px solid #aebfd2; background: #edf3f7; color: #29445e; }
+.gestion-backups-dialog { box-sizing: border-box; width: min(960px, calc(100vw - 36px)); max-height: min(85vh, 850px); padding: 0; border: 1px solid #aebfd2; border-radius: 0; color: #172e4c; background: #f6f8f9; }
+.gestion-backups-dialog::backdrop { background: rgb(20 36 55 / 55%); }
+.gestion-backups-detail { overflow: auto; max-height: calc(min(85vh, 850px) - 2px); padding: 12px; }
+.gestion-backups-detail header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.gestion-backups-detail h3, .gestion-backups-manifest h4 { margin: 0 0 10px; }
+.gestion-backups-detail dl { margin: 0 0 14px; border: 1px solid #c4cdd4; background: white; }
+.gestion-backups-detail dl div { display: flex; justify-content: space-between; gap: 10px; padding: 6px 8px; border-bottom: 1px solid #d6dde2; }
+.gestion-backups-detail dt { color: #536777; }
+.gestion-backups-detail dd { margin: 0; overflow-wrap: anywhere; text-align: right; font-weight: 700; }
+.gestion-backups-manifest { overflow-x: auto; margin-top: 12px; }
+.gestion-backups-manifest table { width: 100%; border-collapse: collapse; background: white; font-size: 11px; }
+.gestion-backups-manifest th, .gestion-backups-manifest td { padding: 5px; border: 1px solid #c4cdd4; text-align: left; }
+.gestion-backups-manifest th { background: #e8edf1; }
+.gestion-backups-manifest summary { cursor: pointer; font-weight: 700; }
+@media (max-width: 1000px) { .gestion-backups-config { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.gestion-transfer-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.gestion-transfer-panel { padding: 14px; border: 1px solid #aebfd2; background: white; }
+.gestion-transfer-panel h3 { margin: 0 0 12px; color: #193c66; }
+.gestion-transfer-panel dl { border: 1px solid #c4cdd4; margin: 0 0 15px; }
+.gestion-transfer-panel dl div { display: flex; gap: 12px; justify-content: space-between; padding: 6px 8px; border-bottom: 1px solid #d6dde2; }
+.gestion-transfer-panel dd { margin: 0; overflow-wrap: anywhere; max-width: 70%; text-align: right; }
+.gestion-transfer-panel form, .gestion-transfer-actions { display: grid; gap: 10px; }
+.gestion-transfer-panel label { display: grid; gap: 4px; font-weight: 700; }
+.gestion-transfer-panel textarea, .gestion-transfer-panel input { box-sizing: border-box; width: 100%; padding: 6px; border: 1px solid #aebfd2; border-radius: 0; font: inherit; }
+.gestion-transfer-panel textarea { min-height: 64px; resize: vertical; }
+@media (max-width: 900px) { .gestion-transfer-columns { grid-template-columns: 1fr; } }
+.gestion-transfer-maintenance { min-height: 100vh; }
+.gestion-transfer-maintenance .gestion-transfer-panel { max-width: 900px; }
+.gestion-transfer-maintenance-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }

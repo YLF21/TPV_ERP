@@ -14,6 +14,9 @@ public class FiscalIntegrityJobLauncher {
     private final ThreadPoolTaskExecutor executor;
     private final Set<UUID> dispatched = ConcurrentHashMap.newKeySet();
     private final ConcurrentHashMap<UUID, FutureTask<Void>> workers = new ConcurrentHashMap<>();
+    private com.tpverp.backend.servertransfer.ServerTransferFence transferFence;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setTransferFence(com.tpverp.backend.servertransfer.ServerTransferFence fence) { transferFence=fence; }
 
     public FiscalIntegrityJobLauncher(FiscalIntegrityJobService jobs,
             @Qualifier("fiscalIntegrityJobExecutor") ThreadPoolTaskExecutor executor) {
@@ -25,7 +28,8 @@ public class FiscalIntegrityJobLauncher {
         if (id == null || !dispatched.add(id)) return;
         var task = new FutureTask<Void>(() -> {
             try {
-                jobs.run(id);
+                if(transferFence!=null && !transferFence.enter()) return null;
+                try {jobs.run(id);} finally {if(transferFence!=null)transferFence.leave();}
             } finally {
                 workers.remove(id);
                 dispatched.remove(id);

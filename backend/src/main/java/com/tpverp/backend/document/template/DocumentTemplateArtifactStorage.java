@@ -1,5 +1,6 @@
 package com.tpverp.backend.document.template;
 
+import com.tpverp.backend.backup.application.SharedFileSnapshotGuard;
 import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -25,28 +26,30 @@ public class DocumentTemplateArtifactStorage {
     }
 
     public StoredArtifact write(UUID templateId, byte[] source, byte[] compiled) throws IOException {
-        Objects.requireNonNull(templateId, "templateId");
-        Objects.requireNonNull(source, "source");
-        Objects.requireNonNull(compiled, "compiled");
-        Path directory = directory(templateId.toString());
-        Files.createDirectories(directory);
-        Path sourceTemporary = Files.createTempFile(directory, ".source-", ".tmp");
-        Path compiledTemporary = Files.createTempFile(directory, ".compiled-", ".tmp");
-        Path sourceTarget = directory.resolve(SOURCE_FILE);
-        Path compiledTarget = directory.resolve(COMPILED_FILE);
-        try {
-            Files.write(sourceTemporary, source);
-            Files.write(compiledTemporary, compiled);
-            move(sourceTemporary, sourceTarget);
-            move(compiledTemporary, compiledTarget);
-            return new StoredArtifact(templateId.toString());
-        } catch (IOException exception) {
-            Files.deleteIfExists(sourceTarget);
-            Files.deleteIfExists(compiledTarget);
-            throw exception;
-        } finally {
-            Files.deleteIfExists(sourceTemporary);
-            Files.deleteIfExists(compiledTemporary);
+        try (var snapshotGuard = SharedFileSnapshotGuard.fileMutation()) {
+            Objects.requireNonNull(templateId, "templateId");
+            Objects.requireNonNull(source, "source");
+            Objects.requireNonNull(compiled, "compiled");
+            Path directory = directory(templateId.toString());
+            Files.createDirectories(directory);
+            Path sourceTemporary = Files.createTempFile(directory, ".source-", ".tmp");
+            Path compiledTemporary = Files.createTempFile(directory, ".compiled-", ".tmp");
+            Path sourceTarget = directory.resolve(SOURCE_FILE);
+            Path compiledTarget = directory.resolve(COMPILED_FILE);
+            try {
+                Files.write(sourceTemporary, source);
+                Files.write(compiledTemporary, compiled);
+                move(sourceTemporary, sourceTarget);
+                move(compiledTemporary, compiledTarget);
+                return new StoredArtifact(templateId.toString());
+            } catch (IOException exception) {
+                Files.deleteIfExists(sourceTarget);
+                Files.deleteIfExists(compiledTarget);
+                throw exception;
+            } finally {
+                Files.deleteIfExists(sourceTemporary);
+                Files.deleteIfExists(compiledTemporary);
+            }
         }
     }
 
@@ -54,34 +57,36 @@ public class DocumentTemplateArtifactStorage {
             UUID templateId,
             String masterFilename,
             Map<String, TicketJrxmlBundleCompiler.CompiledReport> reports) throws IOException {
-        Objects.requireNonNull(templateId, "templateId");
-        Objects.requireNonNull(masterFilename, "masterFilename");
-        Objects.requireNonNull(reports, "reports");
-        var master = Objects.requireNonNull(reports.get(masterFilename), "masterReport");
-        Path directory = directory(templateId.toString());
-        Files.createDirectories(root);
-        Path temporary = Files.createTempDirectory(root, ".bundle-");
-        try {
-            Path sources = temporary.resolve(SOURCES_DIRECTORY);
-            Path compiled = temporary.resolve(COMPILED_DIRECTORY);
-            Files.createDirectories(sources);
-            Files.createDirectories(compiled);
-            for (var entry : reports.entrySet()) {
-                String filename = safeFilename(entry.getKey(), ".jrxml");
-                Files.write(sources.resolve(filename), entry.getValue().source());
-                Files.write(compiled.resolve(replaceExtension(filename, ".jasper")),
-                        entry.getValue().compiled());
-            }
-            Files.write(temporary.resolve(SOURCE_FILE), master.source());
-            Files.write(temporary.resolve(COMPILED_FILE), master.compiled());
-            if (Files.exists(directory)) {
-                delete(templateId.toString());
-            }
-            move(temporary, directory);
-            return new StoredArtifact(templateId.toString());
-        } finally {
-            if (Files.exists(temporary)) {
-                deleteDirectory(temporary);
+        try (var snapshotGuard = SharedFileSnapshotGuard.fileMutation()) {
+            Objects.requireNonNull(templateId, "templateId");
+            Objects.requireNonNull(masterFilename, "masterFilename");
+            Objects.requireNonNull(reports, "reports");
+            var master = Objects.requireNonNull(reports.get(masterFilename), "masterReport");
+            Path directory = directory(templateId.toString());
+            Files.createDirectories(root);
+            Path temporary = Files.createTempDirectory(root, ".bundle-");
+            try {
+                Path sources = temporary.resolve(SOURCES_DIRECTORY);
+                Path compiled = temporary.resolve(COMPILED_DIRECTORY);
+                Files.createDirectories(sources);
+                Files.createDirectories(compiled);
+                for (var entry : reports.entrySet()) {
+                    String filename = safeFilename(entry.getKey(), ".jrxml");
+                    Files.write(sources.resolve(filename), entry.getValue().source());
+                    Files.write(compiled.resolve(replaceExtension(filename, ".jasper")),
+                            entry.getValue().compiled());
+                }
+                Files.write(temporary.resolve(SOURCE_FILE), master.source());
+                Files.write(temporary.resolve(COMPILED_FILE), master.compiled());
+                if (Files.exists(directory)) {
+                    delete(templateId.toString());
+                }
+                move(temporary, directory);
+                return new StoredArtifact(templateId.toString());
+            } finally {
+                if (Files.exists(temporary)) {
+                    deleteDirectory(temporary);
+                }
             }
         }
     }
@@ -122,11 +127,13 @@ public class DocumentTemplateArtifactStorage {
     }
 
     public void delete(String reference) throws IOException {
-        Path directory = directory(reference);
-        if (!Files.isDirectory(directory)) {
-            return;
+        try (var snapshotGuard = SharedFileSnapshotGuard.fileMutation()) {
+            Path directory = directory(reference);
+            if (!Files.isDirectory(directory)) {
+                return;
+            }
+            deleteDirectory(directory);
         }
-        deleteDirectory(directory);
     }
 
     private static void deleteDirectory(Path directory) throws IOException {

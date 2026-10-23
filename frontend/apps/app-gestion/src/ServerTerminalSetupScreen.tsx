@@ -14,9 +14,9 @@ type InstallationStatus = { organizationProvisioned?: boolean; initialAdminPassw
 type SetupStage = "pairing" | "manual" | "password" | "complete";
 type InstallationSession = { token: string; password: string; needsPairing: boolean };
 
-export function ServerTerminalSetupScreen({ locale, onLocaleChange, onOrganizationReady, onConfigureConnection }: {
+export function ServerTerminalSetupScreen({ locale, onLocaleChange, onOrganizationReady, onConfigureConnection, onRecoverFromBackup }: {
   locale: LocaleCode; onLocaleChange?: (locale: LocaleCode) => void;
-  onOrganizationReady: () => void; onConfigureConnection: () => void;
+  onOrganizationReady: () => void; onConfigureConnection: () => void; onRecoverFromBackup?: () => void;
 }) {
   const t = createTranslator(locale);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
@@ -247,6 +247,7 @@ export function ServerTerminalSetupScreen({ locale, onLocaleChange, onOrganizati
             <strong role="status" aria-live="polite">{t(backendOnline === null ? "login.backendChecking" : backendOnline ? "login.backendOnline" : "gestion.serverSetup.offline")}</strong>
             {backendOnline === false && <button type="button" className="login-retry-button" disabled={busy} onClick={() => void refresh(lifecycle.current)}>{t("login.backendRetry")}</button>}
             {stage !== "password" && <button type="button" className="login-secondary-action" disabled={busy && backendOnline !== null} onClick={onConfigureConnection}>{t("terminalLink.title")}</button>}
+            {onRecoverFromBackup && window.tpvDesktop?.disasterRecovery && <button type="button" className="login-secondary-action" onClick={onRecoverFromBackup}>{t("gestion.disaster.entry")}</button>}
           </div>
           {waiting && <section className="server-setup-wait" role="status" aria-live="polite"><strong>{t("gestion.serverSetup.waitTitle")}</strong><span>{t("gestion.serverSetup.waitDescription")}</span></section>}
           {showFields && <>

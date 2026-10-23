@@ -26,6 +26,12 @@ public class VerifactuCertificateSecretStore {
         this(root, protector, defaultAccessPolicy());
     }
 
+    public static VerifactuCertificateSecretStore forTransfer(Path root,SecretProtector protector,String serviceAccount) {
+        // Existing ACLs must already match; maintenance never silently repairs a populated secret tree.
+        new TransferSecretDirectory(root,serviceAccount);
+        return new VerifactuCertificateSecretStore(root,protector,TransferSecretDirectory.policy(serviceAccount));
+    }
+
     VerifactuCertificateSecretStore(
             Path root,
             SecretProtector protector,
@@ -41,6 +47,11 @@ public class VerifactuCertificateSecretStore {
 
     // Protege, verifica y publica la clave mediante un movimiento atomico local.
     public String write(UUID companyId, UUID certificateId, byte[] privateKey) {
+        try (var scope = com.tpverp.backend.backup.application.SharedFileSnapshotGuard.transactionalMutation()) {
+            return writeGuarded(companyId, certificateId, privateKey);
+        }
+    }
+    private String writeGuarded(UUID companyId, UUID certificateId, byte[] privateKey) {
         Objects.requireNonNull(companyId, "companyId");
         Objects.requireNonNull(certificateId, "certificateId");
         if (privateKey == null || privateKey.length == 0) {
@@ -85,6 +96,11 @@ public class VerifactuCertificateSecretStore {
     }
 
     public void delete(String relativePath) {
+        try (var scope = com.tpverp.backend.backup.application.SharedFileSnapshotGuard.transactionalMutation()) {
+            deleteGuarded(relativePath);
+        }
+    }
+    private void deleteGuarded(String relativePath) {
         var target = resolve(relativePath);
         if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
             return;

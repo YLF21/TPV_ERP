@@ -41,7 +41,7 @@ class LicenseValidationServiceTest {
             UUID installationId = UUID.randomUUID();
             var installation = new SaasInstallation(UUID.randomUUID(), company, store, license, installationId,
                     "INST-" + profile, "key", "token-hash", NOW);
-            when(installations.findByInstallationIdAndLicense_Reference(installationId, license.getReference()))
+            when(installations.findByInstallationIdForUpdate(installationId))
                     .thenReturn(Optional.of(installation));
             var response = service.validate(new LicenseSaasValidationRequest(installationId, installation.getInstallationReference(),
                     store.getId(), license.getReference(), "hash"), "token");
@@ -70,7 +70,7 @@ class LicenseValidationServiceTest {
         var installations = mock(SaasInstallationRepository.class);
         var authenticator = mock(InstallationAuthenticator.class);
         var policies = mock(VerifactuActivationPolicyResolver.class);
-        when(installations.findByInstallationIdAndLicense_Reference(installationId, "LIC-1"))
+        when(installations.findByInstallationIdForUpdate(installationId))
                 .thenReturn(Optional.of(installation));
         when(policies.required(TaxpayerType.SOCIEDAD)).thenReturn(new VerifactuPolicySnapshot(
                 LocalDate.of(2027, 1, 1), 4, NOW.minusSeconds(60)));
@@ -109,7 +109,7 @@ class LicenseValidationServiceTest {
         var installations = mock(SaasInstallationRepository.class);
         var authenticator = mock(InstallationAuthenticator.class);
         var policies = mock(VerifactuActivationPolicyResolver.class);
-        when(installations.findByInstallationIdAndLicense_Reference(installationId, "LIC-REV"))
+        when(installations.findByInstallationIdForUpdate(installationId))
                 .thenReturn(Optional.of(installation));
         when(policies.required(TaxpayerType.SOCIEDAD)).thenReturn(new VerifactuPolicySnapshot(
                 LocalDate.of(2027, 1, 1), 4, NOW.minusSeconds(60)));

@@ -1,5 +1,6 @@
 package com.tpverp.backend.catalog;
 
+import com.tpverp.backend.backup.application.SharedFileSnapshotGuard;
 import com.tpverp.backend.catalog.image.ProductImageProcessor;
 import com.tpverp.backend.catalog.image.ProductImageStorage;
 import java.io.IOException;
@@ -32,24 +33,26 @@ public class ProductImageService {
 
     @Transactional
     public Product upload(UUID productId, byte[] content) {
-        Product product = catalogService.product(productId);
-        UUID previousImageId = product.getImageId();
-        UUID imageId = UUID.randomUUID();
-        var image = processor.process(content);
-        write(product, imageId, image);
-        try {
-            product.attachImage(imageId, CONTENT_TYPE, image.image().length, image.sha256());
-        } catch (RuntimeException exception) {
-            deleteQuietly(product, imageId, "nueva tras error de metadatos");
-            throw exception;
+        try (var snapshotGuard = SharedFileSnapshotGuard.transactionalMutation()) {
+            Product product = catalogService.product(productId);
+            UUID previousImageId = product.getImageId();
+            UUID imageId = UUID.randomUUID();
+            var image = processor.process(content);
+            write(product, imageId, image);
+            try {
+                product.attachImage(imageId, CONTENT_TYPE, image.image().length, image.sha256());
+            } catch (RuntimeException exception) {
+                deleteQuietly(product, imageId, "nueva tras error de metadatos");
+                throw exception;
+            }
+            try {
+                registerReplacementLifecycle(product, imageId, previousImageId);
+            } catch (RuntimeException exception) {
+                deleteQuietly(product, imageId, "nueva sin sincronizacion transaccional");
+                throw exception;
+            }
+            return product;
         }
-        try {
-            registerReplacementLifecycle(product, imageId, previousImageId);
-        } catch (RuntimeException exception) {
-            deleteQuietly(product, imageId, "nueva sin sincronizacion transaccional");
-            throw exception;
-        }
-        return product;
     }
     // Processes the image, publishes it on disk, and stores only persistable metadata on the product.
 
@@ -70,13 +73,15 @@ public class ProductImageService {
 
     @Transactional
     public Product delete(UUID productId) {
-        Product product = catalogService.product(productId);
-        UUID imageId = product.getImageId();
-        if (imageId != null) {
-            product.clearImage();
-            afterCommit(() -> deleteQuietly(product, imageId, "eliminada"));
+        try (var snapshotGuard = SharedFileSnapshotGuard.transactionalMutation()) {
+            Product product = catalogService.product(productId);
+            UUID imageId = product.getImageId();
+            if (imageId != null) {
+                product.clearImage();
+                afterCommit(() -> deleteQuietly(product, imageId, "eliminada"));
+            }
+            return product;
         }
-        return product;
     }
 
     public void validateUpload(byte[] content) {

@@ -27,13 +27,19 @@ public final class PostgreSqlBackupCommands {
     }
 
     public void dump(Path destination) {
-        run(List.of(
+        dump(destination, null);
+    }
+
+    public void dump(Path destination, String snapshot) {
+        var args = new ArrayList<>(List.of(
                 pgDumpCommand,
                 "--format=custom",
                 "--no-password",
                 "--username=" + databaseUser,
                 "--file=" + destination.toAbsolutePath(),
                 "--dbname=" + databaseUrl));
+        if (snapshot != null) args.add("--snapshot=" + snapshot);
+        run(args);
     }
 
     public void restore(Path source) {
@@ -63,6 +69,11 @@ public final class PostgreSqlBackupCommands {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("La operacion PostgreSQL fue interrumpida", exception);
+        } catch (java.io.IOException exception) {
+            throw new IllegalStateException(
+                    "No se pudo iniciar la herramienta PostgreSQL; compruebe su instalación y los permisos de ejecución", exception);
+        } catch (IllegalStateException exception) {
+            throw exception;
         } catch (Exception exception) {
             throw new IllegalStateException("No se pudo ejecutar la herramienta PostgreSQL", exception);
         }

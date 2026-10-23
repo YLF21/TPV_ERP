@@ -105,6 +105,54 @@ class BackupKeyStoreTest {
     }
 
     @Test
+    void rejectsCorruptOrReplacedWrappedKeyBeforeItCanReplaceGoodSaasBackups() throws Exception {
+        Path keys = tempDir.resolve("integrity-keys"), backups = tempDir.resolve("integrity-backups");
+        var store = new BackupKeyStore(keys, new CopyProtector());
+        char[] secret = "independent-recovery-secret".toCharArray();
+        store.initializeV2(secret, backups);
+        byte[] original = store.exportWrappedRecoveryKey();
+        byte[] corrupted = original.clone(); corrupted[corrupted.length - 1] ^= 1;
+        Files.write(keys.resolve(BackupKeyStore.RECOVERY_FILE), corrupted);
+        assertThat(new RecoveryKeyPackage().inspect(corrupted).version()).isEqualTo(2);
+        assertThat(store.loadForScheduledBackup()).hasSize(32);
+        assertThatThrownBy(store::exportWrappedRecoveryKey).isInstanceOf(IllegalStateException.class)
+                .hasRootCauseMessage("Las claves de recuperación cambiaron desde su última verificación; revise la configuración");
+        Files.write(keys.resolve(BackupKeyStore.RECOVERY_FILE), new RecoveryKeyPackage().createV2(secret, 100_000));
+        assertThatThrownBy(store::exportWrappedRecoveryKey).isInstanceOf(IllegalStateException.class);
+        Files.write(keys.resolve(BackupKeyStore.RECOVERY_FILE), original);
+        assertThat(store.exportWrappedRecoveryKey()).isEqualTo(original);
+    }
+
+    @Test
+    void recoveryIntegrityAlsoDetectsReplacingTheLocallyProtectedBackupKey() throws Exception {
+        Path keys = tempDir.resolve("brk-integrity-keys");
+        var store = new BackupKeyStore(keys, new CopyProtector());
+        store.initializeV2("independent-recovery-secret".toCharArray(), tempDir.resolve("brk-integrity-backups"));
+        byte[] altered = Files.readAllBytes(keys.resolve("backup-brk.dpapi")); altered[0] ^= 1;
+        Files.write(keys.resolve("backup-brk.dpapi"), altered);
+        assertThatThrownBy(store::exportWrappedRecoveryKey).isInstanceOf(IllegalStateException.class)
+                .hasRootCauseMessage("Las claves de recuperación cambiaron desde su última verificación; revise la configuración");
+    }
+
+    @Test
+    void existingV2MaterialRequiresPassphraseVerificationBeforeFirstCloudExport() throws Exception {
+        Path keys = tempDir.resolve("pre-integrity-keys"), backups = tempDir.resolve("pre-integrity-backups");
+        var store = new BackupKeyStore(keys, new CopyProtector());
+        char[] secret = "independent-recovery-secret".toCharArray();
+        store.initializeV2(secret, backups);
+        byte[] original = store.exportWrappedRecoveryKey();
+        Files.delete(keys.resolve("backup-recovery-integrity.dpapi"));
+        assertThat(store.loadForScheduledBackup()).hasSize(32);
+        assertThatThrownBy(store::exportWrappedRecoveryKey).isInstanceOf(IllegalStateException.class)
+                .hasRootCauseMessage("Vuelva a validar la clave de recuperación en la configuración antes del envío a SaaS");
+        assertThatThrownBy(() -> store.initializeV2("incorrect-recovery-secret".toCharArray(), backups))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(store::exportWrappedRecoveryKey).isInstanceOf(IllegalStateException.class);
+        store.initializeV2(secret, backups);
+        assertThat(store.exportWrappedRecoveryKey()).isEqualTo(original);
+    }
+
+    @Test
     void restoreRejectsOversizedOrSymlinkedRecoveryMaterial() throws Exception {
         Path oversized = tempDir.resolve("oversized-recovery.key");
         Files.write(oversized, new byte[1024 * 1024 + 1]);

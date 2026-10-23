@@ -63,6 +63,22 @@ class VerifactuCertificateImporterTest {
     }
 
     @Test
+    void transferredCertificatesVerifyPairFingerprintAndActiveValidityButPreserveExpiredHistory() throws Exception {
+        var material=importer().importPkcs12(pkcs12,"secreto".toCharArray(),"B12345674");
+        var current=new VerifactuCertificateValidator(Clock.systemUTC());
+        current.verifyTransferred(material.publicChainPkcs7(),material.privateKeyPkcs8(),material.fingerprint(),true);
+        var other=java.security.KeyPairGenerator.getInstance("RSA");other.initialize(3072);
+        assertThatThrownBy(()->current.verifyTransferred(material.publicChainPkcs7(),other.generateKeyPair().getPrivate().getEncoded(),material.fingerprint(),true))
+                .hasMessageContaining("does not match");
+        assertThatThrownBy(()->current.verifyTransferred(material.publicChainPkcs7(),material.privateKeyPkcs8(),"0".repeat(64),true))
+                .hasMessageContaining("fingerprint mismatch");
+        var future=new VerifactuCertificateValidator(Clock.fixed(material.validUntil().plusSeconds(1),java.time.ZoneOffset.UTC));
+        assertThatThrownBy(()->future.verifyTransferred(material.publicChainPkcs7(),material.privateKeyPkcs8(),material.fingerprint(),true))
+                .hasMessageContaining("CERTIFICATE_EXPIRED");
+        future.verifyTransferred(material.publicChainPkcs7(),material.privateKeyPkcs8(),material.fingerprint(),false);
+    }
+
+    @Test
     void rejectsWrongPasswordAndCertificateForAnotherCompany() {
         assertThatThrownBy(() -> importer().importPkcs12(
                 pkcs12, "incorrecta".toCharArray(), "B12345674"))

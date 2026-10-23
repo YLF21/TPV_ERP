@@ -185,14 +185,14 @@ class FiscalRuntimeGuardInitializerTest {
     }
 
     @Test
-    void packagedV274ManifestCanAdvanceAnExistingV273Database() {
+    void packagedV278ManifestCanAdvanceAnExistingV274Database() {
         var manifest = FiscalReleaseManifest.load();
         boolean development = manifest.capability() == FiscalProductCapability.DUAL;
         var jdbc = jdbc(marker("SANDBOX", manifest.capability().name(),
-                development ? "tpv-erp-dev-v273" : "tpv-erp-4.2.0-v273",
-                "V273", null, null, null, development ? 33 : 25, development ? 0 : 1));
+                development ? "tpv-erp-dev-v274" : "tpv-erp-4.2.0-v274",
+                "V274", null, null, null, development ? 34 : 26, development ? 0 : 1));
         when(jdbc.queryForList(anyString(), eq(String.class)))
-                .thenReturn(List.of("273", "274"));
+                .thenReturn(List.of("274", "275", "276", "277", "278"));
         var runtime = org.mockito.Mockito.mock(FiscalRuntimeProperties.class);
         when(runtime.releaseManifest()).thenReturn(manifest);
         when(runtime.runtimeClass()).thenReturn(FiscalRuntimeClass.SANDBOX);
@@ -202,7 +202,7 @@ class FiscalRuntimeGuardInitializerTest {
 
         verify(jdbc).update(org.mockito.ArgumentMatchers.startsWith("update fiscal_runtime_guard"),
                 eq("SANDBOX"), eq(manifest.capability().name()), eq(manifest.releaseId()),
-                eq("V274"), eq(manifest.manifestHash()), org.mockito.ArgumentMatchers.isNull(),
+                eq("V278"), eq(manifest.manifestHash()), org.mockito.ArgumentMatchers.isNull(),
                 eq(manifest.commitHash()), eq(manifest.releaseSequence()), eq(manifest.buildSequence()));
         verify(jdbc).update(contains("insert into fiscal_runtime_release_audit"), any(Object[].class));
     }

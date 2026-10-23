@@ -150,6 +150,13 @@ public final class BackupFileCrypto {
         }
     }
 
+    /** Authenticates every chunk and the final digest before a backup is published as successful. */
+    public BackupInfo verify(Path backup, byte[] brk) throws IOException, GeneralSecurityException {
+        Path verification = Files.createTempFile(backup.toAbsolutePath().getParent(), ".tpv-verify-", ".zip");
+        try { return decryptTo(backup, verification, brk); }
+        finally { Files.deleteIfExists(verification); }
+    }
+
     private BackupInfo decryptTo(Path backup, Path temporary, byte[] brk)
         throws IOException, GeneralSecurityException {
         try (var input = new DataInputStream(

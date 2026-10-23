@@ -187,6 +187,8 @@ export const gestionNavigationGroups: GestionNavigationGroup[] = [
       destination("roles", "gestion.navigation.destination.roles", Key, "SEGURIDAD"),
       destination("terminals", "gestion.navigation.destination.terminals", Devices, "SEGURIDAD"),
       destination("salesOperationSecurity", "gestion.navigation.destination.salesSecurity", ShieldChevron, "SEGURIDAD"),
+      destination("backups", "gestion.backups.navigation", Files, "SEGURIDAD"),
+      destination("serverTransfer", "gestion.transfer.navigation", ArrowsLeftRight, "SEGURIDAD"),
     ],
   },
   {

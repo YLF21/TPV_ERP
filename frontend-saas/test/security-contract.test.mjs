@@ -31,6 +31,6 @@ test("all API transports have a bounded abortable timeout", async () => {
   assert.match(source, /const REQUEST_TIMEOUT_MS = 20_000/);
   assert.match(deadline, /new AbortController\(\)/);
   assert.match(source, /withinRequestDeadline/);
-  assert.equal((source.match(/fetchWithTimeout\(`/g) ?? []).length, 5);
+  assert.equal((source.match(/fetchWithTimeout\(`/g) ?? []).length, 6);
   assert.equal((source.match(/\bfetch\(/g) ?? []).length, 1);
 });

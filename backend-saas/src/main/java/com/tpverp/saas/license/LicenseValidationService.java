@@ -29,7 +29,10 @@ public class LicenseValidationService {
     @Transactional
     public LicenseSaasValidationResponse validate(LicenseSaasValidationRequest request, String token) {
         SaasInstallation installation = installations
-                .findByInstallationIdAndLicense_Reference(request.installationId(), request.licenseReference())
+                // This operation updates lastValidatedAt. Acquire the exclusive row lock first,
+                // avoiding two concurrent validators upgrading shared authentication locks.
+                .findByInstallationIdForUpdate(request.installationId())
+                .filter(value -> value.getLicense().getReference().equals(request.licenseReference()))
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Instalacion no vinculada"));
         Instant now = clock.instant();
         if (installation.isActive()) {

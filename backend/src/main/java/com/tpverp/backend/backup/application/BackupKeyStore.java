@@ -16,6 +16,7 @@ public final class BackupKeyStore {
 
     public static final String RECOVERY_FILE = "tpv-backup-recovery.key";
     private static final String PROTECTED_BRK_FILE = "backup-brk.dpapi";
+    private static final String RECOVERY_INTEGRITY_FILE = "backup-recovery-integrity.dpapi";
     private static final int PBKDF2_ITERATIONS = 600_000;
     private static final long MAX_KEY_FILE_BYTES = 1024L * 1024L;
     private final Path keyDirectory;
@@ -78,7 +79,10 @@ public final class BackupKeyStore {
                 brk = recoveryKeyPackage.openAny(packageBytes, recoverySecret);
                 try {
                     byte[] protectedValue = protector.protect(brk);
-                    try { writeNewPairAtomically(protectedBrk, protectedValue, recovery, packageBytes); }
+                    try {
+                        writeNewPairAtomically(protectedBrk, protectedValue, recovery, packageBytes);
+                        recordVerifiedRecoveryMaterial(brk, packageBytes);
+                    }
                     finally { Arrays.fill(protectedValue, (byte) 0); }
                 } finally {
                     Arrays.fill(brk, (byte) 0);
@@ -97,7 +101,10 @@ public final class BackupKeyStore {
                         // Legacy packages remain readable but are upgraded in place.
                         packageBytes = recoveryKeyPackage.createV2ForKey(
                                 brk, recoverySecret, PBKDF2_ITERATIONS);
-                        try { replaceAtomically(recovery, packageBytes); }
+                        try {
+                            replaceAtomically(recovery, packageBytes);
+                            recordVerifiedRecoveryMaterial(brk, packageBytes);
+                        }
                         finally { Arrays.fill(packageBytes, (byte) 0); }
                     }
                 } finally { Arrays.fill(brk, (byte) 0); }
@@ -115,6 +122,68 @@ public final class BackupKeyStore {
         } catch (Exception exception) {
             throw new IllegalStateException("No se pudo abrir la clave de backup con DPAPI", exception);
         }
+    }
+
+    /** Export only the password-wrapped v2 recovery package; never the clear backup key. */
+    public synchronized byte[] exportWrappedRecoveryKey() {
+        byte[] wrapped = null;
+        try {
+            requireConfiguredPair();
+            wrapped = readBoundedNoFollow(keyDirectory.resolve(RECOVERY_FILE));
+            if (recoveryKeyPackage.inspect(wrapped).version() != 2) {
+                throw new IllegalStateException("La protección en SaaS requiere la recuperación v2 independiente de ADMIN");
+            }
+            verifyRecoveryIntegrity(wrapped);
+            return wrapped;
+        } catch (Exception exception) {
+            if (wrapped != null) Arrays.fill(wrapped, (byte) 0);
+            throw new IllegalStateException("No se pudo preparar el archivo de recuperación para SaaS", exception);
+        }
+    }
+
+    /** Call only after passphrase verification or importing an authenticated, verified maintenance handoff. */
+    public synchronized void recordVerifiedRecoveryMaterial(byte[] brk, byte[] wrapped) {
+        byte[] localKey = null, localWrapped = null, seal = null, protectedSeal = null;
+        try {
+            if (brk == null || brk.length != 32 || wrapped == null || recoveryKeyPackage.inspect(wrapped).version() != 2)
+                throw new IllegalArgumentException("Material de recuperación v2 no válido");
+            requireConfiguredPair();
+            localKey = unprotectSafe(keyDirectory.resolve(PROTECTED_BRK_FILE));
+            localWrapped = readBoundedNoFollow(keyDirectory.resolve(RECOVERY_FILE));
+            if (!MessageDigest.isEqual(brk, localKey) || !MessageDigest.isEqual(wrapped, localWrapped))
+                throw new IllegalStateException("Las claves instaladas no coinciden con el material verificado");
+            seal = recoveryIntegrity(brk, wrapped);
+            protectedSeal = protector.protect(seal);
+            replaceAtomically(keyDirectory.resolve(RECOVERY_INTEGRITY_FILE), protectedSeal);
+        } catch (Exception failure) {
+            throw new IllegalStateException("No se pudo conservar la verificación de las claves de recuperación", failure);
+        } finally {
+            for (byte[] value : new byte[][] {localKey, localWrapped, seal, protectedSeal})
+                if (value != null) Arrays.fill(value, (byte) 0);
+        }
+    }
+
+    private void verifyRecoveryIntegrity(byte[] wrapped) throws Exception {
+        Path integrity = keyDirectory.resolve(RECOVERY_INTEGRITY_FILE);
+        if (!isSafeRegularFile(integrity))
+            throw new IllegalStateException("Vuelva a validar la clave de recuperación en la configuración antes del envío a SaaS");
+        byte[] brk = null, expected = null, actual = null;
+        try {
+            brk = unprotectSafe(keyDirectory.resolve(PROTECTED_BRK_FILE));
+            expected = recoveryIntegrity(brk, wrapped);
+            actual = unprotectSafe(integrity);
+            if (!MessageDigest.isEqual(expected, actual))
+                throw new IllegalStateException("Las claves de recuperación cambiaron desde su última verificación; revise la configuración");
+        } finally {
+            for (byte[] value : new byte[][] {brk, expected, actual}) if (value != null) Arrays.fill(value, (byte) 0);
+        }
+    }
+
+    private static byte[] recoveryIntegrity(byte[] brk, byte[] wrapped) throws Exception {
+        if (brk.length != 32) throw new IllegalStateException("La clave de backup no tiene el tamaño esperado");
+        var hash = MessageDigest.getInstance("SHA-256");
+        return ByteBuffer.allocate(69).putInt(0x54504b49).put((byte) 1)
+                .put(hash.digest(brk)).put(hash.digest(wrapped)).array();
     }
 
     /** Returns whether this installation has explicitly provisioned backup key material. */
@@ -152,6 +221,7 @@ public final class BackupKeyStore {
             if (!MessageDigest.isEqual(fromRecovery, fromProtector)) {
                 throw new IllegalStateException("Las dos copias de la clave de backup no coinciden");
             }
+            recordVerifiedRecoveryMaterial(fromRecovery, recoveryBytes);
         } finally {
             if (fromRecovery != null) Arrays.fill(fromRecovery, (byte) 0);
             if (fromProtector != null) Arrays.fill(fromProtector, (byte) 0);

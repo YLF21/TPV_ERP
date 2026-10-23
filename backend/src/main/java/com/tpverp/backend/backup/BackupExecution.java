@@ -25,6 +25,16 @@ public class BackupExecution {
     @Id
     private UUID id;
 
+    @Column(name = "sequence_number", insertable = false, updatable = false)
+    @org.hibernate.annotations.Generated(event = org.hibernate.generator.EventType.INSERT)
+    private Long sequenceNumber;
+
+    @Column(name = "origin", nullable = false, length = 16)
+    private String origin = "MANUAL";
+
+    @Column(name = "phase", nullable = false, length = 32)
+    private String phase = "QUEUED";
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "configuracion_id", nullable = false)
     private BackupSettings configuracion;
@@ -88,10 +98,22 @@ public class BackupExecution {
         this.metadata = metadata == null ? null : new LinkedHashMap<>(metadata);
         this.motivoError = resultado == BackupResult.FALLO ? motivoError.trim() : null;
         this.leaseUntil = finalizadaEn;
+        this.phase = resultado == BackupResult.EXITO ? "COMPLETED" : "FAILED";
     }
 
     public UUID getId() {
         return id;
+    }
+
+    public Long getSequenceNumber() { return sequenceNumber; }
+    public String getOrigin() { return origin; }
+    public String getPhase() { return phase; }
+    public UUID configurationId() { return configuracion.getId(); }
+    public void setOrigin(String origin) {
+        if (!java.util.Set.of("MANUAL", "AUTOMATIC", "TRANSFER").contains(origin)) {
+            throw new IllegalArgumentException("Origen de copia inválido");
+        }
+        this.origin = origin;
     }
 
     public Instant getIniciadaEn() {

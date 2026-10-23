@@ -139,6 +139,28 @@ if (Test-Path -LiteralPath "$outputJar.sha256" -PathType Leaf) {
     Copy-Item -LiteralPath $targetSidecar -Destination "$outputJar.sha256"
 }
 
+$maintenanceNames = @('Invoke-TpvServerTransfer.ps1', 'Start-TpvServerTransferMaintenance.ps1',
+    'Invoke-TpvDisasterRecovery.ps1', 'Start-TpvDisasterRecoveryMaintenance.ps1',
+    'Test-TpvBackendProductionBundle.ps1', 'Invoke-TpvBackupRestoreOffline.ps1', 'Test-TpvBackupRestoreOfflinePreflight.ps1')
+$maintenanceDirectory = Join-Path $resolvedOutput 'tools'
+New-Item -ItemType Directory -Path $maintenanceDirectory -Force | Out-Null
+$maintenanceHashes = [ordered]@{}
+foreach ($name in $maintenanceNames) {
+    $source = Join-Path $PSScriptRoot $name
+    $destination = Join-Path $maintenanceDirectory $name
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Falta una herramienta de mantenimiento: $name" }
+    $hash = Get-Sha256 $source
+    if (Test-Path -LiteralPath $destination) {
+        if ((Get-Sha256 $destination) -cne $hash) { throw "La herramienta inmutable ya existe con otro hash: $name" }
+    } else { Copy-Item -LiteralPath $source -Destination $destination }
+    $maintenanceHashes[$name] = $hash
+}
+$toolsManifest = Join-Path $resolvedOutput 'maintenance-tools.sha256.json'
+$toolsJson = $maintenanceHashes | ConvertTo-Json
+if (Test-Path -LiteralPath $toolsManifest) {
+    if ((Get-Content -LiteralPath $toolsManifest -Raw).Trim() -cne $toolsJson.Trim()) { throw 'El manifiesto de herramientas inmutable no coincide.' }
+} else { [IO.File]::WriteAllText($toolsManifest, $toolsJson, [Text.UTF8Encoding]::new($false)) }
+
 & $verifier -BundleDirectory $resolvedOutput `
     -ExpectedVersion $ExpectedVersion -ExpectedReleaseId $ExpectedReleaseId `
     -ExpectedSchemaVersion $ExpectedSchemaVersion `

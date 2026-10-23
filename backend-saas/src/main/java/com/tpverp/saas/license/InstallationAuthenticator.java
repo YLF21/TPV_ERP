@@ -10,12 +10,25 @@ import org.springframework.web.server.ResponseStatusException;
 public class InstallationAuthenticator {
 
     private final TokenHasher tokens;
+    private org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     public InstallationAuthenticator(TokenHasher tokens) {
         this.tokens = tokens;
     }
+    @org.springframework.beans.factory.annotation.Autowired
+    void setJdbc(org.springframework.jdbc.core.JdbcTemplate jdbc) { this.jdbc=jdbc; }
 
     public void requireToken(SaasInstallation installation, String token) {
+        if (jdbc != null) {
+            // Retain a shared installation lock until the authenticated transaction commits.
+            // Recovery takes its exclusive counterpart before retiring the source credential.
+            boolean readOnly=org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly();
+            var current=jdbc.queryForList("select active,token_hash from saas_installation where id=?"+(readOnly?"":" for share"),installation.getId());
+            if(current.size()!=1 || !Boolean.TRUE.equals(current.getFirst().get("active")) || token==null
+                    || !java.security.MessageDigest.isEqual(String.valueOf(current.getFirst().get("token_hash")).getBytes(java.nio.charset.StandardCharsets.US_ASCII),tokens.hash(token).getBytes(java.nio.charset.StandardCharsets.US_ASCII)))
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Token de instalacion invalido");
+            return;
+        }
         if (!installation.isActive()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token de instalacion invalido");
         }
@@ -44,7 +57,7 @@ public class InstallationAuthenticator {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Instalacion no autorizada");
         }
         String tokenHash = tokens.hash(token);
-        return candidates.stream()
+        var installation = candidates.stream()
                 .filter(SaasInstallation::isActive)
                 .filter(candidate -> candidate.getCompany().getId().equals(companyId))
                 .filter(candidate -> candidate.getStore().getId().equals(storeId))
@@ -53,5 +66,7 @@ public class InstallationAuthenticator {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.UNAUTHORIZED,
                         "Ninguna instalacion vinculada acepta el token indicado"));
+        requireToken(installation, token);
+        return installation;
     }
 }

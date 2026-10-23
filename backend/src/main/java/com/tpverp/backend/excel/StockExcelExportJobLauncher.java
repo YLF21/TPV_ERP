@@ -8,6 +8,9 @@ import org.springframework.stereotype.Component;
 public class StockExcelExportJobLauncher {
 
     private final StockExcelExportService exports;
+    private com.tpverp.backend.servertransfer.ServerTransferFence transferFence;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setTransferFence(com.tpverp.backend.servertransfer.ServerTransferFence fence) { transferFence=fence; }
 
     public StockExcelExportJobLauncher(StockExcelExportService exports) {
         this.exports = exports;
@@ -15,6 +18,7 @@ public class StockExcelExportJobLauncher {
 
     @Async("stockExcelExportExecutor")
     public void launch(UUID jobId) {
-        exports.run(jobId);
+        if(transferFence!=null && !transferFence.enter()) return;
+        try {exports.run(jobId);} finally {if(transferFence!=null)transferFence.leave();}
     }
 }

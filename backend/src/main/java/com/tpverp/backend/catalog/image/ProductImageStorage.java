@@ -1,5 +1,6 @@
 package com.tpverp.backend.catalog.image;
 
+import com.tpverp.backend.backup.application.SharedFileSnapshotGuard;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,24 +30,26 @@ public class ProductImageStorage {
             UUID imageId,
             byte[] image,
             byte[] thumbnail) throws IOException {
-        Path directory = productDirectory(storeId, productId);
-        Files.createDirectories(directory);
-        Path imageTarget = imagePath(directory, imageId, false);
-        Path thumbnailTarget = imagePath(directory, imageId, true);
-        Path imageTemporary = Files.createTempFile(directory, ".image-", ".tmp");
-        Path thumbnailTemporary = Files.createTempFile(directory, ".thumbnail-", ".tmp");
-        try {
-            Files.write(imageTemporary, Objects.requireNonNull(image, "image"));
-            Files.write(thumbnailTemporary, Objects.requireNonNull(thumbnail, "thumbnail"));
-            mover.move(imageTemporary, imageTarget);
-            mover.move(thumbnailTemporary, thumbnailTarget);
-        } catch (IOException exception) {
-            Files.deleteIfExists(imageTarget);
-            Files.deleteIfExists(thumbnailTarget);
-            throw exception;
-        } finally {
-            Files.deleteIfExists(imageTemporary);
-            Files.deleteIfExists(thumbnailTemporary);
+        try (var snapshotGuard = SharedFileSnapshotGuard.fileMutation()) {
+            Path directory = productDirectory(storeId, productId);
+            Files.createDirectories(directory);
+            Path imageTarget = imagePath(directory, imageId, false);
+            Path thumbnailTarget = imagePath(directory, imageId, true);
+            Path imageTemporary = Files.createTempFile(directory, ".image-", ".tmp");
+            Path thumbnailTemporary = Files.createTempFile(directory, ".thumbnail-", ".tmp");
+            try {
+                Files.write(imageTemporary, Objects.requireNonNull(image, "image"));
+                Files.write(thumbnailTemporary, Objects.requireNonNull(thumbnail, "thumbnail"));
+                mover.move(imageTemporary, imageTarget);
+                mover.move(thumbnailTemporary, thumbnailTarget);
+            } catch (IOException exception) {
+                Files.deleteIfExists(imageTarget);
+                Files.deleteIfExists(thumbnailTarget);
+                throw exception;
+            } finally {
+                Files.deleteIfExists(imageTemporary);
+                Files.deleteIfExists(thumbnailTemporary);
+            }
         }
     }
     // Publica las dos variantes o elimina cualquier archivo nuevo si la operacion queda incompleta.
@@ -63,21 +66,25 @@ public class ProductImageStorage {
     }
 
     public void delete(UUID storeId, UUID productId, UUID imageId) throws IOException {
-        Path directory = productDirectory(storeId, productId);
-        Files.deleteIfExists(imagePath(directory, imageId, false));
-        Files.deleteIfExists(imagePath(directory, imageId, true));
-        deleteIfEmpty(directory);
+        try (var snapshotGuard = SharedFileSnapshotGuard.fileMutation()) {
+            Path directory = productDirectory(storeId, productId);
+            Files.deleteIfExists(imagePath(directory, imageId, false));
+            Files.deleteIfExists(imagePath(directory, imageId, true));
+            deleteIfEmpty(directory);
+        }
     }
     // Elimina ambas variantes y retira el directorio del producto cuando queda vacio.
 
     public void deleteProductDirectory(UUID storeId, UUID productId) throws IOException {
-        Path directory = productDirectory(storeId, productId);
-        if (!Files.isDirectory(directory)) {
-            return;
-        }
-        try (var paths = Files.walk(directory)) {
-            for (Path path : paths.sorted((left, right) -> right.compareTo(left)).toList()) {
-                Files.deleteIfExists(path);
+        try (var snapshotGuard = SharedFileSnapshotGuard.fileMutation()) {
+            Path directory = productDirectory(storeId, productId);
+            if (!Files.isDirectory(directory)) {
+                return;
+            }
+            try (var paths = Files.walk(directory)) {
+                for (Path path : paths.sorted((left, right) -> right.compareTo(left)).toList()) {
+                    Files.deleteIfExists(path);
+                }
             }
         }
     }

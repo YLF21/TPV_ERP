@@ -129,6 +129,35 @@ try {
         if ($requiredEntry -notin $entryNames) { Fail "falta la herramienta offline empaquetada: $requiredEntry" }
     }
 
+    $hasTransferCli = 'BOOT-INF/classes/com/tpverp/backend/servertransfer/OfflineServerTransferCli.class' -in $entryNames
+    $hasRecoveryCli = 'BOOT-INF/classes/com/tpverp/backend/disasterrecovery/OfflineDisasterRecoveryCli.class' -in $entryNames
+    if ($hasTransferCli -or $hasRecoveryCli) {
+        $toolManifest = Join-Path $resolvedBundle 'maintenance-tools.sha256.json'
+        Assert-NoReparsePath $toolManifest 'Manifiesto de herramientas'
+        if (-not (Test-Path -LiteralPath $toolManifest -PathType Leaf) -or (Get-Item -LiteralPath $toolManifest).Length -gt 64KB) {
+            Fail 'Falta el manifiesto acotado de herramientas de traslado.'
+        }
+        $tools = Get-Content -LiteralPath $toolManifest -Raw | ConvertFrom-Json
+        $requiredTools = @('Test-TpvBackendProductionBundle.ps1','Invoke-TpvBackupRestoreOffline.ps1','Test-TpvBackupRestoreOfflinePreflight.ps1')
+        if ($hasTransferCli) {
+            $requiredTools += @('Invoke-TpvServerTransfer.ps1','Start-TpvServerTransferMaintenance.ps1')
+        }
+        if ($hasRecoveryCli) {
+            $requiredTools += @('Invoke-TpvDisasterRecovery.ps1','Start-TpvDisasterRecoveryMaintenance.ps1')
+        }
+        foreach ($toolName in $requiredTools) {
+            $toolPath = Join-Path (Join-Path $resolvedBundle 'tools') $toolName
+            Assert-NoReparsePath $toolPath 'Herramienta de mantenimiento'
+            $property = $tools.PSObject.Properties[$toolName]
+            if ($null -eq $property -or [string]$property.Value -notmatch '^[0-9A-Fa-f]{64}$' -or -not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
+                Fail "Falta la herramienta verificada: $toolName"
+            }
+            if ((Get-FileHash -LiteralPath $toolPath -Algorithm SHA256).Hash -cne ([string]$property.Value).ToUpperInvariant()) {
+                Fail "No coincide el hash de la herramienta: $toolName"
+            }
+        }
+    }
+
     $manifestEntry = $zip.GetEntry('META-INF/tpv-erp-release.properties')
     if ($null -eq $manifestEntry) { Fail 'falta META-INF/tpv-erp-release.properties' }
     if ($manifestEntry.Length -gt 64KB) { Fail 'el manifiesto supera el limite de 64 KiB' }

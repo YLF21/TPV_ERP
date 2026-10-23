@@ -415,6 +415,14 @@ if ($PSCmdlet.ShouldProcess($install, "Instalar/actualizar $ServiceName con rele
             throw 'La verificacion posterior a la copia del JAR fallo.'
         }
     }
+    $maintenanceManifest = Join-Path $bundle 'maintenance-tools.sha256.json'
+    if (Test-Path -LiteralPath $maintenanceManifest -PathType Leaf) {
+        $releaseTools = Join-Path $releaseDirectory 'tools'
+        if (-not $releaseAlreadyExists) {
+            Copy-Item -LiteralPath (Join-Path $bundle 'tools') -Destination $releaseTools -Recurse
+            Copy-Item -LiteralPath $maintenanceManifest -Destination (Join-Path $releaseDirectory 'maintenance-tools.sha256.json')
+        }
+    }
     $destinationInfo = & $verifier -BundleDirectory $releaseDirectory @verificationArgs
     if ($destinationInfo.ArtifactSha256 -cne $bundleInfo.ArtifactSha256) {
         throw 'La verificacion del bundle destino no coincide con el bundle origen.'

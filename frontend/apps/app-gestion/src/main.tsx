@@ -37,6 +37,8 @@ import { canManageFamilies, canManageTaxes, visibleGestionModules } from "./gest
 import { GestionDashboard } from "./GestionDashboard";
 import { ControlAlertsScreen } from "./ControlAlertsScreen";
 import { ServerTerminalSetupScreen } from "./ServerTerminalSetupScreen";
+import { ServerTransferMaintenanceScreen } from "./ServerTransferMaintenanceScreen";
+import { DisasterRecoveryMaintenanceScreen } from "./DisasterRecoveryMaintenanceScreen";
 import { TerminalConnectionScreen } from "../../../packages/app-common/src/components/TerminalConnectionScreen";
 import { GestionShell, type GestionNavigationItem } from "./GestionShell";
 import { MemberCategoriesScreen } from "./MemberCategoriesScreen";
@@ -101,6 +103,8 @@ const SecurityAdministrationScreen = lazy(() =>
     default: SecurityAdministrationScreen
   }))
 );
+const BackupManagementScreen = lazy(() => import("./BackupManagementScreen").then(({ BackupManagementScreen }) => ({ default: BackupManagementScreen })));
+const ServerTransferScreen = lazy(() => import("./ServerTransferScreen").then(({ ServerTransferScreen }) => ({ default: ServerTransferScreen })));
 
 const TerminalManagementScreen = lazy(() =>
   import("./TerminalManagementScreen").then(({ TerminalManagementScreen }) => ({
@@ -182,7 +186,7 @@ const LicenseSaasManagementScreen = lazy(() =>
   }))
 );
 
-type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "vouchers" | "stock" | "users" | "roles" | "terminals" | "paymentMethods" | "taxes" | "salesOperationSecurity" | "memberLoyaltySettings" | "memberCategories" | "internalEan" | "documentTemplates" | "documentPrintSettings" | "voucherSettings" | "licenses" | "families" | "productManagement" | "customerManagement" | "supplierManagement";
+type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "vouchers" | "stock" | "users" | "roles" | "terminals" | "backups" | "serverTransfer" | "paymentMethods" | "taxes" | "salesOperationSecurity" | "memberLoyaltySettings" | "memberCategories" | "internalEan" | "documentTemplates" | "documentPrintSettings" | "voucherSettings" | "licenses" | "families" | "productManagement" | "customerManagement" | "supplierManagement";
 type StockSelection = {
   key: string;
   view?: StockViewKey;
@@ -194,7 +198,7 @@ type StockSelection = {
   warehouseOperation?: import("./WarehouseOperationsScreen").WarehouseOperationMode;
 };
 
-function AppContent({ locale, setLocale, recoveryEpoch }: { locale: LocaleCode; setLocale: (locale: LocaleCode) => void; recoveryEpoch: number }) {
+function AppContent({ locale, setLocale, recoveryEpoch, onOpenMaintenance, onOpenDisasterRecovery }: { locale: LocaleCode; setLocale: (locale: LocaleCode) => void; recoveryEpoch: number; onOpenMaintenance: () => void; onOpenDisasterRecovery: () => void }) {
   const [session, setSession] = useState<UserSession | null>(null);
   const [module, setModule] = useState<GestionModule>("dashboard");
   const [salesReport, setSalesReport] = useState("salesReport.dailySales");
@@ -228,7 +232,7 @@ function AppContent({ locale, setLocale, recoveryEpoch }: { locale: LocaleCode; 
       ? <TerminalConnectionScreen locale={locale} onLocaleChange={setLocale} identity={null} onReady={setTerminalContext}
           onBack={() => setSetupMode("organization")} />
       : <ServerTerminalSetupScreen locale={locale} onLocaleChange={setLocale} onOrganizationReady={() => setSetupMode("connection")}
-          onConfigureConnection={() => setSetupMode("connection")} />;
+          onConfigureConnection={() => setSetupMode("connection")} onRecoverFromBackup={onOpenDisasterRecovery} />;
   }
 
   if (!session) {
@@ -238,6 +242,8 @@ function AppContent({ locale, setLocale, recoveryEpoch }: { locale: LocaleCode; 
         locale={locale}
         terminalContext={terminalContext}
         onLocaleChange={setLocale}
+        secondaryActionLabel={window.tpvDesktop?.serverTransfer ? createTranslator(locale)("gestion.transfer.maintenanceTitle") : undefined}
+        onSecondaryAction={onOpenMaintenance}
         onLogin={(nextSession) => {
           setModule("dashboard");
           setSession(nextSession);
@@ -281,6 +287,7 @@ function AppContent({ locale, setLocale, recoveryEpoch }: { locale: LocaleCode; 
     >
       <GestionScreen
         locale={locale}
+        onOpenMaintenance={onOpenMaintenance}
         session={activeSession}
         terminalContext={terminalContext}
         module={module}
@@ -300,6 +307,8 @@ function AppContent({ locale, setLocale, recoveryEpoch }: { locale: LocaleCode; 
         onOpenUsers={() => setModule("users")}
         onOpenTerminals={() => setModule("terminals")}
         onOpenRoles={() => setModule("roles")}
+        onOpenBackups={() => setModule("backups")}
+        onOpenServerTransfer={() => setModule("serverTransfer")}
         onOpenPaymentMethods={() => setModule("paymentMethods")}
         onOpenTaxes={() => setModule("taxes")}
         onOpenSalesOperationSecurity={() => setModule("salesOperationSecurity")}
@@ -327,6 +336,7 @@ function AppContent({ locale, setLocale, recoveryEpoch }: { locale: LocaleCode; 
 
 function GestionScreen({
   locale,
+  onOpenMaintenance,
   session,
   terminalContext,
   module,
@@ -343,6 +353,8 @@ function GestionScreen({
   onOpenUsers,
   onOpenTerminals,
   onOpenRoles,
+  onOpenBackups,
+  onOpenServerTransfer,
   onOpenPaymentMethods,
   onOpenTaxes,
   onOpenSalesOperationSecurity,
@@ -362,6 +374,7 @@ function GestionScreen({
   onLogout
 }: {
   locale: LocaleCode;
+  onOpenMaintenance: () => void;
   session: UserSession;
   terminalContext: TerminalContext;
   module: GestionModule;
@@ -378,6 +391,8 @@ function GestionScreen({
   onOpenUsers: () => void;
   onOpenTerminals: () => void;
   onOpenRoles: () => void;
+  onOpenBackups: () => void;
+  onOpenServerTransfer: () => void;
   onOpenPaymentMethods: () => void;
   onOpenTaxes: () => void;
   onOpenSalesOperationSecurity: () => void;
@@ -400,6 +415,8 @@ function GestionScreen({
   const modules = visibleGestionModules(session);
   const verifactuAllowed = modules.includes("gestion.verifactu");
   const canConfigurePaymentMethods = session.permissions.includes("ADMIN");
+  const canTransferServer = canConfigurePaymentMethods && terminalContext.terminalCode === "001";
+  const canManageBackups = canConfigurePaymentMethods || session.permissions.includes("BACKUPS_MANAGE");
   const canManageTaxesForSession = canManageTaxes(session);
   const canReadLicenses = canConfigurePaymentMethods || session.permissions.includes("LICENSES_MANAGE");
   const canManageDocumentTemplates = modules.includes("gestion.documentTemplates");
@@ -417,6 +434,8 @@ function GestionScreen({
       && !canConfigurePaymentMethods)
     || (module === "taxes" && !canManageTaxesForSession)
     || (module === "licenses" && !canReadLicenses)
+    || (module === "backups" && !canManageBackups)
+    || (module === "serverTransfer" && !canTransferServer)
     || (module === "documentTemplates" && !canManageDocumentTemplates)
     || (module === "vouchers" && !modules.includes("gestion.sales"))
     || (module === "families" && !canManageFamilies(session))
@@ -527,7 +546,9 @@ function GestionScreen({
       : []),
     ...(canConfigurePaymentMethods
       ? [{ key: "salesOperationSecurity", label: t("gestion.salesOperationSecurity.navigation"), onOpen: onOpenSalesOperationSecurity }]
-      : [])
+      : []),
+    ...(canManageBackups ? [{ key: "backups", label: t("gestion.backups.navigation"), onOpen: onOpenBackups }] : []),
+    ...(canTransferServer ? [{ key: "serverTransfer", label: t("gestion.transfer.navigation"), onOpen: onOpenServerTransfer }] : [])
   ];
 
   const cashChildren: GestionNavigationItem[] = [
@@ -845,6 +866,10 @@ function GestionScreen({
     content = <TerminalManagementScreen session={session} t={t} />;
   } else if (effectiveModule === "roles" && modules.includes("gestion.roles")) {
     content = <SecurityAdministrationScreen mode="roles" session={session} t={t} />;
+  } else if (effectiveModule === "backups" && canManageBackups) {
+    content = <BackupManagementScreen session={session} locale={locale} t={t} onTransferServer={canTransferServer ? onOpenServerTransfer : undefined} />;
+  } else if (effectiveModule === "serverTransfer" && canTransferServer) {
+    content = <ServerTransferScreen session={session} t={t} onOpenMaintenance={onOpenMaintenance} />;
   } else if (effectiveModule === "paymentMethods" && canConfigurePaymentMethods) {
     content = <PaymentMethodSettingsScreen session={session} t={t} />;
   } else if (effectiveModule === "taxes" && canManageTaxesForSession) {
@@ -943,10 +968,13 @@ function GestionScreen({
 export function App() {
   const [locale, setLocale] = useState<LocaleCode>("es");
   const [recoveryEpoch, setRecoveryEpoch] = useState(0);
+  const [maintenance, setMaintenance] = useState<"transfer" | "disaster" | null>(null);
   const reactivateLogin = useCallback(() => setRecoveryEpoch((epoch) => epoch + 1), []);
+  if (maintenance === "transfer") return <ServerTransferMaintenanceScreen locale={locale} t={createTranslator(locale)} onExit={() => setMaintenance(null)} />;
+  if (maintenance === "disaster") return <DisasterRecoveryMaintenanceScreen locale={locale} t={createTranslator(locale)} onExit={() => { setMaintenance(null); reactivateLogin(); }} />;
   return <>
-    <AppContent locale={locale} setLocale={setLocale} recoveryEpoch={recoveryEpoch} />
-    <Suspense fallback={null}><BackendConnectionRecovery locale={locale} onRecovered={reactivateLogin} /></Suspense>
+    <AppContent locale={locale} setLocale={setLocale} recoveryEpoch={recoveryEpoch} onOpenMaintenance={() => setMaintenance("transfer")} onOpenDisasterRecovery={() => setMaintenance("disaster")} />
+    <Suspense fallback={null}><BackendConnectionRecovery locale={locale} onRecovered={reactivateLogin} onOpenMaintenance={window.tpvDesktop?.serverTransfer ? () => setMaintenance("transfer") : undefined} /></Suspense>
   </>;
 }
 
