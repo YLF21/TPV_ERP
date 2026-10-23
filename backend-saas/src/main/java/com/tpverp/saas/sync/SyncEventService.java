@@ -28,6 +28,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class SyncEventService {
+    private final jakarta.persistence.EntityManager entityManager;
 
     private MemberPointsSyncProjector memberPointsSyncProjector;
     private FiscalStatusSyncProjector fiscalStatusSyncProjector;
@@ -82,6 +83,7 @@ public class SyncEventService {
     private final Clock clock;
 
     public SyncEventService(
+            jakarta.persistence.EntityManager entityManager,
             SaasInstallationRepository installations,
             SaasSyncEventRepository events,
             InstallationAuthenticator authenticator,
@@ -90,6 +92,7 @@ public class SyncEventService {
             MemberWalletSyncProjector walletProjector,
             PlanLimitService planLimits,
             Clock clock) {
+        this.entityManager = entityManager;
         this.installations = installations;
         this.events = events;
         this.authenticator = authenticator;
@@ -239,6 +242,14 @@ public class SyncEventService {
                 .filter(candidate -> candidate.hasTokenHash(tokenHash))
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Instalacion no autorizada"));
+        // Capacity and projections need the company advisory lock. License linking takes it
+        // before locking an installation, so acquire it before authentication retains FOR SHARE.
+        planLimits.lockCompany(installation.getCompany().getId());
+        entityManager.refresh(installation, jakarta.persistence.LockModeType.PESSIMISTIC_READ);
+        if (!request.companyId().equals(installation.getCompany().getId())
+                || request.storeId() != null && !request.storeId().equals(installation.getStore().getId())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Instalacion no autorizada");
+        }
         authenticator.requireToken(installation, token);
         return installation;
     }

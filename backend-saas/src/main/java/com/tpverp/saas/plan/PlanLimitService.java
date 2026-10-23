@@ -96,7 +96,8 @@ public class PlanLimitService {
     }
 
 
-    private void lockCompany(UUID companyId) {
+    /** Acquire before installation row locks when the caller will later check capacity. */
+    public void lockCompany(UUID companyId) {
         jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
             try (var statement = connection.prepareStatement(
                     "select pg_advisory_xact_lock(hashtextextended(?::text, 0))")) {

@@ -25,14 +25,16 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CustomerIdentityService {
+    private final jakarta.persistence.EntityManager entityManager;
     private final JdbcTemplate jdbc;
     private final SaasInstallationRepository installations;
     private final InstallationAuthenticator authenticator;
     private final ObjectMapper mapper;
     private final Clock clock;
 
-    public CustomerIdentityService(JdbcTemplate jdbc, SaasInstallationRepository installations,
+    public CustomerIdentityService(jakarta.persistence.EntityManager entityManager, JdbcTemplate jdbc, SaasInstallationRepository installations,
             InstallationAuthenticator authenticator, ObjectMapper mapper, Clock clock) {
+        this.entityManager = entityManager;
         this.jdbc = jdbc;
         this.installations = installations;
         this.authenticator = authenticator;
@@ -56,7 +58,6 @@ public class CustomerIdentityService {
             throw CustomerIdentityException.conflict();
         }
         lockOperation(request.operationId());
-        lockCompany(request.companyId());
         String requestHash = identityHash(request, identity, profileHash);
         Operation previous = operation(request.operationId());
         if (previous != null) {
@@ -117,7 +118,6 @@ public class CustomerIdentityService {
         }
         SaasInstallation installation = authenticate(request.companyId(), request.storeId(), token);
         lockOperation(operationId);
-        lockCompany(request.companyId());
         Operation operation = operation(operationId);
         if (operation == null) {
             // A timed-out reserve may still arrive after cancel. Persist a tombstone first.
@@ -169,8 +169,8 @@ public class CustomerIdentityService {
         }
         UUID operationId = uuid(payload.get("operationId"));
         Profile profile = profile(payload);
-        lockOperation(operationId);
         lockCompany(event.getCompany().getId());
+        lockOperation(operationId);
         Operation operation = operation(operationId);
         requireOwner(operation, installation, event.getEntityId());
         String profileHash = hash(profile.asMap());
@@ -214,8 +214,14 @@ public class CustomerIdentityService {
 
     private SaasInstallation authenticate(UUID companyId, UUID storeId, String token) {
         if (companyId == null || storeId == null) throw CustomerIdentityException.invalid();
-        return authenticator.requireLinkedInstallation(companyId, storeId,
-                installations.findByCompany_IdAndStore_Id(companyId, storeId), token);
+        var candidates = installations.findByCompany_IdAndStore_Id(companyId, storeId);
+        if (candidates.isEmpty()) throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.UNAUTHORIZED, "Instalacion no autorizada");
+        // Resolve the lock scope from linked records, then refresh under a row lock before authorizing.
+        // License linking uses this same company -> installation order.
+        lockCompany(candidates.getFirst().getCompany().getId());
+        candidates.forEach(value -> entityManager.refresh(value, jakarta.persistence.LockModeType.PESSIMISTIC_READ));
+        return authenticator.requireLinkedInstallation(companyId, storeId, candidates, token);
     }
 
     private void lockCompany(UUID companyId) {

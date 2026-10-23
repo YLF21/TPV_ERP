@@ -62,6 +62,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 class CustomerIdentityPostgreSqlTest {
     private static final AtomicInteger COMPANY_NUMBER = new AtomicInteger(9100000);
     @Autowired CustomerIdentityService service;
+    @Autowired CustomerAdoptionService adoption;
     @Autowired SyncEventService sync;
     @Autowired SaasSyncEventRepository events;
     @Autowired SaasCompanyRepository companies;
@@ -83,6 +84,69 @@ class CustomerIdentityPostgreSqlTest {
         Site site = site();
         assertThat(jdbc.queryForObject("select tax_id from saas_company where id = ?",
                 String.class, site.company().getId())).isEqualTo(site.company().getTaxId());
+    }
+
+    @Test
+    void companyLockPrecedesInstallationAuthenticationForCustomerWritesAndSync() throws Exception {
+        for (String route : List.of("identity-reserve", "identity-cancel", "adoption-reserve", "adoption-cancel",
+                "identity-sync", "adoption-sync", "other-sync")) {
+            Site site = site();
+            var request = request(site, "DNI", "12345678Z");
+            var owner = new CustomerIdentityOwnerRequest(request.companyId(), request.storeId(), request.localCustomerId());
+            Runnable action = switch (route) {
+                case "identity-reserve" -> () -> service.reserve(request, site.token());
+                case "identity-cancel" -> () -> service.cancel(request.operationId(), owner, site.token());
+                case "adoption-reserve" -> () -> adoption.reserve(new CustomerAdoptionApi.Reserve(
+                        request.companyId(), request.storeId(), request.operationId(), request.localCustomerId(),
+                        UUID.randomUUID(), 1L, "DNI", "12345678Z"), site.token());
+                case "adoption-cancel" -> () -> adoption.cancel(request.operationId(), owner, site.token());
+                case "identity-sync" -> () -> finalize(site, request, "C-001", "Cliente");
+                default -> () -> sync.receive(new SyncEventRequest(UUID.randomUUID(), request.companyId(), request.storeId(), null,
+                        route.equals("adoption-sync") ? "CUSTOMER_ADOPTION" : "IGNORED_FIXTURE", request.localCustomerId(),
+                        SyncOperation.ACTUALIZAR, Map.of("operationId", request.operationId().toString())), site.token());
+            };
+            SaasStore replacement = stores.saveAndFlush(new SaasStore(UUID.randomUUID(), site.company(), "002", "Replacement",
+                    "Atlantic/Canary", Instant.now()));
+            var executor = Executors.newSingleThreadExecutor();
+            try (var blocker = jdbc.getDataSource().getConnection()) {
+                blocker.setAutoCommit(false);
+                try (var lock = blocker.prepareStatement("select pg_advisory_xact_lock(hashtextextended(?::text,0))")) {
+                    lock.setObject(1, site.company().getId()); lock.execute();
+                }
+                try {
+                    var waiting = executor.submit(() -> {
+                        try { action.run(); return 200; }
+                        catch (ResponseStatusException exception) { return exception.getStatusCode().value(); }
+                    });
+                    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                    boolean blocked = false;
+                    while (System.nanoTime() < deadline && !waiting.isDone()) {
+                        blocked = Boolean.TRUE.equals(jdbc.queryForObject("""
+                                select exists(select 1 from pg_locks where locktype='advisory' and not granted
+                                and database=(select oid from pg_database where datname=current_database())
+                                and classid=((hashtextextended(?::text,0)>>32)&4294967295)::oid
+                                and objid=(hashtextextended(?::text,0)&4294967295)::oid)
+                                """, Boolean.class, site.company().getId(), site.company().getId()));
+                        if (blocked) break;
+                        Thread.sleep(20);
+                    }
+                    assertThat(blocked).as(route + " waits for the company lock").isTrue();
+                    // Same order as LicenseLink: company advisory, then installation mutation.
+                    String sql = route.endsWith("cancel") ? "update saas_installation set store_id=? where id=?"
+                            : "update saas_installation set token_hash=? where id=?";
+                    try (var mutation = blocker.prepareStatement(sql)) {
+                        mutation.setQueryTimeout(5);
+                        mutation.setObject(1, route.endsWith("cancel") ? replacement.getId() : tokens.hash(tokens.newToken()));
+                        mutation.setObject(2, site.installation().getId()); mutation.executeUpdate();
+                    }
+                    blocker.commit();
+                    assertThat(waiting.get(15, TimeUnit.SECONDS)).as(route + " rechecks current credentials and mapping").isEqualTo(401);
+                    assertThat(count("saas_customer_identity_operation", site.company().getId())).isZero();
+                    assertThat(count("saas_customer_adoption_operation", site.company().getId())).isZero();
+                    assertThat(count("saas_sync_event", site.company().getId())).isZero();
+                } finally { blocker.rollback(); }
+            } finally { executor.shutdownNow(); executor.awaitTermination(15, TimeUnit.SECONDS); }
+        }
     }
 
     @Test

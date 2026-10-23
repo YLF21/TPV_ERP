@@ -22,13 +22,15 @@ import org.springframework.transaction.annotation.Transactional;
 /** An explicit selected central identity, never an automatic merge or a central profile update. */
 @Service
 public class CustomerAdoptionService {
+    private final jakarta.persistence.EntityManager entityManager;
     private final JdbcTemplate jdbc;
     private final SaasInstallationRepository installations;
     private final InstallationAuthenticator authenticator;
     private final ObjectMapper mapper;
 
-    public CustomerAdoptionService(JdbcTemplate jdbc, SaasInstallationRepository installations,
+    public CustomerAdoptionService(jakarta.persistence.EntityManager entityManager, JdbcTemplate jdbc, SaasInstallationRepository installations,
             InstallationAuthenticator authenticator, ObjectMapper mapper) {
+        this.entityManager = entityManager;
         this.jdbc = jdbc;
         this.installations = installations;
         this.authenticator = authenticator;
@@ -53,7 +55,7 @@ public class CustomerAdoptionService {
         if (request == null || request.operationId() == null || request.localCustomerId() == null
                 || request.customerId() == null || request.expectedRevision() == null
                 || request.expectedRevision() < 0 || request.documentType() == null) throw CustomerIdentityException.invalid();
-        SaasInstallation installation = authenticate(request.companyId(), request.storeId(), token);
+        SaasInstallation installation = authenticateForWrite(request.companyId(), request.storeId(), token);
         var identity = CustomerDocumentIdentity.validate(request.documentType(), request.documentNumber());
         lock(request.operationId(), installation.getCompany().getId());
         Operation prior = operation(request.operationId());
@@ -94,7 +96,7 @@ public class CustomerAdoptionService {
     @Transactional
     public void cancel(UUID operationId, CustomerIdentityOwnerRequest request, String token) {
         if (request == null || operationId == null || request.localCustomerId() == null) throw CustomerIdentityException.invalid();
-        SaasInstallation installation = authenticate(request.companyId(), request.storeId(), token);
+        SaasInstallation installation = authenticateForWrite(request.companyId(), request.storeId(), token);
         lock(operationId, installation.getCompany().getId());
         Operation operation = operation(operationId);
         if (operation == null) {
@@ -181,7 +183,22 @@ public class CustomerAdoptionService {
     }
 
     private void lock(UUID operationId, UUID companyId) {
+        lockCompany(companyId);
         jdbc.queryForObject("select pg_advisory_xact_lock(hashtextextended(?::text, 1))", Object.class, operationId.toString());
+    }
+
+    private SaasInstallation authenticateForWrite(UUID companyId, UUID storeId, String token) {
+        if (companyId == null || storeId == null) throw CustomerIdentityException.invalid();
+        var candidates = installations.findByCompany_IdAndStore_Id(companyId, storeId);
+        if (candidates.isEmpty()) throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.UNAUTHORIZED, "Instalacion no autorizada");
+        // Do not retain the authentication row lock while waiting for license administration.
+        lockCompany(candidates.getFirst().getCompany().getId());
+        candidates.forEach(value -> entityManager.refresh(value, jakarta.persistence.LockModeType.PESSIMISTIC_READ));
+        return authenticator.requireLinkedInstallation(companyId, storeId, candidates, token);
+    }
+
+    private void lockCompany(UUID companyId) {
         jdbc.queryForObject("select pg_advisory_xact_lock(hashtextextended(?::text, 0))", Object.class, companyId.toString());
     }
 
