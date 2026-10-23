@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTranslator, type UserSession } from "@tpverp/app-common";
 import { MemberLoyaltySettingsScreen } from "./MemberLoyaltySettingsScreen";
@@ -33,6 +33,27 @@ afterEach(() => {
 });
 
 describe("MemberLoyaltySettingsScreen", () => {
+  it("moves through channel rows without opening the editor", async () => {
+    const fetch = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/commercial-contact-channels")
+      ? response(Array.from({ length: 4 }, (_, index) => ({ id: `channel-${index}`, code: `C${index}`, name: `Canal ${index}`, active: true })))
+      : response(initialSettings));
+    vi.stubGlobal("fetch", fetch);
+    render(<MemberLoyaltySettingsScreen session={session} t={createTranslator("es")} />);
+    await screen.findByText("Canal 0");
+    const rows = Array.from(document.querySelectorAll<HTMLElement>(".member-settings-channel-table > [role='row'][tabindex]"));
+    expect(document.activeElement).toBe(rows[0]);
+    vi.useFakeTimers();
+    try {
+      fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+      act(() => { vi.advanceTimersByTime(250); });
+      expect(document.activeElement).toBe(rows[3]);
+      fireEvent.keyUp(rows[3], { key: "ArrowDown" });
+      act(() => { vi.advanceTimersByTime(500); });
+      expect(document.activeElement).toBe(rows[3]);
+      expect(screen.queryByRole("button", { name: "Actualizar canal" })).not.toBeInTheDocument();
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally { vi.useRealTimers(); }
+  });
   it("saves both proportional rules and remains editable after the response", async () => {
     const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input).endsWith("/commercial-contact-channels")) {

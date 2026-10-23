@@ -96,7 +96,7 @@ class PreviousTicketImportServiceTest {
                 .hasMessage("message.document.previous_ticket_cancelled_serial_override");
 
         when(fixture.repository().usedSerialNumbers(
-                fixture.storeId(), java.util.Set.of("ORIGINAL-1")))
+                fixture.storeId(), fixture.productId(), java.util.Set.of("ORIGINAL-1")))
                 .thenReturn(List.of("ORIGINAL-1"));
         assertThatThrownBy(() -> fixture.service().resolve(
                 new PosCashController.PreviousTicketImportRequest(
@@ -106,7 +106,7 @@ class PreviousTicketImportServiceTest {
                 .hasMessage("message.document.previous_ticket_new_serials_required");
 
         when(fixture.repository().usedSerialNumbers(
-                fixture.storeId(), java.util.Set.of("ORIGINAL-1")))
+                fixture.storeId(), fixture.productId(), java.util.Set.of("ORIGINAL-1")))
                 .thenReturn(List.of());
         var resolved = fixture.service().resolve(
                 new PosCashController.PreviousTicketImportRequest(
@@ -133,7 +133,7 @@ class PreviousTicketImportServiceTest {
                 .hasMessage("message.document.previous_ticket_new_serials_required");
 
         when(fixture.repository().usedSerialNumbers(
-                fixture.storeId(), java.util.Set.of("NEW-1")))
+                fixture.storeId(), fixture.productId(), java.util.Set.of("NEW-1")))
                 .thenReturn(List.of("NEW-1"));
         assertThatThrownBy(() -> fixture.service().resolve(
                 request(fixture, preview,
@@ -143,7 +143,7 @@ class PreviousTicketImportServiceTest {
                 .hasMessage("message.document.previous_ticket_new_serials_required");
 
         when(fixture.repository().usedSerialNumbers(
-                fixture.storeId(), java.util.Set.of("NEW-2")))
+                fixture.storeId(), fixture.productId(), java.util.Set.of("NEW-2")))
                 .thenReturn(List.of());
         var resolved = fixture.service().resolve(
                 request(fixture, preview,
@@ -236,7 +236,7 @@ class PreviousTicketImportServiceTest {
         });
 
         when(fixture.repository().usedSerialNumbers(
-                fixture.storeId(), java.util.Set.of("NEW-TEMP")))
+                fixture.storeId(), fixture.productId(), java.util.Set.of("NEW-TEMP")))
                 .thenReturn(List.of());
         var resolved = fixture.service().resolve(
                 request(fixture, preview,
@@ -265,7 +265,7 @@ class PreviousTicketImportServiceTest {
         });
 
         when(fixture.repository().usedSerialNumbers(
-                fixture.storeId(), java.util.Set.of("NEW-OPEN")))
+                fixture.storeId(), fixture.productId(), java.util.Set.of("NEW-OPEN")))
                 .thenReturn(List.of());
         var resolved = fixture.service().resolve(
                 request(fixture, preview,
@@ -295,7 +295,7 @@ class PreviousTicketImportServiceTest {
         });
 
         when(fixture.repository().usedSerialNumbers(
-                fixture.storeId(), java.util.Set.of("NEW-OPEN-REPLAY")))
+                fixture.storeId(), fixture.productId(), java.util.Set.of("NEW-OPEN-REPLAY")))
                 .thenReturn(List.of());
         var resolved = fixture.service().resolve(
                 request(fixture, preview,
@@ -511,7 +511,7 @@ class PreviousTicketImportServiceTest {
                         .isEqualTo(DocumentLineType.MANUAL_DISCOUNT));
 
         when(fixture.repository().usedSerialNumbers(
-                fixture.storeId(), java.util.Set.of("NEW-MANUAL")))
+                fixture.storeId(), fixture.productId(), java.util.Set.of("NEW-MANUAL")))
                 .thenReturn(List.of());
         var resolved = fixture.service().resolve(
                 request(fixture, preview,

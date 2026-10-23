@@ -180,7 +180,7 @@ export function VerifactuResolutionPanel({
   }
 
   return (
-    <aside className="gestion-verifactu-resolution" aria-label={t("verifactu.resolution.title")}>
+    <aside className="gestion-verifactu-resolution gestion-module-panel" aria-label={t("verifactu.resolution.title")}>
       <header>
         <div>
           <span>{t("verifactu.resolution.eyebrow")}</span>
@@ -204,7 +204,7 @@ export function VerifactuResolutionPanel({
               <div><dt>{t("verifactu.management.errorCode")}</dt><dd>{fiscalErrorMessage(resolution.errorCode, t, locale) || "—"}</dd></div>
             </dl>
 
-            <section className={`gestion-verifactu-decision decision-${decisionTone(resolution.recommendedAction)}`}>
+            <section className={`gestion-verifactu-decision gestion-module-panel decision-${decisionTone(resolution.recommendedAction)}`}>
               <span>{t("verifactu.resolution.recommendation")}</span>
               <strong>{actionLabel(resolution.recommendedAction, t)}</strong>
               <p>{actionExplanation(resolution.recommendedAction, t)}</p>
@@ -222,12 +222,12 @@ export function VerifactuResolutionPanel({
             )}
 
             {!success && resolution.recommendedAction === "RETRY" && permitted("RETRY") && form !== "retry" && (
-              <button className="gestion-verifactu-primary-action" type="button" onClick={() => { setForm("retry"); setSubmitError(null); }}>
+              <button className="gestion-verifactu-primary-action gestion-module-action" type="button" onClick={() => { setForm("retry"); setSubmitError(null); }}>
                 {t("verifactu.resolution.prepareRetry")}
               </button>
             )}
             {!success && resolution.recommendedAction === "CREATE_CORRECTION" && permitted("CREATE_CORRECTION") && form !== "correction" && (
-              <button className="gestion-verifactu-primary-action" type="button" onClick={() => { setForm("correction"); setSubmitError(null); }}>
+              <button className="gestion-verifactu-primary-action gestion-module-action" type="button" onClick={() => { setForm("correction"); setSubmitError(null); }}>
                 {t("verifactu.resolution.prepareCorrection")}
               </button>
             )}
@@ -237,7 +237,7 @@ export function VerifactuResolutionPanel({
             )}
 
             {form === "retry" && (
-              <form className="gestion-verifactu-action-form" onSubmit={submitRetry}>
+              <form className="gestion-verifactu-action-form gestion-module-fields" onSubmit={submitRetry}>
                 <p>{t("verifactu.resolution.retryWarning")}</p>
                 <label>
                   <span>{t("verifactu.resolution.reason")}</span>
@@ -249,7 +249,7 @@ export function VerifactuResolutionPanel({
                     onChange={(event) => setRetryReason(event.target.value)}
                   />
                 </label>
-                <div>
+                <div className="gestion-toolbar-actions">
                   <button type="submit" className="primary erp-dialog-action-confirm" disabled={!retryReason.trim() || submitting}>
                     {submitting ? t("verifactu.resolution.processing") : t("verifactu.resolution.confirmRetry")}
                   </button>
@@ -259,7 +259,7 @@ export function VerifactuResolutionPanel({
             )}
 
             {form === "correction" && (
-              <form className="gestion-verifactu-action-form" onSubmit={submitCorrection}>
+              <form className="gestion-verifactu-action-form gestion-module-fields" onSubmit={submitCorrection}>
                 <p>{t("verifactu.resolution.correctionWarning")}</p>
                 {recoveryPending && <p role="status">{t("verifactu.resolution.recoveryPending")}</p>}
                 <label>
@@ -287,7 +287,7 @@ export function VerifactuResolutionPanel({
                 {!validCorrection(correction) && correction.reason.trim() && (
                   <p className="field-error">{t("verifactu.resolution.correctionValidation")}</p>
                 )}
-                <div>
+                <div className="gestion-toolbar-actions">
                   <button type="submit" className="primary erp-dialog-action-confirm" disabled={!validCorrection(correction) || submitting || recoveryBlocked}>
                     {submitting ? t("verifactu.resolution.processing") : t("verifactu.resolution.confirmCorrection")}
                   </button>

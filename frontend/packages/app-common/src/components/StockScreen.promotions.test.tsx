@@ -87,10 +87,11 @@ describe("StockScreen promotions", () => {
     expect(screen.getByRole("dialog", { name: "Filtrar stock" })).toBeTruthy();
   });
 
-  it("preserves product creation in APP GESTIÓN promotions", async () => {
+  it("offers new promotion instead of product creation in APP GESTIÓN promotions", async () => {
     render(<StockScreen {...props} app="gestion" />);
     await screen.findByRole("button", { name: /Promoción vigente/ });
-    expect(screen.getByRole("button", { name: /Añadir producto/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Nueva promoción/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Añadir producto/ })).toBeNull();
   });
 
   it.each(["venta", "gestion"] as const)("loads every page and shows an inactive expired promotion in %s", async app => {

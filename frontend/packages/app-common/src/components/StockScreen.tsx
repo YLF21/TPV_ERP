@@ -6,10 +6,12 @@ import { DesktopHeaderContext } from "./DesktopHeaderContext";
 import { ReportDateRangeFilter, isValidReportDate, type ReportDateRange } from "./ReportDateRangeFilter";
 import "./ErpClassicWindow.css";
 import "./StockTopSales.css";
-import { Children, Fragment, cloneElement, isValidElement, useEffect, useMemo, useRef, useState } from "react";
+import "./StockListControls.css";
+import { Children, Fragment, cloneElement, isValidElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, CSSProperties, FocusEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement, ReactNode, UIEvent } from "react";
 import {
   ChartLineUp,
+  FilePdf,
   FileXls,
   IdentificationBadge,
   IdentificationCard,
@@ -94,8 +96,9 @@ import {
 import type { StockBulkImagePanelHandle, StockBulkImageSnapshot } from "./StockBulkImagePanel";
 import { StockBulkPriceRulesDialog } from "./StockBulkPriceRulesDialog";
 import { applyStockBulkPriceRulePreview } from "./stockBulkPriceRules";
-import { StockBulkWorkspaceList } from "./StockBulkWorkspaceList";
+import { STOCK_BULK_NEW_SHORTCUT, StockBulkWorkspaceList } from "./StockBulkWorkspaceList";
 import { StockPromotionGroups, type StockPromotionExportContext } from "./StockPromotionGroups";
+import { usePromotionManagement } from "./usePromotionManagement";
 import { stockExcelDefaultFileName } from "./stockExcelExportNames";
 import { StockProductInformationPanel } from "./StockProductInformationPanel";
 import "./StockProductDetail.css";
@@ -110,6 +113,9 @@ import { sortTableRows, useTableSortPreference, type TableSort } from "./tableSo
 import { sortProductTableRows } from "./productCodeSorting";
 import { tableLayoutGridTemplate, visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
+import { useTableArrowRepeat, type TableArrowDirection } from "./useTableArrowRepeat";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
+import { useTableInitialFocus } from "./useTableInitialFocus";
 import {
   SharedExcelImportDialog,
   type SharedExcelImportAcceptedRow,
@@ -483,6 +489,7 @@ const stockDiscountTypeOptions = ["NORMAL", "MEMBER_PRICE", "OFFER_PRICE", "OFFE
 const bulkPriceUseModes: BulkPriceUseMode[] = ["NORMAL", "MEMBER_PRICE", "OFFER_PRICE", "OFFER_DISCOUNT"];
 const STOCK_PAGE_LIMIT = 500;
 const STOCK_EXPORT_SHORTCUT = "F6" as const;
+const STOCK_PDF_EXPORT_SHORTCUT = "F7" as const;
 const STOCK_CREATE_PRODUCT_SHORTCUT = "F5" as const;
 export const stockBulkSelectedActionsByTab: Record<StockBulkEditTab, BulkSelectedAction[]> = {
   main: [
@@ -934,9 +941,8 @@ export function stockColumnGridTemplate(columns: StockColumnSetting[]) {
   return visibleStockColumns(columns).map((column) => `${column.width}px`).join(" ");
 }
 
-export function stockTableShouldAutoFocus(selectedView: StockViewKey, state: StockTableFocusState) {
-  return selectedView !== "stock.topSales"
-    && !state.inventoryFilterOpen
+export function stockTableShouldAutoFocus(_selectedView: StockViewKey, state: StockTableFocusState) {
+  return !state.inventoryFilterOpen
     && !state.productCreateOpen
     && !state.topSalesFilterOpen;
 }
@@ -1132,6 +1138,10 @@ function stockBulkPersistedProductData<T extends Partial<StockInventoryRow>>(val
 
 function isStockAsyncExportView(view: StockViewKey) {
   return view !== "stock.bulkEdit";
+}
+
+function isStockDocumentView(view: StockViewKey) {
+  return ["stock.current", "stock.topSales", "stock.offers", "stock.memberPrice", "stock.noDiscount"].includes(view);
 }
 
 export function normalizeStockBulkContent(rows: StockBulkEditRowData[]) {
@@ -2150,9 +2160,11 @@ export function StockScreen({
   allowSafeRetirement = false
 }: StockScreenProps) {
   const t = createTranslator(locale);
-  const stockTitle = t("home.product").toLocaleUpperCase(locale === "zh" ? "zh-CN" : locale);
   const [selectedView, setSelectedView] = useState<StockViewKey>(initialView);
   const [partyDirectory, setPartyDirectory] = useState<PartyDirectoryKind | null>(initialPartyDirectory);
+  const documentStock = app !== "pda" && !partyDirectory && isStockDocumentView(selectedView);
+  const documentStockAppearance = documentStock || (app === "gestion" && !partyDirectory && selectedView === "stock.promotions");
+  const stockTitle = app === "gestion" && partyDirectory ? t("gestion.navigation.group.thirdParties") : documentStock || (app === "gestion" && selectedView === "stock.promotions") || (app !== "pda" && selectedView === "stock.bulkEdit") ? t("stock.products.title") : t("home.product").toLocaleUpperCase(locale === "zh" ? "zh-CN" : locale);
   const [searchText, setSearchText] = useState("");
   const [allStockRows, setAllStockRows] = useState<StockInventoryRow[]>([]);
   const [loadedStockQueryKey, setLoadedStockQueryKey] = useState("");
@@ -2173,7 +2185,8 @@ export function StockScreen({
   const [stockExportNotice, setStockExportNotice] = useState("");
   const [stockExportNoticeView, setStockExportNoticeView] = useState<StockViewKey | null>(null);
   const [stockExportNoticeKind, setStockExportNoticeKind] = useState<"info" | "success" | "error">("info");
-  const stockExportShortcutRef = useRef<() => void>(() => undefined);
+  const stockExportShortcutRef = useRef<(format: "xlsx" | "pdf") => void>(() => undefined);
+  const stockExportBusyRef = useRef(false);
   const [stockRefreshCounter, setStockRefreshCounter] = useState(0);
   const [productCreateOpen, setProductCreateOpen] = useState(false);
   const [topSalesRows, setTopSalesRows] = useState<StockTopSalesRow[]>([]);
@@ -2233,6 +2246,14 @@ export function StockScreen({
   const [expandedFamilies, setExpandedFamilies] = useState<Record<string, boolean>>({});
   const [selectedFamily, setSelectedFamily] = useState({ family: "", subfamily: "" });
   const [selectedStockIndex, setSelectedStockIndex] = useState(0);
+  const [selectedTopSalesKey, setSelectedTopSalesKey] = useState<string | null>(null);
+  const selectedStockIndexRef = useRef(selectedStockIndex);
+  const selectedTopSalesKeyRef = useRef(selectedTopSalesKey);
+  selectedStockIndexRef.current = selectedStockIndex;
+  selectedTopSalesKeyRef.current = selectedTopSalesKey;
+  const [topSalesDetailRows, setTopSalesDetailRows] = useState<StockInventoryRow[]>([]);
+  const [topSalesDetailNotice, setTopSalesDetailNotice] = useState("");
+  const topSalesDetailRequest = useRef<AbortController | null>(null);
   const [detailRow, setDetailRow] = useState<StockInventoryRow | null>(null);
   const [retirementRow, setRetirementRow] = useState<StockInventoryRow | null>(null);
   const [retirementNotice, setRetirementNotice] = useState("");
@@ -2279,6 +2300,7 @@ export function StockScreen({
   const [bulkImageDropProductId, setBulkImageDropProductId] = useState<string | null>(null);
   const [bulkDrafts, setBulkDrafts] = useState<StockBulkDraftView[]>([]);
   const [bulkWorkspaceView, setBulkWorkspaceView] = useState<BulkWorkspaceView>("list");
+  const bulkDocumentList = app !== "pda" && !partyDirectory && selectedView === "stock.bulkEdit" && bulkWorkspaceView === "list";
   const [bulkSelectedDraftId, setBulkSelectedDraftId] = useState<string | null>(null);
   const [activeBulkDraft, setActiveBulkDraft] = useState<StockBulkDraftView | null>(null);
   const [bulkDialog, setBulkDialog] = useState<BulkWorkspaceDialog>(null);
@@ -2628,8 +2650,19 @@ export function StockScreen({
   }, [bulkProductSupplierLinks, locale]);
   const calendarLocale = locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES";
   const calendarTitle = new Intl.DateTimeFormat(calendarLocale, { month: "long", year: "numeric" }).format(calendarMonth);
-  const selectedViewLabel = t(selectedView);
-  const selectedViewSubtitle = selectedView === "stock.topSales" ? t("stock.subtitle.topSales") : t("stock.subtitle.inventory");
+  const promotionManagement = usePromotionManagement({
+    enabled: app === "gestion" && canManageProducts && selectedView === "stock.promotions" && !partyDirectory,
+    locale, session,
+    onSaved: (promotion) => {
+      setStockPromotions(current => current.some(item => item.id === promotion.id)
+        ? current.map(item => item.id === promotion.id ? promotion : item) : [promotion, ...current]);
+    },
+    onRefresh: () => setStockRefreshCounter(current => current + 1)
+  });
+  const selectedViewLabel = app === "gestion" && selectedView === "stock.promotions"
+    ? t("promotion.list.heading") : t(selectedView);
+  const selectedViewSubtitle = app === "gestion" && selectedView === "stock.promotions"
+    ? t("promotion.list.subtitle") : selectedView === "stock.topSales" ? t("stock.subtitle.topSales") : t("stock.subtitle.inventory");
   const canReadProductSuppliers = canManageProducts;
   const supplierEntryDateFormatter = useMemo(() => new Intl.DateTimeFormat(
     locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
@@ -2779,11 +2812,12 @@ export function StockScreen({
     gridTemplateColumns: visibleWarehouseDetailColumns.map((column, index) => index === visibleWarehouseDetailColumns.length - 1
       ? `minmax(${column.width}px, 1fr)` : `${column.width}px`).join(" ")
   };
-  const managementProductActions = app === "gestion" && allowSafeRetirement && selectedView === "stock.current";
+  const managementProductActions = app === "gestion" && allowSafeRetirement && !partyDirectory && selectedView === "stock.current";
   const detailProductCreation = app === "gestion" && allowSafeRetirement && canManageProducts;
   const informationTabShortcut = detailProductCreation ? "F8" : "F5";
   const selectedStockRow = visibleRows[selectedStockIndex] ?? visibleRows[0] ?? null;
-  const detailStockRows = detailRow ? allStockRows.filter((row) => row.productId === detailRow.productId) : [];
+  const detailStockRows = detailRow ? (selectedView === "stock.topSales" ? topSalesDetailRows : allStockRows)
+    .filter((row) => row.productId === detailRow.productId) : [];
   const topSalesRanks = useMemo(() => new Map(topSalesRows.map((row, index) => [row, index + 1])), [topSalesRows]);
   const visibleTopSalesRows = useMemo(() => sortProductTableRows(
     topSalesSorting.sort?.column === "code"
@@ -2802,6 +2836,72 @@ export function StockScreen({
     if (column === "currentStock") return row.currentStock;
     return row.warehouseName;
   }, locale), [filteredTopSalesRows, locale, topSalesRanks, topSalesSorting.sort]);
+  const selectedTopSalesRow = visibleTopSalesRows.find((row) => topSalesRowKey(row) === selectedTopSalesKey)
+    ?? visibleTopSalesRows[0] ?? null;
+  useTableInitialFocus(stockTableRef, ":scope > article.stock-row", {
+    enabled: app !== "pda" && !partyDirectory
+      && (selectedView === "stock.topSales" || isStockInventoryTableView(selectedView)),
+    ready: selectedView === "stock.topSales" ? visibleTopSalesRows.length > 0 : stockDataCurrent,
+    scopeKey: `${app}:${selectedView}:${partyDirectory ?? ""}:${stockSettingsMode ?? ""}`,
+    focusTarget: "container",
+    onSelect: () => {
+      if (selectedView === "stock.topSales") {
+        const key = visibleTopSalesRows[0] ? topSalesRowKey(visibleTopSalesRows[0]) : null;
+        selectedTopSalesKeyRef.current = key;
+        setSelectedTopSalesKey(key);
+      } else {
+        selectedStockIndexRef.current = 0;
+        setSelectedStockIndex(0);
+      }
+    },
+  });
+  const handleTableArrowRepeat = useTableArrowRepeat((direction: TableArrowDirection) => {
+    const table = stockTableRef.current;
+    const focus = document.activeElement;
+    if (app === "pda" || partyDirectory || !table || !focus || !table.contains(focus)
+      || (focus instanceof Element && focus.closest('[role="columnheader"], [role="menu"]'))
+      || document.querySelector('[aria-modal="true"], [role="dialog"], [role="alertdialog"], [role="menu"]')
+      || detailRow || productCreateOpen || retirementRow || inventoryFilterOpen || topSalesFilterOpen) return false;
+
+    if (selectedView === "stock.topSales") {
+      const current = visibleTopSalesRows.findIndex((row) => topSalesRowKey(row) === selectedTopSalesKeyRef.current);
+      if (current < 0) return false;
+      const next = nextStockSelectedIndex(current, visibleTopSalesRows.length, direction);
+      if (next === current) return false;
+      const key = topSalesRowKey(visibleTopSalesRows[next]);
+      selectedTopSalesKeyRef.current = key;
+      setSelectedTopSalesKey(key);
+      return;
+    }
+    if (!isStockInventoryTableView(selectedView) || visibleRows.length === 0) return false;
+    const current = selectedStockIndexRef.current;
+    const next = nextStockSelectedIndex(current, visibleRows.length, direction);
+    if (next === current) return false;
+    selectedStockIndexRef.current = next;
+    setSelectedStockIndex((index) => nextStockSelectedIndex(index, visibleRows.length, direction));
+  }, app !== "pda" && !partyDirectory
+    && (selectedView === "stock.topSales" || isStockInventoryTableView(selectedView)));
+  useEffect(() => {
+    setSelectedTopSalesKey(current => visibleTopSalesRows.some(row => topSalesRowKey(row) === current)
+      ? current : visibleTopSalesRows[0] ? topSalesRowKey(visibleTopSalesRows[0]) : null);
+  }, [visibleTopSalesRows]);
+  useLayoutEffect(() => {
+    if (app === "pda" || partyDirectory) return;
+    const table = stockTableRef.current;
+    if (!table) return;
+    const rowIndex = selectedView === "stock.topSales"
+      ? visibleTopSalesRows.findIndex((row) => topSalesRowKey(row) === selectedTopSalesKey)
+      : isStockInventoryTableView(selectedView) ? selectedStockIndex : -1;
+    if (rowIndex < 0) return;
+    const row = table.querySelectorAll<HTMLElement>(":scope > article.stock-row")[rowIndex];
+    if (!row) return;
+    ensureTableRowVisible(table, row);
+  }, [app, partyDirectory, selectedStockIndex, selectedTopSalesKey, selectedView, visibleRows, visibleTopSalesRows]);
+  useEffect(() => {
+    topSalesDetailRequest.current?.abort();
+    setTopSalesDetailNotice("");
+    return () => { topSalesDetailRequest.current?.abort(); };
+  }, [selectedView, session.accessToken, topSalesDateFrom, topSalesDateTo, topSalesFilters]);
   const sortedDetailStockRows = useMemo(() => sortProductWarehouseRows(
     detailStockRows, warehouseDetailSorting.sort, locale
   ), [detailStockRows, locale, warehouseDetailSorting.sort]);
@@ -2888,6 +2988,11 @@ export function StockScreen({
       if (bulkWorkspaceView === "list") {
         return;
       }
+      if (app !== "pda" && event.key === STOCK_BULK_NEW_SHORTCUT
+          && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
+        event.preventDefault();
+        return;
+      }
       const target = event.target as HTMLElement | null;
       const editingText = target?.matches("input, textarea, select, [contenteditable='true']") ?? false;
       if (event.key === "Escape") {
@@ -2953,7 +3058,7 @@ export function StockScreen({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeBulkDraft, bulkAfterSave, bulkBusy, bulkDecimalDialogOpen, bulkDialog, bulkDirty, bulkDraftName, bulkEditorDialog, bulkExcelImportOpen, bulkFamilyDialogOpen, bulkFilterOpen, bulkFinder, bulkImagesDirty, bulkImportOpen, bulkPriceRulesOpen, bulkPurchaseDocumentKind, bulkQuickEditField, bulkQuickEditOpen, bulkRows, bulkSupplierDialogMode, bulkSwapConfirmation, bulkWorkspaceView, selectedView, session.accessToken]);
+  }, [activeBulkDraft, app, bulkAfterSave, bulkBusy, bulkDecimalDialogOpen, bulkDialog, bulkDirty, bulkDraftName, bulkEditorDialog, bulkExcelImportOpen, bulkFamilyDialogOpen, bulkFilterOpen, bulkFinder, bulkImagesDirty, bulkImportOpen, bulkPriceRulesOpen, bulkPurchaseDocumentKind, bulkQuickEditField, bulkQuickEditOpen, bulkRows, bulkSupplierDialogMode, bulkSwapConfirmation, bulkWorkspaceView, selectedView, session.accessToken]);
 
   useEffect(() => {
     if (!bulkFileOpen && !bulkEditSelectedOpen && !bulkQuickEditOpen) {
@@ -2989,11 +3094,11 @@ export function StockScreen({
       inventoryFilterOpen,
       productCreateOpen,
       topSalesFilterOpen
-    })) {
+    }) || detailRow) {
       return;
     }
     stockTableRef.current?.focus({ preventScroll: true });
-  }, [inventoryFilterOpen, productCreateOpen, selectedView, topSalesFilterOpen]);
+  }, [detailRow, inventoryFilterOpen, productCreateOpen, selectedView, topSalesFilterOpen]);
 
   useEffect(() => {
     if (!detailRow || productCreateOpen) {
@@ -3039,28 +3144,28 @@ export function StockScreen({
     return () => window.removeEventListener("keydown", handleDetailKey);
   }, [app, allowSafeRetirement, session.permissions, canManageProducts, detailProductCreation, detailRow, detailTab, productCreateOpen]);
 
-  stockExportShortcutRef.current = () => { void exportStockExcel(); };
+  stockExportShortcutRef.current = (format) => { void exportStockExcel("SELECTED", format); };
 
   useEffect(() => {
     function handleStockExportShortcut(event: globalThis.KeyboardEvent) {
-      if (event.key !== STOCK_EXPORT_SHORTCUT || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.repeat) {
+      if (event.defaultPrevented || !(event.key === STOCK_EXPORT_SHORTCUT || (documentStock && event.key === "F7")) || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.repeat) {
         return;
       }
       const target = event.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
-      if (!session.accessToken || stockExportBusy || !isStockAsyncExportView(selectedView) || detailRow) return;
+      if (!documentStock && target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (partyDirectory || !session.accessToken || stockExportBusy || !isStockAsyncExportView(selectedView) || detailRow) return;
       if (document.querySelector("[role='dialog'][aria-modal='true']")) return;
       event.preventDefault();
       event.stopPropagation();
-      stockExportShortcutRef.current();
+      stockExportShortcutRef.current(event.key === "F7" ? "pdf" : "xlsx");
     }
     window.addEventListener("keydown", handleStockExportShortcut, true);
     return () => window.removeEventListener("keydown", handleStockExportShortcut, true);
-  }, [detailRow, selectedView, session.accessToken, stockExportBusy, managementProductActions]);
+  }, [detailRow, selectedView, session.accessToken, stockExportBusy, managementProductActions, partyDirectory, documentStock]);
 
   useEffect(() => {
     if (app === "pda" || !canManageProducts || partyDirectory || selectedView === "stock.bulkEdit"
-        || (app === "venta" && selectedView === "stock.promotions") || productCreateOpen) return;
+        || selectedView === "stock.promotions" || productCreateOpen) return;
     function handleAddProductShortcut(event: globalThis.KeyboardEvent) {
       if (event.defaultPrevented || event.key !== STOCK_CREATE_PRODUCT_SHORTCUT || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
       if (document.querySelector('[aria-modal="true"]')) return;
@@ -3080,7 +3185,7 @@ export function StockScreen({
       if (document.querySelector('[aria-modal="true"]') || productCreateOpen || retirementRow || detailRow) return;
       event.preventDefault();
       if (event.key === "F9") openProductRetirement(selectedStockRow);
-      if (event.key === "F7") openStockDetail(selectedStockRow, "edit");
+      if (event.key === "F7" && !documentStock) openStockDetail(selectedStockRow, "edit");
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -3190,7 +3295,7 @@ export function StockScreen({
     setTopSalesFilters(empty);
     setDraftTopSalesFilters(empty);
     setSelectedFamily({ family: "", subfamily: "" });
-    resetTopSalesPeriod();
+    if (app === "pda") resetTopSalesPeriod();
   }
 
   function topSalesFilterChips(): ErpFilterChip[] {
@@ -3257,6 +3362,43 @@ export function StockScreen({
     }
   }
 
+  function topSalesRowKey(row: StockTopSalesRow) {
+    return `${row.productId}-${row.warehouseId ?? "all"}`;
+  }
+
+  function selectTopSalesRow(row: StockTopSalesRow) {
+    topSalesDetailRequest.current?.abort();
+    setTopSalesDetailNotice("");
+    setSelectedTopSalesKey(topSalesRowKey(row));
+    stockTableRef.current?.focus({ preventScroll: true });
+  }
+
+  async function openTopSalesDetail(row: StockTopSalesRow | null) {
+    if (!row || !session.accessToken || !canReadStock) return;
+    topSalesDetailRequest.current?.abort();
+    const controller = new AbortController();
+    topSalesDetailRequest.current = controller;
+    setSelectedTopSalesKey(topSalesRowKey(row));
+    setTopSalesDetailNotice("common.loading");
+    try {
+      const productId = encodeURIComponent(row.productId);
+      const options = { token: session.accessToken, signal: controller.signal };
+      const [product, stock, warehouses] = await Promise.all([
+        apiRequest<ProductView>(`/products/${canManageProducts ? "management/" : ""}${productId}`, options),
+        apiRequest<StockItemView[]>(`/stock?productId=${productId}`, options),
+        warehouseCatalog.length > 0 ? Promise.resolve(warehouseCatalog) : apiRequest<WarehouseView[]>("/warehouses", options)
+      ]);
+      if (controller.signal.aborted) return;
+      const rows = buildStockInventoryRows([product], warehouses, stock, stockCatalog, { mode: "all" });
+      const detail = rows.find((item) => item.warehouseId === row.warehouseId) ?? rows[0];
+      setTopSalesDetailRows(rows);
+      setTopSalesDetailNotice("");
+      openStockDetail(detail, "stock");
+    } catch {
+      if (!controller.signal.aborted) setTopSalesDetailNotice("stock.detail.loadError");
+    }
+  }
+
   function openProductRetirement(row = detailRow) {
     if (!row || !allowSafeRetirement || !session.permissions.includes("ADMIN") || row.code === "0") return;
     setRetirementNotice("");
@@ -3300,11 +3442,27 @@ export function StockScreen({
     // The visible add-product action owns F5, including when the table retains focus.
     if (event.key === STOCK_CREATE_PRODUCT_SHORTCUT && app !== "pda" && canManageProducts) return;
     if (selectedView === "stock.topSales") {
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        event.preventDefault();
+        if (app !== "pda") handleTableArrowRepeat(event);
+        else {
+          const current = visibleTopSalesRows.indexOf(selectedTopSalesRow!);
+          const row = visibleTopSalesRows[nextStockSelectedIndex(current, visibleTopSalesRows.length, event.key)];
+          if (row) selectTopSalesRow(row);
+        }
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        event.currentTarget.scrollLeft += event.key === "ArrowRight" ? 96 : -96;
+      } else if (event.key === "Enter" || event.key === "F5") {
+        event.preventDefault();
+        void openTopSalesDetail(selectedTopSalesRow);
+      }
       return;
     }
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       event.preventDefault();
-      setSelectedStockIndex((current) => nextStockSelectedIndex(current, visibleRows.length, event.key));
+      if (app !== "pda") handleTableArrowRepeat(event);
+      else setSelectedStockIndex((current) => nextStockSelectedIndex(current, visibleRows.length, event.key));
       return;
     }
     if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
@@ -4882,8 +5040,9 @@ export function StockScreen({
   }
 
   function clearTopSalesFilters() {
-    const range = stockTopSalesPeriodRange("week");
-    setDraftTopSalesPeriod("week");
+    const range = app === "pda" ? stockTopSalesPeriodRange("week")
+      : { dateFrom: topSalesDateFrom, dateTo: topSalesDateTo };
+    setDraftTopSalesPeriod(app === "pda" ? "week" : topSalesPeriod);
     setDraftTopSalesDateFrom(range.dateFrom);
     setDraftTopSalesDateTo(range.dateTo);
     setDraftTopSalesFilters((current) => ({
@@ -6086,7 +6245,14 @@ export function StockScreen({
     );
   }
 
-  function renderBulkLeftActions() {
+  function renderBulkFilterButton() {
+    return <button type="button" className="stock-filter-button" aria-haspopup="dialog" onClick={() => void openBulkFilterDialog()}>
+      <img alt="" className="report-action-icon" src={stockFilterIcon} />
+      {t("salesReport.filter")}{activeBulkFilterCount > 0 ? ` (${activeBulkFilterCount})` : ""}
+    </button>;
+  }
+
+  function renderBulkLeftActions(includeFilter = true) {
     const priceTabs: StockBulkEditTab[] = ["salePrice", "memberPrice", "wholesalePrice", "offer"];
     return (
       <>
@@ -6094,10 +6260,7 @@ export function StockScreen({
           <button type="button" aria-haspopup="menu" aria-expanded={bulkFileOpen} onClick={toggleBulkFileMenu}>{t("stock.bulkEdit.file")}</button>
           {renderBulkFileMenu()}
         </div>
-        <button type="button" className="stock-filter-button" aria-haspopup="dialog" onClick={() => void openBulkFilterDialog()}>
-          <img alt="" className="report-action-icon" src={stockFilterIcon} />
-          {t("salesReport.filter")}{activeBulkFilterCount > 0 ? ` (${activeBulkFilterCount})` : ""}
-        </button>
+        {includeFilter && renderBulkFilterButton()}
         <button type="button" disabled={bulkBusy} onClick={() => handleBulkFileAction("stock.bulkEdit.saveList")}>
           {t("common.save")}
         </button>
@@ -7080,7 +7243,22 @@ export function StockScreen({
     return (
       <div className="bulk-edit-screen">
         <div className="bulk-edit-controls">
-        <div className="bulk-edit-toolbar">
+        <div className={`bulk-edit-toolbar${app === "gestion" ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
+          {app === "gestion" ? <>
+            <div className="gestion-toolbar-start">
+              <label className="report-search stock-top-sales-search">
+                <img alt="" src={stockSearchIcon} />
+                <input type="search" value={bulkSearchText} aria-label={t("stock.bulkEdit.searchList")}
+                  placeholder={t("stock.bulkEdit.searchList")} onChange={(event) => setBulkSearchText(event.target.value)} />
+              </label>
+              {renderBulkFilterButton()}
+            </div>
+            <div className="gestion-toolbar-end bulk-edit-actions gestion-toolbar-actions">
+              {renderBulkLeftActions(false)}
+              {renderBulkEditSelectedControl()}
+              {renderBulkQuickEditControl()}
+            </div>
+          </> : <>
           <div className="bulk-edit-actions">{renderBulkLeftActions()}</div>
           <div className="bulk-edit-search-actions">
             {app === "pda" && <div className="active-filter-summary bulk-active-filter-summary" aria-label={t("stock.filters.summary")}>
@@ -7099,6 +7277,7 @@ export function StockScreen({
               />
             </label>
           </div>
+          </>}
         </div>
         {app !== "pda" && <ErpFilterChips locale={locale} chips={bulkFilterChips()} onClear={() => {
           setBulkFilters({ ...emptyStockBulkFilterCriteria });
@@ -7229,6 +7408,10 @@ export function StockScreen({
             <h2>{selectedViewLabel}</h2>
             <span>{t("stock.bulkEdit.workspace.subtitle")}</span>
           </div>
+          {app !== "pda" && canManageProducts && <button type="button" className="stock-document-add"
+            aria-keyshortcuts={STOCK_BULK_NEW_SHORTCUT} disabled={bulkBusy} onClick={newBulkWorkspace}>
+            <span><Plus size={16} weight="bold" aria-hidden="true" />{t("stock.bulkEdit.workspace.new")}</span>{" "}<kbd>{STOCK_BULK_NEW_SHORTCUT}</kbd>
+          </button>}
         </header>
       );
     }
@@ -7273,6 +7456,7 @@ export function StockScreen({
           drafts={bulkDrafts}
           selectedId={bulkSelectedDraftId}
           busy={bulkBusy}
+          showNewButton={app === "pda"}
           onSelect={setBulkSelectedDraftId}
           onNew={newBulkWorkspace}
           onOpen={(draft) => void openBulkDraft(draft)}
@@ -7324,14 +7508,29 @@ export function StockScreen({
     return items;
   }
 
+  function toolbarGroup(className: string, children: ReactNode) {
+    return app === "gestion" || documentStock ? <div className={className}>{children}</div> : <>{children}</>;
+  }
+
+  function renderWarehouseSummary() {
+    if (!documentStockAppearance) return null;
+    const summary = selectedView === "stock.topSales"
+      ? `${t("stock.column.warehouse")}: ${topSalesFilters.warehouse
+        ? valueText(warehouseCatalog.find(warehouse => warehouse.id === topSalesFilters.warehouse)?.name ?? topSalesFilters.warehouse)
+        : t("stock.filter.allWarehouses")}`
+      : activeInventorySummary().at(-1)!;
+    return <div className="stock-warehouse-summary">{renderFilterSummaryItem(summary)}</div>;
+  }
+
   function renderInventoryToolbar() {
     return (
       <>
-      <div className="stock-toolbar">
+      <div className={`stock-toolbar${app === "gestion" ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
+        {toolbarGroup("gestion-toolbar-start", <>
         <div className="stock-search-stack">
-          <div className="active-filter-summary" aria-label={t("stock.filters.summary")}>
+          {!documentStockAppearance && <div className="active-filter-summary" aria-label={t("stock.filters.summary")}>
             {(app !== "pda" ? activeInventorySummary().slice(-1) : activeInventorySummary()).map(renderFilterSummaryItem)}
-          </div>
+          </div>}
           <label className="report-search stock-top-sales-search">
             <img alt="" src={stockSearchIcon} />
             <input
@@ -7353,8 +7552,11 @@ export function StockScreen({
           <img alt="" className="report-action-icon" src={stockFilterIcon} />
           {t("salesReport.filter")}
         </button>
+        </>)}
+        {toolbarGroup("gestion-toolbar-end", <>
         {selectedView !== "stock.promotions" && <span className="stock-result-count" role="status">{t("stock.results").replace("{count}", String(visibleRows.length))}</span>}
         {renderStockExportButton()}
+        </>)}
       </div>
       {app !== "pda" && <ErpFilterChips locale={locale} chips={inventoryFilterChips()} onClear={clearAppliedInventoryFilters} />}
       </>
@@ -7366,24 +7568,32 @@ export function StockScreen({
     if (selectedView === "stock.promotions") {
       const unavailable = stockExportBusy || !session.accessToken || !stockDataCurrent
         || stockPromotionsLoading || stockPromotionsLoadFailed || !promotionExportContext;
-      return <div className="stock-promotion-export-actions">
+      return <div className={`stock-promotion-export-actions${app === "gestion" ? " stock-document-actions gestion-toolbar-actions" : ""}`}>
         <button type="button" className="stock-export-button"
           aria-keyshortcuts={STOCK_EXPORT_SHORTCUT}
           title={`${t("stock.exportExcel.selectedPromotionHint")} (${STOCK_EXPORT_SHORTCUT})`}
           disabled={unavailable || !promotionExportContext?.promotionId}
           onClick={() => void exportStockExcel("SELECTED")}>
-          <FileXls size={16} weight="bold" aria-hidden="true" />
-          <span>{t("stock.exportExcel.selectedPromotion")}</span>
+          {app === "gestion" ? <span><FileXls size={16} weight="bold" aria-hidden="true" />{t("stock.exportExcel.selectedPromotion")}</span>
+            : <><FileXls size={16} weight="bold" aria-hidden="true" /><span>{t("stock.exportExcel.selectedPromotion")}</span></>}
           <kbd aria-hidden="true">{STOCK_EXPORT_SHORTCUT}</kbd>
         </button>
         <button type="button" className="stock-export-button stock-export-all-promotions"
           title={t("stock.exportExcel.activePromotionsHint")} disabled={unavailable}
           onClick={() => void exportStockExcel("ACTIVE")}>
-          <FileXls size={16} weight="bold" aria-hidden="true" />
-          <span>{t("stock.exportExcel.activePromotions")}</span>
+          {app === "gestion" ? <span><FileXls size={16} weight="bold" aria-hidden="true" />{t("stock.exportExcel.activePromotions")}</span>
+            : <><FileXls size={16} weight="bold" aria-hidden="true" /><span>{t("stock.exportExcel.activePromotions")}</span></>}
         </button>
       </div>;
     }
+    if (documentStock) return <div className="stock-document-actions gestion-toolbar-actions" aria-busy={stockExportBusy}>
+      {managementProductActions && <>
+        {canManageProducts && <button type="button" disabled={!selectedStockRow} onClick={() => openStockDetail(selectedStockRow, "edit")}>{t("product.edit.title")}</button>}
+        {session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!selectedStockRow || selectedStockRow.code === "0"} onClick={() => openProductRetirement(selectedStockRow)}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut="F9" /></button>}
+      </>}
+      <button type="button" className="stock-export-button" aria-keyshortcuts="F6" title={`${t("stock.exportExcel")} (F6)`} disabled={stockExportBusy || !session.accessToken} onClick={() => void exportStockExcel()}><span><FileXls size={16} weight="bold" aria-hidden="true" />{t("salesReport.excel")}</span>{" "}<kbd>{STOCK_EXPORT_SHORTCUT}</kbd></button>
+      <button type="button" className="stock-export-button stock-export-pdf-button" aria-keyshortcuts="F7" title={`${t("salesReport.exportPdf")} (F7)`} disabled={stockExportBusy || !session.accessToken} onClick={() => void exportStockExcel("SELECTED", "pdf")}><span><FilePdf size={16} weight="bold" aria-hidden="true" />{t("salesReport.pdf")}</span>{" "}<kbd>{STOCK_PDF_EXPORT_SHORTCUT}</kbd></button>
+    </div>;
     return (
       <button
         type="button"
@@ -7412,8 +7622,8 @@ export function StockScreen({
     );
   }
 
-  async function exportStockExcel(promotionScope: "SELECTED" | "ACTIVE" = "SELECTED") {
-    if (!session.accessToken || stockExportBusy || !isStockAsyncExportView(selectedView)) return;
+  async function exportStockExcel(promotionScope: "SELECTED" | "ACTIVE" = "SELECTED", format: "xlsx" | "pdf" = "xlsx") {
+    if (!session.accessToken || stockExportBusyRef.current || !isStockAsyncExportView(selectedView) || (format === "pdf" && !documentStock)) return;
     const exportView = selectedView;
     const exportingPromotions = exportView === "stock.promotions";
     const exportContext = promotionExportContext;
@@ -7426,19 +7636,21 @@ export function StockScreen({
         { key: "promotionType", label: t("stock.column.promotionType") },
         { key: "promotionValidity", label: t("stock.column.promotionValidity") }
       ] : [])
-    ] : selectedColumnSettings.map(column => ({
+    ] : (documentStock ? visibleSelectedColumnSettings : selectedColumnSettings).map(column => ({
       key: column.key,
       label: t(selectedColumnDefinitionByKey.get(column.key)?.labelKey ?? column.key)
     }));
     const exportSort = exportingPromotions ? exportContext?.sort : inventorySort;
     const fallbackFileName = stockExcelDefaultFileName(exportView, locale,
-      exportContext?.promotionName, exportingPromotions ? promotionScope : undefined);
+      exportContext?.promotionName, exportingPromotions ? promotionScope : undefined).replace(/\.xlsx$/, `.${format}`);
+    const exportMessage = (suffix: "progress" | "success" | "error" | "unavailable") => t(`stock.${format === "pdf" ? "exportPdf" : "exportExcel"}.${suffix}`);
+    stockExportBusyRef.current = true;
     setStockExportBusy(true);
     setStockExportNoticeView(exportView);
     setStockExportNoticeKind("info");
     setStockExportNotice(t("stock.exportExcel.starting"));
     try {
-      let job = await apiRequest<StockExcelExportJob>("/stock/exports", {
+      let job = await apiRequest<StockExcelExportJob>(format === "pdf" ? "/stock/exports/pdf" : "/stock/exports", {
         method: "POST",
         token: session.accessToken,
         body: {
@@ -7476,7 +7688,7 @@ export function StockScreen({
         }
       });
       while (job.status === "QUEUED" || job.status === "RUNNING") {
-        setStockExportNotice(t("stock.exportExcel.progress")
+        setStockExportNotice(exportMessage("progress")
           .replace("{count}", String(job.processedRows)));
         await new Promise((resolve) => globalThis.setTimeout(resolve, 650));
         job = await apiRequest<StockExcelExportJob>(`/stock/exports/${encodeURIComponent(job.id)}`, {
@@ -7484,18 +7696,18 @@ export function StockScreen({
         });
       }
       if (job.status !== "COMPLETED") {
-        throw new Error(job.error || t("stock.exportExcel.error"));
+        throw new Error(job.error || exportMessage("error"));
       }
       const response = await fetch(`${apiBaseUrl}/stock/exports/${encodeURIComponent(job.id)}/file`, {
         headers: { Authorization: `Bearer ${session.accessToken}` }
       });
-      if (!response.ok) throw new Error(t("stock.exportExcel.error"));
+      if (!response.ok) throw new Error(exportMessage("error"));
       const bytes = new Uint8Array(await response.arrayBuffer());
       const fileName = stockBulkExportFileName(response.headers.get("Content-Disposition"), fallbackFileName);
       if (window.tpvDesktop?.reports) {
         const result = await window.tpvDesktop.reports.saveFile({
           defaultFileName: fileName,
-          filters: [{ name: "Excel", extensions: ["xlsx"] }],
+          filters: [{ name: format === "pdf" ? "PDF" : "Excel", extensions: [format] }],
           bytes
         });
         if (!result.ok) throw new Error(result.message);
@@ -7507,7 +7719,7 @@ export function StockScreen({
       } else {
         const blobBytes = bytes.slice();
         const url = URL.createObjectURL(new Blob([blobBytes.buffer as ArrayBuffer], {
-          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          type: format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         }));
         const link = document.createElement("a");
         link.href = url;
@@ -7516,14 +7728,15 @@ export function StockScreen({
         URL.revokeObjectURL(url);
       }
       setStockExportNoticeKind("success");
-      setStockExportNotice(t("stock.exportExcel.success")
+      setStockExportNotice(exportMessage("success")
         .replace("{count}", String(job.processedRows)));
     } catch (error) {
       setStockExportNoticeKind("error");
       setStockExportNotice(error instanceof ApiError && error.status === 404
-        ? t("stock.exportExcel.unavailable")
-        : error instanceof Error ? error.message : t("stock.exportExcel.error"));
+        ? exportMessage("unavailable")
+        : error instanceof Error ? error.message : exportMessage("error"));
     } finally {
+      stockExportBusyRef.current = false;
       setStockExportBusy(false);
     }
   }
@@ -7551,7 +7764,7 @@ export function StockScreen({
   }
 
   return (
-    <main className={`stock-screen work-screen${app === "venta" ? " stock-screen--venta" : ""}${selectedView === "stock.promotions" && !partyDirectory ? " stock-promotions-screen" : ""}${app === "gestion" && allowSafeRetirement ? " erp-management-screen" : ""}${embedded ? " gestion-embedded-module" : ""}${app !== "pda" ? " erp-classic-tables" : ""}`}>
+    <main className={`stock-screen work-screen${documentStockAppearance || bulkDocumentList ? " stock-document-screen" : ""}${app === "venta" ? " stock-screen--venta" : ""}${app === "gestion" && partyDirectory ? " gestion-party-screen" : ""}${selectedView === "stock.promotions" && !partyDirectory ? " stock-promotions-screen" : ""}${app === "gestion" && allowSafeRetirement ? " erp-management-screen" : ""}${embedded ? " gestion-embedded-module" : ""}${app !== "pda" ? " erp-classic-tables" : ""}`}>
       {!embedded && <SessionTopControls
         locale={locale}
         session={session}
@@ -7576,7 +7789,7 @@ export function StockScreen({
             <AppBrand app={app} label={t(app === "venta" ? "venta.title" : "gestion.title")} />
           </button>}
           {!embedded && <DesktopHeaderContext terminalContext={terminalContext} />}
-          {selectedView !== "stock.bulkEdit" && (
+          {(selectedView !== "stock.bulkEdit" || bulkDocumentList) && (
             <h1 className="report-title">{stockTitle}</h1>
           )}
         </header>
@@ -7632,11 +7845,14 @@ export function StockScreen({
                 <h2>{selectedViewLabel}</h2>
                 <span>{selectedViewSubtitle}</span>
               </div>
-              {managementProductActions ? <div className="management-record-actions">
+              {selectedView === "stock.promotions" ? promotionManagement.actions && <button type="button"
+                className="stock-promotion-create stock-document-add" aria-keyshortcuts="F5" disabled={promotionManagement.actions.busy} onClick={promotionManagement.openCreate}>
+                <span><Plus size={16} weight="bold" aria-hidden="true" />{t("promotion.action.create")}</span>{" "}<kbd>{STOCK_CREATE_PRODUCT_SHORTCUT}</kbd>
+              </button> : documentStock ? canManageProducts && <button type="button" className="stock-add-product-button stock-document-add" aria-keyshortcuts="F5" onClick={() => { setEditingProduct(null); setProductCreateOpen(true); }}><span><Plus size={16} weight="bold" aria-hidden="true" />{t("product.create.button")}</span>{" "}<kbd>{STOCK_CREATE_PRODUCT_SHORTCUT}</kbd></button> : managementProductActions ? <div className="management-record-actions">
                 {canManageProducts && <button type="button" aria-keyshortcuts="F7" disabled={!selectedStockRow} onClick={() => openStockDetail(selectedStockRow, "edit")}><ShortcutButtonLabel label={t("product.edit.title")} shortcut={t("safeManagement.shortcut.modify")} /></button>}
                 {canManageProducts && <button type="button" aria-keyshortcuts={STOCK_CREATE_PRODUCT_SHORTCUT} onClick={() => { setEditingProduct(null); setProductCreateOpen(true); }}><ShortcutButtonLabel label={t("product.create.button")} shortcut={STOCK_CREATE_PRODUCT_SHORTCUT} /></button>}
                 {session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!selectedStockRow || selectedStockRow.code === "0"} onClick={() => openProductRetirement(selectedStockRow)}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut={t("safeManagement.shortcut.retire")} /></button>}
-              </div> : canManageProducts && !(app === "venta" && selectedView === "stock.promotions") && (
+              </div> : canManageProducts && (
                 <button
                   type="button"
                   className="stock-add-product-button"
@@ -7662,11 +7878,12 @@ export function StockScreen({
           ) : selectedView === "stock.topSales" ? (
             <>
               <div className="stock-inventory-controls">
-              <div className="stock-top-sales-toolbar">
+              <div className={`stock-top-sales-toolbar${app === "gestion" ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
+                {toolbarGroup("gestion-toolbar-start", <>
                 <div className="stock-search-stack">
-                  <div className="active-filter-summary" aria-label={t("stock.filters.summary")}>
-                    {(app !== "pda" ? activeTopSalesSummary().slice(0, 1) : activeTopSalesSummary()).map(renderFilterSummaryItem)}
-                  </div>
+                  {app === "pda" && <div className="active-filter-summary" aria-label={t("stock.filters.summary")}>
+                    {activeTopSalesSummary().map(renderFilterSummaryItem)}
+                  </div>}
                   <label className="report-search stock-top-sales-search">
                     <img alt="" src={stockSearchIcon} />
                     <input
@@ -7688,17 +7905,29 @@ export function StockScreen({
                   <img alt="" className="report-action-icon" src={stockFilterIcon} />
                   {t("salesReport.filter")}
                 </button>
+                </>)}
+                {toolbarGroup("gestion-toolbar-end", <>
                 <span className="stock-result-count" role="status">{t("stock.results").replace("{count}", String(visibleTopSalesRows.length))}</span>
                 {renderStockExportButton()}
+                </>)}
               </div>
               {renderStockExportNotice()}
+              {topSalesDetailNotice && <div role={topSalesDetailNotice === "common.loading" ? "status" : "alert"}>
+                {t(topSalesDetailNotice)}
+              </div>}
               {app !== "pda" && <ErpFilterChips locale={locale} chips={topSalesFilterChips()} onClear={clearAppliedTopSalesFilters} />}
               </div>
-              <div className="stock-table stock-top-sales-table">
+              {renderWarehouseSummary()}
+              <div className="stock-table stock-top-sales-table" ref={stockTableRef} tabIndex={0}
+                aria-label={t("stock.table.aria")} aria-busy={topSalesDetailNotice === "common.loading"}
+                onKeyDown={handleStockTableKeyDown}>
                 {renderStockHeader()}
                 {visibleTopSalesRows.length === 0 && <div className="stock-empty-state">{topSalesRows.length === 0 ? t(topSalesStatus) : t("stock.status.noResults")}</div>}
                 {visibleTopSalesRows.map((row) => (
-                  <article className="stock-row" key={`${row.productId}-${row.warehouseId ?? "all"}`} style={selectedGridStyle}>
+                  <article className={`stock-row${row === selectedTopSalesRow ? " selected" : ""}`}
+                    key={topSalesRowKey(row)} style={selectedGridStyle}
+                    onClick={() => selectTopSalesRow(row)}
+                    onDoubleClick={() => { void openTopSalesDetail(row); }}>
                     {visibleSelectedColumnSettings.map((column) => (
                       <span className="stock-cell" key={column.key}>
                         {renderTopSalesCell(row, column.key)}
@@ -7712,7 +7941,7 @@ export function StockScreen({
                   <span>{t("salesReport.loadError")}</span>
                   <button type="button" onClick={() => setTopSalesDateOptionsReload((value) => value + 1)}>{t("salesReport.retry")}</button>
                 </div>}
-                <ReportDateRangeFilter locale={locale} today={topSalesDateOptions?.currentDate ?? ""}
+                <ReportDateRangeFilter collapseSingleDay={app === "gestion"} showWeekday={app === "gestion"} locale={locale} today={topSalesDateOptions?.currentDate ?? ""}
                   earliestDate={topSalesDateOptions?.earliestDate ?? ""}
                   value={{ from: topSalesDateFrom, to: topSalesDateTo, label: "",
                     preset: topSalesPeriod === "custom" && topSalesQuickRange?.from === topSalesDateFrom
@@ -7730,7 +7959,9 @@ export function StockScreen({
               <div className="stock-inventory-controls">
                 {renderInventoryToolbar()}
                 {renderStockExportNotice()}
+                {promotionManagement.notice}
               </div>
+              {renderWarehouseSummary()}
               <StockPromotionGroups
                 locale={locale}
                 app={app}
@@ -7743,7 +7974,9 @@ export function StockScreen({
                 statusMessage={stockPromotionsLoadFailed ? t("promotion.status.loadError") : ""}
                 onRefresh={() => setStockRefreshCounter(current => current + 1)}
                 onExportContextChange={setPromotionExportContext}
-                hideEmptyGroups={Boolean(searchText.trim()) || Object.values(inventoryFilters).some(Boolean)}
+                management={promotionManagement.actions}
+                selectionRequest={promotionManagement.selectionRequest}
+                hideEmptyGroups={!promotionManagement.actions && (Boolean(searchText.trim()) || Object.values(inventoryFilters).some(Boolean))}
               />
             </>
           ) : (
@@ -7752,6 +7985,7 @@ export function StockScreen({
                 {renderInventoryToolbar()}
                 {renderStockExportNotice()}
               </div>
+              {renderWarehouseSummary()}
               <div
                 className="stock-table"
                 ref={stockTableRef}
@@ -7786,6 +8020,7 @@ export function StockScreen({
         {app !== "gestion" && <ScreenContextFooter locale={locale} terminalContext={terminalContext} />}
       </section>
 
+      {promotionManagement.editorElement}
       {topSalesFilterOpen && (
         <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="stock-filter-title">
           <section
@@ -7803,6 +8038,7 @@ export function StockScreen({
                 <button type="button" className="erp-dialog-action-cancel" aria-label={t("common.close")} onClick={() => setTopSalesFilterOpen(false)}>{t("common.close")}</button>}
             </header>
             <div className="filter-grid">
+              {app === "pda" && <>
               <div className="filter-field filter-wide">
                 <span>{t("stock.filter.period")}</span>
                 <div className="stock-periods" aria-label={t("stock.filter.period")}>
@@ -7913,6 +8149,7 @@ export function StockScreen({
                   </div>
                 )}
               </div>
+              </>}
               <div className="filter-field">
                 <span>{t("stock.column.family")}</span>
                 <button

@@ -26,7 +26,7 @@ test("SEO, routing and semantic prerender contracts without browser or HTTP", as
       server.ssrLoadModule("/src/MarketingPage.tsx"),
       server.ssrLoadModule("/src/marketingI18n.ts")
     ]);
-    await suite.test("18 distinct clean routes and legacy hash compatibility", () => {
+    await suite.test("15 distinct canonical routes and compatibility aliases resolve without redirects", () => {
       const hrefs = [];
       for (const language of routes.marketingLanguages) {
         for (const route of routes.routeIds) {
@@ -38,7 +38,18 @@ test("SEO, routing and semantic prerender contracts without browser or HTTP", as
           assert.deepEqual(routes.readMarketingLocation({ pathname: href, hash: "#/producto/apps" }), { route: "apps", language, legacy: true });
         }
       }
-      assert.equal(new Set(hrefs).size, 18);
+      assert.deepEqual(routes.routeIds, ["inicio", "solucion", "apps", "ventajas", "contacto"]);
+      assert.equal(new Set(hrefs).size, 15);
+      for (const language of routes.marketingLanguages) {
+        assert.equal(routes.marketingHref(language, "funcionalidades"), routes.marketingHref(language, "solucion"));
+        const location = { pathname: `/${language}/producto/funcionalidades/`, hash: "", search: "?apps=venta&utm_source=legacy" };
+        assert.deepEqual(routes.readMarketingLocation(location), { route: "solucion", language, legacy: false });
+        assert.deepEqual(routes.readMarketingLocation({ ...location, pathname: location.pathname.slice(0, -1) }), { route: "solucion", language, legacy: false });
+        assert.equal(location.search, "?apps=venta&utm_source=legacy", "Resolving an alias must not mutate its query");
+        assert.equal(location.pathname, `/${language}/producto/funcionalidades/`, "Aliases render directly instead of navigating");
+        assert.deepEqual(routes.readMarketingLocation({ pathname: routes.marketingHref(language, "apps"), hash: "#/producto/funcionalidades" }), { route: "solucion", language, legacy: true });
+      }
+      assert.deepEqual(routes.readMarketingLocation({ pathname: "/", hash: "#/producto/funcionalidades" }), { route: "solucion", language: null, legacy: true });
       assert.deepEqual(routes.readMarketingLocation({ pathname: "/", hash: "#/producto/contacto" }), { route: "contacto", language: null, legacy: true });
       assert.deepEqual(routes.readMarketingLocation({ pathname: "/en/producto/apps/", hash: "#mk-main-content" }), { route: "apps", language: "en", legacy: false });
       assert.deepEqual(routes.readMarketingLocation({ pathname: "/unknown", hash: "#/producto/unknown" }), { route: "inicio", language: null, legacy: false });
@@ -83,7 +94,13 @@ test("SEO, routing and semantic prerender contracts without browser or HTTP", as
           assert.equal((head.match(/hreflang=/g) ?? []).length, 4);
         }
       }
-      assert.equal(new Set(titles).size, 18);
+      assert.equal(new Set(titles).size, 15);
+      for (const language of routes.marketingLanguages) {
+        const canonical = seo.buildMarketingMetadata(language, "solucion", origin, true);
+        const alias = seo.buildMarketingMetadata(language, "funcionalidades", origin, true);
+        assert.deepEqual(alias, canonical, `${language} alias must share the solution canonical, alternates and content`);
+        assert.doesNotMatch(seo.renderMarketingHead(alias), /\/producto\/funcionalidades\//);
+      }
     });
     await suite.test("head and XML serialization escapes markup and script endings", () => {
       const metadata = seo.buildMarketingMetadata("es", "apps", origin, true);
@@ -99,9 +116,9 @@ test("SEO, routing and semantic prerender contracts without browser or HTTP", as
       assert.doesNotMatch(json, /</);
       assert.match(buildSitemap([{ canonical: "https://safe.business/?a=1&b=2", alternates: [] }]), /a=1&amp;b=2/);
     });
-    await suite.test("18 real SSR pages contain the correct route and locale instead of a blank shell", () => {
+    await suite.test("15 canonical SSR pages contain the correct route and locale instead of a blank shell", () => {
       const template = '<!doctype html><html lang="es"><head><meta charset="UTF-8"><title>Old</title><meta name="robots" content="index"><meta property="og:title" content="old"><link rel="icon" href="/branding/espos-icon.ico"><script type="module" src="/assets/app.js"></script></head><body><div id="root"></div></body></html>';
-      const routeHeading = (copy, route) => ({ inicio: copy.home.title, solucion: copy.solution.title, funcionalidades: copy.features.title, apps: copy.apps.title, ventajas: copy.advantagesPage.title, contacto: copy.contact.title })[route];
+      const routeHeading = (copy, route) => ({ inicio: copy.home.title, solucion: copy.solution.title, apps: copy.apps.title, ventajas: copy.advantagesPage.title, contacto: copy.contact.title })[route];
       for (const language of routes.marketingLanguages) {
         for (const route of routes.routeIds) {
           Object.defineProperty(globalThis, "window", { configurable: true, value: { location: { origin: "http://localhost", pathname: routes.marketingHref(language, route), hash: "", search: "" } } });
@@ -124,12 +141,34 @@ test("SEO, routing and semantic prerender contracts without browser or HTTP", as
       }
       assert.throws(() => buildPrerenderDocument("<html></html>", "body", { htmlLang: "es" }, "head"), /empty #root/);
     });
+    await suite.test("three old feature URL documents render the complete unified solution directly", () => {
+      const template = '<!doctype html><html><head></head><body><div id="root"></div></body></html>';
+      const renderRoute = (language, route) => {
+        Object.defineProperty(globalThis, "window", { configurable: true, value: { location: { origin: "http://localhost", pathname: `/${language}/producto/${route}/`, hash: "", search: "?apps=gestion" } } });
+        Object.defineProperty(globalThis, "document", { configurable: true, value: { referrer: "" } });
+        for (const key of ["sessionStorage", "localStorage"]) Object.defineProperty(globalThis, key, { configurable: true, value: { getItem: () => null, setItem: () => {} } });
+        const markup = renderToString(createElement(MarketingPage, { language, onLanguageChange: () => {} }));
+        const metadata = seo.buildMarketingMetadata(language, route, origin, true);
+        return buildPrerenderDocument(template, markup, metadata, seo.renderMarketingHead(metadata));
+      };
+      for (const language of routes.marketingLanguages) {
+        const canonical = renderRoute(language, "solucion");
+        const alias = renderRoute(language, "funcionalidades");
+        assert.equal(alias, canonical, `${language} alias must render the same solution, not a redirect or old feature page`);
+        assert.match(alias, new RegExp(`rel="canonical" href="${origin}/${language}/producto/solucion/"`));
+        assert.equal((alias.match(/<h1\b/g) ?? []).length, 1);
+        assert.doesNotMatch(alias, /http-equiv="refresh"|window\.location|location\.replace/);
+        const copy = getMarketingContent(language);
+        assert.ok(alias.includes(escapeText(copy.solution.title)));
+        for (const feature of copy.features.groups) assert.ok(alias.includes(escapeText(feature[1])), `${language} combined page missing feature ${feature[1]}`);
+      }
+    });
     await suite.test("sitemap lists the complete localized set and robots never blocks reading noindex", () => {
       const entries = routes.marketingLanguages.flatMap(language => routes.routeIds.map(route => seo.buildMarketingMetadata(language, route, origin, true)));
       const sitemap = buildSitemap(entries);
-      assert.equal((sitemap.match(/<url>/g) ?? []).length, 18);
-      assert.equal((sitemap.match(/<xhtml:link /g) ?? []).length, 72);
-      assert.doesNotMatch(sitemap, /#/);
+      assert.equal((sitemap.match(/<url>/g) ?? []).length, 15);
+      assert.equal((sitemap.match(/<xhtml:link /g) ?? []).length, 60);
+      assert.doesNotMatch(sitemap, /#|\/producto\/funcionalidades\//);
       assert.doesNotMatch(buildRobots(), /Sitemap:|Disallow:/);
       assert.match(buildRobots(`${origin}/sitemap.xml`), /Sitemap: https:\/\/public\.espos-retail\.com\/sitemap\.xml/);
     });

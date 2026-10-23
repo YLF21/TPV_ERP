@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestionTableSearch, matchesGestionTableSearch } from "./GestionTableSearch";
+import { GestionModuleHeading } from "./GestionModuleHeading";
 import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import {
   ApiError,
@@ -281,7 +282,7 @@ export function SalesOperationSecurityScreen({
 
   if (!canManage) {
     return (
-      <section className="gestion-workspace gestion-operation-security-workspace">
+      <section className="gestion-workspace gestion-module-screen gestion-operation-security-workspace">
         <p className="gestion-operation-security-message error" role="alert">
           {t("gestion.salesOperationSecurity.accessDenied")}
         </p>
@@ -290,13 +291,8 @@ export function SalesOperationSecurityScreen({
   }
 
   return (
-    <section className="gestion-workspace gestion-operation-security-workspace">
-      <header className="gestion-operation-security-header">
-        <div>
-          <span>{t("gestion.salesOperationSecurity.eyebrow")}</span>
-          <h2>{t("gestion.salesOperationSecurity.title")}</h2>
-          <p>{t("gestion.salesOperationSecurity.description")}</p>
-        </div>
+    <section className="gestion-workspace gestion-module-screen gestion-operation-security-workspace">
+      <GestionModuleHeading group={t("gestion.navigation.group.security")} title={t("gestion.salesOperationSecurity.title")} description={t("gestion.salesOperationSecurity.description")}>
         <aside>
           <strong>{t("gestion.salesOperationSecurity.storeScope")}</strong>
           {configuration && (
@@ -310,7 +306,7 @@ export function SalesOperationSecurityScreen({
             </>
           )}
         </aside>
-      </header>
+      </GestionModuleHeading>
 
       {feedback && (
         <div
@@ -331,7 +327,7 @@ export function SalesOperationSecurityScreen({
         </div>
       )}
 
-      <div className="gestion-operation-security-toolbar">
+      <div className="gestion-operation-security-toolbar gestion-toolbar-actions">
         <div>
           <strong>
             {changedCount > 0
@@ -340,7 +336,7 @@ export function SalesOperationSecurityScreen({
           </strong>
           <small>{t("gestion.salesOperationSecurity.delegatedHint")}</small>
         </div>
-        <div>
+        <div className="gestion-toolbar-actions">
           <button
             type="button"
             className="secondary"
@@ -371,7 +367,7 @@ export function SalesOperationSecurityScreen({
       </div>
 
       <section
-        className="gestion-operation-security-panel"
+        className="gestion-operation-security-panel gestion-module-panel gestion-module-table"
         aria-label={t("gestion.salesOperationSecurity.title")}
       >
         {loading ? (
@@ -441,13 +437,13 @@ export function SalesOperationSecurityScreen({
                             aria-label={`${t("gestion.salesOperationSecurity.column.requirePermission")}: ${label}`}
                             checked={operation.requirePermission}
                             disabled={Boolean(busy)}
+                            data-saving={Boolean(busy) || undefined}
                             onChange={(event) => updateOperation(
                               operation.code,
                               "requirePermission",
                               event.currentTarget.checked,
                             )}
                           />
-                          <i aria-hidden="true" />
                           <b>{operation.requirePermission ? t("common.yes") : t("common.no")}</b>
                         </label>
                       </span>
@@ -459,13 +455,13 @@ export function SalesOperationSecurityScreen({
                             aria-label={`${t("gestion.salesOperationSecurity.column.requirePassword")}: ${label}`}
                             checked={operation.requirePassword}
                             disabled={Boolean(busy)}
+                            data-saving={Boolean(busy) || undefined}
                             onChange={(event) => updateOperation(
                               operation.code,
                               "requirePassword",
                               event.currentTarget.checked,
                             )}
                           />
-                          <i aria-hidden="true" />
                           <b>{operation.requirePassword ? t("common.yes") : t("common.no")}</b>
                         </label>
                       </span>
@@ -486,7 +482,7 @@ export function SalesOperationSecurityScreen({
       {resetConfirmationOpen && configuration && (
         <div className="gestion-operation-security-overlay" role="presentation">
           <section
-            className="gestion-operation-security-dialog"
+            className="gestion-operation-security-dialog gestion-module-panel"
             role="dialog"
             aria-modal="true"
             aria-labelledby="sales-operation-security-reset-title"

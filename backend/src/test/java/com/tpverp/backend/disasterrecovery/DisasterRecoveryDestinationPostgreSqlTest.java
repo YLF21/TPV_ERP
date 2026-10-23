@@ -133,14 +133,14 @@ class DisasterRecoveryDestinationPostgreSqlTest {
         }
     }
     private Artifact createArtifact(Database source,JsonNode request,Central central)throws Exception {
-        FlywayPostgreSqlConfiguration.disableTransactionalLock(Flyway.configure()).dataSource(source.url,source.user,source.password).target("277").load().migrate();
+        FlywayPostgreSqlConfiguration.disableTransactionalLock(Flyway.configure()).dataSource(source.url,source.user,source.password).target("278").load().migrate();
         UUID installation=UUID.randomUUID(),configuration=UUID.randomUUID(),recovery=UUID.randomUUID(),execution=UUID.randomUUID(),store=UUID.randomUUID();
         Path sourceKeys=Files.createDirectories(temporary.resolve("source-keys"));
         var protector=new WindowsMachineDpapiSecretProtector();var identity=new InstallationIdentityStore(sourceKeys,protector).loadOrCreate();
         var keys=new BackupKeyStore(sourceKeys,protector);keys.initializeV2(SECRET.toCharArray(),temporary.resolve("source-backups"));
         byte[] brk=keys.loadForScheduledBackup();
         try(var db=source.open()) {
-            execute(db,"insert into instalacion(id,referencia,public_key,creada_en,demo_hasta) values ('"+installation+"','RECOVERY-TEST','"+Base64.getEncoder().encodeToString(identity.publicKey().getEncoded())+"',now(),now()+interval '30 days')");
+            execute(db,"insert into instalacion(id,referencia,public_key,creada_en,demo_hasta) values ('"+installation+"','RECOVERY-TEST','"+Base64.getEncoder().encodeToString(identity.publicKey().getEncoded())+"',timestamptz '2026-01-01 00:00:00+00',timestamptz '2026-01-31 00:00:00+00')");
             seedFiscalCertificate(db,central.fiscal);
             execute(db,"insert into tienda(id,empresa_id,nombre,direccion,address_normalized_hash,timezone,moneda,locale,codigo_tienda) select '"+store+"',id,'Test',domicilio_fiscal,'fixture-address','Atlantic/Canary','EUR','es-ES','001' from empresa");
             execute(db,"insert into terminal(id,tienda_id,nombre,tipo,credential_hash,workstation_code) values ('"+UUID.randomUUID()+"','"+store+"','Server','SERVIDOR','original-hash','001')");

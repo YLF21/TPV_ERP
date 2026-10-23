@@ -6,6 +6,7 @@ import com.tpverp.backend.organization.CurrentOrganization;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -13,6 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -117,6 +119,62 @@ public class PromotionService {
             targets.saveAll(persistedTargets);
         }
         return promotionView(saved, persistedTargets);
+    }
+
+    @Transactional
+    public PromotionView update(UUID id, PromotionUpdateRequest update) {
+        if (update == null || update.expectedVersion() == null || update.expectedVersion() < 0
+                || update.promotion() == null) {
+            throw new IllegalArgumentException("expectedVersion and promotion are required");
+        }
+        var companyId = companyId();
+        catalog.lockCompanyForCatalogMutation(companyId);
+        // Read only the lineage id before locking, so no stale entity enters the persistence context.
+        var rootId = promotions.findRootVersionId(id, companyId)
+                .orElseThrow(() -> new IllegalArgumentException("message.promotion.not_found"));
+        var root = promotions.findByIdAndEmpresaIdForUpdate(rootId, companyId)
+                .orElseThrow(() -> new IllegalStateException("message.promotion.inconsistent_lineage"));
+        var source = root.id().equals(id) ? root : promotions.findByIdAndEmpresaIdForUpdate(id, companyId)
+                .orElseThrow(() -> new IllegalArgumentException("message.promotion.not_found"));
+        if (source.version() != update.expectedVersion()) {
+            throw new OptimisticLockingFailureException("PROMOTION_VERSION_CONFLICT");
+        }
+        var request = update.promotion();
+        if (request.type() != source.type()) {
+            throw new IllegalArgumentException("message.promotion.type_cannot_change");
+        }
+        var scope = request.scope() == null ? PromotionScope.SALE : request.scope();
+        var requestedTargets = validatedTargets(scope, request.targets());
+        var previousTargets = targets.findByPromocionId(source.id());
+        var storeId = organization.currentStore().getId();
+        // Both the existing selection and its replacement must belong to this store.
+        catalog.validateTargets(storeId, previousTargets.stream()
+                .map(target -> new PromotionCatalogGateway.TargetReference(target.type(), target.targetId()))
+                .toList());
+        catalog.validateTargets(storeId, targetReferences(requestedTargets));
+        recordCommercialHistory(source, previousTargets);
+        var updated = source.used() ? source.duplicateDraft() : source;
+        updated.rename(request.name());
+        applyRequest(updated, request);
+        if (updated.status() == PromotionStatus.ACTIVE) {
+            updated.activate();
+        }
+        if (source.used()) {
+            updated = promotions.save(updated);
+        } else {
+            targets.deleteAll(previousTargets);
+            // Flush removals before reinserting unchanged targets under the unique constraint.
+            targets.flush();
+        }
+        var updatedId = updated.id();
+        var updatedTargets = requestedTargets.stream()
+                .map(target -> new PromotionTarget(updatedId, target.type(), target.targetId()))
+                .toList();
+        if (!updatedTargets.isEmpty()) {
+            targets.saveAll(updatedTargets);
+        }
+        recordCommercialHistory(updated, updatedTargets);
+        return promotionView(updated, updatedTargets);
     }
 
     @Transactional
@@ -285,6 +343,7 @@ public class PromotionService {
     }
 
     private PromotionView promotionView(Promotion promotion, List<PromotionTarget> promotionTargets) {
+        promotions.flush();
         return PromotionView.from(promotion, promotionTargets,
                 usageCounts(List.of(promotion)).getOrDefault(promotion.id(), 0L));
     }
@@ -296,6 +355,11 @@ public class PromotionService {
 
     private UUID companyId() {
         return organization.currentCompany().getId();
+    }
+
+    public record PromotionUpdateRequest(
+            @NotNull @PositiveOrZero Long expectedVersion,
+            @NotNull @Valid PromotionRequest promotion) {
     }
 
     public record PromotionTargetRequest(
@@ -366,6 +430,7 @@ public class PromotionService {
 
     public record PromotionView(
             UUID id,
+            long version,
             String name,
             PromotionType type,
             PromotionStatus status,
@@ -398,7 +463,7 @@ public class PromotionService {
 
         static PromotionView from(Promotion promotion, List<PromotionTarget> targets, long usageCount) {
             return new PromotionView(
-                    promotion.id(), promotion.name(), promotion.type(), promotion.status(),
+                    promotion.id(), promotion.version(), promotion.name(), promotion.type(), promotion.status(),
                     promotion.startDate(), promotion.endDate(), promotion.scope(),
                     promotion.customerSegment(), promotion.memberCategoryId(),
                     promotion.minimumAmount(), promotion.minimumQuantity(), promotion.buyQuantity(),

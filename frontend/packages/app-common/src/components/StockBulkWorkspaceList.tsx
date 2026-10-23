@@ -7,6 +7,12 @@ import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import { sortTableRows, useTableSortPreference } from "./tableSorting";
+import { userCanManageStockProducts } from "./stockAccess";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
+
+export const STOCK_BULK_NEW_SHORTCUT = "F5" as const;
 
 const stockBulkWorkspaceColumns = [
   { key: "code", labelKey: "stock.bulkEdit.workspace.code", defaultWidth: 128 },
@@ -35,6 +41,7 @@ type StockBulkWorkspaceListProps = {
   drafts: StockBulkDraftView[];
   selectedId: string | null;
   busy: boolean;
+  showNewButton?: boolean;
   onSelect: (id: string) => void;
   onNew: () => void;
   onOpen: (draft: StockBulkDraftView) => void;
@@ -70,6 +77,7 @@ export function StockBulkWorkspaceList({
   drafts,
   selectedId,
   busy,
+  showNewButton = true,
   onSelect,
   onNew,
   onOpen,
@@ -78,6 +86,7 @@ export function StockBulkWorkspaceList({
   onDelete
 }: StockBulkWorkspaceListProps) {
   const t = createTranslator(locale);
+  const canCreate = userCanManageStockProducts(session);
   const tableLayout = useTableLayoutPreference({
     app,
     username,
@@ -112,19 +121,48 @@ export function StockBulkWorkspaceList({
     dateStyle: "short",
     timeStyle: "short"
   });
+  const tableRef = useRef<HTMLDivElement>(null);
+  const repeatArrow = useTableArrowRepeat((direction) => {
+    if (busy || document.activeElement !== tableRef.current) return false;
+    const nextId = nextStockBulkDraftId(sortedDrafts, selectedId, direction === "ArrowDown" ? 1 : -1);
+    if (!nextId || nextId === selectedId) return false;
+    onSelect(nextId);
+  }, !busy);
+  useTableInitialFocus(tableRef, "tbody tr[data-draft-id]", {
+    enabled: app !== "pda",
+    ready: !busy,
+    scopeKey: "workspaces",
+    onSelect: (row) => { if (row.dataset.draftId) onSelect(row.dataset.draftId); },
+    focusTarget: "container",
+  });
 
   useEffect(() => {
-    if (selectedId) rowRefs.current.get(selectedId)?.scrollIntoView({ block: "nearest" });
+    const row = selectedId ? rowRefs.current.get(selectedId) : null;
+    if (tableRef.current && row) ensureTableRowVisible(tableRef.current, row);
   }, [selectedId]);
+
+  useEffect(() => {
+    if (app === "pda" || busy || !canCreate) return;
+    const handleNewShortcut = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || event.key !== STOCK_BULK_NEW_SHORTCUT || event.repeat
+          || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey
+          || document.querySelector('[aria-modal="true"], [role="menu"]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onNew();
+    };
+    window.addEventListener("keydown", handleNewShortcut);
+    return () => window.removeEventListener("keydown", handleNewShortcut);
+  }, [app, busy, canCreate, onNew]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.target !== event.currentTarget) {
       return;
     }
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+    if ((event.key === "ArrowUp" || event.key === "ArrowDown")
+      && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
       event.preventDefault();
-      const nextId = nextStockBulkDraftId(sortedDrafts, selectedId, event.key === "ArrowDown" ? 1 : -1);
-      if (nextId) onSelect(nextId);
+      repeatArrow(event);
       return;
     }
     if (event.key === "Enter" && selectedDraft) {
@@ -175,22 +213,19 @@ export function StockBulkWorkspaceList({
     }
   }
 
-  return (
-    <section className="stock-bulk-workspace-list" aria-label={t("stock.bulkEdit.workspace.title") }>
-      <header className="stock-bulk-workspace-toolbar">
-        <button type="button" className="primary" disabled={busy} onClick={onNew}>
+  const newButton = showNewButton && <button type="button" className="primary" disabled={busy} onClick={onNew}>
           {t("stock.bulkEdit.workspace.new")}
-        </button>
-        <button type="button" disabled={busy || !selectedDraft} onClick={() => selectedDraft && onOpen(selectedDraft)}>
+        </button>;
+  const openButton = <button type="button" disabled={busy || !selectedDraft} onClick={() => selectedDraft && onOpen(selectedDraft)}>
           {t("stock.bulkEdit.workspace.open")}
-        </button>
-        <button type="button" disabled={busy || !selectedDraft} onClick={() => selectedDraft && onComments(selectedDraft)}>
+        </button>;
+  const commentsButton = <button type="button" disabled={busy || !selectedDraft} onClick={() => selectedDraft && onComments(selectedDraft)}>
           {t("stock.bulkEdit.comments")}
-        </button>
-        <button type="button" disabled={busy || !selectedDraft} onClick={() => selectedDraft && onRename(selectedDraft)}>
+        </button>;
+  const renameButton = <button type="button" disabled={busy || !selectedDraft} onClick={() => selectedDraft && onRename(selectedDraft)}>
           {t("stock.bulkEdit.workspace.rename")}
-        </button>
-        <button
+        </button>;
+  const deleteButton = <button
           type="button"
           className="danger"
           disabled={busy || !selectedDraft || !canDelete}
@@ -198,12 +233,20 @@ export function StockBulkWorkspaceList({
           onClick={() => selectedDraft && onDelete(selectedDraft)}
         >
           {t("stock.bulkEdit.delete")}
-        </button>
+        </button>;
+
+  return (
+    <section className="stock-bulk-workspace-list" aria-label={t("stock.bulkEdit.workspace.title") }>
+      <header className={`stock-bulk-workspace-toolbar${app === "gestion" ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
+        {app === "gestion" ? <>
+          <div className="gestion-toolbar-start">{newButton}{commentsButton}{renameButton}</div>
+          <div className="gestion-toolbar-end">{openButton}{deleteButton}</div>
+        </> : <>{newButton}{openButton}{commentsButton}{renameButton}{deleteButton}</>}
       </header>
 
       <div
+        ref={tableRef}
         className="stock-bulk-workspace-table-wrap"
-        autoFocus
         tabIndex={0}
         onKeyDown={handleKeyDown}
         aria-label={t("stock.bulkEdit.workspace.table")}
@@ -241,6 +284,7 @@ export function StockBulkWorkspaceList({
               return (
                 <tr
                   key={draft.id}
+                  data-draft-id={draft.id}
                   ref={(element) => {
                     if (element) rowRefs.current.set(draft.id, element);
                     else rowRefs.current.delete(draft.id);

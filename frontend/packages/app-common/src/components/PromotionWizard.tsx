@@ -1,7 +1,7 @@
 import { sortProductsByCode } from "./productSearchOrdering";
-import { type ComponentProps, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentProps, FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { CaretDown, Info } from "@phosphor-icons/react";
-import { apiRequest } from "../api/client";
+import { ApiError, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode, UserSession } from "../types";
 import { ErpSelect } from "./ErpSelect";
@@ -12,6 +12,7 @@ import {
   buildPromotionRequest,
   buyXPayYModes,
   createDefaultPromotionDraft,
+  promotionDraftFromView,
   promotionCustomerSegments,
   promotionScopes,
   promotionTypes,
@@ -29,6 +30,7 @@ import {
 export {
   buildPromotionRequest,
   createDefaultPromotionDraft,
+  promotionDraftFromView,
   validatePromotionDraft
 };
 export type {
@@ -143,17 +145,41 @@ export async function submitPromotionDraft(
   });
 }
 
+export async function submitPromotionUpdateDraft(
+  draft: PromotionDraft,
+  promotion: Pick<PromotionView, "id" | "type" | "version">,
+  token: string | undefined,
+  request: PromotionApiRequest = apiRequest
+) {
+  if (promotion.version === undefined || !Number.isInteger(promotion.version) || promotion.version < 0) {
+    throw new Error("promotion version is required to update");
+  }
+  if (draft.type !== promotion.type) {
+    throw new Error("promotion type cannot be changed");
+  }
+  assertValidPromotionDraft(draft);
+  return request<PromotionView>(`/promotions/${encodeURIComponent(promotion.id)}`, {
+    token,
+    method: "PUT",
+    body: { expectedVersion: promotion.version, promotion: buildPromotionRequest(draft) }
+  });
+}
+
 type PromotionWizardProps = {
   locale: LocaleCode;
   session: UserSession;
   initialDraft?: PromotionDraft;
+  editPromotion?: PromotionView;
+  initialSection?: "basic" | "scope";
   onClose?: () => void;
   onCreated?: (promotion: PromotionView) => void;
 };
 
-export function PromotionWizard({ locale, session, initialDraft, onClose, onCreated }: PromotionWizardProps) {
+export function PromotionWizard({ locale, session, initialDraft, editPromotion, initialSection, onClose, onCreated }: PromotionWizardProps) {
   const t = useMemo(() => createTranslator(locale), [locale]);
-  const [draft, setDraft] = useState<PromotionDraft>(() => initialDraft ?? createDefaultPromotionDraft());
+  const [draft, setDraft] = useState<PromotionDraft>(() =>
+    editPromotion ? promotionDraftFromView(editPromotion) : initialDraft ?? createDefaultPromotionDraft()
+  );
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
   const [validationErrors, setValidationErrors] = useState<PromotionValidationError[]>([]);
@@ -167,16 +193,30 @@ export function PromotionWizard({ locale, session, initialDraft, onClose, onCrea
   const [targetSearch, setTargetSearch] = useState("");
   const [subfamilyFamilyId, setSubfamilyFamilyId] = useState("");
   const [couponValidFromMode, setCouponValidFromMode] = useState<CouponValidityMode>(() =>
-    initialCouponMode(initialDraft?.couponValidFromDate, initialDraft?.couponValidFromDays)
+    initialCouponMode(draft.couponValidFromDate, draft.couponValidFromDays)
   );
   const [couponValidUntilMode, setCouponValidUntilMode] = useState<CouponValidityMode>(() =>
-    initialCouponMode(initialDraft?.couponValidUntilDate, initialDraft?.couponValidDays)
+    initialCouponMode(draft.couponValidUntilDate, draft.couponValidDays)
   );
+  const basicSectionRef = useRef<HTMLElement>(null);
+  const scopeSectionRef = useRef<HTMLElement>(null);
+  const productsSectionRef = useRef<HTMLElement>(null);
   const productsLoaded = useRef(false);
+  const savingRef = useRef(false);
   const familiesLoaded = useRef(false);
   const memberCategoriesLoaded = useRef(false);
   const subfamiliesLoaded = useRef(new Set<string>());
   const token = session.accessToken;
+
+  useEffect(() => {
+    if (initialSection === "scope") {
+      const initialScope = editPromotion?.scope ?? initialDraft?.scope ?? "SALE";
+      const target = initialScope === "PRODUCT_LIST" ? productsSectionRef : scopeSectionRef;
+      target.current?.scrollIntoView?.({ block: "start" });
+    } else if (initialSection === "basic") {
+      basicSectionRef.current?.scrollIntoView?.({ block: "start" });
+    }
+  }, [initialSection, editPromotion?.scope, initialDraft?.scope]);
 
   useEffect(() => {
     productsLoaded.current = false;
@@ -435,24 +475,34 @@ export function PromotionWizard({ locale, session, initialDraft, onClose, onCrea
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (savingRef.current) return;
     const errors = validatePromotionDraft(draft);
     if (errors.length > 0) {
       setValidationErrors(errors);
       setStatus(t("promotion.status.required"));
       return;
     }
+    savingRef.current = true;
     try {
       setSaving(true);
-      const created = await submitPromotionDraft(draft, token);
-      setStatus(t("promotion.status.created"));
-      onCreated?.(created);
-      setDraft(createDefaultPromotionDraft());
-      setCouponValidFromMode("NONE");
-      setCouponValidUntilMode("NONE");
-      setValidationErrors([]);
-    } catch {
-      setStatus(t("promotion.status.createError"));
+      const saved = editPromotion
+        ? await submitPromotionUpdateDraft(draft, editPromotion, token)
+        : await submitPromotionDraft(draft, token);
+      setStatus(t(editPromotion ? "promotion.status.updated" : "promotion.status.created"));
+      onCreated?.(saved);
+      if (!editPromotion) {
+        setDraft(createDefaultPromotionDraft());
+        setCouponValidFromMode("NONE");
+        setCouponValidUntilMode("NONE");
+        setValidationErrors([]);
+      }
+    } catch (error) {
+      setStatus(t(editPromotion
+        ? error instanceof ApiError && error.status === 409
+          ? "promotion.status.conflict" : "promotion.status.updateError"
+        : "promotion.status.createError"));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
@@ -462,11 +512,14 @@ export function PromotionWizard({ locale, session, initialDraft, onClose, onCrea
       <header className="promotion-create-heading">
         <div className="promotion-create-heading__copy">
           <span className="promotion-create-heading__eyebrow">{t("promotion.list.title")}</span>
-          <h2 id="promotion-create-title">{t("promotion.create.title")}</h2>
-          <p>{t("promotion.create.subtitle")}</p>
+          <h2 id="promotion-create-title">{t(editPromotion ? "promotion.edit.title" : "promotion.create.title")}</h2>
+          <p>{t(editPromotion ? "promotion.edit.subtitle" : "promotion.create.subtitle")}</p>
+          {editPromotion && (editPromotion.used || (editPromotion.usageCount ?? 0) > 0) && (
+            <p role="note">{t("promotion.edit.usedNotice")}</p>
+          )}
         </div>
         <div className="promotion-create-heading__actions">
-          <button type="button" className="promotion-create-cancel erp-dialog-action-cancel" onClick={onClose}>{t("common.cancel")}</button>
+          <button type="button" className="promotion-create-cancel erp-dialog-action-cancel" disabled={saving} onClick={onClose}>{t("common.cancel")}</button>
           <button type="submit" className="promotion-create-save erp-dialog-action-confirm" disabled={saving}>
             {t(saving ? "promotion.action.saving" : "promotion.action.save")}
           </button>
@@ -475,7 +528,7 @@ export function PromotionWizard({ locale, session, initialDraft, onClose, onCrea
 
       <div className="promotion-create-layout">
         <div className="promotion-create-sections">
-          <section className="promotion-create-card">
+          <section className="promotion-create-card" ref={basicSectionRef}>
             <h3>1. {t("promotion.create.basic")}</h3>
             <div className="promotion-create-fields">
               <label>
@@ -486,6 +539,7 @@ export function PromotionWizard({ locale, session, initialDraft, onClose, onCrea
               <label>
                 <span>{t("promotion.field.type")}<b className="promotion-required"> *</b></span>
                 <PromotionFieldSelect aria-label={t("promotion.field.type")} value={draft.type}
+                  disabled={Boolean(editPromotion)}
                   options={promotionTypes.map((type) => ({ value: type, label: t("promotion.type." + type) }))}
                   onChange={(value) => updateDraft("type", value as PromotionType)} />
               </label>
@@ -508,7 +562,7 @@ export function PromotionWizard({ locale, session, initialDraft, onClose, onCrea
             </div>
           </section>
 
-          <section className="promotion-create-card">
+          <section className="promotion-create-card" ref={scopeSectionRef}>
             <h3>3. {t("promotion.create.application")}</h3>
             <div className="promotion-create-fields">
               <label>
@@ -658,7 +712,7 @@ export function PromotionWizard({ locale, session, initialDraft, onClose, onCrea
             </div>
           </section>
 
-          <section className="promotion-create-card">
+          <section className="promotion-create-card" ref={productsSectionRef}>
             <h3>6. {t("promotion.create.products")}</h3>
             <div className="promotion-create-products">
               <p>{draft.scope === "SALE" ? t("promotion.create.saleScope") : t("promotion.create.selectTargets")}</p>
@@ -703,7 +757,13 @@ export function PromotionWizard({ locale, session, initialDraft, onClose, onCrea
       {validationErrors.length > 0 && <span hidden>{validationErrors.join(",")}</span>}
 
       {targetPickerOpen && draft.scope !== "SALE" && (
-        <div className="filter-overlay stock-family-overlay" role="dialog" aria-modal="true" aria-labelledby="promotion-target-title">
+        <div className="filter-overlay stock-family-overlay" role="dialog" aria-modal="true" aria-labelledby="promotion-target-title"
+          onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            setTargetPickerOpen(false);
+          }}>
           <section
             className="filter-dialog stock-family-dialog"
             style={{ maxHeight: "calc(100vh - 90px)", gridTemplateRows: "auto auto minmax(0, 1fr) auto" }}

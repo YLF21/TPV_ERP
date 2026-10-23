@@ -110,7 +110,7 @@ describe("StockCountScreen", () => {
     await waitFor(() => expect(api.cancelStockCount).toHaveBeenCalledWith("inventory-1", "token"));
   });
 
-  it("routes F5/F6/F7 through available inventory commands and blocks them in dialogs", async () => {
+  it("routes F5/F6/F7 from the initially selected inventory and blocks them in dialogs", async () => {
     vi.stubGlobal("URL", class extends URL {
       static createObjectURL = vi.fn(() => "blob:inventory");
       static revokeObjectURL = vi.fn();
@@ -121,15 +121,17 @@ describe("StockCountScreen", () => {
     const create = await screen.findByRole("button", { name: "Crear inventario" });
     await waitFor(() => expect(create).toBeEnabled());
     expect(create).toHaveAttribute("aria-keyshortcuts", "F5");
-    fireEvent.keyDown(window, { key: "F6" });
-    fireEvent.keyDown(window, { key: "F7" });
+    const first = screen.getByRole("row", { name: /INV-2026-000001/ });
+    expect(first).toHaveAttribute("aria-selected", "true");
+    expect(first).toHaveFocus();
     expect(api.exportStockCount).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("row", { name: /INV-2026-000001/ }));
+    expect(api.loadStockCount).not.toHaveBeenCalled();
     fireEvent.keyDown(window, { key: "F6" });
     await waitFor(() => expect(api.exportStockCount).toHaveBeenCalledWith("inventory-1", "xlsx", "token"));
     await waitFor(() => expect(download).toHaveBeenCalledTimes(1));
     fireEvent.keyDown(window, { key: "F7" });
     await waitFor(() => expect(api.exportStockCount).toHaveBeenCalledWith("inventory-1", "pdf", "token"));
+    await waitFor(() => expect(download).toHaveBeenCalledTimes(2));
     fireEvent.keyDown(window, { key: "F5" });
     const editor = await screen.findByRole("dialog", { name: "Documento de inventario" });
     fireEvent.keyDown(window, { key: "F6" });
@@ -143,6 +145,18 @@ describe("StockCountScreen", () => {
     expect(api.cancelStockCount).not.toHaveBeenCalled();
     download.mockRestore();
     vi.unstubAllGlobals();
+  });
+
+  it("keeps inventory actions disabled when the list is empty", async () => {
+    vi.mocked(api.loadStockCounts).mockResolvedValue([]);
+    render(<StockCountScreen session={session(["GESTION_ALMACEN"])} t={t} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Crear inventario" })).toBeEnabled());
+    expect(screen.getByRole("button", { name: /warehouse\.count\.exportExcel/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /warehouse\.count\.exportPdf/ })).toBeDisabled();
+    fireEvent.keyDown(window, { key: "F6" });
+    fireEvent.keyDown(window, { key: "F7" });
+    expect(api.exportStockCount).not.toHaveBeenCalled();
+    expect(api.loadStockCount).not.toHaveBeenCalled();
   });
 
   it("filters inventory by the store-day presets and a custom range without preselecting a date", async () => {
@@ -159,10 +173,9 @@ describe("StockCountScreen", () => {
     expect(screen.getByRole("row", { name: /INV-2026-000001/ })).toBeInTheDocument();
     fireEvent.click(within(dock).getByRole("button", { name: "Ayer" }));
     expect(screen.getByRole("row", { name: /INV-2026-000002/ })).toBeInTheDocument();
-    fireEvent.click(within(dock).getByRole("button", { name: "Periodo personalizado" }));
     fireEvent.change(within(dock).getByLabelText("Desde"), { target: { value: "2026-08-01" } });
     fireEvent.change(within(dock).getByLabelText("Hasta"), { target: { value: "2026-08-31" } });
-    fireEvent.click(within(dock).getByRole("button", { name: "Aplicar periodo" }));
+    fireEvent.click(within(dock).getByRole("button", { name: "Aplicar" }));
     expect(screen.getByRole("row", { name: /INV-2026-000003/ })).toBeInTheDocument();
     expect(screen.queryByRole("row", { name: /INV-2026-000001/ })).not.toBeInTheDocument();
   });

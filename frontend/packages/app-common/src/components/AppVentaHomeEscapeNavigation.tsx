@@ -19,6 +19,7 @@ export function hasOpenAppVentaFunctionalLayer(root: ParentNode = document) {
 
 export function AppVentaHomeEscapeNavigation({ children, locale, onConfirmHome, navigationBlocked = false }: Props) {
   const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [blockedNoticeOpen, setBlockedNoticeOpen] = useState(false);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
@@ -38,7 +39,11 @@ export function AppVentaHomeEscapeNavigation({ children, locale, onConfirmHome, 
 
   useEffect(() => {
     const requestConfirmation = (focusTarget: HTMLElement | null) => {
-      if (confirmationOpen || navigationBlocked || hasOpenAppVentaFunctionalLayer()) return;
+      if (confirmationOpen || hasOpenAppVentaFunctionalLayer()) return;
+      if (navigationBlocked) {
+        setBlockedNoticeOpen(true);
+        return;
+      }
       previouslyFocusedRef.current = focusTarget;
       setConfirmationOpen(true);
     };
@@ -79,6 +84,7 @@ export function AppVentaHomeEscapeNavigation({ children, locale, onConfirmHome, 
 
   useEffect(() => {
     if (navigationBlocked) setConfirmationOpen(false);
+    else setBlockedNoticeOpen(false);
   }, [navigationBlocked]);
 
   useEffect(() => {
@@ -94,6 +100,14 @@ export function AppVentaHomeEscapeNavigation({ children, locale, onConfirmHome, 
   return (
     <>
       {children}
+      {blockedNoticeOpen && navigationBlocked && (
+        <aside className="app-notice-toast" role="alert" aria-live="assertive">
+          <span>{t("appVenta.escapeHome.blocked")}</span>
+          <button type="button" onClick={() => setBlockedNoticeOpen(false)}>
+            {t("common.close")}
+          </button>
+        </aside>
+      )}
       {confirmationOpen && !navigationBlocked && (
         <div className="app-venta-home-confirm-overlay" role="presentation">
           <section

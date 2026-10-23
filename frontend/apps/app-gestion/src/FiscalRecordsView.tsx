@@ -33,6 +33,8 @@ import { FiscalWorkspaceDialog } from "./FiscalWorkspaceDialog";
 import { FiscalExportJobsList, useFiscalExportJobs } from "./fiscalExportJobs";
 import { fiscalErrorMessage } from "./verifactuErrorPresentation";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { ReportDateRangeSummary } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
+import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
 
 const emptyFilters: FiscalRecordCursorFilters = {
   dateFrom: "",
@@ -108,6 +110,8 @@ export function FiscalRecordsView({
   const exportJobs = useFiscalExportJobs(token, canManage);
   const request = useRef(0);
   const detailRequest = useRef(0);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const handleRowArrowFocus = useTableRowArrowFocus(tableRef, "tbody tr[data-fiscal-record-row]", !loading);
 
   const tableLayout = useTableLayoutPreference({
     app: "gestion",
@@ -315,14 +319,14 @@ export function FiscalRecordsView({
 
   return (
     <div className="gestion-verifactu-records">
-      <section className="gestion-verifactu-table-panel" aria-label={t("verifactu.records.title")} aria-busy={loading}>
+      <section className="gestion-verifactu-table-panel gestion-module-panel" aria-label={t("verifactu.records.title")} aria-busy={loading}>
         <header>
           <div><h3>{t("verifactu.records.title")}</h3><span>{refreshing ? t("verifactu.records.refreshing") : `${page.items.length} ${t("verifactu.records.visibleCount")}`}</span></div>
-          <div className="fiscal-records-toolbar">
+          <div className="fiscal-records-toolbar gestion-filter-toolbar gestion-toolbar-layout gestion-native-filter-toolbar gestion-toolbar-actions">
             {initialLoading && <span role="status" aria-live="polite" aria-label={t("verifactu.records.loading")}>{t("verifactu.records.loading")}</span>}
             {refreshing && <span role="status" aria-live="polite" aria-label={t("verifactu.records.refreshing")}>{t("verifactu.records.refreshing")}</span>}
             <button type="button" aria-haspopup="dialog" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}>{t("verifactu.ui.filters")}{activeFilterCount ? ` (${activeFilterCount})` : ""}</button>
-            {canManage && <button type="button" className="primary" aria-haspopup="dialog" aria-expanded={exportOpen} onClick={() => { setExportMessage(null); setExportOpen(true); void exportJobs.refresh(); }}>{t("verifactu.ui.export")}</button>}
+            {canManage && <button type="button" className="primary gestion-toolbar-tail-action" aria-haspopup="dialog" aria-expanded={exportOpen} onClick={() => { setExportMessage(null); setExportOpen(true); void exportJobs.refresh(); }}>{t("verifactu.ui.export")}</button>}
           </div>
         </header>
         <ErpFilterChips locale={locale} translate={t} onClear={clear} chips={[
@@ -334,8 +338,8 @@ export function FiscalRecordsView({
           { key: "fiscalMode", label: t("verifactu.records.fiscalMode"), value: filters.fiscalMode ? modeLabel(filters.fiscalMode, t) : "", onRemove: () => removeFilter("fiscalMode") }
         ]} />
         {selectionLimitReached && <div className="gestion-verifactu-message" role="alert">{t("verifactu.records.selectionLimit")}</div>}
-        {initialLoading ? <div className="gestion-verifactu-message" role="status" aria-label={t("verifactu.records.loading")}>{t("verifactu.records.loading")}</div> : error ? <div className="gestion-verifactu-message error" role="alert"><span>{t("verifactu.records.loadError")}</span><button type="button" onClick={retry}>{t("verifactu.records.retry")}</button></div> : page.items.length === 0 ? <div className="gestion-verifactu-message">{t(activeFilterCount ? "verifactu.records.emptyFiltered" : "verifactu.records.empty")}</div> : (
-          <div className="gestion-verifactu-table-scroll"><table className="gestion-verifactu-table"><colgroup>
+        {initialLoading ? <div className="gestion-verifactu-message" role="status" aria-label={t("verifactu.records.loading")}>{t("verifactu.records.loading")}</div> : error ? <div className="gestion-verifactu-message error" role="alert"><span>{t("verifactu.records.loadError")}</span><button type="button" className="gestion-module-action" onClick={retry}>{t("verifactu.records.retry")}</button></div> : page.items.length === 0 ? <div className="gestion-verifactu-message">{t(activeFilterCount ? "verifactu.records.emptyFiltered" : "verifactu.records.empty")}</div> : (
+          <div ref={tableRef} className="gestion-verifactu-table-scroll gestion-module-table"><table className="gestion-verifactu-table"><colgroup>
             {canManage && <col style={{ width: 58 }} />}
             {visibleColumns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
             <col style={{ width: 110 }} />
@@ -343,30 +347,31 @@ export function FiscalRecordsView({
             {canManage && <th><span className="sr-only">{t("verifactu.records.selectRecord")}</span><input type="checkbox" aria-label={t("verifactu.records.selectAll")} checked={page.items.length > 0 && page.items.every((item) => selectedRecords.has(item.recordId))} onChange={(event) => selectVisibleRecords(event.target.checked)} /></th>}
             {visibleColumns.map((column) => <TableLayoutHeaderCell key={column.key} column={column} resizeLabel={`${t("verifactu.ui.resizeColumn")} ${columnLabel(column.key, t)}`} onReorder={tableLayout.reorderColumns} onMove={tableLayout.moveColumn} onResize={tableLayout.resizeColumn}>{columnLabel(column.key, t)}</TableLayoutHeaderCell>)}
             <th>{t("verifactu.records.detail")}</th>
-          </tr></thead><tbody>{page.items.map((item) => <tr key={item.recordId} aria-selected={selectedId === item.recordId}>
+          </tr></thead><tbody>{page.items.map((item) => <tr key={item.recordId} data-fiscal-record-row tabIndex={0} onKeyDown={handleRowArrowFocus} aria-selected={selectedId === item.recordId}>
             {canManage && <td><input type="checkbox" aria-label={`${t("verifactu.records.selectRecord")} ${item.number}`} checked={selectedRecords.has(item.recordId)} disabled={!selectedRecords.has(item.recordId) && selectedRecords.size >= 1000} onChange={() => toggleRecord(item.recordId)} /></td>}
             {visibleColumns.map((column) => <td key={column.key} className={column.key === "amount" ? "numeric" : undefined}>{renderRecordCell(column.key, item, locale, t)}</td>)}
-            <td><button type="button" className="gestion-verifactu-link-button" aria-haspopup="dialog" aria-expanded={selectedId === item.recordId} onClick={() => select(item)}>{selectedId === item.recordId ? t("verifactu.records.closeDetail") : t("verifactu.records.viewDetail")}</button></td>
+            <td><button type="button" className="gestion-verifactu-link-button gestion-module-action" aria-haspopup="dialog" aria-expanded={selectedId === item.recordId} onClick={() => select(item)}>{selectedId === item.recordId ? t("verifactu.records.closeDetail") : t("verifactu.records.viewDetail")}</button></td>
           </tr>)}</tbody></table></div>
         )}
         <footer className="gestion-verifactu-pagination"><button type="button" disabled={loading || !page.hasPrevious} onClick={previousPage}>{t("verifactu.records.previous")}</button><span>{page.items.length} {t("verifactu.records.visibleCount")}</span><button type="button" disabled={loading || !page.hasNext} onClick={nextPage}>{t("verifactu.records.next")}</button></footer>
       </section>
 
       {filtersOpen && <FiscalWorkspaceDialog id="fiscal-record-filters" purpose="filters" className="gestion-rules-dialog" title={t("verifactu.ui.filters")} closeLabel={t("verifactu.ui.close")} onClose={() => setFiltersOpen(false)} footer={<><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={() => setFiltersOpen(false)}>{t("verifactu.ui.close")}</DialogDismissButton><button type="button" onClick={clear}>{t("verifactu.records.clearFilters")}</button><button type="submit" form="fiscal-record-filter-form" className="primary erp-dialog-action-confirm">{t("verifactu.records.applyFilters")}</button></>}>
-        <form id="fiscal-record-filter-form" className="gestion-verifactu-filters" onSubmit={apply}>
+        <form id="fiscal-record-filter-form" className="gestion-verifactu-filters gestion-filter-toolbar gestion-module-fields" onSubmit={apply}>
           <label><span>{t("verifactu.records.dateFrom")}</span><input type="date" value={draft.dateFrom} onChange={(event) => setDraft({ ...draft, dateFrom: event.target.value })} /></label>
           <label><span>{t("verifactu.records.dateTo")}</span><input type="date" value={draft.dateTo} onChange={(event) => setDraft({ ...draft, dateTo: event.target.value })} /></label>
+          <ReportDateRangeSummary locale={locale} value={{ from: filters.dateFrom, to: filters.dateTo, label: "" }} />
           <label htmlFor="fiscal-record-number"><span>{t("verifactu.records.number")}</span><input id="fiscal-record-number" aria-describedby="fiscal-record-number-hint" maxLength={64} value={draft.number} onChange={(event) => setDraft({ ...draft, number: event.target.value })} /><small id="fiscal-record-number-hint">{draft.numberMatch === "PREFIX" ? t("verifactu.records.numberPrefixHint") : ""}</small></label>
-          <label><span>{t("verifactu.records.numberMatch")}</span><ErpSelect value={draft.numberMatch ?? "PREFIX"} options={numberMatchOptions} aria-label={`${t("verifactu.records.numberMatch")}: ${selectedLabel(numberMatchOptions, draft.numberMatch ?? "PREFIX")}`} onChange={(value) => setDraft({ ...draft, numberMatch: value as "EXACT" | "PREFIX" })} /></label>
-          <label><span>{t("verifactu.records.operation")}</span><ErpSelect value={draft.operation} options={operationOptions} aria-label={`${t("verifactu.records.operation")}: ${selectedLabel(operationOptions, draft.operation)}`} onChange={(value) => setDraft({ ...draft, operation: value })} /></label>
-          <label><span>{t("verifactu.records.documentType")}</span><ErpSelect value={draft.documentType} options={documentTypeOptions} aria-label={`${t("verifactu.records.documentType")}: ${selectedLabel(documentTypeOptions, draft.documentType)}`} onChange={(value) => setDraft({ ...draft, documentType: value })} /></label>
-          <label><span>{t("verifactu.records.fiscalMode")}</span><ErpSelect value={draft.fiscalMode} options={modeOptions} aria-label={`${t("verifactu.records.fiscalMode")}: ${selectedLabel(modeOptions, draft.fiscalMode)}`} onChange={(value) => setDraft({ ...draft, fiscalMode: value })} /></label>
+          <label data-filter-active={Boolean(draft.number) && draft.numberMatch === "EXACT"}><span>{t("verifactu.records.numberMatch")}</span><ErpSelect value={draft.numberMatch ?? "PREFIX"} options={numberMatchOptions} aria-label={`${t("verifactu.records.numberMatch")}: ${selectedLabel(numberMatchOptions, draft.numberMatch ?? "PREFIX")}`} onChange={(value) => setDraft({ ...draft, numberMatch: value as "EXACT" | "PREFIX" })} /></label>
+          <label data-filter-active={Boolean(draft.operation)}><span>{t("verifactu.records.operation")}</span><ErpSelect value={draft.operation} options={operationOptions} aria-label={`${t("verifactu.records.operation")}: ${selectedLabel(operationOptions, draft.operation)}`} onChange={(value) => setDraft({ ...draft, operation: value })} /></label>
+          <label data-filter-active={Boolean(draft.documentType)}><span>{t("verifactu.records.documentType")}</span><ErpSelect value={draft.documentType} options={documentTypeOptions} aria-label={`${t("verifactu.records.documentType")}: ${selectedLabel(documentTypeOptions, draft.documentType)}`} onChange={(value) => setDraft({ ...draft, documentType: value })} /></label>
+          <label data-filter-active={Boolean(draft.fiscalMode)}><span>{t("verifactu.records.fiscalMode")}</span><ErpSelect value={draft.fiscalMode} options={modeOptions} aria-label={`${t("verifactu.records.fiscalMode")}: ${selectedLabel(modeOptions, draft.fiscalMode)}`} onChange={(value) => setDraft({ ...draft, fiscalMode: value })} /></label>
           {filterError && <p role="alert">{t("verifactu.records.invalidDateRange")}</p>}
         </form>
       </FiscalWorkspaceDialog>}
 
       {exportOpen && canManage && <FiscalWorkspaceDialog id="fiscal-record-export" purpose="export" className="gestion-rules-dialog" title={t("verifactu.records.exportTitle")} closeLabel={t("verifactu.ui.close")} closeDisabled={exportJobs.creating} onClose={() => setExportOpen(false)} footer={<><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={exportJobs.creating} onClick={() => setExportOpen(false)}>{t("verifactu.ui.close")}</DialogDismissButton><button type="submit" form="fiscal-record-export-form" className="primary erp-dialog-action-confirm" disabled={exportJobs.creating}>{exportJobs.creating ? t("verifactu.records.exporting") : t("verifactu.records.export")}</button></>}>
-        <form id="fiscal-record-export-form" className="gestion-verifactu-export-options" onSubmit={(event) => { event.preventDefault(); void exportRecords(); }}>
+        <form id="fiscal-record-export-form" className="gestion-verifactu-export-options gestion-module-fields" onSubmit={(event) => { event.preventDefault(); void exportRecords(); }}>
           <label><span>{t("verifactu.records.exportScope")}</span><ErpSelect value={exportScope} aria-label={`${t("verifactu.records.exportScope")}: ${exportScopeLabel(exportScope, t)}`} options={[{ value: "PERIOD", label: t("verifactu.records.exportPeriod") }, { value: "CURRENT", label: t("verifactu.records.exportCurrent") }, { value: "SELECTED", label: t("verifactu.records.exportSelected") }, { value: "FILTERED", label: t("verifactu.records.exportFiltered") }]} onChange={(value) => setExportScope(value as typeof exportScope)} /></label>
           {exportScope === "PERIOD" && <><label><span>{t("verifactu.records.exportStart")}</span><input type="datetime-local" value={exportStart} onChange={(event) => setExportStart(event.target.value)} /></label><label><span>{t("verifactu.records.exportEnd")}</span><input type="datetime-local" value={exportEnd} onChange={(event) => setExportEnd(event.target.value)} /></label></>}
           <p>{exportScope === "PERIOD" ? t("verifactu.exportJobs.periodRegulatory") : t("verifactu.exportJobs.partialHint")}</p>
@@ -401,8 +406,8 @@ function FiscalRecordDetailPanel({ detail, locale, timezone, loading, error, t, 
   return <FiscalWorkspaceDialog id="fiscal-record-detail" variant="drawer" className="gestion-verifactu-record-detail" title={detail?.number ?? t("verifactu.records.detailTitle")} closeLabel={t("verifactu.records.closeDetail")} onClose={onClose}>
     <div className="fiscal-record-detail-navigation">
       <span className="gestion-eyebrow">{t("verifactu.records.detailEyebrow")}</span>
-      <button type="button" disabled={loading || !detail?.previousRecordId} onClick={() => detail?.previousRecordId && onNavigate(detail.previousRecordId)}>{t("verifactu.records.previousRecord")}</button>
-      <button type="button" disabled={loading || !detail?.nextRecordId} onClick={() => detail?.nextRecordId && onNavigate(detail.nextRecordId)}>{t("verifactu.records.nextRecord")}</button>
+      <button type="button" className="gestion-module-action" disabled={loading || !detail?.previousRecordId} onClick={() => detail?.previousRecordId && onNavigate(detail.previousRecordId)}>{t("verifactu.records.previousRecord")}</button>
+      <button type="button" className="gestion-module-action" disabled={loading || !detail?.nextRecordId} onClick={() => detail?.nextRecordId && onNavigate(detail.nextRecordId)}>{t("verifactu.records.nextRecord")}</button>
     </div>
     {loading && <div className="gestion-verifactu-message" role="status">{t("verifactu.records.detailLoading")}</div>}
     {!loading && error && <div className="gestion-verifactu-message error" role="alert">{t("verifactu.records.detailError")}</div>}
@@ -420,7 +425,7 @@ function FiscalRecordDetailPanel({ detail, locale, timezone, loading, error, t, 
   </FiscalWorkspaceDialog>;
 }
 
-function DetailBlock({ title, children }: { title: string; children: ReactNode }) { return <section className="gestion-verifactu-panel"><header><h3>{title}</h3></header><dl className="gestion-verifactu-details">{children}</dl></section>; }
+function DetailBlock({ title, children }: { title: string; children: ReactNode }) { return <section className="gestion-verifactu-panel gestion-module-panel"><header><h3>{title}</h3></header><dl className="gestion-verifactu-details">{children}</dl></section>; }
 function Detail({ label, value }: { label: string; value: ReactNode }) { return <div><dt>{label}</dt><dd>{value}</dd></div>; }
 function countActiveFilters(filters: FiscalRecordCursorFilters) {
   return [filters.dateFrom, filters.dateTo, filters.number, filters.operation, filters.documentType, filters.fiscalMode].filter(Boolean).length;

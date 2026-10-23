@@ -33,10 +33,18 @@ describe("hardware facade", () => {
       cashDrawerHost: "",
       cashDrawerPort: 9100,
       customerDisplayEnabled: false,
-      customerDisplayMode: "COMPACT",
+      customerDisplayMode: "DIGITAL_SCREEN",
       customerDisplayIdleLine1: "BIENVENIDO",
       customerDisplayIdleLine2: "GRACIAS POR SU COMPRA",
       customerDisplayScreenId: "",
+      customerDisplayConnection: "SERIAL",
+      customerDisplayProtocol: "ESC_POS_DISPLAY",
+      customerDisplayEncoding: "CP858",
+      customerDisplayColumns: 20,
+      customerDisplayDevicePath: "",
+      customerDisplaySerialBaudRate: 9600,
+      customerDisplayHost: "",
+      customerDisplayPort: 9100,
       a4PrinterName: "",
       documentPrintRoutes: [
         {
@@ -109,6 +117,28 @@ describe("hardware facade", () => {
     expect(normalizeHardwareConfigForUi({ escposAdditionalFeedLines: 99 }).escposAdditionalFeedLines).toBe(12);
   });
 
+  it("migrates legacy compact displays and normalizes physical display parameters", () => {
+    expect(normalizeHardwareConfigForUi({ customerDisplayMode: "COMPACT" } as never).customerDisplayMode).toBe("DIGITAL_SCREEN");
+    expect(normalizeHardwareConfigForUi({ customerDisplayMode: "LINE_DISPLAY", customerDisplayColumns: 5,
+      customerDisplayConnection: "NETWORK", customerDisplayProtocol: "PLAIN_TEXT" }).customerDisplayColumns).toBe(10);
+    expect(normalizeHardwareConfigForUi({ customerDisplayColumns: 200 }).customerDisplayColumns).toBe(80);
+  });
+
+  it("defaults physical display encoding to CP858 and preserves explicit ASCII", () => {
+    expect(normalizeHardwareConfigForUi({}).customerDisplayEncoding).toBe("CP858");
+    expect(normalizeHardwareConfigForUi({ customerDisplayEncoding: "ASCII" }).customerDisplayEncoding).toBe("ASCII");
+    expect(normalizeHardwareConfigForUi({ customerDisplayEncoding: "UTF8" } as never).customerDisplayEncoding).toBe("CP858");
+  });
+
+  it("preserves positive safe integer display baud rates and defaults invalid values", () => {
+    for (const baud of [300, 600, 12345, 31250, Number.MAX_SAFE_INTEGER]) {
+      expect(normalizeHardwareConfigForUi({ customerDisplaySerialBaudRate: baud }).customerDisplaySerialBaudRate).toBe(baud);
+    }
+    for (const baud of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, "9600 & calc"]) {
+      expect(normalizeHardwareConfigForUi({ customerDisplaySerialBaudRate: baud } as never).customerDisplaySerialBaudRate).toBe(9600);
+    }
+  });
+
   it("returns a controlled unavailable result outside Electron", async () => {
     const bridge = getHardwareBridge();
 
@@ -117,6 +147,7 @@ describe("hardware facade", () => {
       code: "HARDWARE_UNAVAILABLE",
       message: "Hardware local no disponible"
     });
+    await expect(bridge.listSerialPorts()).resolves.toEqual(createHardwareUnavailableResult());
   });
 
   it("creates a printable test ticket payload", () => {

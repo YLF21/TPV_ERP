@@ -32,10 +32,10 @@
 		<java.version>25</java.version>
 		<springdoc.version>3.1.1</springdoc.version>
 		<jna.version>5.19.1</jna.version>
-		<jasperreports.version>7.0.8</jasperreports.version>
-		<dss.version>6.5</dss.version>
+		<jasperreports.version>7.1.0</jasperreports.version>
+		<dss.version>6.5.1</dss.version>
 		<!-- Default artifact is the non-promotable DEV laboratory build. -->
-		<tpv.release.id>tpv-erp-dev-v277</tpv.release.id>
+		<tpv.release.id>tpv-erp-dev-v278</tpv.release.id>
 		<tpv.release.version>DEV</tpv.release.version>
 		<tpv.release.capability>DUAL</tpv.release.capability>
 		<tpv.release.sequence>35</tpv.release.sequence>
@@ -245,6 +245,7 @@
 				<includes>
 					<include>ticket_anulado.jrxml</include>
 					<include>cobro_pendiente.jrxml</include>
+					<include>PRUEBA_IMPRESORA_TICKET_80.jrxml</include>
 				</includes>
 			</resource>
 			<!-- Immutable v1 JSON-backed commercial document models. -->
@@ -358,7 +359,7 @@
 			<id>production-release</id>
 			<properties>
 				<!-- 4.2.0 was already persisted with V235; each schema release has a new immutable identity. -->
-				<tpv.release.id>tpv-erp-4.2.0-v277</tpv.release.id>
+				<tpv.release.id>tpv-erp-4.2.0-v278</tpv.release.id>
 				<tpv.release.version>4.2.0</tpv.release.version>
 				<tpv.release.capability>VERIFACTU_ONLY</tpv.release.capability>
 				<tpv.release.sequence>27</tpv.release.sequence>

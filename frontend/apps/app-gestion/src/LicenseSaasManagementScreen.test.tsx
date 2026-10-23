@@ -33,6 +33,18 @@ const activeLicense: LicenseHistoryItem = {
 afterEach(cleanup);
 
 describe("LicenseSaasManagementScreen", () => {
+  it("focuses and navigates history without validating or linking a licence", async () => {
+    const request = vi.fn().mockResolvedValue([activeLicense, { ...activeLicense, reference: "LIC-2025-OLD", active: false }]);
+    render(<LicenseSaasManagementScreen locale="es" session={admin} storeName="Tienda" t={createTranslator("es")} request={request as unknown as typeof apiRequest} />);
+    await screen.findByText("LIC-2025-OLD");
+    const table = screen.getByRole("table");
+    const rows = within(table).getAllByRole("row").slice(1);
+    await waitFor(() => expect(rows[0]).toHaveFocus());
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(rows[1]).toHaveFocus();
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("searches the complete history while retaining the active licence summary", async () => {
     const request = vi.fn().mockResolvedValue([activeLicense, { ...activeLicense, reference: "LIC-2025-OLD", active: false }]);
     const t = createTranslator("es");

@@ -177,7 +177,7 @@ class ServerTransferDestinationPostgreSqlTest {
         String fingerprint = request.path("destinationKeyFingerprint").asText();
         try (var db = source.open()) {
             execute(db, "insert into instalacion(id,referencia,public_key,creada_en,demo_hasta) values ('" + installation
-                    + "','CLI-TRANSFER-TEST','" + publicKey + "',now(),now()+interval '30 days')");
+                    + "','CLI-TRANSFER-TEST','" + publicKey + "',timestamptz '2026-01-01 00:00:00+00',timestamptz '2026-01-31 00:00:00+00')");
             seedFiscalCertificate(db, central.fiscal);
             execute(db, "insert into configuracion_backup(id,instalacion_id,destino) values ('" + configuration + "','"
                     + installation + "','{\"path\":\"synthetic-source\"}')");

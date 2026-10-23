@@ -2,7 +2,7 @@ import type { LocaleCode } from "../types";
 
 const es: Record<string, string> = {
   "safeManagement.shortcut.modify": "F7",
-  "safeManagement.shortcut.add": "F8",
+  "safeManagement.shortcut.add": "F5",
   "safeManagement.shortcut.retire": "F9",
   "safeManagement.noAccess": "Solo un administrador puede abrir estas ventanas de gestión.",
   "safeManagement.retirement.title": "Retirar registro de forma segura",
@@ -95,7 +95,7 @@ const es: Record<string, string> = {
 
 const en: Record<string, string> = {
   "safeManagement.shortcut.modify": "F7",
-  "safeManagement.shortcut.add": "F8",
+  "safeManagement.shortcut.add": "F5",
   "safeManagement.shortcut.retire": "F9",
   "safeManagement.noAccess": "Only an administrator can open these management screens.",
   "safeManagement.retirement.title": "Safely retire record",
@@ -188,7 +188,7 @@ const en: Record<string, string> = {
 
 const zh: Record<string, string> = {
   "safeManagement.shortcut.modify": "F7",
-  "safeManagement.shortcut.add": "F8",
+  "safeManagement.shortcut.add": "F5",
   "safeManagement.shortcut.retire": "F9",
   "safeManagement.noAccess": "只有管理员可以打开这些管理页面。",
   "safeManagement.retirement.title": "安全停用记录",

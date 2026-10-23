@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserSession } from "../../../packages/app-common/src/types";
 import { apiRequest } from "../../../packages/app-common/src/api/client";
@@ -87,6 +87,28 @@ describe("WarehouseOperationsScreen", () => {
     vi.mocked(api.createStockAdjustment).mockResolvedValue({
       productId: "coffee", warehouseId: "general", quantity: 8
     });
+  });
+
+  it("moves focus through count summaries without reading their details", async () => {
+    vi.mocked(api.loadStockCounts).mockResolvedValue(Array.from({ length: 4 }, (_, index) => ({
+      ...draftCount, id: `count-${index}`, number: `INV-${index}`, lineCount: 1, totalDifference: 0
+    })));
+    render(<WarehouseOperationsScreen session={session(["GESTION_ALMACEN"])} mode="count" t={t} />);
+    await screen.findByText("INV-0");
+    const rows = Array.from(document.querySelectorAll<HTMLTableRowElement>("tr[data-stock-count-row]"));
+    expect(rows[0]).toHaveFocus();
+    expect(api.loadStockCount).not.toHaveBeenCalled();
+    rows[0].focus();
+    vi.useFakeTimers();
+    try {
+      fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+      act(() => { vi.advanceTimersByTime(250); });
+      expect(rows[3]).toHaveFocus();
+      fireEvent.keyUp(rows[3], { key: "ArrowDown" });
+      act(() => { vi.advanceTimersByTime(500); });
+      expect(rows[3]).toHaveFocus();
+      expect(api.loadStockCount).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
   });
 
   it("uses the store period bar for adjustment dates while preserving search and warehouse filters", async () => {
@@ -202,11 +224,10 @@ describe("WarehouseOperationsScreen", () => {
     render(<WarehouseOperationsScreen session={session(["STOCK_ADJUST"])} mode="adjustment" t={t} />);
     const search = await screen.findByRole("searchbox", { name: "warehouse.management.search" });
     fireEvent.change(search, { target: { value: "CAF" } });
-    await waitFor(() => expect(screen.getByRole("button", { name: "Periodo personalizado" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Periodo personalizado" }));
+    await waitFor(() => expect(screen.getByLabelText("Desde")).toBeEnabled());
     fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-09-01" } });
     fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-09-23" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar periodo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
     await waitFor(() => expect(api.loadStockAdjustmentHistory).toHaveBeenLastCalledWith("token", expect.objectContaining({
       search: "CAF", from: new Date("2026-09-01T00:00:00").toISOString(), to: new Date("2026-09-24T00:00:00").toISOString()
     })));
@@ -229,6 +250,7 @@ describe("WarehouseOperationsScreen", () => {
     expect(rows[2].lastElementChild).toHaveTextContent("—");
     fireEvent.click(rows[1]);
     expect(rows[1]).toHaveAttribute("aria-selected", "true");
+    rows[1].focus();
     fireEvent.keyDown(rows[1], { key: "ArrowDown" });
     expect(rows[2]).toHaveFocus();
     expect(rows[2]).toHaveAttribute("aria-selected", "true");

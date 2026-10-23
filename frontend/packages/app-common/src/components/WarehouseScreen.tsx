@@ -140,9 +140,15 @@ export function WarehouseScreen({
         : section === "output"
           ? "warehouseOperations.outputSubtitle"
           : "warehouseScreen.goodsCheckSubtitle";
+  const supplierDocumentHeading = app === "gestion" && embedded
+    && (section === "purchaseDeliveryNotes" || section === "purchaseInvoices" || section === "goodsCheck");
+  const documentHeading = app === "gestion" && embedded ? supplierDocumentHeading ? "supplier" : "warehouse" : undefined;
+  const moduleTitleKey = supplierDocumentHeading ? "gestion.navigation.group.supplierDocuments"
+    : documentHeading === "warehouse" ? "gestion.navigation.group.warehouse" : "home.warehouse";
 
   return (
-    <main data-warehouse-heading={app === "gestion" && embedded && section !== "goodsCheck" ? "unified" : undefined} className={embedded
+    <main data-document-heading={documentHeading}
+      data-warehouse-heading={app === "gestion" && embedded && section !== "goodsCheck" ? "unified" : undefined} className={embedded
       ? `stock-screen work-screen warehouse-screen gestion-embedded-module${app === "gestion" ? " gestion-warehouse-screen" : ""}`
       : `stock-screen work-screen warehouse-screen${app === "gestion" ? " gestion-warehouse-screen" : ""}`}
     >
@@ -161,13 +167,13 @@ export function WarehouseScreen({
         onLogout={onLogout}
       />}
 
-      <section className="work-shell" aria-label={t("home.warehouse")}>
+      <section className="work-shell" aria-label={t(moduleTitleKey)}>
         <header className="work-topbar">
           {!embedded && <button type="button" className="report-brand-back" onClick={onBack}>
             <AppBrand app={app} label={t(app === "venta" ? "venta.title" : "gestion.title")} />
           </button>}
           {!embedded && <DesktopHeaderContext terminalContext={terminalContext} />}
-          <h1 className="report-title">{t("home.warehouse")}</h1>
+          <h1 className="report-title">{t(moduleTitleKey)}</h1>
         </header>
 
         {!embedded && <aside className="stock-nav">

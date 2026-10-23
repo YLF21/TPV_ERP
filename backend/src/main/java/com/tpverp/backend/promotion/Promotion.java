@@ -118,6 +118,10 @@ public class Promotion {
         return id;
     }
 
+    public long version() {
+        return version;
+    }
+
     public UUID empresaId() {
         return empresaId;
     }

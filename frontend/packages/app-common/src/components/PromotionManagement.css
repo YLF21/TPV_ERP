@@ -1,0 +1,57 @@
+.stock-promotion-management-actions,
+.stock-promotion-products-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.stock-promotion-management-actions { justify-content: flex-end; }
+.stock-promotion-management-actions button,
+.stock-promotion-products-heading button {
+  min-height: 34px;
+  padding: 5px 12px;
+  border: 1px solid #68737e;
+  border-radius: 4px;
+  background: #eef1f4;
+  color: #12385f;
+  font: inherit;
+  font-weight: 700;
+}
+.stock-promotion-management-actions button:disabled,
+.stock-promotion-products-heading button:disabled { opacity: .55; }
+.stock-promotion-create {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid #0065fe;
+  border-radius: 4px;
+  background: #0065fe;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+}
+.stock-promotion-create kbd { margin-left: 4px; padding: 9px 0 9px 10px; border-left: 1px solid #ffffff70; font: inherit; }
+.stock-promotion-editor-overlay { z-index: 130; }
+.stock-promotion-editor {
+  width: min(1200px, calc(100vw - 40px));
+  height: min(850px, calc(100vh - 40px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  border: 1px solid #12385f;
+  border-radius: 6px;
+  background: #f4f7fa;
+}
+.stock-promotion-editor .promotion-create-heading {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex-shrink: 0;
+  background: #f4f7fa;
+}
+.stock-promotion-editor .promotion-create-card { scroll-margin-top: 150px; }
+.promotion-management-notice { margin: 4px 14px; font-size: 13px; }
+.stock-promotion-products-heading { padding: 10px 12px; }
+.stock-promotion-products-heading > h3 { padding: 0; margin: 0; }

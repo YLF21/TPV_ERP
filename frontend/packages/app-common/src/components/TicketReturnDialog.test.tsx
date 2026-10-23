@@ -56,6 +56,23 @@ describe("TicketReturnDialog", () => {
 
   afterEach(cleanup);
 
+  it("moves only the row cursor and leaves refund selection untouched", async () => {
+    const onAddToCart = vi.fn();
+    render(<TicketReturnDialog token="token" locale="es" initialSourceCode="T-001"
+      onClose={vi.fn()} onAddToCart={onAddToCart} />);
+    const product = await screen.findByText("Portátil");
+    const row = product.closest("tr") as HTMLTableRowElement;
+    expect(row).toHaveAttribute("tabindex", "0");
+    const checkbox = screen.getByRole("checkbox", { name: "Portátil" });
+    expect(checkbox).not.toBeChecked();
+    row.focus();
+    fireEvent.keyDown(row, { key: "ArrowDown" });
+    expect(row).toHaveFocus();
+    expect(checkbox).not.toBeChecked();
+    expect(onAddToCart).not.toHaveBeenCalled();
+    expect(request.mock.calls.some(([path]) => path === "/tickets/return-valuation")).toBe(false);
+  });
+
   it("selects all remaining lines and only adds them to the cart", async () => {
     const onAddToCart = vi.fn();
     const onClose = vi.fn();

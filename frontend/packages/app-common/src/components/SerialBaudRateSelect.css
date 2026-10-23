@@ -1,0 +1,23 @@
+.hardware-settings-content .hardware-serial-baud-rate {
+  min-width: 0;
+}
+
+.hardware-settings-content .hardware-serial-baud-rate > .erp-select--editable {
+  grid-template-columns: minmax(0, 1fr) 30px;
+}
+
+.hardware-settings-content .hardware-serial-baud-rate > .erp-select.erp-select--editable > .erp-select__trigger {
+  grid-template-columns: 1fr !important;
+  border: 0 !important;
+  border-radius: 0 5px 5px 0 !important;
+}
+
+.hardware-settings-content .hardware-serial-baud-rate > .erp-select.erp-select--editable > input {
+  background: #ffffff;
+  text-align: left;
+  height: 38px !important;
+  min-height: 38px !important;
+  border: 0 !important;
+  border-radius: 5px 0 0 5px !important;
+  outline: none !important;
+}

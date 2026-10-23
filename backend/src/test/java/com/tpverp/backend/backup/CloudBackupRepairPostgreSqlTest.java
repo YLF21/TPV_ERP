@@ -31,7 +31,7 @@ class CloudBackupRepairPostgreSqlTest {
             sql.execute("create schema " + schema); sql.execute("set search_path to " + schema);
             try {
                 sql.execute("create table ejecucion_backup(id uuid primary key, result text, metadata jsonb, sequence_number bigint, iniciada_en timestamptz)");
-                try (var input = getClass().getResourceAsStream("/db/migration/V276__cloud_backup_delivery_queue.sql")) {
+                try (var input = getClass().getResourceAsStream("/db/migration/V277__cloud_backup_delivery_queue.sql")) {
                     sql.execute(new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
                 }
                 var dataSource = new DriverManagerDataSource(url + (url.contains("?") ? "&" : "?") + "currentSchema=" + schema, user, password);

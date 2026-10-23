@@ -7,9 +7,9 @@ import {
 } from "./gestionNavigation";
 
 describe("APP GESTIÓN navigation registry", () => {
-  it("keeps the approved 11 groups and 50 destinations in order", () => {
+  it("keeps the approved 11 groups and 49 destinations in order", () => {
     expect(gestionNavigationGroupCount).toBe(11);
-    expect(gestionNavigationDestinationCount).toBe(50);
+    expect(gestionNavigationDestinationCount).toBe(49);
     expect(gestionNavigationGroups.map((group) => group.key)).toEqual([
       "overview", "control-alerts", "cash", "customer-documents", "supplier-documents",
       "products", "warehouse", "third-parties", "fiscal", "security", "configuration",
@@ -34,6 +34,9 @@ describe("APP GESTIÓN navigation registry", () => {
       "documentTemplates", "voucherSettings", "licenses", "productManagement", "customerManagement",
       "supplierManagement",
     ]);
+    const destinationKeys = gestionNavigationGroups.flatMap((group) => group.destinations.map((item) => item.key));
+    expect(destinationKeys.filter((key) => key === "promotions")).toHaveLength(1);
+    expect(destinationKeys).not.toContain("stock.promotions");
     expect(new Set(gestionNavigationGroups.flatMap((group) => group.destinations.map((item) => item.key))).size)
       .toBe(gestionNavigationDestinationCount);
     expect(gestionNavigationGroups.every((group) => group.icon)).toBe(true);

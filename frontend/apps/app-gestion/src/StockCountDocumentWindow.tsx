@@ -8,6 +8,7 @@ import { DialogDismissButton } from "../../../packages/app-common/src/components
 import { ShortcutButtonLabel } from "../../../packages/app-common/src/components/ShortcutButtonLabel";
 import { sortProductsByCode } from "../../../packages/app-common/src/components/productSearchOrdering";
 import { activateModalFocusTrap, type ModalFocusRoot } from "../../../packages/app-common/src/components/modalFocusTrap";
+import { useTableArrowRepeat } from "../../../packages/app-common/src/components/useTableArrowRepeat";
 import { StockCountTable } from "./StockCountTable";
 import { countText } from "./stockCountMessages";
 import { importStockCount } from "./stockCountImport";
@@ -38,6 +39,9 @@ export function StockCountDocumentWindow({ initial, warehouses, session, locale,
   const [busy, setBusy] = useState(false); const busyRef = useRef(false);
   const [dirty, setDirty] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
   const [query, setQuery] = useState(""); const [searchOpen, setSearchOpen] = useState(false); const [active, setActive] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const [review, setReview] = useState<StockCountDetail | null>(null); const [closePrompt, setClosePrompt] = useState(false);
   const [reloadPrompt, setReloadPrompt] = useState(false);
   const file = useRef<HTMLInputElement>(null); const root = useRef<HTMLDivElement>(null); const confirmRoot = useRef<HTMLElement>(null);
@@ -48,6 +52,17 @@ export function StockCountDocumentWindow({ initial, warehouses, session, locale,
   const term = query.trim().toLocaleLowerCase();
   const suggestions = sortProductsByCode(products.filter((p) => [p.code, p.barcode, p.name].some((value) => value?.toLocaleLowerCase().includes(term))), locale)
     .slice(0, 50);
+  const handleArrowRepeat = useTableArrowRepeat((direction) => {
+    if (readOnly || busy || loading || !stockReady || review || familyOpen || closePrompt || reloadPrompt
+      || globalThis.document.activeElement !== searchInputRef.current) return false;
+    setSearchOpen(true);
+    if (!suggestions.length) return false;
+    const next = Math.max(0, Math.min(suggestions.length - 1, activeRef.current + (direction === "ArrowDown" ? 1 : -1)));
+    if (next === activeRef.current) return false;
+    activeRef.current = next;
+    setActive(next);
+    return true;
+  }, !readOnly && !busy && !loading && stockReady && !review && !familyOpen && !closePrompt && !reloadPrompt);
   function updateDocument(value: StockCountDetail) { documentRef.current = value; setDocument(value); setDate(value.documentDate ?? value.createdAt.slice(0, 10)); setNotes(value.notes ?? ""); setLines(draftLines(value)); setDirty(false); }
   useEffect(() => {
     let cancelled = false;
@@ -148,12 +163,12 @@ export function StockCountDocumentWindow({ initial, warehouses, session, locale,
       </aside>
       <main>
         {!readOnly && <div className="inventory-editor-actions">
-          <div className="inventory-product-search"><label htmlFor="inventory-product-search">{c("product")}</label><input id="inventory-product-search" role="combobox" aria-expanded={searchOpen} aria-controls="inventory-products"
+          <div className="inventory-product-search"><label htmlFor="inventory-product-search">{c("product")}</label><input ref={searchInputRef} id="inventory-product-search" role="combobox" aria-expanded={searchOpen} aria-controls="inventory-products"
             aria-autocomplete="list" aria-activedescendant={searchOpen && suggestions[active] ? `inventory-product-${active}` : undefined}
             disabled={loading || busy || !stockReady} placeholder={c("placeholder")} value={query} autoComplete="off"
             onChange={(event) => { setQuery(event.target.value); setActive(0); setSearchOpen(true); }} onClick={() => setSearchOpen(true)}
             onBlur={() => setSearchOpen(false)} onKeyDown={(event) => {
-              if (["ArrowDown", "ArrowUp"].includes(event.key)) { event.preventDefault(); setSearchOpen(true); setActive((index) => Math.max(0, Math.min(suggestions.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)))); }
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); handleArrowRepeat(event); }
               if (event.key === "Enter") { event.preventDefault(); if (suggestions[active]) addProducts([{ product: suggestions[active] }]); }
             }} />
             {searchOpen && <div id="inventory-products" role="listbox">{suggestions.map((product, index) => <button role="option" type="button" key={product.id} id={`inventory-product-${index}`} aria-selected={active === index}
@@ -167,8 +182,8 @@ export function StockCountDocumentWindow({ initial, warehouses, session, locale,
         </div>}
         <div className="inventory-export-actions">
           {!readOnly && <button disabled={busy || !lines.length} onClick={() => void run(async () => { await reviewStock(); })}>{c("refreshStock")}</button>}
-          <button disabled={busy || (!document && !lines.length)} onClick={() => void run(() => exportFile("pdf"))}>{t("warehouse.count.exportPdf")}</button>
           <button disabled={busy || (!document && !lines.length)} onClick={() => void run(() => exportFile("xlsx"))}>{t("warehouse.count.exportExcel")}</button>
+          <button disabled={busy || (!document && !lines.length)} onClick={() => void run(() => exportFile("pdf"))}>{t("warehouse.count.exportPdf")}</button>
         </div>
         <StockCountTable rows={lines} columns={columns} session={session} tableKey="warehouse.inventory.lines" empty={c("empty")}
           cell={(line, key) => {

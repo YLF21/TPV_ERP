@@ -1,0 +1,90 @@
+.mk-page .mk-connection-summary {
+  min-width: 0;
+  margin: 0 0 20px;
+  padding: 16px;
+  border: 1px solid var(--mk-line);
+  border-radius: 14px;
+  background: white;
+}
+
+.mk-page .mk-connection-summary h2 {
+  margin: 0;
+  color: var(--mk-navy);
+  font-size: 19px;
+  line-height: 1.3;
+}
+
+.mk-page .mk-connection-summary header p {
+  margin: 5px 0 0;
+  color: var(--mk-muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.mk-page .mk-connection-summary dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 14px 0 0;
+}
+
+.mk-page .mk-connection-summary dl > div {
+  min-width: 0;
+  border-top: 2px solid var(--mk-line);
+  padding-top: 10px;
+  overflow-wrap: anywhere;
+}
+
+.mk-page .mk-connection-summary dt {
+  color: var(--mk-navy);
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.mk-page .mk-connection-summary dd {
+  margin: 5px 0 0;
+  color: var(--mk-muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.mk-page .mk-app-connection-summary {
+  min-width: 0;
+  margin-bottom: 12px;
+  border-left: 3px solid var(--guide-accent);
+  padding: 9px 12px;
+  background: var(--guide-surface);
+  overflow-wrap: anywhere;
+}
+
+.mk-page .mk-app-connection-summary h3 {
+  margin: 0;
+  color: var(--mk-navy);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.mk-page .mk-app-connection-summary p {
+  margin: 4px 0 0;
+  color: var(--mk-muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.mk-page .mk-contact-selection-hint {
+  margin: 10px 0 0;
+  color: var(--mk-muted);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .mk-page .mk-connection-summary dl { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .mk-page .mk-connection-summary header p,
+  .mk-page .mk-connection-summary dt,
+  .mk-page .mk-connection-summary dd,
+  .mk-page .mk-app-connection-summary p,
+  .mk-page .mk-contact-selection-hint { font-size: 16px; }
+}

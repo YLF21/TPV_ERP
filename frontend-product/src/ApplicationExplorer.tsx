@@ -1,11 +1,15 @@
 import { ArrowRight, ChartBar, Check, CloudArrowUp, Cube, PlayCircle, ShoppingCart } from "@phosphor-icons/react";
 import { useId, useRef, useState, type KeyboardEvent } from "react";
 import { getApplicationGuides } from "./applicationGuides";
+import { getConnectionContent } from "./connectionContent";
+import { CompatibilityChecklist } from "./CompatibilityChecklist";
+import { implementationJourneyId, openImplementationJourney } from "./ImplementationJourney";
 import type { ApplicationId, GuideSection } from "./applicationGuideTypes";
 import type { MarketingLanguage } from "./marketingI18n";
 import { marketingHref } from "./marketingRoutes";
 import { marketingContactSearch } from "./marketingCampaign";
 import "./application-guides.css";
+import "./connection-summary.css";
 
 type Application = {
   id: ApplicationId;
@@ -52,6 +56,7 @@ export function ApplicationExplorer({ language, applications, onOpenTour, onRequ
   const applicationTabs = useRef<Partial<Record<ApplicationId, HTMLButtonElement | null>>>({});
   const sectionTabs = useRef<Partial<Record<GuideSection, HTMLButtonElement | null>>>({});
   const copy = getApplicationGuides(language);
+  const connectionCopy = getConnectionContent(language);
   const availableApplications = applicationOrder.flatMap((id) => {
     const application = applications.find((item) => item.id === id);
     return application ? [application] : [];
@@ -123,6 +128,10 @@ export function ApplicationExplorer({ language, applications, onOpenTour, onRequ
 
           <div className="mk-app-explorer-information">
             <p className="mk-app-explorer-description">{application.description}</p>
+            <section className="mk-app-connection-summary" data-testid="application-connection-summary" aria-labelledby={`${instanceId}-connection-title`}>
+              <h3 id={`${instanceId}-connection-title`}>{connectionCopy.appLabel}</h3>
+              <p>{connectionCopy.apps[application.id]}</p>
+            </section>
             <div className="mk-app-explorer-sections" role="tablist" aria-label={copy.sectionLabel}>
               {sections.map((section, index) => <button
                 key={section}
@@ -157,7 +166,7 @@ export function ApplicationExplorer({ language, applications, onOpenTour, onRequ
 
               {activeSection === "setup" && <section className="mk-app-explorer-setup" aria-labelledby={`${instanceId}-requirements-title`}>
                 <div><h3 id={`${instanceId}-requirements-title`}>{copy.requirementsLabel}</h3><ul>{guide.requirements.map((requirement) => <li key={requirement}><Check weight="bold" aria-hidden="true" /><span>{requirement}</span></li>)}</ul></div>
-                <div className="mk-app-explorer-connection"><h4>{copy.connectionLabel}</h4><p>{guide.connection}</p></div>
+                <CompatibilityChecklist language={language} application={application.id} includeRequirements={false} />
               </section>}
 
               {activeSection === "questions" && <section className="mk-app-explorer-questions" aria-label={copy.sections.questions}>
@@ -172,7 +181,10 @@ export function ApplicationExplorer({ language, applications, onOpenTour, onRequ
                 event.preventDefault();
                 onRequestDemo(application.id);
               }}>{copy.demoAction}<ArrowRight aria-hidden="true" /></a>
-              <a href={demoHref}>{copy.consultAction}<ArrowRight aria-hidden="true" /></a>
+              <a href={`${marketingHref(language, "apps")}#${implementationJourneyId}`} aria-controls={implementationJourneyId} data-testid="guide-preparation-action" onClick={(event) => {
+                if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+                if (openImplementationJourney(document)) event.preventDefault();
+              }}>{copy.consultAction}<ArrowRight aria-hidden="true" /></a>
             </div>
           </div>
         </div>

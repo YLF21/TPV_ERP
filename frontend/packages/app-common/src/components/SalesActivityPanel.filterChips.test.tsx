@@ -29,6 +29,24 @@ function mount(request = fixture(), app: AppKind = "venta") {
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
 describe("sales document period chips", () => {
+  it.each(["venta", "gestion"] as const)("prepares the first activity row and accepts arrows without a click in %s", async app => {
+    const base = fixture();
+    const request = vi.fn(async (path: string) => {
+      const result = await base(path);
+      return path.includes("/by-day?") ? { ...result, items: [
+        { date: today, ticketCount: 2, invoiceCount: 0, total: "20.00" },
+        { date: "2026-09-21", ticketCount: 3, invoiceCount: 0, total: "30.00" },
+      ] } : result;
+    });
+    const { container } = mount(request, app);
+    await waitFor(() => expect(container.querySelectorAll("tr[data-sales-activity-row]")).toHaveLength(2));
+    const rows = container.querySelectorAll<HTMLElement>("tr[data-sales-activity-row]");
+    expect(rows[0]).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    fireEvent.keyUp(document.activeElement!, { key: "ArrowDown" });
+    expect(rows[1]).toHaveFocus();
+  });
+
   it.each((["venta", "gestion"] as const).flatMap(app => ["DAY", "DOCUMENT"].map(view => [app, view] as const)))("restores today from a period chip in %s while preserving the %s view", async (app, view) => {
     const request = fixture(); const { container } = mount(request, app);
     await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
@@ -50,8 +68,8 @@ describe("sales document period chips", () => {
 
   it("does not show a draft period as an applied chip and clears the applied range", async () => {
     mount(); await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Periodo personalizado" }));
     fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-07-01" } });
+    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-07-02" } });
     expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Ayer" }));
     expect(await screen.findByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("21/9/2026");

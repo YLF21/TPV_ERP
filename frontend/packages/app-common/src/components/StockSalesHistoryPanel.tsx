@@ -6,6 +6,8 @@ import { apiBaseUrl } from "../api/runtime";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { AppKind, LocaleCode } from "../types";
 import { ErpSelect } from "./ErpSelect";
+import { ReportDateRangeSummary } from "./ReportDateRangeFilter";
+import "./NativeDateFilterSummary.css";
 import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { enterNavigationIntent, focusRelativeEnterTarget } from "./keyboardNavigation";
@@ -307,7 +309,8 @@ export function StockSalesHistoryPanel({
   const filterChips: ErpFilterChip[] = [
     ...(appliedFrom || appliedTo ? [{
       key: "period", label: t("salesReport.filter.dateRange"),
-      value: appliedFrom && appliedTo ? `${dateLabel(appliedFrom)} – ${dateLabel(appliedTo)}`
+      value: appliedFrom && appliedTo ? (app === "gestion" && appliedFrom === appliedTo
+        ? dateLabel(appliedFrom) : `${dateLabel(appliedFrom)} – ${dateLabel(appliedTo)}`)
         : `${t(appliedFrom ? "salesReport.filter.dateFrom" : "salesReport.filter.dateTo")} ${dateLabel(appliedFrom || appliedTo)}`,
       onRemove: () => removeFilter("period"),
     }] : []),
@@ -396,7 +399,7 @@ export function StockSalesHistoryPanel({
 
   return (
     <section className="stock-sales-history-panel stock-product-sales-history-panel" aria-label={t("stock.history.title")}>
-      <div className="stock-history-toolbar" ref={historyToolbarRef} onKeyDown={handleHistoryFilterEnter}>
+      <div className={`stock-history-toolbar${app === "gestion" ? " gestion-toolbar-layout" : ""}`} ref={historyToolbarRef} onKeyDown={handleHistoryFilterEnter}>
         <label><span>{t("salesReport.filter.dateFrom")}</span><span className="stock-history-date-input">
           <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
           <CalendarBlank aria-hidden="true" size={18} />
@@ -414,7 +417,8 @@ export function StockSalesHistoryPanel({
           options={[{ value: "", label: t("stock.history.saas.allStores") }, ...stores.map((store) => ({ value: store.id, label: `${store.code} · ${store.name}` }))]}
           onChange={setStoreFilter} onCommit={() => applyButtonRef.current?.focus()} /></label>
         <button ref={applyButtonRef} type="button" onClick={applyFilters}>{t("salesReport.filter.apply")}</button>
-        <div className="stock-history-export" ref={exportMenuRef}>
+        {app === "gestion" && <ReportDateRangeSummary locale={locale} value={{ from: appliedFrom, to: appliedTo, label: "" }} />}
+        <div className={`stock-history-export${app === "gestion" ? " gestion-toolbar-end" : ""}`} ref={exportMenuRef}>
           <button type="button" aria-haspopup="menu" aria-expanded={exportMenuOpen}
             disabled={exportBusy || busy || !data || displayedCount === 0} onClick={() => setExportMenuOpen((open) => !open)}>
             {exportBusy ? t("stock.history.exporting") : t("stock.history.export")}<CaretDown aria-hidden="true" size={14} />
@@ -424,6 +428,7 @@ export function StockSalesHistoryPanel({
             <button type="button" role="menuitem" onClick={() => void exportReport("pdf")}>{t("stock.history.exportPdf")}</button>
           </div>}
         </div>
+        {app === "venta" && <ReportDateRangeSummary collapseSingleDay={false} showWeekday={false} locale={locale} value={{ from: appliedFrom, to: appliedTo, label: "" }} />}
       </div>
       {app !== "pda" && <ErpFilterChips chips={filterChips} onClear={clearFilters}
         focusRef={applyButtonRef} locale={locale} />}

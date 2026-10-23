@@ -16,6 +16,32 @@
   color: var(--activity-ink);
 }
 
+html:is([data-app="gestion"], [data-app="venta"]) .report-date-range-filter.sales-activity-filter-dock {
+  border-top: 1px solid #aebfd0 !important;
+}
+
+.report-date-range-summary {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 32px;
+  margin-left: auto;
+  padding-left: 12px;
+  border-left: 1px solid #b5c3d2;
+  color: #0a315e;
+  font-size: 14px !important;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.report-date-range-summary time { white-space: nowrap; }
+
 .report-date-range-filter button {
   min-height: 32px;
   border: 1px solid #8ea2b5;
@@ -53,6 +79,21 @@
   background: #fff;
   color: var(--activity-ink);
   font: inherit;
+}
+.report-date-custom-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin-left: 4px;
+  padding-left: 10px;
+  border-left: 1px solid #aebfd0;
+}
+.report-date-custom-inline input {
+  box-sizing: border-box;
+  width: 132px;
+  min-width: 132px;
 }
 .report-date-range-filter .report-date-custom {
   position: absolute;

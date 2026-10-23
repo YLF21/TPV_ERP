@@ -36,10 +36,11 @@ class DocumentReportDateOptionsServiceTest {
     private final WarehouseTransferDocumentRepository transfers = mock(WarehouseTransferDocumentRepository.class);
     private final StockAdjustmentHistoryRepository adjustments = mock(StockAdjustmentHistoryRepository.class);
     private final StockCountRepository counts = mock(StockCountRepository.class);
+    private final VoucherRepository vouchers = mock(VoucherRepository.class);
     private final CurrentOrganization organization = mock(CurrentOrganization.class);
     private final UUID storeId = UUID.randomUUID();
     private final DocumentReportDateOptionsService service = new DocumentReportDateOptionsService(
-            documents, inputs, outputs, transfers, adjustments, counts, organization,
+            documents, inputs, outputs, transfers, adjustments, counts, vouchers, organization,
             Clock.fixed(Instant.parse("2026-09-11T23:30:00Z"), ZoneOffset.UTC));
 
     DocumentReportDateOptionsServiceTest() {
@@ -58,11 +59,11 @@ class DocumentReportDateOptionsServiceTest {
         assertThat(result.earliestDate()).isEqualTo(earliest);
         assertThat(result.currentDate()).isEqualTo(LocalDate.of(2026, 9, 12));
         verify(documents).findFirstReportDate(storeId, types);
-        verifyNoInteractions(inputs, outputs, transfers, adjustments, counts);
+        verifyNoInteractions(inputs, outputs, transfers, adjustments, counts, vouchers);
     }
 
     @ParameterizedTest
-    @CsvSource({"topSales,STOCK_READ", "topSales,GESTION_PRODUCTO", "topSales,GESTION_VENTAS", "topSales,VENTA", "tickets,TICKETS_READ", "invoices,INVOICES_READ", "deliveryNotes,DELIVERY_NOTES_READ",
+    @CsvSource({"topSales,STOCK_READ", "topSales,GESTION_PRODUCTO", "topSales,GESTION_VENTAS", "topSales,VENTA", "tickets,TICKETS_READ", "vouchers,ROLE_ADMIN", "vouchers,GESTION_VENTAS", "invoices,INVOICES_READ", "deliveryNotes,DELIVERY_NOTES_READ",
             "warehouseOutputs,GESTION_ALMACEN", "inputWarehouse,GESTION_ALMACEN",
             "warehouseTransfers,STOCK_TRANSFER", "warehouseTransfers,GESTION_ALMACEN", "warehouseTransfers,ROLE_ADMIN",
             "stockAdjustments,STOCK_ADJUST", "stockAdjustments,GESTION_ALMACEN", "stockAdjustments,ROLE_ADMIN",
@@ -74,7 +75,7 @@ class DocumentReportDateOptionsServiceTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"topSales,GESTION_ALMACEN", "topSales,TICKETS_READ", "tickets,GESTION_ALMACEN", "invoices,TICKETS_READ", "deliveryNotes,INVOICES_READ",
+    @CsvSource({"topSales,GESTION_ALMACEN", "topSales,TICKETS_READ", "tickets,GESTION_ALMACEN", "vouchers,VENTA", "vouchers,TICKETS_READ", "vouchers,GESTION_CUENTAS", "invoices,TICKETS_READ", "deliveryNotes,INVOICES_READ",
             "warehouseOutputs,VENTA", "inputWarehouse,VENTA",
             "warehouseTransfers,STOCK_ADJUST", "warehouseTransfers,VENTA",
             "stockAdjustments,STOCK_TRANSFER", "stockAdjustments,VENTA",
@@ -83,7 +84,7 @@ class DocumentReportDateOptionsServiceTest {
     void rejectsForeignReportPermissionsBeforeAccessingAnyData(String report, String permission) {
         assertThatThrownBy(() -> service.options(report, auth(permission)))
                 .isInstanceOf(AccessDeniedException.class);
-        verifyNoInteractions(documents, inputs, outputs, transfers, adjustments, counts, organization);
+        verifyNoInteractions(documents, inputs, outputs, transfers, adjustments, counts, vouchers, organization);
     }
 
     @Test
@@ -119,7 +120,7 @@ class DocumentReportDateOptionsServiceTest {
     void rejectsUnknownReportKeys() {
         assertThatThrownBy(() -> service.options("other", auth("ROLE_ADMIN")))
                 .isInstanceOf(IllegalArgumentException.class);
-        verifyNoInteractions(documents, inputs, outputs, transfers, adjustments, counts, organization);
+        verifyNoInteractions(documents, inputs, outputs, transfers, adjustments, counts, vouchers, organization);
     }
 
     @Test
@@ -149,6 +150,26 @@ class DocumentReportDateOptionsServiceTest {
                 .isEqualTo(LocalDate.of(2023, 12, 31));
         verify(counts).findFirstReportDate(storeId);
         verifyNoInteractions(documents, inputs, outputs, transfers, adjustments);
+    }
+
+    @Test
+    void voucherMinimumUsesTheCurrentStoreAndConvertsTheInstantToItsLocalDate() {
+        when(vouchers.findFirstReportCreatedAt(storeId))
+                .thenReturn(Instant.parse("2024-07-01T23:30:00Z"));
+        var result = service.options("vouchers", auth("GESTION_VENTAS"));
+        assertThat(result.earliestDate()).isEqualTo(LocalDate.of(2024, 7, 2));
+        assertThat(result.currentDate()).isEqualTo(LocalDate.of(2026, 9, 12));
+        verify(vouchers).findFirstReportCreatedAt(storeId);
+        verifyNoInteractions(documents, inputs, outputs, transfers, adjustments, counts);
+    }
+
+    @Test
+    void voucherMinimumInTheFutureIsClampedToTheStoreDay() {
+        when(vouchers.findFirstReportCreatedAt(storeId))
+                .thenReturn(Instant.parse("2030-01-01T00:00:00Z"));
+        var result = service.options("vouchers", auth("ROLE_ADMIN"));
+        assertThat(result.earliestDate()).isEqualTo(LocalDate.of(2026, 9, 12));
+        assertThat(result.currentDate()).isEqualTo(LocalDate.of(2026, 9, 12));
     }
 
     @Test

@@ -9,6 +9,7 @@ import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpF
 import { useWarehouseListShortcuts, WAREHOUSE_LIST_SHORTCUTS } from "../../../packages/app-common/src/components/useWarehouseListShortcuts";
 import { ReportDateRangeFilter, type ReportDateRange } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
 import { useReportDateOptions } from "../../../packages/app-common/src/components/useReportDateOptions";
+import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
 import { WarehouseSearchFrame } from "../../../packages/app-common/src/components/WarehouseSearchFrame";
 import { ArrowClockwise, FilePdf, FileXls, Plus } from "@phosphor-icons/react";
 import {
@@ -112,6 +113,8 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
   const [confirmingCount, setConfirmingCount] = useState(false);
   const countConfirmDialogRef = useRef<HTMLElement>(null);
   const screenRef = useRef<HTMLElement>(null);
+  const countTableRef = useRef<HTMLDivElement>(null);
+  const handleCountRowArrowFocus = useTableRowArrowFocus(countTableRef, "tbody tr[data-stock-count-row]", !loading && !saving && !confirmingCount);
 
   async function downloadCount(format: "pdf" | "xlsx") {
     if (!selectedCount) return;
@@ -491,8 +494,8 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
   }, { positive: 0, negative: 0, net: 0 }) ?? { positive: 0, negative: 0, net: 0 };
 
   return (
-    <section ref={screenRef} data-warehouse-heading={mode === "adjustment" ? "unified" : undefined} className={`gestion-warehouse-operations gestion-warehouse-screen ${mode === "adjustment" ? "gestion-adjustment-screen" : ""}`} aria-labelledby="warehouse-operation-title">
-      {mode === "adjustment" && <div className="gestion-adjustment-module-title"><h1>{t("home.warehouse")}</h1></div>}
+    <section ref={screenRef} data-warehouse-heading={mode === "adjustment" ? "unified" : undefined} data-document-heading={mode === "adjustment" ? "warehouse" : undefined} className={`gestion-warehouse-operations gestion-warehouse-screen ${mode === "adjustment" ? "gestion-adjustment-screen" : ""}`} aria-labelledby="warehouse-operation-title">
+      {mode === "adjustment" && <div className="gestion-adjustment-module-title"><h1>{t("gestion.navigation.group.warehouse")}</h1></div>}
       <header className="gestion-warehouse-operations-header gestion-warehouse-titlebar">
         <div>
           {mode !== "adjustment" && <span>{t("warehouse.operations.section")}</span>}
@@ -596,9 +599,9 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
             <ErpFilterChips translate={t} focusRef={countStatusRef}
               chips={countStatus ? [{ key: "status", label: t("warehouse.count.status"), value: t(`warehouse.count.status.${countStatus}`), onRemove: () => setCountStatus("") }] : []}
               onClear={() => setCountStatus("")} />
-            <div className="gestion-stock-count-items erp-classic-tables warehouse-classic-table">
+            <div ref={countTableRef} className="gestion-stock-count-items erp-classic-tables warehouse-classic-table">
               <table className="report-table"><thead><tr><th>{t("warehouse.transfer.number")}</th><th>{t("warehouse.operations.warehouse")}</th><th>{t("warehouse.count.status")}</th><th>{t("warehouse.transfer.date")}</th></tr></thead>
-                <tbody>{counts.map((count) => <tr key={count.id} className={selectedCount?.id === count.id ? "selected" : ""}>
+                <tbody>{counts.map((count) => <tr key={count.id} data-stock-count-row tabIndex={0} onKeyDown={handleCountRowArrowFocus} className={selectedCount?.id === count.id ? "selected" : ""}>
                   <td>{count.number}</td><td><button type="button" onClick={() => void openCount(count.id)}>{warehouses.find((warehouse) => warehouse.id === count.warehouseId)?.name ?? count.warehouseId}</button></td>
                   <td><span className={`gestion-stock-count-status ${count.status.toLowerCase()}`}>{t(`warehouse.count.status.${count.status}`)}</span></td>
                   <td>{new Date(count.createdAt).toLocaleString()}</td>
@@ -611,7 +614,15 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
           <section className="gestion-stock-count-detail" aria-label={t("warehouse.count.detail")}>
             {!selectedCount && <div className="gestion-security-state">{t("warehouse.count.select")}</div>}
             {selectedCount && <>
-              <header><div><strong>{selectedCount.number} · {warehouses.find((warehouse) => warehouse.id === selectedCount.warehouseId)?.name ?? selectedCount.warehouseId}</strong><span className={`gestion-stock-count-status ${selectedCount.status.toLowerCase()}`}>{t(`warehouse.count.status.${selectedCount.status}`)}</span></div><div className="gestion-warehouse-toolbar gestion-warehouse-actions"><button type="button" className="gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.pdf} disabled={saving} onClick={() => void downloadCount("pdf")}><span><FilePdf size={16} aria-hidden="true" />{t("warehouse.count.exportPdf")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.pdf}</kbd></button><button type="button" className="gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.excel} disabled={saving} onClick={() => void downloadCount("xlsx")}><span><FileXls size={16} aria-hidden="true" />{t("warehouse.count.exportExcel")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.excel}</kbd></button>{selectedCount.status === "DRAFT" && <><button type="button" disabled={saving} onClick={() => void changeCountStatus("cancel")}>{t("warehouse.count.cancel")}</button><button type="button" disabled={saving || selectedCount.lines.length === 0} onClick={() => void prepareCountConfirmation()}>{t("warehouse.count.confirm")}</button></>}</div></header>
+              <header>
+                <div><strong>{selectedCount.number} · {warehouses.find((warehouse) => warehouse.id === selectedCount.warehouseId)?.name ?? selectedCount.warehouseId}</strong><span className={`gestion-stock-count-status ${selectedCount.status.toLowerCase()}`}>{t(`warehouse.count.status.${selectedCount.status}`)}</span></div>
+                <div className="gestion-warehouse-toolbar gestion-warehouse-actions gestion-toolbar-end">
+                  {selectedCount.status === "DRAFT" && <button type="button" disabled={saving} onClick={() => void changeCountStatus("cancel")}>{t("warehouse.count.cancel")}</button>}
+                  <button type="button" className="gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.excel} disabled={saving} onClick={() => void downloadCount("xlsx")}><span><FileXls size={16} aria-hidden="true" />{t("warehouse.count.exportExcel")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.excel}</kbd></button>
+                  <button type="button" className="gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.pdf} disabled={saving} onClick={() => void downloadCount("pdf")}><span><FilePdf size={16} aria-hidden="true" />{t("warehouse.count.exportPdf")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.pdf}</kbd></button>
+                  {selectedCount.status === "DRAFT" && <button type="button" disabled={saving || selectedCount.lines.length === 0} onClick={() => void prepareCountConfirmation()}>{t("warehouse.count.confirm")}</button>}
+                </div>
+              </header>
               <div className="gestion-stock-count-progress" aria-label={t("warehouse.count.progress")}>
                 <div><strong>{t("warehouse.count.progress")}</strong><span>{countedProducts} / {totalCountProducts} {t("warehouse.count.productsCounted")}</span></div>
                 <div className="gestion-stock-count-progress-track" aria-hidden="true"><span style={{ width: `${countProgress}%` }} /></div>

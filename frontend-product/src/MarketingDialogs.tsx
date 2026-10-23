@@ -7,6 +7,9 @@ import { MarketingLink } from "./MarketingNavigation";
 import { marketingContact } from "./contact";
 import { appMeta, type AppId, type MarketingCopy } from "./applicationMetadata";
 import { MarketingModalLayer, useModalDialog } from "./MarketingModal";
+import { CompatibilityChecklist } from "./CompatibilityChecklist";
+import { TourStepPreview } from "./TourStepPreview";
+import { getTourExamples } from "./tourExamples";
 
 const downloadUrls: Partial<Record<AppId, string>> = {
   venta: import.meta.env.VITE_DOWNLOAD_VENTA_URL,
@@ -30,7 +33,7 @@ function safeDownloadUrl(value?: string) {
   }
 }
 
-function DownloadCenterModal({ copy, onClose, onRequestSetup }: { copy: MarketingCopy; onClose: () => void; onRequestSetup: (app: AppId) => void }) {
+function DownloadCenterModal({ copy, language, onClose, onRequestSetup }: { copy: MarketingCopy; language: MarketingLanguage; onClose: () => void; onRequestSetup: (app: AppId) => void }) {
   const { dialogRef, closeRef } = useModalDialog(onClose);
   const deliveryIcons = [Desktop, Desktop, DeviceMobile, CloudArrowUp];
 
@@ -56,6 +59,7 @@ function DownloadCenterModal({ copy, onClose, onRequestSetup }: { copy: Marketin
         })}
       </div>
       <p className="mk-download-safety"><ShieldCheck weight="fill" /> {copy.downloads.safety}</p>
+      <CompatibilityChecklist language={language} />
     </section>
   </div></MarketingModalLayer>;
 }
@@ -70,7 +74,8 @@ function ProductTourModal({ copy, language, initialApp, onClose, onRequestDemo }
   const appIndex = appMeta.findIndex((app) => app.id === activeApp);
   const { icon: AppIcon, number } = appMeta[appIndex];
   const [name, label, description, bullets, audience, scope] = copy.apps.items[appIndex];
-  const details = copy.tour.stepDetails[appIndex][step];
+  const examples = getTourExamples(language);
+  const details = examples.stepDetails[appIndex][step];
   const [platform, delivery] = copy.downloads.items[appIndex];
 
   function selectApp(app: AppId) {
@@ -108,7 +113,7 @@ function ProductTourModal({ copy, language, initialApp, onClose, onRequestDemo }
             <span aria-hidden="true">{number}</span>
           </div>
           <h3>{bullets[step]}</h3>
-          <p>{copy.tour.stepBodies[appIndex][step]}</p>
+          <p>{examples.stepBodies[appIndex][step]}</p>
           <div className="mk-tour-details">
             <section className="mk-tour-capabilities" aria-labelledby="mk-tour-actions-label">
               <h4 id="mk-tour-actions-label">{copy.tour.actionsLabel}</h4>
@@ -122,10 +127,7 @@ function ProductTourModal({ copy, language, initialApp, onClose, onRequestDemo }
           </div>
         </div>
         <aside className="mk-tour-context" data-app={activeApp}>
-          <figure className="mk-tour-preview">
-            <img key={activeApp} src={`/marketing/tour-${activeApp}.png`} alt={copy.tour.previewAlts[appIndex]} width={activeApp === "pda" ? 920 : 1600} height={activeApp === "pda" ? 1700 : activeApp === "gestion" ? 968 : 1000} decoding="async" />
-            <figcaption>{copy.tour.previewNote}</figcaption>
-          </figure>
+          <TourStepPreview application={activeApp} step={step} language={language} />
           <div className="mk-tour-context-copy"><p>{name}</p><strong>{description}</strong><dl><div><dt>{copy.apps.detailLabels[0]}</dt><dd>{audience}</dd></div><div><dt>{copy.apps.detailLabels[1]}</dt><dd>{scope}</dd></div><div className="mk-tour-delivery"><dt>{copy.tour.deliveryLabel}</dt><dd>{platform} · {delivery}</dd></div></dl></div>
         </aside>
       </div>

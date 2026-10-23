@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { AppKind, LocaleCode } from "../types";
 import { ArrowClockwise, CalendarBlank, CaretDown, ChartBar, Circle, MagnifyingGlass, Tag } from "@phosphor-icons/react";
 import type { PromotionView } from "./PromotionForm";
@@ -10,6 +10,10 @@ import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import type { UseTableLayoutPreferenceResult } from "./useTableLayoutPreference";
 import { useTableSortPreference, type TableSort } from "./tableSorting";
 import { sortProductTableRows } from "./productCodeSorting";
+import type { PromotionManagementActions, PromotionSelectionRequest } from "./usePromotionManagement";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import "./StockPromotionGroups.css";
 
 export const stockPromotionGroupsMessageKeys = {
@@ -113,6 +117,8 @@ export type StockPromotionGroupsProps = {
   statusMessage?: string;
   onRefresh?: () => void;
   onExportContextChange?: (context: StockPromotionExportContext) => void;
+  management?: PromotionManagementActions;
+  selectionRequest?: PromotionSelectionRequest;
 };
 
 type ProductAccumulator = Omit<StockPromotionProduct, "stock"> & {
@@ -160,7 +166,9 @@ export function StockPromotionGroups({
   loading = false,
   statusMessage = "",
   onRefresh,
-  onExportContextChange
+  onExportContextChange,
+  management,
+  selectionRequest
 }: StockPromotionGroupsProps) {
   const productTableLayout = useTableLayoutPreference({
     app,
@@ -206,10 +214,31 @@ export function StockPromotionGroups({
       ?? filteredGroups[0]?.promotion.id ?? ""
   );
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+  const listRef = useRef<HTMLDivElement>(null);
   const componentId = useId();
   const selectedGroup = filteredGroups.find((group) => group.promotion.id === activePromotionId)
     ?? filteredGroups[0];
   const selectedPromotion = selectedGroup?.promotion;
+  useTableInitialFocus(listRef, ".stock-promotion-list-row", {
+    ready: !loading && filteredGroups.length > 0,
+    onSelect: (row) => setActivePromotionId(row.dataset.promotionId ?? ""),
+  });
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const row = selectedPromotion ? rowRefs.current.get(selectedPromotion.id) : null;
+    if (list && row) ensureTableRowVisible(list, row);
+  }, [selectedPromotion?.id]);
+  const repeatGroupArrow = useTableArrowRepeat((direction) => {
+    const focused = document.activeElement;
+    const row = focused instanceof HTMLElement && listRef.current?.contains(focused)
+      ? focused.closest<HTMLElement>(".stock-promotion-list-row") : null;
+    const index = filteredGroups.findIndex((group) => group.promotion.id === row?.dataset.promotionId);
+    if (index < 0) return false;
+    const next = stockPromotionNavigationIndex(index, direction, filteredGroups.length);
+    if (next === index) return false;
+    focusGroup(next);
+    return true;
+  }, filteredGroups.length > 0);
   const expired = selectedPromotion ? isStockPromotionExpired(selectedPromotion) : false;
   const number = new Intl.NumberFormat(localeTag(locale), { maximumFractionDigits: 0 });
   const conditions = selectedPromotion ? stockPromotionConditionSentences(selectedPromotion, t, locale) : [];
@@ -238,16 +267,29 @@ export function StockPromotionGroups({
       activeIds.has(current) ? current : filteredGroups[0]?.promotion.id ?? "");
   }, [groupIdsKey]);
 
+  useEffect(() => {
+    if (!selectionRequest) return;
+    setQuery("");
+    setStatusFilter("ALL");
+    setActivePromotionId(selectionRequest.id);
+  }, [selectionRequest]);
+
   function focusGroup(index: number) {
     const group = filteredGroups[index];
     if (!group) return;
     setActivePromotionId(group.promotion.id);
-    rowRefs.current.get(group.promotion.id)?.focus();
+    const row = rowRefs.current.get(group.promotion.id);
+    row?.focus({ preventScroll: true });
+    if (listRef.current && row) ensureTableRowVisible(listRef.current, row);
   }
 
   function handleRowKeyDown(event: KeyboardEvent<HTMLButtonElement>, groupIndex: number) {
     if (!isStockPromotionNavigationKey(event.key)) return;
     event.preventDefault();
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      repeatGroupArrow(event);
+      return;
+    }
     focusGroup(stockPromotionNavigationIndex(groupIndex, event.key, filteredGroups.length));
   }
 
@@ -256,14 +298,15 @@ export function StockPromotionGroups({
   return (
     <section className={rootClassName} aria-label={t(stockPromotionGroupsMessageKeys.tableLabel)}>
       <section className="stock-promotion-list-panel" aria-label={t(stockPromotionGroupsMessageKeys.tableLabel)}>
-        <div className="stock-promotion-list-filters">
-          <label className="stock-promotion-search">
+        <div className={`stock-promotion-list-filters${app === "gestion" ? " gestion-filter-toolbar" : ""}`}>
+          <label className={`stock-promotion-search${app === "gestion" ? " report-search" : ""}`}>
             <input type="search" aria-label={t("promotion.list.search")}
               placeholder={t("promotion.list.search")} value={query}
               onChange={(event) => setQuery(event.target.value)} />
             <MagnifyingGlass size={16} aria-hidden="true" />
           </label>
-          <div className="stock-promotion-status-filter">
+          <div className="stock-promotion-status-filter"
+            data-filter-active={app === "gestion" && statusFilter !== "ALL" ? "true" : undefined}>
             <ErpSelect value={statusFilter} aria-label={t("promotion.column.status")}
               options={[
                 { value: "ALL", label: t("promotion.filter.all") },
@@ -281,7 +324,7 @@ export function StockPromotionGroups({
             {statusMessage || (loading ? t("common.loading") : t("promotion.list.empty"))}
           </p>
         ) : (
-          <div className="stock-promotion-list-scroll" role="list">
+          <div ref={listRef} className="stock-promotion-list-scroll" role="list">
             {filteredGroups.map((group, groupIndex) => {
               const promotion = group.promotion;
               const isExpired = isStockPromotionExpired(promotion);
@@ -295,6 +338,7 @@ export function StockPromotionGroups({
                     }}
                     className={"stock-promotion-list-row " + promotion.status.toLowerCase()
                       + (isExpired ? " expired" : "") + (selected ? " selected" : "")}
+                    data-promotion-id={promotion.id}
                     aria-pressed={selected} aria-controls={componentId + "-detail"}
                     tabIndex={selected ? 0 : -1}
                     onFocus={() => setActivePromotionId(promotion.id)}
@@ -315,7 +359,7 @@ export function StockPromotionGroups({
             })}
           </div>
         )}
-        <div className="stock-promotion-list-footer">
+        <div className={`stock-promotion-list-footer${app === "gestion" ? " gestion-toolbar-actions" : ""}`}>
           <span>{t("promotion.list.heading")}: {filteredGroups.length}</span>
           {onRefresh && <button type="button" onClick={onRefresh} disabled={loading}
             aria-label={t("promotion.action.refresh")} title={t("promotion.action.refresh")}>
@@ -336,6 +380,14 @@ export function StockPromotionGroups({
                   <Circle size={10} weight="fill" aria-hidden="true" />
                   {expired ? t("promotion.list.expired") : t("promotion.status." + selectedPromotion.status)}
                 </span>
+                {app === "gestion" && management && <div className="stock-promotion-management-actions gestion-toolbar-actions">
+                  <button type="button" disabled={management.busy}
+                    onClick={() => management.onEditConditions(selectedPromotion)}>{t("promotion.action.editConditions")}</button>
+                  <button type="button" disabled={management.busy}
+                    onClick={() => management.onToggleActive(selectedPromotion)}>
+                    {t(selectedPromotion.status === "ACTIVE" ? "promotion.action.deactivate" : "promotion.action.activate")}
+                  </button>
+                </div>}
               </header>
               <dl className="stock-promotion-facts">
                 <div>
@@ -361,7 +413,11 @@ export function StockPromotionGroups({
               </section>
             </section>
             <section className="stock-promotion-products">
-              <h3>{t("promotion.detail.products")} ({number.format(selectedGroup.products.length)})</h3>
+              {app === "gestion" && management ? <div className="stock-promotion-products-heading gestion-toolbar-actions">
+                <h3>{t("promotion.detail.products")} ({number.format(selectedGroup.products.length)})</h3>
+                <button type="button" disabled={management.busy}
+                  onClick={() => management.onEditProducts(selectedPromotion)}>{t("promotion.action.editProducts")}</button>
+              </div> : <h3>{t("promotion.detail.products")} ({number.format(selectedGroup.products.length)})</h3>}
               {loading ? <p className="stock-promotion-empty" role="status">{t("common.loading")}</p>
                 : statusMessage ? <p className="stock-promotion-empty" role="alert">{statusMessage}</p>
                   : <PromotionProductsTable products={selectedGroup.products} locale={locale} t={t}

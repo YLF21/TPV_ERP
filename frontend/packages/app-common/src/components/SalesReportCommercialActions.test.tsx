@@ -31,16 +31,16 @@ function documentFixture(report: Report, index: number) {
   };
 }
 
-function createReportRequest() {
+function createReportRequest(emptyReport?: Report) {
   const documents = ["invoices", "deliveryNotes"].flatMap((report) =>
     [1, 2].map((index) => documentFixture(report as Report, index)));
   return vi.fn().mockImplementation(async (path: string) => {
     const url = new URL(path, "http://test.local");
     if (url.pathname === "/document-reports/invoices") {
-      return { items: [1, 2].map((index) => documentFixture("invoices", index)), hasMore: false, nextCursor: null };
+      return { items: emptyReport === "invoices" ? [] : [1, 2].map((index) => documentFixture("invoices", index)), hasMore: false, nextCursor: null };
     }
     if (url.pathname === "/document-reports/delivery-notes") {
-      return { items: [1, 2].map((index) => documentFixture("deliveryNotes", index)), hasMore: false, nextCursor: null };
+      return { items: emptyReport === "deliveryNotes" ? [] : [1, 2].map((index) => documentFixture("deliveryNotes", index)), hasMore: false, nextCursor: null };
     }
     const document = documents.find((item) => path.startsWith(`/documents/${item.id}/`));
     if (document && path.endsWith("/detail")) return {
@@ -62,16 +62,19 @@ function printSnapshot(document: DocumentFixture) {
   };
 }
 
-async function mountReport({ report = "invoices", app = "venta", locale = "es" }: {
-  report?: Report; app?: AppKind; locale?: LocaleCode;
+async function mountReport({ report = "invoices", app = "venta", locale = "es", empty = false }: {
+  report?: Report; app?: AppKind; locale?: LocaleCode; empty?: boolean;
 } = {}) {
-  const request = createReportRequest();
+  const request = createReportRequest(empty ? report : undefined);
   const printCommercialDocument = vi.fn().mockResolvedValue({ status: "PRINTED" });
   const { container } = render(<SalesReportScreen app={app} locale={locale}
     session={session} terminalContext={terminalContext}
     initialReport={`salesReport.${report}`} request={request} printCommercialDocument={printCommercialDocument}
     onBack={vi.fn()} onLocaleChange={vi.fn()} />);
-  await waitFor(() => expect(container.querySelectorAll(".report-table tbody tr")).toHaveLength(2));
+  await waitFor(() => {
+    expect(container.querySelectorAll(".report-table tbody tr")).toHaveLength(empty ? 0 : 2);
+    expect(screen.queryByText(createTranslator(locale)("salesReport.loading"))).not.toBeInTheDocument();
+  });
   const rows = () => Array.from(container.querySelectorAll<HTMLTableRowElement>(".report-table tbody tr"));
   return { request, rows, printCommercialDocument, t: createTranslator(locale) };
 }
@@ -104,6 +107,7 @@ describe("Commercial report document actions", () => {
     fireEvent.click(rows()[1]);
     const menu = openMenu(t("salesReport.moreActions"));
     const actions = within(menu).getAllByRole("menuitem");
+    expect(within(menu).queryByRole("menuitem", { name: t("salesReport.serialSearch.title") }) != null).toBe(report === "invoices");
     expect(actions.slice(0, 2).map((item) => item.textContent?.trim())).toEqual([
       t("salesReport.printDocumentCopy"), t("salesReport.exportDocumentExcel"),
     ]);
@@ -117,8 +121,9 @@ describe("Commercial report document actions", () => {
     }
   });
 
-  it.each(["invoices", "deliveryNotes"] as const)("disables document actions without a selection in %s", async (report) => {
-    await mountReport({ report });
+  it.each(["invoices", "deliveryNotes"] as const)("disables document actions for an empty %s report", async (report) => {
+    const { request, printCommercialDocument } = await mountReport({ report, empty: true });
+    expect(screen.queryByRole("row", { name: report === "invoices" ? /FV-00[12]/ : /AV-00[12]/ })).not.toBeInTheDocument();
     const menu = openMenu();
     for (const name of ["Imprimir copia", "Exportar Excel"]) {
       expect(within(menu).getByRole("menuitem", { name })).toBeDisabled();
@@ -127,6 +132,8 @@ describe("Commercial report document actions", () => {
     expect(within(menu).queryByRole("menuitem", { name: "Pendientes" })).toBeNull();
     expect(screen.getByRole("button", { name: "Excel" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Excel" })).toHaveAttribute("aria-keyshortcuts", "F6");
+    expect(request).not.toHaveBeenCalledWith(expect.stringMatching(/\/detail$|\/print-copy$/), expect.anything());
+    expect(printCommercialDocument).not.toHaveBeenCalled();
   });
 
   it.each(["invoices", "deliveryNotes"] as const)("exports the selected %s document through the individual endpoint", async (report) => {

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ErpFilterChips, type ErpFilterChip } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { ReportDateRangeSummary } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
+import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
 import {
   ErpSelect,
   TableLayoutHeaderCell,
@@ -23,6 +25,7 @@ import { FiscalComplianceView } from "./FiscalComplianceView";
 import { FiscalModeControlView } from "./FiscalModeControlView";
 import { FiscalRecordsView } from "./FiscalRecordsView";
 import { FiscalWorkspaceDialog } from "./FiscalWorkspaceDialog";
+import { GestionModuleHeading } from "./GestionModuleHeading";
 import { fiscalErrorMessage } from "./verifactuErrorPresentation";
 import {
   VerifactuResolutionPanel,
@@ -342,9 +345,10 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
   }
 
   return (
-    <section className="gestion-workspace gestion-verifactu-workspace">
+    <section className="gestion-workspace gestion-verifactu-workspace gestion-module-screen">
       <div className="gestion-verifactu-navigation">
-      <nav className="gestion-verifactu-tabs" role="tablist" aria-label={t("verifactu.management.views")}>
+      <GestionModuleHeading group={t("gestion.navigation.group.fiscal")} title={t("verifactu.management.title")} description={t(managementHint)} />
+      <nav className="gestion-verifactu-tabs gestion-toolbar-actions" role="tablist" aria-label={t("verifactu.management.views")}>
         <button
           id="verifactu-tab-summary"
           type="button"
@@ -452,13 +456,6 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
         <div id="verifactu-view-panel" className="gestion-verifactu-view" role="tabpanel" tabIndex={0} aria-labelledby={`verifactu-tab-${view}`} aria-label={viewPanelLabel(view, t)}>
           {view === "summary" && (
             <>
-              <header className="gestion-dashboard-toolbar gestion-verifactu-header">
-                <div>
-                  <span className="gestion-eyebrow">{t("verifactu.management.eyebrow")}</span>
-                  <h2>{t("verifactu.management.title")}</h2>
-                  <p>{t(managementHint)}</p>
-                </div>
-              </header>
               <FiscalStatusStrip
                 locale={locale}
                 status={fiscalStatus}
@@ -493,6 +490,7 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
               tableLayout={queueTableLayout}
               activeFilterCount={countActiveFilters(filters)}
               filterChips={queueFilterChips}
+              appliedFilters={filters}
               draftFilters={draftFilters}
               onDraftChange={setDraftFilters}
               onApply={applyFilters}
@@ -610,7 +608,7 @@ function FiscalStatusStrip({
       ? t("verifactu.management.fiscalStatusUnavailable")
       : fiscalModeLabel(status.mode, t);
   return (
-    <section className={`gestion-verifactu-fiscal-strip ${status ? `runtime-${status.runtimeClass.toLowerCase()}` : "is-unavailable"}`} aria-label={t("verifactu.management.fiscalStatus")}>
+    <section className={`gestion-verifactu-fiscal-strip gestion-module-panel ${status ? `runtime-${status.runtimeClass.toLowerCase()}` : "is-unavailable"}`} aria-label={t("verifactu.management.fiscalStatus")}>
       <div className="gestion-verifactu-fiscal-primary">
         <span>{t("verifactu.management.fiscalStatus")}</span>
         <strong aria-live="polite">{stateLabel}</strong>
@@ -679,7 +677,7 @@ function SummaryView({
   const modeIsPreSif = fiscalMode === "PRE_SIF";
   return (
     <div className="gestion-verifactu-summary">
-      <section className={`gestion-verifactu-status ${modeIsPreSif || (!fiscalMode && !summary.active) ? "inactive" : "active"}`}>
+      <section className={`gestion-verifactu-status gestion-module-panel ${modeIsPreSif || (!fiscalMode && !summary.active) ? "inactive" : "active"}`}>
         <div>
           <span>{t("verifactu.management.currentState")}</span>
           <strong>{fiscalMode ? fiscalModeLabel(fiscalMode, t) : summary.active ? t("verifactu.management.active") : t("verifactu.management.inactive")}</strong>
@@ -687,7 +685,7 @@ function SummaryView({
         <p>{modeIsNoVerifactu || modeIsPreSif ? t(`verifactu.mode.explanation.${fiscalMode}`) : activationLabel(summary.activationMode, t)}</p>
       </section>
 
-      <section className="gestion-verifactu-metrics" aria-label={t("verifactu.management.queueSummary")}>
+      <section className="gestion-verifactu-metrics gestion-module-panel" aria-label={t("verifactu.management.queueSummary")}>
         <Metric label={t("verifactu.management.pending") } value={pending} tone={pending > 0 ? "warning" : "neutral"} />
         <Metric label={t("verifactu.management.requiresReview")} value={review} tone={review > 0 ? "danger" : "neutral"} />
         <Metric label={t("verifactu.management.completed")} value={accepted} tone="success" />
@@ -699,7 +697,7 @@ function SummaryView({
       </section>
 
       <div className="gestion-verifactu-summary-grid">
-        <section className="gestion-verifactu-panel">
+        <section className="gestion-verifactu-panel gestion-module-panel">
           <header><h3>{t("verifactu.management.operation")}</h3></header>
           <dl className="gestion-verifactu-details">
             <Detail label={t("verifactu.management.environment")} value={endpointLabel(summary.endpointMode, t)} />
@@ -718,7 +716,7 @@ function SummaryView({
           </dl>
         </section>
 
-        <section className="gestion-verifactu-panel">
+        <section className="gestion-verifactu-panel gestion-module-panel">
           <header><h3>{t("verifactu.management.controls")}</h3></header>
           <dl className="gestion-verifactu-details">
             <Detail
@@ -743,7 +741,7 @@ function SummaryView({
         </section>
       </div>
 
-      <section className="gestion-verifactu-panel gestion-verifactu-counts">
+      <section className="gestion-verifactu-panel gestion-verifactu-counts gestion-module-panel">
         <header><h3>{t("verifactu.management.countsByStatus")}</h3></header>
         <div>
           {verifactuSubmissionStatuses.map((status) => (
@@ -764,6 +762,7 @@ function QueueView({
   tableLayout,
   activeFilterCount,
   filterChips,
+  appliedFilters,
   draftFilters,
   onDraftChange,
   onApply,
@@ -784,6 +783,7 @@ function QueueView({
   tableLayout: ReturnType<typeof useTableLayoutPreference<QueueSortColumn>>;
   activeFilterCount: number;
   filterChips: ErpFilterChip[];
+  appliedFilters: VerifactuAdminSubmissionFilters;
   draftFilters: VerifactuAdminSubmissionFilters;
   onDraftChange: (filters: VerifactuAdminSubmissionFilters) => void;
   onApply: (event: FormEvent) => boolean;
@@ -800,6 +800,8 @@ function QueueView({
   t: Translator;
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const handleRowArrow = useTableRowArrowFocus(tableScrollRef, "tbody tr", !loading && !error && !filtersOpen, page.page);
   const visibleColumns = visibleTableColumns(tableLayout.layout);
   const statusOptions = useMemo(() => [
     { value: "", label: t("verifactu.management.allStatuses") },
@@ -833,7 +835,7 @@ function QueueView({
           <button type="submit" form="verifactu-queue-filters-form" className="primary erp-dialog-action-confirm">{t("verifactu.management.applyFilters")}</button>
         </>}
       >
-        <form id="verifactu-queue-filters-form" className="gestion-verifactu-filters" onSubmit={(event) => { if (onApply(event)) setFiltersOpen(false); }}>
+        <form id="verifactu-queue-filters-form" className="gestion-verifactu-filters gestion-filter-toolbar gestion-module-fields" onSubmit={(event) => { if (onApply(event)) setFiltersOpen(false); }}>
         <label>
           <span>{t("verifactu.management.dateFrom")}</span>
           <input
@@ -850,7 +852,8 @@ function QueueView({
             onChange={(event) => onDraftChange({ ...draftFilters, dateTo: event.target.value })}
           />
         </label>
-        <label>
+        <ReportDateRangeSummary locale={locale} value={{ from: appliedFilters.dateFrom, to: appliedFilters.dateTo, label: "" }} />
+        <label data-filter-active={Boolean(draftFilters.status)}>
           <span>{t("verifactu.management.status")}</span>
           <ErpSelect
             value={draftFilters.status}
@@ -859,7 +862,7 @@ function QueueView({
             onChange={(value) => onDraftChange({ ...draftFilters, status: value as VerifactuAdminSubmissionFilters["status"] })}
           />
         </label>
-        <label>
+        <label data-filter-active={Boolean(draftFilters.documentType)}>
           <span>{t("verifactu.management.documentType")}</span>
           <ErpSelect
             value={draftFilters.documentType}
@@ -868,7 +871,7 @@ function QueueView({
             onChange={(value) => onDraftChange({ ...draftFilters, documentType: value as VerifactuAdminSubmissionFilters["documentType"] })}
           />
         </label>
-        <label>
+        <label data-filter-active={Boolean(draftFilters.operation)}>
           <span>{t("verifactu.management.fiscalOperation")}</span>
           <ErpSelect
             value={draftFilters.operation}
@@ -889,13 +892,13 @@ function QueueView({
         </form>
       </FiscalWorkspaceDialog>}
 
-      <section className="gestion-verifactu-table-panel">
+      <section className="gestion-verifactu-table-panel gestion-module-panel">
         <header>
           <div>
             <h3>{t("verifactu.management.queueTitle")}</h3>
             <span>{page.totalElements} {t("verifactu.management.records")}</span>
           </div>
-          <div className="fiscal-records-toolbar">
+          <div className="fiscal-records-toolbar gestion-filter-toolbar gestion-toolbar-layout gestion-native-filter-toolbar gestion-toolbar-actions">
             {loading && <span className="gestion-verifactu-loading">{t("verifactu.management.updating")}</span>}
             <button
               type="button"
@@ -920,7 +923,7 @@ function QueueView({
         ) : !loading && page.items.length === 0 ? (
           <div className="gestion-verifactu-message">{t("verifactu.management.emptyQueue")}</div>
         ) : (
-          <div className="gestion-verifactu-table-scroll">
+          <div ref={tableScrollRef} className="gestion-verifactu-table-scroll gestion-module-table">
           <table className="gestion-verifactu-table" aria-rowcount={page.totalElements}>
             <colgroup>
               {visibleColumns.map((column) => <col key={column.key} style={{ width: `${column.width}px` }} />)}
@@ -946,7 +949,7 @@ function QueueView({
               <th>{t("verifactu.resolution.actions")}</th>
             </tr></thead>
             <tbody>{page.items.map((item) => (
-              <tr key={item.recordId}>
+              <tr key={item.recordId} tabIndex={0} onKeyDown={handleRowArrow}>
                 {visibleColumns.map((column) => <td data-column-key={column.key} key={column.key}>{renderQueueCell(item, column.key, locale, timezone, t)}</td>)}
                 <td>
                   <button
@@ -1035,7 +1038,7 @@ function SandboxPanel({
   t: Translator;
 }) {
   return (
-    <section className="gestion-verifactu-sandbox" aria-label={t("verifactu.management.sandboxTitle")}>
+    <section className="gestion-verifactu-sandbox gestion-module-panel" aria-label={t("verifactu.management.sandboxTitle")}>
       <strong>{t("verifactu.management.sandboxBanner")}</strong>
       {fiscalStatus && <span>{t("verifactu.management.sandboxFiscalMode")}: {fiscalModeLabel(fiscalStatus.mode, t)}</span>}
       {sandboxStatus && <span>{t("verifactu.management.sandboxMode")}: {fiscalTransportLabel(sandboxStatus.transportMode, t)} / {fiscalEndpointLabel(sandboxStatus.endpointEnvironment, t)}</span>}
@@ -1052,8 +1055,10 @@ function SandboxPanel({
             {(["ACCEPTED", "ACCEPTED_WITH_ERRORS", "REJECTED", "DUPLICATE", "TIMEOUT", "HTTP_ERROR", "INVALID_RESPONSE"] as const).map((outcome) => <option key={outcome} value={outcome}>{sandboxOutcomeLabel(outcome, t)}</option>)}
           </select>
         </label>
-        <button type="button" disabled={sandboxScenarioWorking || sandboxDispatchWorking} onClick={onConfigure}>{sandboxScenarioWorking ? t("verifactu.management.sandboxWorking") : t("verifactu.management.sandboxApply")}</button>
-        <button type="button" disabled={sandboxScenarioWorking || sandboxDispatchWorking} onClick={onDispatch}>{sandboxDispatchWorking ? t("verifactu.management.sandboxWorking") : t("verifactu.management.sandboxDispatch")}</button>
+        <div className="gestion-toolbar-actions">
+          <button type="button" disabled={sandboxScenarioWorking || sandboxDispatchWorking} onClick={onConfigure}>{sandboxScenarioWorking ? t("verifactu.management.sandboxWorking") : t("verifactu.management.sandboxApply")}</button>
+          <button type="button" disabled={sandboxScenarioWorking || sandboxDispatchWorking} onClick={onDispatch}>{sandboxDispatchWorking ? t("verifactu.management.sandboxWorking") : t("verifactu.management.sandboxDispatch")}</button>
+        </div>
       </>}
       {sandboxError && <span role="alert">{t("verifactu.management.sandboxError")}</span>}
     </section>
@@ -1061,7 +1066,7 @@ function SandboxPanel({
 }
 
 function Metric({ label, value, tone }: { label: string; value: string | number; tone: string }) {
-  return <div className={`gestion-verifactu-metric ${tone}`}><span>{label}</span><strong>{value}</strong></div>;
+  return <div className={`gestion-verifactu-metric gestion-module-panel ${tone}`}><span>{label}</span><strong>{value}</strong></div>;
 }
 
 function Detail({ label, value, tone = "" }: { label: string; value: string; tone?: string }) {

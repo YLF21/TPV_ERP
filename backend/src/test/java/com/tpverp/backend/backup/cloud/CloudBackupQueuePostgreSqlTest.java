@@ -40,7 +40,7 @@ class CloudBackupQueuePostgreSqlTest {
         String schema = "cloud_queue_" + UUID.randomUUID().toString().replace("-", "");
         var flyway = FlywayPostgreSqlConfiguration.disableTransactionalLock(Flyway.configure())
                 .dataSource(url, user, password).schemas(schema).defaultSchema(schema).createSchemas(true)
-                .target("276").load();
+                .target("277").load();
         flyway.migrate();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         try {

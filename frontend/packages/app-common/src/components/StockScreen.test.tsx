@@ -1251,7 +1251,7 @@ describe("StockScreen", () => {
       inventoryFilterOpen: false,
       productCreateOpen: false,
       topSalesFilterOpen: false
-    })).toBe(false);
+    })).toBe(true);
     expect(stockTableShouldAutoFocus("stock.current", {
       inventoryFilterOpen: true,
       productCreateOpen: false,
@@ -1324,7 +1324,7 @@ describe("StockScreen", () => {
       />
     );
 
-    expect(html).toContain('class="stock-screen work-screen stock-screen--venta erp-classic-tables"');
+    expect(html).toContain('class="stock-screen work-screen stock-document-screen stock-screen--venta erp-classic-tables"');
     expect(html).toContain('class="stock-nav"');
     expect(html).toContain('class="module-nav-back-icon"');
     expect(html.match(/class="module-nav-item-icon"/g)).toHaveLength(10);
@@ -1333,13 +1333,14 @@ describe("StockScreen", () => {
     expect(html).toContain('class="language-button"');
     expect(html).toContain('class="shutdown-button"');
     expect(html).toContain('class="report-footer-context"');
-    expect(html).toContain("GESTIÓN");
+    expect(html).toContain("Productos");
     expect(html).toContain("Top ventas");
     expect(html).toContain("Añadir producto");
     expect(html).toContain("Filtrar");
     expect(html).toContain("Exportar Excel");
     expect(html).toContain('aria-keyshortcuts="F6"');
-    expect(html).toContain('<kbd aria-hidden="true">F6</kbd>');
+    expect(html).toContain('<kbd>F6</kbd>');
+    expect(html).toContain('aria-keyshortcuts="F7"');
     expect(html).toContain("Stock local");
     expect(html).toContain("Stock total");
     expect(html).toContain("Stock");
@@ -1399,7 +1400,7 @@ describe("StockScreen", () => {
       />
     );
 
-    expect(html).toContain('class="stock-screen work-screen gestion-embedded-module erp-classic-tables"');
+    expect(html).toContain('class="stock-screen work-screen stock-document-screen gestion-embedded-module erp-classic-tables"');
     expect(html).toContain("Top ventas");
     expect(html).not.toContain('class="stock-nav"');
     expect(html).not.toContain('class="report-brand-back"');

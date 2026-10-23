@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FiscalComplianceView } from "./FiscalComplianceView";
@@ -132,6 +133,20 @@ describe("FiscalComplianceView", () => {
     expect(screen.queryByRole("button", { name: "Comprobar ahora" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Registrar requerimiento" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Exportar" })).toBeNull();
+  });
+
+  it("focuses the event list and moves its cursor without fiscal actions", async () => {
+    vi.mocked(api.loadFiscalEventsCursor).mockResolvedValue({ items: [
+      { id: "event-1", installationId: "installation-1", systemVersionId: "version-1", sequence: 10, type: "SUMMARY", fiscalMode: "NO_VERIFACTU", generatedAt: "2026-08-26T10:00:00Z", previousHash: "previous", hash: "1234567890ABCDEF1234567890ABCDEF", xmlHash: "xml-hash", signed: true },
+      { id: "event-2", installationId: "installation-1", systemVersionId: "version-1", sequence: 11, type: "SUMMARY", fiscalMode: "NO_VERIFACTU", generatedAt: "2026-08-26T10:01:00Z", previousHash: "previous", hash: "1234567890ABCDEF1234567890ABCDEF", xmlHash: "xml-hash", signed: true }
+    ], size: 50, nextCursor: null, previousCursor: null, hasNext: false, hasPrevious: false, snapshotSequence: 11 });
+    render(<FiscalComplianceView locale="es" token="token" mode="NO_VERIFACTU" username="tester" canManage={false} revision={0} t={t} onChanged={vi.fn()} />);
+    await screen.findByText("11");
+    const rows = Array.from(document.querySelectorAll<HTMLElement>(".gestion-verifactu-table tbody tr"));
+    await waitFor(() => expect(rows[0]).toHaveFocus());
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(rows[1]).toHaveFocus();
+    expect(api.createFiscalRequiredSubmissionExportJob).not.toHaveBeenCalled();
   });
 
   it("permite desplegar y copiar la huella completa del evento", async () => {

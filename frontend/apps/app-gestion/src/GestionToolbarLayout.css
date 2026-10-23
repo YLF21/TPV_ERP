@@ -1,0 +1,75 @@
+/* DOM order matches keyboard order: search/filters, then record/output actions. */
+@media screen {
+  html[data-app="gestion"] :is(.gestion-toolbar-start, .gestion-toolbar-end) {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  html[data-app="gestion"] .gestion-toolbar-end { margin-left: auto; }
+
+  html[data-app="gestion"] .gestion-verifactu-table-panel > header:has(> .gestion-native-filter-toolbar) {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  html[data-app="gestion"] .gestion-native-filter-toolbar {
+    flex: 1 0 100%;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  html[data-app="gestion"] .gestion-toolbar-tail-action { margin-left: auto; }
+
+  html[data-app="gestion"] .gestion-report-toolbar > .gestion-toolbar-start { flex: 1 1 280px; }
+  html[data-app="gestion"] .gestion-report-toolbar > .gestion-toolbar-end { flex: 0 1 auto; }
+
+  html[data-app="gestion"] .gestion-report-toolbar .report-search {
+    width: 360px;
+    min-width: 180px;
+    max-width: 420px;
+    flex: 0 1 360px;
+    margin: 0;
+    align-self: center;
+  }
+
+  html[data-app="gestion"] .gestion-report-toolbar .report-output-cluster {
+    width: auto;
+    min-width: 0;
+    flex: 0 0 auto;
+    margin-left: 0;
+  }
+
+  html[data-app="gestion"] .gestion-report-toolbar .report-output-actions { width: auto; }
+  html[data-app="gestion"] .gestion-report-toolbar .report-output-actions > button { flex: 0 0 auto; }
+  html[data-app="gestion"] .gestion-report-toolbar .report-utility-actions { margin-left: 0; }
+}
+
+@layer gestion-accents {
+  @media screen {
+    html[data-app="gestion"] .report-screen .gestion-report-toolbar {
+      display: flex !important;
+      flex-wrap: wrap;
+      align-items: center !important;
+      justify-content: space-between;
+      gap: 8px !important;
+      min-height: 52px;
+    }
+
+    html[data-app="gestion"] .gestion-report-toolbar .gestion-toolbar-start > button {
+      flex: 0 0 auto;
+      width: auto;
+      min-width: 0 !important;
+      height: 34px !important;
+      padding: 0 9px;
+    }
+
+    html[data-app="gestion"] .gestion-report-toolbar .gestion-toolbar-start .report-action-icon {
+      width: 18px;
+      height: 18px;
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { GestionSearchFrame } from "../../../packages/app-common/src/components/GestionSearchFrame";
 
 /** Search for complete in-memory lists. Paged screens keep their server filters. */
 export function GestionTableSearch({ value, onChange, t }: {
@@ -8,7 +9,7 @@ export function GestionTableSearch({ value, onChange, t }: {
 }) {
   return <div className="gestion-table-search">
     <label><span>{t("party.searchLabel")}</span>
-      <input type="search" value={value} onChange={event => onChange(event.target.value)} />
+      <GestionSearchFrame><input type="search" value={value} onChange={event => onChange(event.target.value)} /></GestionSearchFrame>
     </label>
     <ErpFilterChips translate={t} chips={[
       { key: "search", label: t("party.searchLabel"), value, onRemove: () => onChange("") }

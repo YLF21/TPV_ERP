@@ -10,6 +10,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -29,6 +30,8 @@ class PromotionControllerContractTest {
 
         assertGet("list");
         assertPost("create", "");
+        assertThat(method("update").getAnnotation(PutMapping.class).value()).containsExactly("/{id}");
+        assertThat(method("update").getAnnotation(PreAuthorize.class).value()).isEqualTo(MANAGE_PERMISSION);
         assertPost("duplicate", "/{id}/duplicate");
         assertPost("activate", "/{id}/activate");
         assertPost("deactivate", "/{id}/deactivate");
@@ -44,6 +47,13 @@ class PromotionControllerContractTest {
     void createValidatesRequestBody() {
         var requestParameter = method("create").getParameters()[0];
 
+        assertThat(requestParameter.getAnnotation(RequestBody.class)).isNotNull();
+        assertThat(requestParameter.getAnnotation(Valid.class)).isNotNull();
+    }
+
+    @Test
+    void updateValidatesRequestBody() {
+        var requestParameter = method("update").getParameters()[1];
         assertThat(requestParameter.getAnnotation(RequestBody.class)).isNotNull();
         assertThat(requestParameter.getAnnotation(Valid.class)).isNotNull();
     }

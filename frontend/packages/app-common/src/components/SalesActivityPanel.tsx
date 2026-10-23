@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useTableRowArrowFocus } from "./useTableRowArrowFocus";
 import { FilePdf, FileXls, Printer } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import { apiBaseUrl } from "../api/runtime";
@@ -14,7 +15,7 @@ import { ErpFilterChips } from "./ErpFilterChips";
 import { visibleTableColumns, type TableColumnDefinition } from "./tableLayoutPreferences";
 import { sortTableRows, useTableSortPreference } from "./tableSorting";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
-import { ReportDateRangeFilter, reportDateRangeLabel, type ReportDateRange as DateRange } from "./ReportDateRangeFilter";
+import { ReportDateRangeFilter, ReportDateRangeSummary, reportDateRangeLabel, reportDateWeekday, type ReportDateRange as DateRange } from "./ReportDateRangeFilter";
 import "./SalesActivityPanel.css";
 import "./SalesReportClassicTables.css";
 
@@ -228,6 +229,9 @@ export function SalesActivityPanel({
   const [errorKey, setErrorKey] = useState<SalesActivityMessageKey | null>(null);
   const [reload, setReload] = useState(0);
   const [viewMode, setViewMode] = useState<PrintGrouping>("DAY");
+  const tableRef = useRef<HTMLDivElement>(null);
+  const navigateRow = useTableRowArrowFocus(tableRef, "tbody tr[data-sales-activity-row]",
+    app !== "pda" && mode === "documents" && !loading && !error && !errorKey, `${mode}:${viewMode}`);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{
     kind: "success" | "error" | "info";
@@ -630,11 +634,8 @@ export function SalesActivityPanel({
     </section>;
   }
 
-  function outputActions(includeVisualization: boolean) {
-    const outputReady = filterOptionsReady && !loading
-      && (mode === "daily" ? daily != null : (viewMode === "DAY" ? dailyPage != null : page != null));
-    return <div className="sales-activity-toolbar__actions">
-      {includeVisualization && <>
+  function visualizationActions() {
+    return <>
         <div className="sales-activity-visualization" role="group" aria-label={t("visualization")}>
           <button
             type="button"
@@ -653,8 +654,15 @@ export function SalesActivityPanel({
             {t("byDocument")}
           </button>
         </div>
-      </>}
-      <div className="sales-activity-output-actions">
+      </>;
+  }
+
+  function outputActions(includeVisualization: boolean) {
+    const outputReady = filterOptionsReady && !loading
+      && (mode === "daily" ? daily != null : (viewMode === "DAY" ? dailyPage != null : page != null));
+    return <div className={`sales-activity-toolbar__actions${app === "gestion" ? " gestion-toolbar-actions gestion-toolbar-end" : ""}`}>
+      {app === "pda" && includeVisualization && visualizationActions()}
+      <div className={`sales-activity-output-actions${app !== "pda" ? " sales-activity-output-actions--desktop" : ""}`}>
         <button type="button" aria-keyshortcuts="F5" title="F5" onClick={() => void executePrint()} disabled={busy || !outputReady}>
           <span><Printer size={16} weight="bold" aria-hidden="true" focusable="false" />{t("print")}</span><kbd aria-hidden="true">F5</kbd>
         </button>
@@ -706,18 +714,19 @@ export function SalesActivityPanel({
         <th scope="col">{t("invoiceCount")}</th>
         <th scope="col" className="sales-documents-column--total">{t("total")}</th>
       </tr></thead>
-      <tbody>{dailyRows.map((row) => <tr key={row.date}>
+      <tbody>{dailyRows.map((row) => <tr key={row.date} data-sales-activity-row
+        tabIndex={app !== "pda" ? 0 : undefined} onKeyDown={navigateRow}>
         <td>{formatDate(row.date, locale)}</td>
         <td>{row.ticketCount}</td>
         <td>{row.invoiceCount}</td>
         <td className="sales-documents-column--total">{formatEuroAmount(row.total, locale)}</td>
-      </tr>)}</tbody>
-      <tfoot><tr>
+      </tr>)}{dailyRows.length === 0 && <tr><td colSpan={4}>{t("noDocuments")}</td></tr>}</tbody>
+      {app === "pda" && <tfoot><tr>
         <th scope="row">{t("total")}</th>
         <th>{dailyPage?.ticketCount ?? 0}</th>
         <th>{dailyPage?.invoiceCount ?? 0}</th>
         <th className="sales-documents-column--total">{formatEuroAmount(dailyPage?.total ?? 0, locale)}</th>
-      </tr></tfoot>
+      </tr></tfoot>}
     </table>;
   }
 
@@ -762,10 +771,20 @@ export function SalesActivityPanel({
   }
 
   function dailyContent() {
+    const dateInput = <input type="date" aria-label={t("date")} disabled={!filterOptionsReady} max={today}
+      value={dailyDate} onChange={(event) => setDailyDate(event.target.value)} />;
+    const weekday = app === "gestion" ? reportDateWeekday(dailyDate, locale) : "";
     return <>
-      <div className="sales-activity-toolbar">
-        <label className="sales-activity-date"><span>{t("date")}</span><input type="date" disabled={!filterOptionsReady} max={today} value={dailyDate} onChange={(event) => setDailyDate(event.target.value)} /></label>
+      <div className={`sales-activity-toolbar${app === "gestion" ? " sales-activity-toolbar--daily gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
+        <label className={`sales-activity-date${app === "gestion" ? " gestion-toolbar-start" : ""}`}>
+          <span>{t("date")}</span>
+          {app === "gestion" ? <span className="sales-activity-query-date">
+            {dateInput}
+            {weekday && <small className="report-date-range-weekday">{weekday}</small>}
+          </span> : dateInput}
+        </label>
         {outputActions(false)}
+        {app === "venta" && <ReportDateRangeSummary collapseSingleDay={false} showWeekday={false} locale={locale} value={{ from: dailyDate, to: dailyDate, label: "" }} />}
       </div>
       {loading && <p className="sales-activity-state" role="status">{t("loading")}</p>}
       {(error || errorKey) && <div className="sales-activity-state sales-activity-state--error" role="alert"><span>{errorKey ? t(errorKey) : error}</span><button type="button" onClick={retry}>{t("retry")}</button></div>}
@@ -783,26 +802,30 @@ export function SalesActivityPanel({
   }
 
   function documentsContent() {
-    const toolbar = <div className="sales-activity-toolbar">
-        <div className="sales-documents-period"><span>{t("currentPeriod")}</span><strong>{rangeLabel(range)}</strong><small>{formatDate(range.from, locale)} — {formatDate(range.to, locale)}</small></div>
+    const toolbar = <div className={`sales-activity-toolbar${app !== "pda" ? " sales-activity-toolbar--desktop" : ""}${app === "gestion" ? " gestion-toolbar-layout" : ""}`}>
+        {app === "pda" && <div className="sales-documents-period"><span>{t("currentPeriod")}</span><strong>{rangeLabel(range)}</strong><small>{formatDate(range.from, locale)} — {formatDate(range.to, locale)}</small></div>}
+        {app !== "pda" && <div className={app === "gestion" ? "gestion-toolbar-start" : undefined}>{visualizationActions()}</div>}
         {outputActions(true)}
       </div>;
     const customPeriod = filterOptionsReady && (range.from !== today || range.to !== today);
     const resetPeriod = () => setRange(currentDayRange(t("today"), today));
-    return <div className="sales-documents-layout">
+    const emptyDocuments = viewMode === "DAY" ? dailyRows.length === 0 : rows.length === 0;
+    const documentSummary = viewMode === "DAY" ? dailyPage : page;
+    const visibleLines = viewMode === "DAY" ? dailyRows.length : rows.length;
+    return <div className={`sales-documents-layout${app !== "pda" ? " sales-documents-layout--desktop" : ""}`}>
       {app !== "pda" ? <div className="sales-documents-controls">
         {toolbar}
         <ErpFilterChips locale={locale} className="report-filter-chips"
           chips={customPeriod ? [{ key: "period", label: t("currentPeriod"),
-            value: `${formatDate(range.from, locale)} — ${formatDate(range.to, locale)}`,
+            value: app === "gestion" && range.from === range.to ? formatDate(range.from, locale)
+              : `${formatDate(range.from, locale)} — ${formatDate(range.to, locale)}`,
             onRemove: resetPeriod }] : []} onClear={resetPeriod} />
       </div> : toolbar}
       {loading && <p className="sales-activity-state" role="status">{t("loading")}</p>}
       {(error || errorKey) && <div className="sales-activity-state sales-activity-state--error" role="alert"><span>{errorKey ? t(errorKey) : error}</span><button type="button" onClick={retry}>{t("retry")}</button></div>}
-      {!loading && !error && !errorKey && <div className={`sales-documents-table-scroll${app !== "pda" ? " erp-classic-tables report-classic-document-table" : ""}`}>
-        {viewMode === "DAY" && dailyRows.length === 0 && <p className="sales-activity-state">{t("noDocuments")}</p>}
-        {viewMode === "DOCUMENT" && rows.length === 0 && <p className="sales-activity-state">{t("noDocuments")}</p>}
-        {viewMode === "DAY" ? (dailyRows.length > 0 ? dailyDocumentTable() : null) : (rows.length > 0 ? <table className="sales-documents-table" style={documentTableStyle}>
+      {!loading && !error && !errorKey && <div ref={tableRef} className={`sales-documents-table-scroll${app !== "pda" ? " erp-classic-tables report-classic-document-table" : ""}`}>
+        {app === "pda" && emptyDocuments && <p className="sales-activity-state">{t("noDocuments")}</p>}
+        {(app !== "pda" || !emptyDocuments) && (viewMode === "DAY" ? dailyDocumentTable() : <table className="sales-documents-table" style={documentTableStyle}>
           <colgroup>{visibleDocumentColumns.map((column) => <col
             key={column.key}
             data-column-key={column.key}
@@ -834,25 +857,32 @@ export function SalesActivityPanel({
               {t(definition.labelKey)}
             </TableLayoutHeaderCell>;
           })}</tr></thead>
-          <tbody>{sortedDocumentRows.map((row) => <tr key={row.id} className={`sales-document-row--${row.kind.toLowerCase()}`}>
+          <tbody>{sortedDocumentRows.map((row) => <tr key={row.id} data-sales-activity-row
+            tabIndex={app !== "pda" ? 0 : undefined} onKeyDown={navigateRow} className={`sales-document-row--${row.kind.toLowerCase()}`}>
             {visibleDocumentColumns.map((column) => <td
               key={column.key}
               className={column.key === "total" ? "sales-documents-column--total" : ""}
             >
               {documentCell(row, column.key)}
             </td>)}
-          </tr>)}</tbody>
-          <tfoot><tr>{visibleDocumentColumns.map((column) => <th
+          </tr>)}{rows.length === 0 && <tr><td colSpan={visibleDocumentColumns.length}>{t("noDocuments")}</td></tr>}</tbody>
+          {app === "pda" && <tfoot><tr>{visibleDocumentColumns.map((column) => <th
             key={column.key}
             className={column.key === "total" ? "sales-documents-column--total" : ""}
           >
             {documentFooterCell(column.key)}
-          </th>)}</tr></tfoot>
-        </table> : null)}
+          </th>)}</tr></tfoot>}
+        </table>)}
         {((viewMode === "DAY" ? dailyPage : page)?.hasMore) && <button className="sales-documents-load-more" type="button" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? t("loading") : t("loadMore")}</button>}
       </div>}
-      <ReportDateRangeFilter locale={locale} today={today} earliestDate={earliestDate}
-        value={range} onChange={setRange} disabled={!filterOptionsReady} />
+      {app !== "pda" && !loading && !error && !errorKey && <div className="report-total-row">
+        <span>{`${t("visibleLines")}: ${visibleLines}`}</span>
+        <strong>{`${t("ticketCount")}: ${documentSummary?.ticketCount ?? 0}`}</strong>
+        <strong>{`${t("invoiceCount")}: ${documentSummary?.invoiceCount ?? 0}`}</strong>
+        <strong className="report-main-total">{`${t("total")}: ${formatEuroAmount(documentSummary?.total ?? 0, locale)}`}</strong>
+      </div>}
+      <ReportDateRangeFilter inlineCustomRange={app !== "pda"} collapseSingleDay={app === "gestion"} showWeekday={app === "gestion"} locale={locale} today={today} earliestDate={earliestDate}
+        value={range} onChange={setRange} disabled={!filterOptionsReady} showSummary={app !== "pda"} />
     </div>;
   }
 

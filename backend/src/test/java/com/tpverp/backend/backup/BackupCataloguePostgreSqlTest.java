@@ -42,7 +42,7 @@ class BackupCataloguePostgreSqlTest {
         UUID older = UUID.fromString("00000000-0000-0000-0000-000000000011");
         UUID newer = UUID.fromString("00000000-0000-0000-0000-000000000012");
         try {
-            migrate(database, schema, "273");
+            migrate(database, schema, "274");
             try (var db = database.open(schema); var sql = db.createStatement()) {
                 sql.execute("insert into instalacion(id,referencia,public_key,creada_en,demo_hasta) values ('"
                         + installation + "','CATALOGUE-TEST','test-public-key',now(),now()+interval '30 days')");
@@ -52,7 +52,7 @@ class BackupCataloguePostgreSqlTest {
                 legacy(db, older, configuration, "2025-01-01T12:00:00Z", "EXITO");
             }
 
-            migrate(database, schema, "276");
+            migrate(database, schema, "278");
             try (var db = database.open(schema)) {
                 assertThat(sequences(db)).containsExactly(Map.entry(older, 1L), Map.entry(newer, 2L));
                 assertThat(number(db, "select count(*) from ejecucion_backup where origin='LEGACY'"))
@@ -151,7 +151,7 @@ class BackupCataloguePostgreSqlTest {
     }
 
     @Test
-    void v274BackfillIsDeterministicAndIndependentPerConfiguration() throws Exception {
+    void v275BackfillIsDeterministicAndIndependentPerConfiguration() throws Exception {
         var database = Database.resolve();
         String schema = schema("backup_sequence_");
         UUID firstConfiguration = UUID.randomUUID();
@@ -171,7 +171,7 @@ class BackupCataloguePostgreSqlTest {
             execute(db, "insert into ejecucion_backup values ('" + laterId + "','" + firstConfiguration + "','2025-01-01','EXITO'),"
                     + "('" + earlierId + "','" + firstConfiguration + "','2025-01-01','FALLO'),"
                     + "('" + secondId + "','" + secondConfiguration + "','2025-02-01','EXITO')");
-            try (var migration = getClass().getResourceAsStream("/db/migration/V274__backup_catalogue.sql")) {
+            try (var migration = getClass().getResourceAsStream("/db/migration/V275__backup_catalogue.sql")) {
                 assertThat(migration).isNotNull();
                 execute(db, new String(migration.readAllBytes(), StandardCharsets.UTF_8));
             }

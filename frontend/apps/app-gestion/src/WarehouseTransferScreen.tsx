@@ -12,6 +12,9 @@ import { TableLayoutHeaderCell } from "../../../packages/app-common/src/componen
 import { visibleTableColumns, type TableColumnDefinition } from "../../../packages/app-common/src/components/tableLayoutPreferences";
 import { useTableLayoutPreference } from "../../../packages/app-common/src/components/useTableLayoutPreference";
 import { useWarehouseListShortcuts, WAREHOUSE_LIST_SHORTCUTS } from "../../../packages/app-common/src/components/useWarehouseListShortcuts";
+import { useTableArrowRepeat } from "../../../packages/app-common/src/components/useTableArrowRepeat";
+import { ensureTableRowVisible } from "../../../packages/app-common/src/components/ensureTableRowVisible";
+import { useTableInitialFocus } from "../../../packages/app-common/src/components/useTableInitialFocus";
 import "../../../packages/app-common/src/components/ErpSearchField.css";
 import { WarehouseDocumentDialog, buildWarehouseDocumentCommand,
   type WarehouseDocumentDraft, type WarehouseDocumentView } from "../../../packages/app-common/src/components/WarehouseDocumentDialog";
@@ -182,6 +185,25 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
 
   const tableSort = useTableSortPreference({ app: "gestion", username: session.username, tableKey: "warehouse.transfers.documents", columns: transferColumns.map(c => c.key), defaultSort: null });
   const sortedDocuments = sortTableRows(documents, tableSort.sort, (doc, key) => key === "date" ? doc.createdAt : key === "source" ? warehouseName(doc.sourceWarehouseId) : key === "target" ? warehouseName(doc.targetWarehouseId) : key === "lines" ? doc.lineCount : key === "units" ? doc.totalUnits : key === "status" ? t(`warehouse.count.status.${doc.status}`) : key === "notes" ? doc.notes : doc.number, locale);
+  useTableInitialFocus(scrollRef, "tbody tr[data-transfer-document-id]", {
+    ready: !listLoading && !error && !editorOpen && searchInput.trim() === searchFilter && sortedDocuments.length > 0,
+    onSelect: (row) => setSelectedDocumentId(row.dataset.transferDocumentId ?? "")
+  });
+  const handleArrowRepeat = useTableArrowRepeat((direction) => {
+    if (editorOpen || listLoading || searchInput.trim() !== searchFilter) return false;
+    const current = document.activeElement;
+    const index = sortedDocuments.findIndex((item) => rowRefs.current.get(item.id) === current);
+    const next = index + (direction === "ArrowDown" ? 1 : -1);
+    if (index < 0 || next < 0 || next >= sortedDocuments.length) return false;
+    const nextId = sortedDocuments[next].id;
+    const node = rowRefs.current.get(nextId);
+    if (!node) return false;
+    setSelectedDocumentId(nextId);
+    node.focus({ preventScroll: true });
+    const container = scrollRef.current;
+    if (container) ensureTableRowVisible(container, node);
+    return true;
+  }, !editorOpen && !listLoading && searchInput.trim() === searchFilter);
 
   async function cancelSelectedDocument() {
     if (!selectedDocumentId || cancelling) return;
@@ -197,15 +219,17 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
   const warehouseName = (id: string) => warehouses.find((item) => item.id === id)?.name ?? id;
   const formatQuantity = (value: number) => new Intl.NumberFormat(locale, { maximumFractionDigits: 3 }).format(value);
   function moveRowFocus(event: React.KeyboardEvent<HTMLTableRowElement>, id: string) {
+    if (event.target !== event.currentTarget) return;
     if (event.key === "Enter") { event.preventDefault(); void openDocument(id); return; }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); handleArrowRepeat(event); return; }
     const index = sortedDocuments.findIndex((item) => item.id === id);
-    const next = event.key === "ArrowDown" ? Math.min(documents.length - 1, index + 1)
-      : event.key === "ArrowUp" ? Math.max(0, index - 1)
-        : event.key === "Home" ? 0 : event.key === "End" ? documents.length - 1 : -1;
+    const next = event.key === "Home" ? 0 : event.key === "End" ? documents.length - 1 : -1;
     if (next < 0) return;
     event.preventDefault();
     const nextId = sortedDocuments[next]?.id;
-    if (nextId) { setSelectedDocumentId(nextId); rowRefs.current.get(nextId)?.focus(); }
+    const node = nextId && rowRefs.current.get(nextId);
+    if (node) { setSelectedDocumentId(nextId); node.focus({ preventScroll: true });
+      if (scrollRef.current) ensureTableRowVisible(scrollRef.current, node); }
   }
 
   async function exportList(format: "pdf" | "xlsx") {
@@ -221,8 +245,8 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
     } catch { setError(t("warehouse.report.exportError")); }
     finally { exportBusy.current = false; setExporting(false); }
   }
-  return <section ref={rootRef} data-warehouse-heading="unified" className="stock-sales-history-panel warehouse-operations-panel--classic gestion-warehouse-transfer-screen gestion-warehouse-screen" aria-labelledby="warehouse-transfer-title">
-    <div className="gestion-warehouse-transfer-module-title"><h1>{t("home.warehouse")}</h1></div>
+  return <section ref={rootRef} data-warehouse-heading="unified" data-document-heading="warehouse" className="stock-sales-history-panel warehouse-operations-panel--classic gestion-warehouse-transfer-screen gestion-warehouse-screen" aria-labelledby="warehouse-transfer-title">
+    <div className="gestion-warehouse-transfer-module-title"><h1>{t("gestion.navigation.group.warehouse")}</h1></div>
     <header className="gestion-warehouse-operations-header gestion-warehouse-titlebar"><div>
       <h2 id="warehouse-transfer-title">{t("warehouse.transfer.navigation")}</h2>
       <p>{t("warehouse.transfer.title.subtitle")}</p></div>
@@ -230,7 +254,7 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
     </header>
     {error && <p role="alert" className="gestion-warehouse-operations-message error">{error}</p>}
     {notice && <p role="status" className="gestion-warehouse-operations-message success">{notice}</p>}
-    <div className="stock-history-toolbar gestion-warehouse-transfer-toolbar gestion-warehouse-toolbar">
+    <div className="stock-history-toolbar gestion-warehouse-transfer-toolbar gestion-warehouse-toolbar gestion-toolbar-layout">
       <label><span>{t("warehouse.transfer.search")}</span>
         <WarehouseSearchFrame><input ref={searchRef} className="erp-search-input" type="search" maxLength={120} value={searchInput}
           placeholder={t("warehouse.transfer.searchPlaceholder")}
@@ -251,14 +275,14 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
           onChange={(value) => { setTargetFilter(value); }}
           options={[{ value: "", label: t("warehouse.count.all") },
             ...warehouses.map((item) => ({ value: item.id, label: item.name }))]} /></div>
-      <div className="warehouse-document-actions gestion-warehouse-transfer-actions gestion-warehouse-actions gestion-warehouse-list-actions">
-        <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.excel} disabled={!token || exporting} onClick={() => void exportList("xlsx")}><span><FileXls size={16} aria-hidden="true" />{t("warehouse.count.exportExcel")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.excel}</kbd></button>
-        <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.pdf} disabled={!token || exporting} onClick={() => void exportList("pdf")}><span><FilePdf size={16} aria-hidden="true" />{t("warehouse.count.exportPdf")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.pdf}</kbd></button>
+      <div className="warehouse-document-actions gestion-warehouse-transfer-actions gestion-warehouse-actions gestion-warehouse-list-actions gestion-toolbar-end">
         <button type="button" disabled={!resourcesReady || !selectedDocument || listLoading || searchInput.trim() !== searchFilter}
           onClick={() => selectedDocument && void openDocument(selectedDocument.id)}>
           <span><Eye size={16} aria-hidden="true" />{t("warehouseDocument.open")}</span></button>
         <button type="button" disabled={selectedDocument?.status !== "DRAFT" || cancelling || listLoading}
           onClick={() => void cancelSelectedDocument()}><span><Trash size={16} aria-hidden="true" />{t("warehouse.transfer.cancelDocument")}</span></button>
+        <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.excel} disabled={!token || exporting} onClick={() => void exportList("xlsx")}><span><FileXls size={16} aria-hidden="true" />{t("warehouse.count.exportExcel")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.excel}</kbd></button>
+        <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.pdf} disabled={!token || exporting} onClick={() => void exportList("pdf")}><span><FilePdf size={16} aria-hidden="true" />{t("warehouse.count.exportPdf")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.pdf}</kbd></button>
       </div>
     </div>
     <ErpFilterChips translate={t} focusRef={searchRef} className="gestion-warehouse-transfer-chips"
@@ -298,7 +322,7 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
           columnVisibilityOptions={tableLayout.layout.map((item) => ({ key: item.key,
             label: columnLabels[item.key], visible: item.visible }))}>
           {columnLabels[column.key]}</TableLayoutHeaderCell>)}</tr></thead>
-        <tbody>{searchInput.trim() === searchFilter && sortedDocuments.map((document) => <tr key={document.id} tabIndex={0}
+        <tbody>{searchInput.trim() === searchFilter && sortedDocuments.map((document) => <tr key={document.id} data-transfer-document-id={document.id} tabIndex={0}
           ref={(element) => { if (element) rowRefs.current.set(document.id, element); else rowRefs.current.delete(document.id); }}
           className={selectedDocumentId === document.id ? "selected" : ""}
           aria-selected={selectedDocumentId === document.id}

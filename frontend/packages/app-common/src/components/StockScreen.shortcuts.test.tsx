@@ -73,7 +73,7 @@ async function renderStock(options: {
   if (options.initialPartyDirectory) {
     await screen.findByRole("heading", { name: "Clientes" });
   } else if (options.initialView === "stock.bulkEdit") {
-    await screen.findByRole("button", { name: "Nuevo" });
+    await screen.findByRole("button", { name: options.app === "pda" ? "Nuevo" : "Nuevo F5" });
   } else if (options.app === "gestion") {
     await screen.findByRole("button", { name: "Añadir producto F5" });
   } else {
@@ -119,7 +119,6 @@ describe("StockScreen F5 add-product shortcut", () => {
     "stock.topSales",
     "stock.offers",
     "stock.memberPrice",
-    "stock.promotions",
     "stock.noDiscount",
   ] as const)("opens Añadir producto with F5 in APP GESTIÓN %s", async (initialView) => {
     await renderStock({ app: "gestion", initialView, allowSafeRetirement: true });
@@ -183,5 +182,47 @@ describe("StockScreen F5 add-product shortcut", () => {
     fireEvent.keyDown(filter, { key: "F5" });
 
     expect(screen.queryByRole("dialog", { name: "Añadir producto" })).toBeNull();
+  });
+});
+
+describe("StockScreen bulk workspace creation shortcut", () => {
+  it.each(["gestion", "venta"] as const)("opens a new list with F5 while the %s workspace table has focus", async (app) => {
+    const { container } = await renderStock({ app, initialView: "stock.bulkEdit", allowSafeRetirement: app === "gestion" });
+    expect(screen.getAllByRole("button", { name: "Nuevo F5" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Nuevo F5" }).getAttribute("aria-keyshortcuts")).toBe("F5");
+    const table = container.querySelector<HTMLElement>(".stock-bulk-workspace-table-wrap")!;
+    table.focus();
+
+    fireEvent.keyDown(table, { key: "F5" });
+
+    expect(await screen.findByText("Lista nueva sin guardar")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Aplicar cambios" })).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "Añadir producto" })).toBeNull();
+    expect(vi.mocked(apiRequest).mock.calls.some(([, options]) => options?.method === "POST" || options?.method === "PUT")).toBe(false);
+  });
+
+  it.each(["gestion", "venta"] as const)("ignores repeated or modified F5 before creating a list in %s", async (app) => {
+    await renderStock({ app, initialView: "stock.bulkEdit" });
+    for (const modifier of [{ repeat: true }, { ctrlKey: true }, { altKey: true }, { metaKey: true }, { shiftKey: true }]) {
+      fireEvent.keyDown(window, { key: "F5", ...modifier });
+    }
+
+    expect(screen.queryByText("Lista nueva sin guardar")).toBeNull();
+    expect(screen.getByRole("button", { name: "Nuevo F5" })).toBeTruthy();
+  });
+
+  it.each(["gestion", "venta"] as const)("keeps the %s editor and its save dialog when F5 is pressed again", async (app) => {
+    await renderStock({ app, initialView: "stock.bulkEdit" });
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo F5" }));
+    await screen.findByText("Lista nueva sin guardar");
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Código" }), { key: "s", ctrlKey: true });
+    const dialog = await screen.findByRole("dialog", { name: "Guardar lista de productos" });
+    const name = within(dialog).getByRole("textbox", { name: "Nombre de la lista" });
+    fireEvent.change(name, { target: { value: "Lista pendiente" } });
+
+    expect(fireEvent.keyDown(name, { key: "F5" })).toBe(false);
+
+    expect((name as HTMLInputElement).value).toBe("Lista pendiente");
+    expect(screen.getByRole("dialog", { name: "Guardar lista de productos" })).toBeTruthy();
   });
 });

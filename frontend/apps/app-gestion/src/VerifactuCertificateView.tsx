@@ -133,7 +133,7 @@ export function VerifactuCertificateView({
 
   return (
     <div className="gestion-verifactu-certificate">
-      <section className={`gestion-verifactu-certificate-state ${active ? "configured" : "missing"}`}>
+      <section className={`gestion-verifactu-certificate-state gestion-module-panel ${active ? "configured" : "missing"}`}>
         <div>
           <span>{t("verifactu.certificate.currentState")}</span>
           <strong>{active ? t("verifactu.certificate.configured") : t("verifactu.certificate.notConfigured")}</strong>
@@ -156,7 +156,7 @@ export function VerifactuCertificateView({
           t={t}
         />
       ) : (
-        <section className="gestion-verifactu-panel gestion-verifactu-certificate-empty">
+        <section className="gestion-verifactu-panel gestion-verifactu-certificate-empty gestion-module-panel">
           <h3>{t("verifactu.certificate.emptyTitle")}</h3>
           <p>{t("verifactu.certificate.emptyDescription")}</p>
         </section>
@@ -173,12 +173,12 @@ export function VerifactuCertificateView({
         />
       )}
 
-      <section className="gestion-verifactu-certificate-actions" aria-label={t("verifactu.certificate.actions")}>
+      <section className="gestion-verifactu-certificate-actions gestion-module-panel" aria-label={t("verifactu.certificate.actions")}>
         <div>
           <h3>{active ? t("verifactu.certificate.replaceTitle") : t("verifactu.certificate.importTitle")}</h3>
           <p>{active ? t("verifactu.certificate.replaceHint") : t("verifactu.certificate.importHint")}</p>
         </div>
-        <div className="gestion-verifactu-certificate-buttons">
+        <div className="gestion-verifactu-certificate-buttons gestion-toolbar-actions">
           <button
             type="button"
             className="primary"
@@ -240,7 +240,7 @@ function CertificatePanel({
   secondary?: boolean;
 }) {
   return (
-    <section className={`gestion-verifactu-panel gestion-verifactu-certificate-panel ${secondary ? "secondary" : ""}`}>
+    <section className={`gestion-verifactu-panel gestion-verifactu-certificate-panel gestion-module-panel ${secondary ? "secondary" : ""}`}>
       <header>
         <h3>{title}</h3>
         <span className={`gestion-verifactu-certificate-badge ${secondary ? "previous" : "active"}`}>
@@ -336,7 +336,7 @@ function CertificateImportDialog({ active, token, t, onClose, onCompleted }: {
   const title = t(active ? "verifactu.certificate.replaceDialogTitle" : "verifactu.certificate.importDialogTitle");
   return (
     <CertificateModal title={title} closeLabel={t("verifactu.management.close")} busy={submitting} onClose={onClose}>
-      <form className="gestion-verifactu-certificate-form" onSubmit={submit}>
+      <form className="gestion-verifactu-certificate-form gestion-module-fields" onSubmit={submit}>
         <p className="gestion-verifactu-certificate-warning">
           {t(active ? "verifactu.certificate.replaceWarning" : "verifactu.certificate.importWarning")}
         </p>
@@ -400,7 +400,7 @@ function CertificateImportDialog({ active, token, t, onClose, onCompleted }: {
             </ul>
           </div>
         )}
-        <footer className="erp-dialog-actions-row">
+        <footer className="erp-dialog-actions-row gestion-toolbar-actions">
           <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={submitting} onClick={onClose}>{t("verifactu.resolution.cancel")}</DialogDismissButton>
           <button
             type="submit"
@@ -448,7 +448,7 @@ function CertificateDeleteDialog({ token, t, onClose, onCompleted }: {
       busy={submitting}
       onClose={onClose}
     >
-      <form className="gestion-verifactu-certificate-form" onSubmit={submit}>
+      <form className="gestion-verifactu-certificate-form gestion-module-fields" onSubmit={submit}>
         <p className="gestion-verifactu-certificate-warning danger">{t("verifactu.certificate.deleteWarning")}</p>
         <label>
           <span>{t("verifactu.certificate.deleteConfirmation")}</span>
@@ -463,7 +463,7 @@ function CertificateDeleteDialog({ token, t, onClose, onCompleted }: {
           <small>{t("verifactu.certificate.typeToConfirm").replace("{text}", DELETE_CONFIRMATION)}</small>
         </label>
         {error && <p className="gestion-inline-error" role="alert">{t("verifactu.certificate.deleteError")}</p>}
-        <footer className="erp-dialog-actions-row">
+        <footer className="erp-dialog-actions-row gestion-toolbar-actions">
           <button className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" disabled={submitting} onClick={onClose}>{t("verifactu.resolution.cancel")}</button>
           <button
             type="submit"
@@ -499,7 +499,7 @@ function CertificateModal({ title, closeLabel, busy, onClose, children }: {
 
   return (
     <div className="gestion-modal-backdrop" onMouseDown={closeBackdrop}>
-      <section className="gestion-verifactu-certificate-dialog" role="dialog" aria-modal="true" aria-label={title}>
+      <section className="gestion-verifactu-certificate-dialog gestion-module-panel" role="dialog" aria-modal="true" aria-label={title}>
         <header>
           <h2>{title}</h2>
           <WindowCloseButton type="button" aria-label={closeLabel} disabled={busy} onClick={onClose} >×</WindowCloseButton>

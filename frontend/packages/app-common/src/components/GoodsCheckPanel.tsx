@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { DownloadSimple } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode } from "../types";
@@ -6,6 +6,9 @@ import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
 import { TableSortButton } from "./TableSortButton";
 import { nextTableSort, sortTableRows, type TableSort } from "./tableSorting";
 import { WarehouseSearchFrame } from "./WarehouseSearchFrame";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import "./WarehouseClassicTables.css";
 import "./ErpSearchField.css";
 
@@ -52,7 +55,7 @@ export type GoodsCheckView = {
 };
 
 
-export type GoodsCheckLineFilter = "all" | "missing" | "registered";
+export type GoodsCheckLineFilter = "all" | "missing" | "registered" | "complete";
 
 export function goodsCheckProgress(check: GoodsCheckView | null) {
   const total = check?.todos.length ?? 0;
@@ -66,6 +69,9 @@ export function filterGoodsCheckItems(check: GoodsCheckView, filter: GoodsCheckL
   }
   if (filter === "registered") {
     return check.todos.filter((item) => Number(item.registeredQuantity) > 0);
+  }
+  if (filter === "complete") {
+    return check.todos.filter((item) => Number(item.registeredQuantity) === Number(item.expectedQuantity));
   }
   return check.todos;
 }
@@ -220,7 +226,10 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
   const [workflowView, setWorkflowView] = useState<"documents" | "check">("documents");
   const [documentSort, setDocumentSort] = useState<TableSort<GoodsCheckDocumentSortColumn> | null>(null);
   const codeRef = useRef<HTMLInputElement | null>(null);
+  const quantityRef = useRef<HTMLInputElement | null>(null);
+  const focusCodeAfterRender = useRef(false);
   const searchRef = useRef<HTMLInputElement | null>(null);
+  const documentListRef = useRef<HTMLDivElement>(null);
   const allLinesRef = useRef<HTMLButtonElement | null>(null);
   const numberFormatter = useMemo(() => new Intl.NumberFormat(
     locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
@@ -250,11 +259,40 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
   const selectedDocument = visibleDocuments.find(
     (document) => document.id === selectedDocumentId
   ) ?? null;
+  useTableInitialFocus(documentListRef, "tbody tr[data-document-id]", {
+    enabled: app !== "pda" && (!separateWorkflow || workflowView === "documents"),
+    ready: !loading && visibleDocuments.length > 0,
+    scopeKey: `${token ?? ""}:${workflowView}`,
+    onSelect: (row) => setSelectedDocumentId(row.dataset.documentId ?? ""),
+  });
+  useLayoutEffect(() => {
+    const list = documentListRef.current;
+    const row = Array.from(list?.querySelectorAll<HTMLElement>("tbody tr[data-document-id]") ?? [])
+      .find((candidate) => candidate.dataset.documentId === selectedDocumentId);
+    if (!list || !row) return;
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && list.contains(focused)
+      && focused.closest("tbody tr[data-document-id]") && focused !== row) row.focus({ preventScroll: true });
+    ensureTableRowVisible(list, row);
+  }, [selectedDocumentId]);
+  const repeatDocumentArrow = useTableArrowRepeat((direction) => {
+    const list = documentListRef.current;
+    const focused = document.activeElement;
+    const row = focused instanceof HTMLElement && list?.contains(focused)
+      ? focused.closest<HTMLElement>("tbody tr[data-document-id]") : null;
+    if (!row || loading || busy || visibleDocuments.length < 2) return false;
+    const index = visibleDocuments.findIndex((candidate) => candidate.id === row.dataset.documentId);
+    const nextIndex = Math.max(0, Math.min(visibleDocuments.length - 1, index + (direction === "ArrowDown" ? 1 : -1)));
+    if (index < 0 || nextIndex === index) return false;
+    setSelectedDocumentId(visibleDocuments[nextIndex].id);
+    return true;
+  }, !loading && !busy && app !== "pda" && (!separateWorkflow || workflowView === "documents"));
   const visibleItems = useMemo(
     () => check ? filterGoodsCheckItems(check, lineFilter) : [],
     [check, lineFilter]);
   const activeDocument = displayDocuments.find((document) => document.id === check?.documentId) ?? selectedDocument;
   const { balanced: balancedLines, percent: progressPercent } = goodsCheckProgress(check);
+  const completedLineFilter = app === "gestion" ? "complete" : "registered";
   const documentFilterChips: ErpFilterChip[] = [];
   if (search.trim()) documentFilterChips.push({
     key: "search", label: t("salesReport.search"), value: search.trim(), onRemove: () => setSearch("")
@@ -267,6 +305,13 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
     setWorkflowView(nextView);
     onWorkflowViewChange?.(nextView);
   }
+
+  useEffect(() => {
+    if (busy || !focusCodeAfterRender.current) return;
+    // Restore focus after React has enabled the input again.
+    focusCodeAfterRender.current = false;
+    codeRef.current?.focus();
+  }, [busy, check, workflowView]);
 
   useEffect(() => {
     setSelectedDocumentId((current) => (
@@ -313,7 +358,7 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
       setCheck(value);
       setStatus(t("goodsCheck.imported"));
       if (separateWorkflow) openWorkflowView("check");
-      window.setTimeout(() => codeRef.current?.focus(), 0);
+      focusCodeAfterRender.current = true;
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("goodsCheck.importError"));
     } finally {
@@ -323,7 +368,7 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
 
   async function registerProduct(event: FormEvent) {
     event.preventDefault();
-    if (!token || !check || check.status !== "ABIERTA" || !code.trim()) return;
+    if (!token || !check || check.status !== "ABIERTA" || !code.trim() || busy) return;
     const normalizedQuantity = Number(quantity.replace(",", "."));
     if (!Number.isFinite(normalizedQuantity) || normalizedQuantity === 0) {
       setStatus(t("goodsCheck.quantityError"));
@@ -349,7 +394,7 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
       setCode("");
       setQuantity("1");
       setStatus(t("goodsCheck.registered"));
-      window.setTimeout(() => codeRef.current?.focus(), 0);
+      focusCodeAfterRender.current = true;
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("goodsCheck.scanError"));
       navigator.vibrate?.([100, 60, 100]);
@@ -372,7 +417,7 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
       setLastScan(null);
       setLastProductId(null);
       setStatus(t("goodsCheck.undoComplete"));
-      window.setTimeout(() => codeRef.current?.focus(), 0);
+      focusCodeAfterRender.current = true;
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("goodsCheck.undoError"));
     } finally {
@@ -466,7 +511,7 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
             </button>
           )}
         </header>
-        <div className={`stock-history-table-scroll goods-check-document-list${app !== "pda" ? " erp-classic-tables warehouse-classic-table" : ""}`}>
+        <div ref={documentListRef} className={`stock-history-table-scroll goods-check-document-list${app !== "pda" ? " erp-classic-tables warehouse-classic-table" : ""}`}>
           {loading ? (
             <div className="goods-check-empty" role="status" aria-live="polite">
               <strong>{t("common.loading")}</strong>
@@ -505,13 +550,21 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
               {visibleDocuments.map((document) => (
                 <tr
                   key={document.id}
+                  data-document-id={document.id}
                   className={selectedDocumentId === document.id ? "selected" : ""}
                   tabIndex={0}
+                  onFocus={(event) => { setSelectedDocumentId(document.id); if (documentListRef.current) ensureTableRowVisible(documentListRef.current, event.currentTarget); }}
                   onClick={() => setSelectedDocumentId(document.id)}
                   onDoubleClick={() => {
                     void importDocument(document);
                   }}
                   onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                      event.preventDefault();
+                      repeatDocumentArrow(event);
+                      return;
+                    }
                     if (event.key === "Enter") {
                       event.preventDefault();
                       setSelectedDocumentId(document.id);
@@ -560,12 +613,21 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
             <form className="goods-check-scan-form" onSubmit={registerProduct}>
               <label>
                 <span>{t("goodsCheck.productCode")}</span>
-                <input ref={codeRef} value={code} disabled={check.status !== "ABIERTA" || busy} onChange={(event) => setCode(event.target.value)} />
+                <input ref={codeRef} value={code} disabled={check.status !== "ABIERTA" || busy} onChange={(event) => setCode(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (app === "gestion" && event.key === "Enter" && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      if (code.trim()) {
+                        quantityRef.current?.focus();
+                        quantityRef.current?.select();
+                      }
+                    }
+                  }} />
               </label>
               <div className="goods-check-register-control">
                 <label>
                   <span>{t("goodsCheck.quantityToRegister")}</span>
-                  <input inputMode="decimal" value={quantity} disabled={check.status !== "ABIERTA" || busy} onChange={(event) => setQuantity(event.target.value)} />
+                  <input ref={quantityRef} inputMode="decimal" value={quantity} disabled={check.status !== "ABIERTA" || busy} onChange={(event) => setQuantity(event.target.value)} />
                 </label>
                 <button type="submit" disabled={!code.trim() || check.status !== "ABIERTA" || busy}>{t("goodsCheck.register")}</button>
               </div>
@@ -581,18 +643,18 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
                 <span>{t("goodsCheck.filter.linesAll")}</span><strong>{check.todos.length}</strong>
               </button>
               <button type="button" className={lineFilter === "missing" ? "selected" : ""} onClick={() => setLineFilter("missing")}>
-                <span>{t("goodsCheck.filter.linesDifferences")}</span>
+                <span>{t(app === "gestion" ? "goodsCheck.filter.linesPending" : "goodsCheck.filter.linesDifferences")}</span>
                 <strong>{check.todos.filter((item) => Number(item.missingQuantity) > 0 || Number(item.extraQuantity) > 0).length}</strong>
               </button>
-              <button type="button" className={lineFilter === "registered" ? "selected" : ""} onClick={() => setLineFilter("registered")}>
-                <span>{t("goodsCheck.filter.linesRegistered")}</span><strong>{check.registrados.length}</strong>
+              <button type="button" className={lineFilter === completedLineFilter ? "selected" : ""} onClick={() => setLineFilter(completedLineFilter)}>
+                <span>{t(app === "gestion" ? "goodsCheck.filter.linesComplete" : "goodsCheck.filter.linesRegistered")}</span><strong>{app === "gestion" ? balancedLines : check.registrados.length}</strong>
               </button>
               <span className="goods-check-extra-summary">
                 <small>{t("goodsCheck.extraLines")}</small>
                 <strong>{check.todos.filter((item) => Number(item.extraQuantity) > 0).length}</strong>
               </span>
             </div>
-            {app !== "pda" && <ErpFilterChips locale={locale} className="goods-check-line-filter-chips" focusRef={allLinesRef}
+            {app === "venta" && <ErpFilterChips locale={locale} className="goods-check-line-filter-chips" focusRef={allLinesRef}
               chips={lineFilter === "all" ? [] : [{ key: "lines", label: t("salesReport.column.lines"),
                 value: t(lineFilter === "missing" ? "goodsCheck.filter.linesDifferences" : "goodsCheck.filter.linesRegistered"),
                 onRemove: () => setLineFilter("all") }]}

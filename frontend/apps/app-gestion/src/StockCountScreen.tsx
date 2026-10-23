@@ -53,21 +53,21 @@ export function StockCountScreen({ session, locale = "es", t }: { session: UserS
   if (!allowed) return <p role="alert">{c("noAccess")}</p>;
   const columns = [ ["number", 185], ["date", 160], ["warehouse", 210], ["status", 140], ["articles", 100], ["user", 180], ["notes", 250] ]
     .map(([key, width]) => ({ key: String(key), defaultWidth: Number(width), label: c(key as "number") }));
-  return <section ref={rootRef} data-warehouse-heading="unified" className="inventory-screen gestion-warehouse-screen">
-    <div className="inventory-module-title"><h1>{t("home.warehouse")}</h1></div>
+  return <section ref={rootRef} data-warehouse-heading="unified" data-document-heading="warehouse" className="inventory-screen gestion-warehouse-screen">
+    <div className="inventory-module-title"><h1>{t("gestion.navigation.group.warehouse")}</h1></div>
     <header className="gestion-warehouse-titlebar"><div><h2>{c("title")}</h2><p>{c("subtitle")}</p></div>
       <div className="gestion-warehouse-title-actions gestion-warehouse-actions"><button className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.create} disabled={busy || loading || !warehouses.some((item) => item.active !== false)} onClick={() => setEditor({ document: null })}><span><Plus size={16} aria-hidden="true" />{c("create")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.create}</kbd></button></div>
     </header>
     {error && <p role="alert" className="inventory-error">{error}</p>}
-    <div className="inventory-filters gestion-warehouse-toolbar">
+    <div className="inventory-filters gestion-warehouse-toolbar gestion-toolbar-layout">
       <label>{t("warehouse.management.search")}<WarehouseSearchFrame><input className="erp-search-input" type="search" value={search} placeholder={c("search")} onChange={(event) => setSearch(event.target.value)} /></WarehouseSearchFrame></label>
       <label>{c("warehouse")}<ErpSelect aria-label={c("warehouse")} value={warehouse} options={[{ value: "", label: c("all") }, ...warehouses.map((item) => ({ value: item.id, label: item.name }))]} onChange={setWarehouse} /></label>
       <label className="gestion-warehouse-status-filter" data-filter-active={Boolean(status)}>{c("status")}<ErpSelect aria-label={c("status")} value={status} options={[{ value: "", label: c("all") }, ...["DRAFT", "CONFIRMED", "CANCELLED"].map((value) => ({ value, label: t(`warehouse.count.status.${value}`) }))]} onChange={setStatus} /></label>
-      <div className="inventory-list-actions gestion-warehouse-actions gestion-warehouse-list-actions">
-        <button className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.excel} disabled={busy || !selection} onClick={() => void run(() => exportFile("xlsx"))}><span><FileXls size={16} aria-hidden="true" />{t("warehouse.count.exportExcel")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.excel}</kbd></button>
-        <button className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.pdf} disabled={busy || !selection} onClick={() => void run(() => exportFile("pdf"))}><span><FilePdf size={16} aria-hidden="true" />{t("warehouse.count.exportPdf")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.pdf}</kbd></button>
+      <div className="inventory-list-actions gestion-warehouse-actions gestion-warehouse-list-actions gestion-toolbar-end">
         <button disabled={busy || !selection} onClick={() => open(selected)}><span><Eye size={16} aria-hidden="true" />{t("warehouseDocument.open")}</span></button>
         <button disabled={busy || selection?.status !== "DRAFT"} onClick={() => setCancelPrompt(true)}><span><Trash size={16} aria-hidden="true" />{c("cancelDocument")}</span></button>
+        <button className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.excel} disabled={busy || !selection} onClick={() => void run(() => exportFile("xlsx"))}><span><FileXls size={16} aria-hidden="true" />{t("warehouse.count.exportExcel")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.excel}</kbd></button>
+        <button className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.pdf} disabled={busy || !selection} onClick={() => void run(() => exportFile("pdf"))}><span><FilePdf size={16} aria-hidden="true" />{t("warehouse.count.exportPdf")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.pdf}</kbd></button>
       </div>
     </div>
     <ErpFilterChips translate={t} chips={[

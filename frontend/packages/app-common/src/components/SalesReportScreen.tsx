@@ -1,8 +1,12 @@
+import { TicketSerialNumberSearchDialog } from "./TicketSerialNumberSearchDialog";
 import { DialogDismissButton } from "./DialogDismissButton";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { AppBrand } from "./AppBrand";
 import { DesktopHeaderContext } from "./DesktopHeaderContext";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import { FilePdf, FileXls, Printer } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import { lazy, Suspense } from "react";
@@ -481,6 +485,7 @@ type SalesDocumentDetail = {
     taxPercentage: number | string;
     total: number | string;
     documentAdjustmentType?: string | null;
+    serialNumbers?: string[];
   }>;
 };
 
@@ -2016,6 +2021,7 @@ export function SalesReportScreen({
   const reportMounted = useRef(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
+  const [serialSearchOpen, setSerialSearchOpen] = useState(false);
   const [reportDocumentPrinting, setReportDocumentPrinting] = useState(false);
   const [sortByReport, setSortByReport] = useState<Record<string, ReportSort | null>>({});
   const [customerDisplayModes, setCustomerDisplayModes] = useState<Record<string, CustomerDisplayMode>>(() =>
@@ -2083,11 +2089,14 @@ export function SalesReportScreen({
   const [selectedRowByReport, setSelectedRowByReport] = useState<Record<string, number>>(() =>
     Object.fromEntries(allReports.map((reportKey) => [reportKey, -1]))
   );
+  const selectedRowIdentityByReport = useRef<Record<string, string>>({});
+  const selectedReportRowHadFocus = useRef(false);
   const reports: Record<string, ReportSample> = { ...reportSamples, ...(remoteReports as Record<string, ReportSample>) };
   const sample = reports[selectedReport] ?? reportSamples["salesReport.dailySales"];
   const isDailySalesReport = selectedReport === "salesReport.dailySales";
   const isSalesDocumentsReport = selectedReport === "salesReport.salesDocuments";
   const isCommercialDocumentReport = selectedReport === "salesReport.invoices" || selectedReport === "salesReport.deliveryNotes";
+  const periodSummaryInDateFilter = app !== "pda";
   const isSalesActivityReport = isDailySalesReport || isSalesDocumentsReport;
   const selectedDateRange: ReportDateRange = {
     from: filters.dateFrom, to: filters.dateTo, label: "",
@@ -2139,8 +2148,60 @@ export function SalesReportScreen({
     };
   })();
   const selectedDailySummary = sample.dailySummaries?.[filters.dateFrom] ?? emptyDailySalesSummary(filters.dateFrom);
-  const selectedRowIndex = selectedRowByReport[selectedReport] ?? -1;
+  const storedSelectedRowIndex = selectedRowByReport[selectedReport] ?? -1;
+  const selectedRowIdentity = selectedRowIdentityByReport.current[selectedReport];
+  const selectedRowIndex = storedSelectedRowIndex >= 0 && selectedRowIdentity
+    ? filteredRows.findIndex((row) => (row.__documentId || row.__warehouseDocumentId) === selectedRowIdentity)
+    : storedSelectedRowIndex;
   const selectedReportRow = filteredRows[selectedRowIndex];
+  useLayoutEffect(() => {
+    const container = reportTableScrollRef.current;
+    const row = selectedRowIndex >= 0
+      ? container?.querySelectorAll<HTMLTableRowElement>("tbody tr")[selectedRowIndex] : null;
+    if (container && row) {
+      if (selectedReportRowHadFocus.current && (document.activeElement === document.body || document.activeElement === row)) {
+        row.focus({ preventScroll: true });
+      }
+      ensureTableRowVisible(container, row);
+    }
+    selectedReportRowHadFocus.current = false;
+    return () => {
+      const previous = container?.querySelectorAll<HTMLTableRowElement>("tbody tr")[selectedRowIndex];
+      selectedReportRowHadFocus.current = Boolean(previous && document.activeElement === previous);
+    };
+  }, [selectedReport, selectedRowIndex, selectedRowIdentity]);
+  const repeatReportArrow = useTableArrowRepeat((direction) => {
+    const focused = document.activeElement;
+    const container = reportTableScrollRef.current;
+    if (reportLoading || reportLoadErrors[selectedReport] || document.querySelector('[aria-modal="true"]')
+      || !(focused instanceof HTMLTableRowElement) || !container?.contains(focused)) return false;
+    if (reportLoadingMore) return true;
+    const focusedIndex = Array.from(container.querySelectorAll<HTMLTableRowElement>("tbody tr")).indexOf(focused);
+    if (focusedIndex < 0) return false;
+    const nextIndex = Math.max(0, Math.min(filteredRows.length - 1,
+      focusedIndex + (direction === "ArrowDown" ? 1 : -1)));
+    if (nextIndex === focusedIndex) {
+      if (direction === "ArrowDown" && reportPages[reportPageKey(selectedReport)]?.hasMore) {
+        void loadMoreReportRows();
+        return true;
+      }
+      return false;
+    }
+    moveSelectedRow(nextIndex);
+    if (direction === "ArrowDown" && nextIndex === filteredRows.length - 1
+      && reportPages[reportPageKey(selectedReport)]?.hasMore) void loadMoreReportRows();
+    return nextIndex < filteredRows.length - 1
+      || direction === "ArrowUp" || Boolean(reportPages[reportPageKey(selectedReport)]?.hasMore);
+  }, !reportLoading && !Boolean(reportLoadErrors[selectedReport]));
+  useTableInitialFocus(reportTableScrollRef, "tbody tr", {
+    enabled: !isSalesActivityReport,
+    ready: !reportLoading && !Boolean(reportLoadErrors[selectedReport]),
+    scopeKey: selectedReport,
+    onSelect: (row) => {
+      const index = Array.from(reportTableScrollRef.current?.querySelectorAll("tbody tr") ?? []).indexOf(row);
+      if (index >= 0) selectRow(index);
+    },
+  });
   const canIssueGiftReceipt = Boolean(session.accessToken) && (
     session.permissions.some((permission) => ["ADMIN", "GESTION_VENTAS", "VENTA"].includes(permission))
     || (session.permissions.includes("TICKETS_CREATE") && session.permissions.includes("TICKETS_READ"))
@@ -3442,12 +3503,17 @@ export function SalesReportScreen({
   }
 
   function selectRow(rowIndex: number) {
+    const row = filteredRows[rowIndex];
+    selectedRowIdentityByReport.current[selectedReport] = row?.__documentId || row?.__warehouseDocumentId || "";
     setSelectedRowByReport((current) => ({ ...current, [selectedReport]: rowIndex }));
   }
 
-  function moveSelectedRow(rowIndex: number, direction: -1 | 1) {
-    const nextIndex = Math.max(0, Math.min(filteredRows.length - 1, rowIndex + direction));
+  function moveSelectedRow(nextIndex: number) {
     selectRow(nextIndex);
+    const container = reportTableScrollRef.current;
+    const row = container?.querySelectorAll<HTMLTableRowElement>("tbody tr")[nextIndex];
+    row?.focus({ preventScroll: true });
+    if (container && row) ensureTableRowVisible(container, row);
   }
 
   function toggleSort(attribute: string) {
@@ -3723,19 +3789,38 @@ export function SalesReportScreen({
     );
   }
 
-  function renderReportToolbar() {
-    const periodLabel = reportDateRangeLabel(selectedDateRange, locale);
-    const selectedDocumentCanPrint = canOpenDocumentPreview(selectedReportRow) && !reportDocumentPrinting;
+  function renderReportPeriod() {
+    return <div className="report-command-period">
+      <span>{t("salesReport.currentPeriod")}</span>
+      <strong>{reportDateRangeLabel(selectedDateRange, locale)}</strong>
+      <small>{formatFilterDate(filters.dateFrom, locale)} — {formatFilterDate(filters.dateTo, locale)}</small>
+    </div>;
+  }
 
-    return (
-      <header className="report-data-toolbar report-command-toolbar">
-        <div className="report-command-period">
-          <span>{t("salesReport.currentPeriod")}</span>
-          <strong>{periodLabel}</strong>
-          <small>{formatFilterDate(filters.dateFrom, locale)} — {formatFilterDate(filters.dateTo, locale)}</small>
-        </div>
-        <div className="report-output-cluster">
-          <div className="report-output-actions">
+  function renderReportToolbar() {
+    const selectedDocumentCanPrint = canOpenDocumentPreview(selectedReportRow) && !reportDocumentPrinting;
+    const searchField = (
+      <label className={`report-search${app !== "pda" ? " erp-search-frame" : ""}`} hidden={isDailySalesReport}>
+          <img alt="" src={searchIcon} />
+          <input
+            ref={reportSearchRef}
+            type="search"
+            value={reportSearch}
+            aria-label={t("salesReport.search")}
+            placeholder={t("salesReport.searchPlaceholder")}
+            onChange={(event) => updateReportSearch(event.target.value)}
+          />
+        </label>
+    );
+    const filterAction = (
+      <button type="button" onClick={openFilters}>
+            <img alt="" className="report-action-icon" src={filterIcon} />
+            {t("salesReport.filter")}
+          </button>
+    );
+    const outputActions = (
+      <div className="report-output-cluster">
+          <div className={`report-output-actions${app === "gestion" ? " gestion-toolbar-actions" : ""}`}>
             <button
               type="button"
               aria-keyshortcuts="F5"
@@ -3765,12 +3850,9 @@ export function SalesReportScreen({
             </button>
           </div>
         </div>
-        <div className="report-utility-actions">
-          <button type="button" onClick={openFilters}>
-            <img alt="" className="report-action-icon" src={filterIcon} />
-            {t("salesReport.filter")}
-          </button>
-          <div className="report-more-actions" ref={moreActionsRef}>
+    );
+    const moreActions = (
+      <div className="report-more-actions" ref={moreActionsRef}>
             <button
               type="button"
               aria-expanded={moreActionsOpen}
@@ -3838,6 +3920,13 @@ export function SalesReportScreen({
                   )}
                 </>
               )}
+              {(selectedReport === "salesReport.tickets" || selectedReport === "salesReport.invoices")
+                && session.permissions.some((permission) => ["ADMIN", "GESTION_VENTAS", "TICKETS_READ", "VENTA", "INVOICES_READ"].includes(permission)) && (
+                <button type="button" role="menuitem" disabled={!session.accessToken}
+                  onClick={() => { setMoreActionsOpen(false); setSerialSearchOpen(true); }}>
+                  {t("salesReport.serialSearch.title")}
+                </button>
+              )}
               {hasStatusFilter && selectedReport !== "salesReport.tickets" && !isCommercialDocumentReport && !isPurchaseDocumentReport(selectedReport) && (
                 <button type="button" role="menuitem" onClick={() => {
                   setMoreActionsOpen(false);
@@ -3880,24 +3969,32 @@ export function SalesReportScreen({
               </div>
             )}
           </div>
+    );
+
+    return app === "gestion" ? (
+      <header className="report-data-toolbar report-command-toolbar gestion-filter-toolbar gestion-toolbar-layout gestion-report-toolbar">
+        <div className="gestion-toolbar-start">{searchField}{filterAction}</div>
+        <div className="gestion-toolbar-end">
+          {outputActions}
+          <div className="report-utility-actions gestion-toolbar-actions">{moreActions}</div>
         </div>
-        <label className={`report-search${app !== "pda" ? " erp-search-frame" : ""}`} hidden={isDailySalesReport}>
-          <img alt="" src={searchIcon} />
-          <input
-            ref={reportSearchRef}
-            type="search"
-            value={reportSearch}
-            aria-label={t("salesReport.search")}
-            placeholder={t("salesReport.searchPlaceholder")}
-            onChange={(event) => updateReportSearch(event.target.value)}
-          />
-        </label>
+      </header>
+    ) : (
+      <header className="report-data-toolbar report-command-toolbar">
+        {!periodSummaryInDateFilter && renderReportPeriod()}
+        {outputActions}
+        <div className="report-utility-actions">{filterAction}{moreActions}</div>
+        {searchField}
       </header>
     );
   }
 
+  const hideSectionHeading = app === "gestion" && isDailySalesReport;
+  const screenTitle = t(hideSectionHeading ? "salesReport.dailySales"
+    : app === "gestion" ? "gestion.navigation.group.customerDocuments" : "home.salesReport");
+
   return (
-    <main className={`${embedded ? "report-screen gestion-embedded-module" : "report-screen"}${app !== "pda" ? " report-screen--desktop" : ""} report-density-${reportOutputPreferences.density}`}>
+    <main data-section-heading={hideSectionHeading ? "hidden" : undefined} data-period-summary={periodSummaryInDateFilter ? "footer" : undefined} className={`${embedded ? "report-screen gestion-embedded-module" : "report-screen"}${app !== "pda" ? " report-screen--desktop" : ""} report-density-${reportOutputPreferences.density}`}>
       {reportNotice && (
         <div
           className={`report-feedback ${reportNotice.kind}`}
@@ -3993,14 +4090,14 @@ export function SalesReportScreen({
         {"\u23FB"}
       </button>}
 
-      <section className="report-shell" aria-label={t("home.salesReport")}>
-        <header className="report-topbar">
+      <section className="report-shell" aria-label={screenTitle}>
+        {(!hideSectionHeading || !embedded) && <header className="report-topbar">
           {!embedded && <button type="button" className="report-brand-back" onClick={onBack}>
             <AppBrand app={app} label={t(app === "venta" ? "venta.title" : "gestion.title")} />
           </button>}
           {!embedded && <DesktopHeaderContext terminalContext={terminalContext} />}
-          <h1 className="report-title">{t("home.salesReport")}</h1>
-        </header>
+          {!hideSectionHeading && <h1 className="report-title">{screenTitle}</h1>}
+        </header>}
         {!embedded && <aside className="report-nav">
           {availableReports.visibleOutputReports.length > 0 && <strong>{t("salesReport.output")}</strong>}
           {availableReports.visibleOutputReports.map((reportKey) => (
@@ -4181,7 +4278,7 @@ export function SalesReportScreen({
                           && String(row.__documentStatus ?? "").toUpperCase() === "ANULADO";
                         return (
                           <tr
-                            key={`${selectedReport}-${rowIndex}`}
+                            key={`${selectedReport}-${row.__documentId || row.__warehouseDocumentId || rowIndex}`}
                             className={[
                               selectedRowIndex === rowIndex ? "selected" : "",
                               isCancelledTicket ? "report-table-row--cancelled" : ""
@@ -4195,13 +4292,14 @@ export function SalesReportScreen({
                               if (canOpenDocumentPreview(row)) void openDocumentPreview(row);
                             }}
                             onKeyDown={(event) => {
+                              if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
                               if (event.key === "ArrowUp") {
                                 event.preventDefault();
-                                moveSelectedRow(rowIndex, -1);
+                                repeatReportArrow(event);
                               }
                               if (event.key === "ArrowDown") {
                                 event.preventDefault();
-                                moveSelectedRow(rowIndex, 1);
+                                repeatReportArrow(event);
                               }
                               if (event.key === "Enter" && canOpenDocumentPreview(row)) {
                                 event.preventDefault();
@@ -4255,16 +4353,25 @@ export function SalesReportScreen({
                 <span>{t("salesReport.loadError")}</span>
                 <button type="button" onClick={() => setReportReloadKey((value) => value + 1)}>{t("salesReport.retry")}</button>
               </div>}
-              <ReportDateRangeFilter key={selectedReport} locale={locale}
+              <ReportDateRangeFilter inlineCustomRange={app !== "pda"} collapseSingleDay={app === "gestion"} showWeekday={app === "gestion"} key={selectedReport} locale={locale}
                 today={dateOptions?.report === selectedReport ? dateOptions.currentDate : ""}
                 earliestDate={dateOptions?.report === selectedReport ? dateOptions.earliestDate : ""}
-                value={selectedDateRange} onChange={applyDateRange} />
+                value={selectedDateRange} onChange={applyDateRange} showSummary={periodSummaryInDateFilter} />
             </div>
           )}
         </section>
 
         {app !== "gestion" && <ScreenContextFooter locale={locale} terminalContext={terminalContext} />}
       </section>
+
+      {serialSearchOpen && <TicketSerialNumberSearchDialog locale={locale} token={session.accessToken} app={app} username={session.username}
+        request={request} onClose={() => {
+          setSerialSearchOpen(false); moreActionsRef.current?.querySelector("button")?.focus();
+        }} onOpenTicket={(match) => {
+          setSerialSearchOpen(false);
+          void openDocumentPreview({ __documentId: match.ticketId, __documentStatus: match.status,
+            ticket: match.number, date: match.date.split("-").reverse().join("/"), total: String(match.total) });
+        }} />}
 
       {activityDocumentId && (
         <DocumentOperationalTimelineDialog
@@ -4337,7 +4444,7 @@ export function SalesReportScreen({
                         return (
                           <tr key={line.id}>
                             <td>{adjustmentLabel ?? line.code}</td>
-                            <td>{adjustmentLabel ?? line.name}</td>
+                            <td>{adjustmentLabel ?? line.name}{line.serialNumbers?.length ? <div className="sale-line-serial">{t("salesReport.column.serialNumber")}: {line.serialNumbers.join(", ")}</div> : null}</td>
                             <td>{new Intl.NumberFormat(localeTag(locale), { maximumFractionDigits: 3 }).format(Number(line.quantity))}</td>
                             <td>{formatEuroUnitPrice(line.unitPrice, locale)}</td>
                             <td>{`${new Intl.NumberFormat(localeTag(locale), { maximumFractionDigits: 2 }).format(Number(line.discount))} %`}</td>

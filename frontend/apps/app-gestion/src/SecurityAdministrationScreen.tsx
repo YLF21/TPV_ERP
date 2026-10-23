@@ -1,7 +1,12 @@
 import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { useTableArrowRepeat } from "../../../packages/app-common/src/components/useTableArrowRepeat";
+import { ensureTableRowVisible } from "../../../packages/app-common/src/components/ensureTableRowVisible";
+import { useTableInitialFocus } from "../../../packages/app-common/src/components/useTableInitialFocus";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { GestionSearchFrame } from "../../../packages/app-common/src/components/GestionSearchFrame";
+import { GestionModuleHeading } from "./GestionModuleHeading";
 import {
   TableLayoutHeaderCell,
   sortTableRows,
@@ -77,6 +82,7 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
   const [error, setError] = useState(false);
   const [dialog, setDialog] = useState<UserDialogKind | null>(null);
   const [confirmActive, setConfirmActive] = useState<boolean | null>(null);
+  const tableRef = useRef<HTMLElement>(null);
   const tableLayout = useTableLayoutPreference({
     app: "gestion",
     username: session.username,
@@ -141,6 +147,26 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
     }, "es");
   }, [query, tableSort.sort, users]);
   const selected = users.find((user) => user.id === selectedId) ?? null;
+  useTableInitialFocus(tableRef, "button.gestion-security-row[data-security-user-id]", {
+    ready: !loading && !error && !dialog && confirmActive === null && filteredUsers.length > 0,
+    onSelect: (row) => setSelectedId(row.dataset.securityUserId ?? null)
+  });
+  const handleArrow = useTableArrowRepeat(direction => {
+    const active = document.activeElement;
+    if (loading || dialog || confirmActive !== null || document.querySelector('[aria-modal="true"]')
+      || !(active instanceof HTMLButtonElement) || !tableRef.current?.contains(active)
+      || !active.matches("button.gestion-security-row[data-security-user-id]")) return false;
+    const index = filteredUsers.findIndex(user => user.id === active.dataset.securityUserId);
+    const next = filteredUsers[index + (direction === "ArrowDown" ? 1 : -1)];
+    if (index < 0 || !next) return false;
+    const nextElement = Array.from(tableRef.current.querySelectorAll<HTMLButtonElement>("button.gestion-security-row[data-security-user-id]"))
+      .find(element => element.dataset.securityUserId === next.id);
+    if (!nextElement) return false;
+    setSelectedId(next.id);
+    nextElement.focus({ preventScroll: true });
+    ensureTableRowVisible(tableRef.current, nextElement);
+    return true;
+  }, !loading && !dialog && confirmActive === null);
 
   function replaceUser(updated: SecurityUser) {
     setUsers((current) => current.map((user) => user.id === updated.id ? updated : user));
@@ -155,20 +181,20 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
   }
 
   return (
-    <section className="gestion-workspace gestion-security-workspace gestion-users-workspace">
-      <SecurityHeader
-        eyebrow={t("gestion.security.eyebrow")}
+    <section className="gestion-workspace gestion-module-screen gestion-security-workspace gestion-users-workspace">
+      <GestionModuleHeading
+        group={t("gestion.navigation.group.security")}
         title={t("gestion.users.title")}
-        subtitle={t("gestion.users.subtitle")}
+        description={t("gestion.users.subtitle")}
       >
         <button type="button" onClick={() => void refresh()}>{t("common.refresh")}</button>
         <button type="button" className="primary" onClick={() => setDialog("create")}>{t("gestion.users.new")}</button>
-      </SecurityHeader>
+      </GestionModuleHeading>
 
-      <div className="gestion-security-toolbar">
+      <div className="gestion-security-toolbar gestion-filter-toolbar">
         <label>
           <span>{t("gestion.security.search")}</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("gestion.users.searchPlaceholder")} />
+          <GestionSearchFrame><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("gestion.users.searchPlaceholder")} /></GestionSearchFrame>
         </label>
         <span>{t("gestion.security.results").replace("{count}", String(filteredUsers.length))}</span>
       </div>
@@ -177,7 +203,7 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
       ]} onClear={() => setQuery("")} />
 
       <div className="gestion-security-grid">
-        <section className="gestion-security-list" aria-label={t("gestion.users.title")}>
+        <section ref={tableRef} className="gestion-security-list gestion-module-panel gestion-module-table" aria-label={t("gestion.users.title")}>
           <div className="gestion-security-table" role="table" aria-rowcount={filteredUsers.length}>
             <div className="gestion-security-row head" role="row" style={tableStyle}>
               {visibleColumns.map((column) => (
@@ -203,9 +229,13 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
                 role="row"
                 aria-selected={selectedId === user.id}
                 className={`gestion-security-row ${selectedId === user.id ? "selected" : ""}`}
+                data-security-user-id={user.id}
                 style={tableStyle}
                 key={user.id}
                 onClick={() => setSelectedId(user.id)}
+                onKeyDown={event => {
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); handleArrow(event); }
+                }}
               >
                 {visibleColumns.map((column) => (
                   <span role="cell" data-column-key={column.key} key={column.key}>
@@ -220,7 +250,7 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
           </div>
         </section>
 
-        <aside className="gestion-security-detail">
+        <aside className="gestion-security-detail gestion-module-panel">
           {!selected && <SecurityState>{t("gestion.users.select")}</SecurityState>}
           {selected && (
             <>
@@ -237,7 +267,7 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
               {selected.protectedUser ? (
                 <p className="gestion-security-notice">{t("gestion.users.adminProtected")}</p>
               ) : (
-                <div className="gestion-security-actions">
+                <div className="gestion-security-actions gestion-toolbar-actions">
                   <button type="button" onClick={() => setDialog("identity")}>{t("gestion.users.editIdentity")}</button>
                   <button type="button" onClick={() => setDialog("role")}>{t("gestion.users.changeRole")}</button>
                   <button type="button" onClick={() => setDialog("password")}>{t("gestion.users.resetPassword")}</button>
@@ -341,7 +371,7 @@ function UserActionDialog({ kind, user, roles, token, t, onClose, onSaved }: {
   const title = t(`gestion.users.dialog.${kind}`);
   return (
     <Modal title={title} closeLabel={t("common.close")} onClose={onClose} className={`gestion-users-dialog gestion-users-dialog-${kind}`}>
-      <form className={`gestion-security-form gestion-users-form gestion-users-form-${kind}`} onSubmit={submit}>
+      <form className={`gestion-security-form gestion-module-fields gestion-users-form gestion-users-form-${kind}`} onSubmit={submit}>
         {(kind === "create" || kind === "identity") && (
           <>
             <label><span>{t("gestion.users.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>
@@ -438,15 +468,15 @@ function RoleAdministration({ session, t }: { session: UserSession; t: Translato
   }
 
   return (
-    <section className="gestion-workspace gestion-security-workspace gestion-role-workspace">
-      <SecurityHeader eyebrow={t("gestion.security.eyebrow")} title={t("gestion.roles.title")} subtitle={t("gestion.roles.subtitle")}>
+    <section className="gestion-workspace gestion-module-screen gestion-security-workspace gestion-role-workspace">
+      <GestionModuleHeading group={t("gestion.navigation.group.security")} title={t("gestion.roles.title")} description={t("gestion.roles.subtitle")}>
         <button type="button" onClick={() => void refresh()}>{t("common.refresh")}</button>
         <button type="button" className="primary" onClick={() => setCreating(true)}>{t("gestion.roles.new")}</button>
-      </SecurityHeader>
+      </GestionModuleHeading>
 
       <div className="gestion-role-layout">
-        <aside className="gestion-role-list">
-          <label><span>{t("gestion.security.search")}</span><input value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+        <aside className="gestion-role-list gestion-module-panel">
+          <label className="gestion-filter-toolbar"><span>{t("gestion.security.search")}</span><GestionSearchFrame><input value={query} onChange={(event) => setQuery(event.target.value)} /></GestionSearchFrame></label>
           <ErpFilterChips translate={t} chips={[
             { key: "search", label: t("gestion.security.search"), value: query, onRemove: () => setQuery("") }
           ]} onClear={() => setQuery("")} />
@@ -463,14 +493,14 @@ function RoleAdministration({ session, t }: { session: UserSession; t: Translato
           </div>
         </aside>
 
-        <section className="gestion-permission-editor">
+        <section className="gestion-permission-editor gestion-module-panel">
           {!selected && <SecurityState>{t("gestion.roles.select")}</SecurityState>}
           {selected && (
             <>
               <header>
                 <div><span>{t("gestion.roles.detail")}</span><h3>{selected.name}</h3></div>
                 {!selected.protectedRole && (
-                  <div className="gestion-role-header-actions">
+                  <div className="gestion-role-header-actions gestion-toolbar-actions">
                     <strong>{t("gestion.roles.selectedCount").replace("{count}", String(draft.size))}</strong>
                     <button type="button" onClick={() => setRenaming(true)}>{t("gestion.roles.rename")}</button>
                     <button type="button" className="danger" onClick={() => setDeleting(true)}>{t("gestion.roles.delete")}</button>
@@ -483,8 +513,8 @@ function RoleAdministration({ session, t }: { session: UserSession; t: Translato
                 <>
                   <div className="gestion-permission-groups">
                     {groups.map(([group, permissions]) => (
-                      <section key={group}>
-                        <header><strong>{t(`gestion.permissions.group.${group}`)}</strong><button type="button" onClick={() => {
+                      <section className="gestion-module-panel" key={group}>
+                        <header><strong>{t(`gestion.permissions.group.${group}`)}</strong><button type="button" className="gestion-module-action" onClick={() => {
                           const next = new Set(draft);
                           const allSelected = permissions.every((permission) => next.has(permission.code));
                           permissions.forEach((permission) => allSelected ? next.delete(permission.code) : next.add(permission.code));
@@ -503,7 +533,7 @@ function RoleAdministration({ session, t }: { session: UserSession; t: Translato
                       </section>
                     ))}
                   </div>
-                  <footer>{saveError && <span className="gestion-inline-error">{t("gestion.security.saveError")}</span>}<button type="button" className="primary" disabled={saving} onClick={() => void savePermissions()}>{saving ? t("common.saving") : t("gestion.roles.savePermissions")}</button></footer>
+                  <footer className="gestion-toolbar-actions">{saveError && <span className="gestion-inline-error">{t("gestion.security.saveError")}</span>}<button type="button" className="primary" disabled={saving} onClick={() => void savePermissions()}>{saving ? t("common.saving") : t("gestion.roles.savePermissions")}</button></footer>
                 </>
               )}
             </>
@@ -556,7 +586,7 @@ function CreateRoleDialog({ token, t, onClose, onCreated }: { token?: string; t:
     catch { setError(t("gestion.security.saveError")); }
     finally { setSaving(false); }
   }
-  return <Modal title={t("gestion.roles.dialog.create")} closeLabel={t("common.close")} onClose={onClose} className="gestion-roles-dialog"><form className="gestion-security-form" onSubmit={submit}><label><span>{t("gestion.roles.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>{error && <p className="gestion-inline-error" role="alert">{error}</p>}<footer className="erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.cancel")}</DialogDismissButton><button type="submit" className="primary erp-dialog-action-confirm" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</button></footer></form></Modal>;
+  return <Modal title={t("gestion.roles.dialog.create")} closeLabel={t("common.close")} onClose={onClose} className="gestion-roles-dialog"><form className="gestion-security-form gestion-module-fields" onSubmit={submit}><label><span>{t("gestion.roles.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>{error && <p className="gestion-inline-error" role="alert">{error}</p>}<footer className="erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.cancel")}</DialogDismissButton><button type="submit" className="primary erp-dialog-action-confirm" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</button></footer></form></Modal>;
 }
 
 function RenameRoleDialog({ role, token, t, onClose, onRenamed }: {
@@ -579,7 +609,7 @@ function RenameRoleDialog({ role, token, t, onClose, onRenamed }: {
   }
   return (
     <Modal title={t("gestion.roles.dialog.rename")} closeLabel={t("common.close")} onClose={onClose} className="gestion-roles-dialog">
-      <form className="gestion-security-form" onSubmit={submit}>
+      <form className="gestion-security-form gestion-module-fields" onSubmit={submit}>
         <label><span>{t("gestion.roles.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>
         {error && <p className="gestion-inline-error" role="alert">{error}</p>}
         <footer className="erp-dialog-actions-row"><DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={onClose}>{t("common.cancel")}</DialogDismissButton><button type="submit" className="primary erp-dialog-action-confirm" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</button></footer>
@@ -622,10 +652,6 @@ function DeleteRoleDialog({ role, token, t, onClose, onDeleted }: {
       </div>
     </Modal>
   );
-}
-
-function SecurityHeader({ eyebrow, title, subtitle, children }: { eyebrow: string; title: string; subtitle: string; children: ReactNode }) {
-  return <header className="gestion-dashboard-toolbar gestion-security-header"><div><span className="gestion-eyebrow">{eyebrow}</span><h2>{title}</h2><p>{subtitle}</p></div><div className="gestion-dashboard-actions">{children}</div></header>;
 }
 
 function roleDeletionError(reason: unknown, t: Translator) {

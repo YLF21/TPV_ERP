@@ -7,6 +7,9 @@ import {
 } from "@tpverp/app-common";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { ReportDateRangeFilter, type ReportDateRange } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
+import { useTableArrowRepeat } from "../../../packages/app-common/src/components/useTableArrowRepeat";
+import { ensureTableRowVisible } from "../../../packages/app-common/src/components/ensureTableRowVisible";
+import { useTableInitialFocus } from "../../../packages/app-common/src/components/useTableInitialFocus";
 import { loadCashClosure, type CashClosure } from "./cashClosuresApi";
 import {
   loadCashActivity, loadCashActivityFilterOptions,
@@ -48,6 +51,11 @@ export function CashActivityView({ session, t, locale, refreshSignal }: Props) {
   const moreController = useRef<AbortController | null>(null);
   const loadingMoreRef = useRef(false);
   const detailGeneration = useRef(0);
+  const tableRef = useRef<HTMLDivElement>(null);
+  useTableInitialFocus(tableRef, "[data-cash-activity-id]", {
+    ready: !loading && !error && rows.length > 0,
+    onSelect: (row) => setSelectedId(row.dataset.cashActivityId ?? null)
+  });
   const layout = useTableLayoutPreference({ app: "gestion", username: session.username, accessToken: token,
     tableKey: "gestion.cash.activity", definitions: cashActivityColumns });
   const sorting = useTableSortPreference({ app: "gestion", username: session.username, tableKey: "gestion.cash.activity",
@@ -147,12 +155,21 @@ export function CashActivityView({ session, t, locale, refreshSignal }: Props) {
     setSelectedId(row.id);
   }
 
-  function selectAdjacent(index: number, direction: number) {
-    const next = rows[index + direction];
-    if (!next) return;
+  const handleArrow = useTableArrowRepeat(direction => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || !tableRef.current?.contains(active)) return false;
+    const currentId = active.dataset.cashActivityId;
+    const index = rows.findIndex(row => row.id === currentId);
+    const next = rows[index + (direction === "ArrowDown" ? 1 : -1)];
+    if (index < 0 || !next) return false;
+    const nextElement = Array.from(tableRef.current.querySelectorAll<HTMLElement>("[data-cash-activity-id]"))
+      .find(element => element.dataset.cashActivityId === next.id);
+    if (!nextElement) return false;
     setSelectedId(next.id);
-    document.querySelector<HTMLElement>(`[data-cash-activity-id="${CSS.escape(next.id)}"]`)?.focus();
-  }
+    nextElement.focus({ preventScroll: true });
+    ensureTableRowVisible(tableRef.current, nextElement);
+    return true;
+  });
 
   function labelForAction(action: string) { return t(`gestion.cashActivity.action.${action}`); }
   function labelForState(state: string | null) { return state ? t(`gestion.cashActivity.state.${state}`) : "—"; }
@@ -172,17 +189,17 @@ export function CashActivityView({ session, t, locale, refreshSignal }: Props) {
   }
 
   return <section className="gestion-cash-activity-view">
-    <div className="gestion-cash-activity-filters">
-      <label><span>{t("gestion.cashClosures.terminal")}</span><ErpSelect value={filters?.terminalId || ""} disabled={!options}
+    <div className="gestion-cash-activity-filters gestion-filter-toolbar">
+      <label data-filter-active={Boolean(filters?.terminalId)}><span>{t("gestion.cashClosures.terminal")}</span><ErpSelect value={filters?.terminalId || ""} disabled={!options}
         options={[{ value: "", label: t("gestion.cashClosures.allTerminals") }, ...(options?.terminals || []).map(item => ({ value: item.id, label: item.name }))]}
         onChange={value => changeFilter("terminalId", value)} aria-label={t("gestion.cashClosures.terminal")} /></label>
-      <label><span>{t("gestion.cashClosures.user")}</span><ErpSelect value={filters?.userId || ""} disabled={!options}
+      <label data-filter-active={Boolean(filters?.userId)}><span>{t("gestion.cashClosures.user")}</span><ErpSelect value={filters?.userId || ""} disabled={!options}
         options={[{ value: "", label: t("gestion.cashClosures.allUsers") }, ...(options?.users || []).map(item => ({ value: item.id, label: item.secondaryName && item.secondaryName !== item.name ? `${item.name} · ${item.secondaryName}` : item.name }))]}
         onChange={value => changeFilter("userId", value)} aria-label={t("gestion.cashClosures.user")} /></label>
-      <label><span>{t("gestion.cashActivity.column.action")}</span><ErpSelect value={filters?.action || ""} disabled={!options}
+      <label data-filter-active={Boolean(filters?.action)}><span>{t("gestion.cashActivity.column.action")}</span><ErpSelect value={filters?.action || ""} disabled={!options}
         options={[{ value: "", label: t("gestion.cashActivity.allActions") }, ...actions.map(action => ({ value: action, label: labelForAction(action) }))]}
         onChange={value => changeFilter("action", value)} aria-label={t("gestion.cashActivity.column.action")} /></label>
-      <label><span>{t("gestion.cashActivity.column.cashState")}</span><ErpSelect value={filters?.cashState || ""} disabled={!options}
+      <label data-filter-active={Boolean(filters?.cashState)}><span>{t("gestion.cashActivity.column.cashState")}</span><ErpSelect value={filters?.cashState || ""} disabled={!options}
         options={[{ value: "", label: t("gestion.cashActivity.allStates") }, ...states.map(state => ({ value: state, label: labelForState(state) }))]}
         onChange={value => changeFilter("cashState", value)} aria-label={t("gestion.cashActivity.column.cashState")} /></label>
     </div>
@@ -193,7 +210,7 @@ export function CashActivityView({ session, t, locale, refreshSignal }: Props) {
         { key: "action", label: t("gestion.cashActivity.column.action"), value: filters.action ? labelForAction(filters.action) : "", onRemove: () => changeFilter("action", "") },
         { key: "state", label: t("gestion.cashActivity.column.cashState"), value: filters.cashState ? labelForState(filters.cashState) : "", onRemove: () => changeFilter("cashState", "") }
       ]} />}
-    <div className="gestion-cash-activity-table-wrap" role="table" aria-label={t("gestion.cashClosures.title")} aria-rowcount={rows.length} onScroll={onScroll}>
+    <div className="gestion-cash-activity-table-wrap" role="table" aria-label={t("gestion.cashClosures.title")} aria-rowcount={rows.length} onScroll={onScroll} ref={tableRef}>
       <div className="gestion-cash-activity-row head" role="row" style={tableStyle}>
         {visible.map(column => <TableLayoutHeaderCell as="span" key={column.key} column={column}
           sortDirection={effectiveSort?.column === column.key ? effectiveSort.direction : null}
@@ -207,13 +224,12 @@ export function CashActivityView({ session, t, locale, refreshSignal }: Props) {
           {t(`gestion.cashActivity.column.${column.key}`)}
         </TableLayoutHeaderCell>)}
       </div>
-      {rows.map((row, index) => <div className={`gestion-cash-activity-row${selectedId === row.id ? " selected" : ""}`}
+      {rows.map(row => <div className={`gestion-cash-activity-row${selectedId === row.id ? " selected" : ""}`}
         role="row" aria-selected={selectedId === row.id} tabIndex={0} data-cash-activity-id={row.id}
         key={row.id} style={tableStyle} onClick={() => selectRow(row)}
         onKeyDown={event => {
           if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectRow(row); }
-          if (event.key === "ArrowDown") { event.preventDefault(); selectAdjacent(index, 1); }
-          if (event.key === "ArrowUp") { event.preventDefault(); selectAdjacent(index, -1); }
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); handleArrow(event); }
         }}>
         {visible.map(column => <span role="cell" data-column-key={column.key} key={column.key}>{cell(row, column.key)}</span>)}
       </div>)}
@@ -228,7 +244,9 @@ export function CashActivityView({ session, t, locale, refreshSignal }: Props) {
       <span>{t("gestion.cashActivity.loaded").replace("{count}", String(rows.length))}</span>
       {hasMore && <button type="button" disabled={loadingMore} onClick={() => void loadMore()}>{t("gestion.cashActivity.more")}</button>}
     </footer>
-    <ReportDateRangeFilter locale={locale} today={options?.businessDate || ""} earliestDate={options?.earliestDate || ""} value={range}
+    <ReportDateRangeFilter locale={locale} today={options?.businessDate || ""} earliestDate={options?.earliestDate || ""}
+      value={filters ? { ...range, from: filters.from, to: filters.to,
+        preset: range.from === filters.from && range.to === filters.to ? range.preset : undefined } : range}
       disabled={!options} onChange={value => { setRange(value); setFilters(current => current ? { ...current, from: value.from, to: value.to } : current); }} />
     {detail && <section className="gestion-cash-closure-detail" aria-label={t("gestion.cashClosures.detail")}>
       <header><h3>{t("gestion.cashClosures.detail")}</h3><WindowCloseButton type="button" onLight aria-label={t("gestion.cashClosures.closeDetail")} onClick={() => setSelectedId(null)} >{t("gestion.cashClosures.closeDetail")}</WindowCloseButton></header>

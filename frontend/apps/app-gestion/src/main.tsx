@@ -6,7 +6,6 @@ import {
   AppFrame,
   ApiError,
   apiRequest,
-  PromotionListScreen,
   createTranslator,
   devTerminalContext,
   gestionGroupLockedEvent,
@@ -27,6 +26,12 @@ import "../../../packages/app-common/src/styles/DesktopWindowCorners.css";
 import "../../../packages/app-common/src/styles/tpv.css";
 import "./gestion.css";
 import "./GestionWarehouseScreens.css";
+import "./GestionControls.css";
+import "./GestionDateFilters.css";
+import "./GestionToolbarLayout.css";
+import "./GestionSharedToolbarOrder.css";
+import "./GestionPartyDirectory.css";
+import "./GestionModulePattern.css";
 import LoginScreen from "./GestionLoginScreen";
 import { canManageFamilies, canManageTaxes, visibleGestionModules } from "./gestionAccess";
 import { GestionDashboard } from "./GestionDashboard";
@@ -441,6 +446,7 @@ function GestionScreen({
   const canManageFamiliesForSession = canManageFamilies(session);
   const reports = visibleSalesReports(session).all;
   const stockViews = visibleStockViewsForSession(session);
+  const canReadPromotions = modules.includes("gestion.stock") && stockViews.includes("stock.promotions");
   const warehouseSections = visibleWarehouseSectionsForSession(session);
   const [unlockedGroups, setUnlockedGroups] = useState<Set<GestionGroupLock>>(() => new Set());
   const [unlockRequest, setUnlockRequest] = useState<{
@@ -448,7 +454,7 @@ function GestionScreen({
     resolve: (allowed: boolean) => void;
   } | null>(null);
   const stockChildren: GestionNavigationItem[] = [
-    ...stockViews.map((view) => ({
+    ...stockViews.filter(view => view !== "stock.promotions").map((view) => ({
       key: view,
       label: t(view),
       onOpen: () => onOpenStock({ key: view, view })
@@ -595,7 +601,7 @@ function GestionScreen({
       ? [{ key: "warehouse", label: t("stock.warehouse"), children: warehouseChildren }]
       : []),
     ...partyItems,
-    ...(canManageProducts
+    ...(canReadPromotions
       ? [{ key: "promotions", label: t("promotion.list.heading"), onOpen: onOpenPromotions }]
       : []),
     ...(securityChildren.length > 0
@@ -718,7 +724,7 @@ function GestionScreen({
   const activeKey = effectiveModule === "sales"
     ? Object.entries(purchaseReportFallbacks).find(([, report]) => report === salesReport)?.[0] ?? salesReport
     : effectiveModule === "stock"
-      ? stockSelection.key
+      ? stockSelection.view === "stock.promotions" && !stockSelection.partyDirectory ? "promotions" : stockSelection.key
       : effectiveModule;
 
   function requestOpenDestination(item: GestionNavigationItem): boolean | Promise<boolean> {
@@ -840,9 +846,9 @@ function GestionScreen({
         initialSettingsMode={stockSelection.settingsMode}
       />
     );
-  } else if (effectiveModule === "promotions" && canManageProducts) {
+  } else if (effectiveModule === "promotions" && canReadPromotions) {
     content = (
-      <PromotionListScreen
+      <StockScreen
         app="gestion"
         locale={locale}
         session={session}
@@ -851,6 +857,7 @@ function GestionScreen({
         onLogout={onLogout}
         onLocaleChange={onLocaleChange}
         embedded
+        initialView="stock.promotions"
       />
     );
   } else if (effectiveModule === "users" && modules.includes("gestion.users")) {

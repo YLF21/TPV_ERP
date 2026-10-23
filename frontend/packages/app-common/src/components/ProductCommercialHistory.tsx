@@ -6,6 +6,9 @@ import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import "./ErpClassicTables.css";
 import "./ProductCommercialHistory.css";
 
@@ -43,10 +46,31 @@ const promotionTypes = new Set([
 function CommercialHistoryDialog({ productId, productName, locale, token, onClose }: Props & { onClose: () => void }) {
   const t = createTranslator(locale);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const rowsRef = useRef<Array<HTMLTableRowElement | null>>([]);
   const [entries, setEntries] = useState<CommercialHistoryEntry[]>([]);
   const [state, setState] = useState<"loading" | "loaded" | "error">("loading");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  function focusRow(index: number) {
+    const row = rowsRef.current[index];
+    if (!row) return;
+    row.focus({ preventScroll: true });
+    const container = row.closest<HTMLElement>(".product-commercial-history-scroll");
+    if (container) ensureTableRowVisible(container, row);
+  }
+  const repeatArrow = useTableArrowRepeat((direction) => {
+    const current = rowsRef.current.indexOf(document.activeElement as HTMLTableRowElement);
+    if (state !== "loaded" || !dialogRef.current?.open || current < 0) return false;
+    const next = Math.max(0, Math.min(entries.length - 1, current + (direction === "ArrowDown" ? 1 : -1)));
+    if (next === current) return false;
+    setSelectedIndex(next);
+    focusRow(next);
+  }, state === "loaded");
+  useTableInitialFocus(scrollRef, "tbody tr", {
+    ready: state === "loaded",
+    scopeKey: productId,
+    onSelect: () => setSelectedIndex(0),
+  });
   const localeTag = locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES";
   const dateFormatter = useMemo(() => new Intl.DateTimeFormat(localeTag, { dateStyle: "short" }), [localeTag]);
   const recordedAtFormatter = useMemo(() => new Intl.DateTimeFormat(localeTag, {
@@ -131,16 +155,20 @@ function CommercialHistoryDialog({ productId, productName, locale, token, onClos
     return `${t("product.commercialHistory.recordedAt")}: ${formatted}`;
   }
 
-  function handleRowKeyDown(event: KeyboardEvent<HTMLTableRowElement>, index: number) {
-    let next = index;
-    if (event.key === "ArrowDown") next = Math.min(index + 1, entries.length - 1);
-    else if (event.key === "ArrowUp") next = Math.max(index - 1, 0);
-    else if (event.key === "Home") next = 0;
+  function handleRowKeyDown(event: KeyboardEvent<HTMLTableRowElement>) {
+    if ((event.key === "ArrowDown" || event.key === "ArrowUp")
+      && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
+      event.preventDefault();
+      repeatArrow(event);
+      return;
+    }
+    let next = selectedIndex;
+    if (event.key === "Home") next = 0;
     else if (event.key === "End") next = entries.length - 1;
     else return;
     event.preventDefault();
     setSelectedIndex(next);
-    rowsRef.current[next]?.focus();
+    focusRow(next);
   }
 
   return createPortal(
@@ -165,7 +193,7 @@ function CommercialHistoryDialog({ productId, productName, locale, token, onClos
         {state === "loading" && <p role="status">{t("common.loading")}</p>}
         {state === "error" && <p role="alert">{t("product.commercialHistory.loadError")}</p>}
         {state === "loaded" && (
-          <div className="product-commercial-history-scroll">
+          <div className="product-commercial-history-scroll" ref={scrollRef}>
             <table>
               <thead><tr>
                 <th scope="col">{t("product.commercialHistory.type")}</th>
@@ -186,8 +214,8 @@ function CommercialHistoryDialog({ productId, productName, locale, token, onClos
                     tabIndex={index === selectedIndex ? 0 : -1}
                     aria-selected={index === selectedIndex}
                     onFocus={() => setSelectedIndex(index)}
-                    onClick={() => { setSelectedIndex(index); rowsRef.current[index]?.focus(); }}
-                    onKeyDown={(event) => handleRowKeyDown(event, index)}
+                    onClick={() => { setSelectedIndex(index); focusRow(index); }}
+                    onKeyDown={handleRowKeyDown}
                   >
                     <td title={recordedAtTitle(entry.recordedAt)}>
                       <span>{displayType(entry)}</span>

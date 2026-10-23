@@ -56,11 +56,39 @@ describe("report quick date integration", () => {
       expect(otherResources).toHaveLength(0);
     });
 
-  it.each(["es", "en", "zh"] as const)("is translated in APP GESTION %s", async (locale) => {
-    mount(fixture(), "tickets", "gestion", locale);
+  it.each([["es", "Viernes"], ["en", "Friday"], ["zh", "星期五"]] as const)("is translated in APP GESTION %s", async (locale, weekday) => {
+    const { container } = mount(fixture(), "tickets", "gestion", locale);
     const t = createSalesActivityTranslator(locale);
     await waitFor(() => expect(screen.getByRole("button", { name: t("today") })).toBeEnabled());
     expect(screen.getByRole("combobox", { name: t("quarter") })).toBeEnabled();
+    const summary = container.querySelector(".report-date-range-summary")!;
+    expect(summary.querySelectorAll("time")).toHaveLength(1);
+    expect(summary.querySelector("time")).toHaveAttribute("dateTime", currentDate);
+    expect(summary.querySelector(".report-date-range-weekday")).toHaveTextContent(weekday);
+    fireEvent.change(screen.getByRole("combobox", { name: t("month") }), { target: { value: "2026-08" } });
+    expect([...summary.querySelectorAll("time")].map((time) => time.dateTime)).toEqual(["2026-08-01", "2026-08-31"]);
+    expect(summary.querySelectorAll(".report-date-range-weekday")).toHaveLength(2);
+  });
+
+  it("keeps APP VENTA date edits as a draft until Aplicar", async () => {
+    const request = fixture();
+    const { container } = mount(request, "tickets", "venta", "es");
+    const initialQuery = `/document-reports/tickets?limit=500&dateFrom=${currentDate}&dateTo=${currentDate}`;
+    await waitFor(() => expect(request).toHaveBeenCalledWith(initialQuery, { token: "token" }));
+    const summary = container.querySelector(".report-date-range-summary")!;
+    expect([...summary.querySelectorAll("time")].map((time) => time.dateTime)).toEqual([currentDate, currentDate]);
+
+    request.mockClear();
+    fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-08-15" } });
+    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-08-16" } });
+    expect(request).not.toHaveBeenCalled();
+    expect([...summary.querySelectorAll("time")].map((time) => time.dateTime)).toEqual([currentDate, currentDate]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/document-reports/tickets?limit=500&dateFrom=2026-08-15&dateTo=2026-08-16", { token: "token" }
+    ));
+    expect([...summary.querySelectorAll("time")].map((time) => time.dateTime)).toEqual(["2026-08-15", "2026-08-16"]);
   });
 
   it("sends the applied date range to Excel export and makes no business write", async () => {
@@ -206,7 +234,7 @@ describe("report quick date integration", () => {
     const { container } = mount(request);
     const storeQuery = "/document-reports/tickets?limit=500&dateFrom=2025-01-01&dateTo=2025-01-01";
     await waitFor(() => expect(request).toHaveBeenCalledWith(storeQuery, { token: "token" }));
-    expect(container.querySelector(".report-command-period strong")).toHaveTextContent("Hoy");
+    expect(container.querySelector(".report-date-range-summary")).toHaveTextContent("01/01/2025 — 01/01/2025");
     fireEvent.click(screen.getByRole("button", { name: "Ayer" }));
     await waitFor(() => expect(request).toHaveBeenCalledWith("/document-reports/tickets?limit=500&dateFrom=2024-12-31&dateTo=2024-12-31", { token: "token" }));
     request.mockClear();

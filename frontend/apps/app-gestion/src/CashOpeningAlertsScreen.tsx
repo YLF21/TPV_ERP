@@ -1,8 +1,11 @@
 import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
-import { useEffect, useMemo, useRef, useState, type FormEvent, type UIEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { ErpSelect, type LocaleCode, type UserSession } from "@tpverp/app-common";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { ReportDateRangeFilter, type ReportDateRange } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
+import { useTableArrowRepeat } from "../../../packages/app-common/src/components/useTableArrowRepeat";
+import { ensureTableRowVisible } from "../../../packages/app-common/src/components/ensureTableRowVisible";
+import { useTableInitialFocus } from "../../../packages/app-common/src/components/useTableInitialFocus";
 import { loadCashActivityFilterOptions, type CashActivityFilterOptions } from "./cashActivityApi";
 import { loadCashAlertDetail, loadCashAlerts, reviewCashAlert, type CashAlert, type CashAlertDetail, type CashAlertFilters } from "./cashOpeningAlertsApi";
 
@@ -11,7 +14,6 @@ const alertKey = (alert: CashAlert) => `${alert.type}:${alert.id}`;
 
 export function CashOpeningAlertsScreen({ session, t, locale, refreshSignal, onReviewed }: Props) {
   const [options, setOptions] = useState<CashActivityFilterOptions | null>(null);
-  const [draft, setDraft] = useState<CashAlertFilters | null>(null);
   const [filters, setFilters] = useState<CashAlertFilters | null>(null);
   const [range, setRange] = useState<ReportDateRange>({ from: "", to: "", label: "" });
   const [rows, setRows] = useState<CashAlert[]>([]);
@@ -33,6 +35,10 @@ export function CashOpeningAlertsScreen({ session, t, locale, refreshSignal, onR
   const detailGeneration = useRef(0);
   const moreRef = useRef(false);
   const tableRef = useRef<HTMLDivElement>(null);
+  useTableInitialFocus(tableRef, "[data-cash-alert-key]", {
+    ready: !loading && !error && !saving && rows.length > 0,
+    onSelect: (row) => setSelectedId(row.dataset.cashAlertKey ?? null)
+  });
   const selected = rows.find(row => alertKey(row) === selectedId) ?? null;
   const showDetail = detailOpen && selected !== null;
   const canReview = session.permissions.includes("ADMIN") || session.permissions.includes("GESTION_CUENTAS");
@@ -47,7 +53,6 @@ export function CashOpeningAlertsScreen({ session, t, locale, refreshSignal, onR
       if (!active) return;
       const initial: CashAlertFilters = { from: "", to: "", terminalId: "", userId: "", status: "" };
       setOptions(value);
-      setDraft(initial);
       setFilters(initial);
       setRange({ from: "", to: "", label: "" });
     }).catch(() => { if (active) { setLoading(false); setError(t("gestion.cashOpeningAlerts.loadError")); } });
@@ -120,28 +125,16 @@ export function CashOpeningAlertsScreen({ session, t, locale, refreshSignal, onR
     if (element.scrollHeight - element.scrollTop - element.clientHeight <= 240) void loadMore();
   }
 
-  function apply(event: FormEvent) {
-    event.preventDefault();
-    if (draft && validRange(draft)) {
-      if (draft.from !== filters?.from || draft.to !== filters?.to) {
-        setRange({ from: draft.from, to: draft.to, label: "", preset: draft.from || draft.to ? "CUSTOM" : undefined });
-      }
-      setFilters({ ...draft });
-    }
-  }
-
   function remove(field: "period" | "terminalId" | "userId" | "status") {
     if (!options) return;
     const change = field === "period" ? { from: "", to: "" }
       : field === "status" ? { status: "" as const } : { [field]: "" };
-    setDraft(current => current ? { ...current, ...change } : current);
     setFilters(current => current ? { ...current, ...change } : current);
     if (field === "period") setRange({ from: "", to: "", label: "" });
   }
 
   function selectRange(value: ReportDateRange) {
     setRange(value);
-    setDraft(current => current ? { ...current, from: value.from, to: value.to } : current);
     setFilters(current => current ? { ...current, from: value.from, to: value.to } : current);
   }
 
@@ -151,6 +144,22 @@ export function CashOpeningAlertsScreen({ session, t, locale, refreshSignal, onR
     setDetailOpen(true);
     setDetailSelectionSignal(value => value + 1);
   }
+
+  const handleArrow = useTableArrowRepeat(direction => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || !tableRef.current?.contains(active)) return false;
+    const currentKey = active.dataset.cashAlertKey;
+    const index = rows.findIndex(row => alertKey(row) === currentKey);
+    const next = rows[index + (direction === "ArrowDown" ? 1 : -1)];
+    if (index < 0 || !next) return false;
+    const nextElement = Array.from(tableRef.current.querySelectorAll<HTMLElement>("[data-cash-alert-key]"))
+      .find(element => element.dataset.cashAlertKey === alertKey(next));
+    if (!nextElement) return false;
+    setSelectedId(alertKey(next));
+    nextElement.focus({ preventScroll: true });
+    ensureTableRowVisible(tableRef.current, nextElement);
+    return true;
+  });
 
   function closeDetail() {
     if (saving) return;
@@ -174,15 +183,14 @@ export function CashOpeningAlertsScreen({ session, t, locale, refreshSignal, onR
 
   return <section className="gestion-cash-alerts" aria-label={t("gestion.cashOpeningAlerts.title")}>
     <div className="gestion-cash-alerts-intro"><h3>{t("gestion.cashOpeningAlerts.title")}</h3><p>{t("gestion.cashOpeningAlerts.subtitle")}</p></div>
-    {options && draft && <>
-      <form className="gestion-cash-alerts-filters" onSubmit={apply}>
-        <label><span>{t("gestion.cashClosures.terminal")}</span><ErpSelect value={draft.terminalId} aria-label={t("gestion.cashClosures.terminal")} options={[{ value: "", label: t("gestion.cashClosures.allTerminals") }, ...options.terminals.map(item => ({ value: item.id, label: item.name }))]} onChange={terminalId => setDraft({ ...draft, terminalId })} /></label>
-        <label><span>{t("gestion.cashClosures.user")}</span><ErpSelect value={draft.userId} aria-label={t("gestion.cashClosures.user")} options={[{ value: "", label: t("gestion.cashClosures.allUsers") }, ...options.users.map(item => ({ value: item.id, label: item.name }))]} onChange={userId => setDraft({ ...draft, userId })} /></label>
-        <label><span>{t("gestion.cashOpeningAlerts.status")}</span><ErpSelect value={draft.status} aria-label={t("gestion.cashOpeningAlerts.status")} options={[{ value: "", label: t("gestion.cashOpeningAlerts.allStatuses") }, { value: "PENDING", label: t("gestion.cashOpeningAlerts.pending") }, { value: "REVIEWED", label: t("gestion.cashOpeningAlerts.reviewed") }]} onChange={status => setDraft({ ...draft, status: status as CashAlertFilters["status"] })} /></label>
-        <button type="submit" disabled={!validRange(draft)}>{t("gestion.cashClosures.apply")}</button>
-      </form>
-      <ErpFilterChips translate={t} onClear={() => { const reset: CashAlertFilters = { from: "", to: "", terminalId: "", userId: "", status: "" }; setDraft(reset); setFilters(reset); setRange({ from: "", to: "", label: "" }); }} chips={[
-        { key: "period", label: `${t("gestion.cashClosures.from")} / ${t("gestion.cashClosures.to")}`, value: filters?.from && filters.to ? `${filters.from} — ${filters.to}` : filters?.from ? `${t("gestion.cashClosures.from")}: ${filters.from}` : filters?.to ? `${t("gestion.cashClosures.to")}: ${filters.to}` : "", onRemove: () => remove("period") },
+    {options && filters && <>
+      <div className="gestion-cash-alerts-filters gestion-filter-toolbar">
+        <label data-filter-active={Boolean(filters.terminalId)}><span>{t("gestion.cashClosures.terminal")}</span><ErpSelect value={filters.terminalId} aria-label={t("gestion.cashClosures.terminal")} options={[{ value: "", label: t("gestion.cashClosures.allTerminals") }, ...options.terminals.map(item => ({ value: item.id, label: item.name }))]} onChange={terminalId => setFilters(current => current ? { ...current, terminalId } : current)} /></label>
+        <label data-filter-active={Boolean(filters.userId)}><span>{t("gestion.cashClosures.user")}</span><ErpSelect value={filters.userId} aria-label={t("gestion.cashClosures.user")} options={[{ value: "", label: t("gestion.cashClosures.allUsers") }, ...options.users.map(item => ({ value: item.id, label: item.name }))]} onChange={userId => setFilters(current => current ? { ...current, userId } : current)} /></label>
+        <label data-filter-active={Boolean(filters.status)}><span>{t("gestion.cashOpeningAlerts.status")}</span><ErpSelect value={filters.status} aria-label={t("gestion.cashOpeningAlerts.status")} options={[{ value: "", label: t("gestion.cashOpeningAlerts.allStatuses") }, { value: "PENDING", label: t("gestion.cashOpeningAlerts.pending") }, { value: "REVIEWED", label: t("gestion.cashOpeningAlerts.reviewed") }]} onChange={status => setFilters(current => current ? { ...current, status: status as CashAlertFilters["status"] } : current)} /></label>
+      </div>
+      <ErpFilterChips translate={t} onClear={() => { const reset: CashAlertFilters = { from: "", to: "", terminalId: "", userId: "", status: "" }; setFilters(reset); setRange({ from: "", to: "", label: "" }); }} chips={[
+        { key: "period", label: `${t("gestion.cashClosures.from")} / ${t("gestion.cashClosures.to")}`, value: filters?.from && filters.to ? (filters.from === filters.to ? filters.from : `${filters.from} — ${filters.to}`) : filters?.from ? `${t("gestion.cashClosures.from")}: ${filters.from}` : filters?.to ? `${t("gestion.cashClosures.to")}: ${filters.to}` : "", onRemove: () => remove("period") },
         { key: "terminal", label: t("gestion.cashClosures.terminal"), value: filters?.terminalId ? options.terminals.find(item => item.id === filters.terminalId)?.name ?? filters.terminalId : "", onRemove: () => remove("terminalId") },
         { key: "user", label: t("gestion.cashClosures.user"), value: filters?.userId ? options.users.find(item => item.id === filters.userId)?.name ?? filters.userId : "", onRemove: () => remove("userId") },
         { key: "status", label: t("gestion.cashOpeningAlerts.status"), value: filters?.status ? t(`gestion.cashOpeningAlerts.${filters.status.toLowerCase()}`) : "", onRemove: () => remove("status") }
@@ -192,7 +200,7 @@ export function CashOpeningAlertsScreen({ session, t, locale, refreshSignal, onR
     <div className="gestion-cash-alerts-list">
     <div className="gestion-cash-alerts-table-wrap" role="table" aria-rowcount={rows.length} onScroll={onScroll} ref={tableRef}>
       <div className="gestion-cash-alert-row head" role="row">{["date", "time", "type", "terminal", "user", "expected", "counted", "difference", "status"].map(key => <span key={key} role="columnheader">{t(key === "date" || key === "time" || key === "terminal" || key === "user" ? `gestion.cashClosures.column.${key}` : `gestion.cashOpeningAlerts.${key}`)}</span>)}</div>
-      {rows.map(row => <div className={`gestion-cash-alert-row${alertKey(row) === selectedId ? " selected" : ""}`} role="row" aria-selected={alertKey(row) === selectedId} tabIndex={0} key={alertKey(row)} onClick={() => selectAlert(row)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectAlert(row); } }}>
+      {rows.map(row => <div className={`gestion-cash-alert-row${alertKey(row) === selectedId ? " selected" : ""}`} role="row" aria-selected={alertKey(row) === selectedId} tabIndex={0} data-cash-alert-key={alertKey(row)} key={alertKey(row)} onClick={() => selectAlert(row)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectAlert(row); } else if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); handleArrow(event); } }}>
         <span role="cell">{date.format(new Date(row.occurredAt))}</span><span role="cell">{time.format(new Date(row.occurredAt))}</span><span role="cell">{t(`gestion.cashOpeningAlerts.type.${row.type.toLowerCase()}`)}</span><span role="cell">{row.terminalName}</span><span role="cell">{row.userName}</span><span role="cell">{amount(row.expectedFund)}</span><span role="cell">{amount(row.countedFund)}</span><span role="cell" className={row.difference === null ? "" : row.difference < 0 ? "shortage" : row.difference > 0 ? "surplus" : ""}>{amount(row.difference)}</span><span role="cell">{t(`gestion.cashOpeningAlerts.${row.status.toLowerCase()}`)}</span>
       </div>)}
       {loading && <div className="gestion-cash-closures-state">{t("common.loading")}</div>}
@@ -225,8 +233,4 @@ export function CashOpeningAlertsScreen({ session, t, locale, refreshSignal, onR
     <ReportDateRangeFilter locale={locale} today={options?.businessDate || ""} earliestDate={options?.earliestDate || ""} value={range}
       disabled={!options} onChange={selectRange} />
   </section>;
-}
-
-function validRange(filters: CashAlertFilters) {
-  return !(filters.from && filters.to && filters.from > filters.to);
 }

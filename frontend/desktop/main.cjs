@@ -10,6 +10,10 @@ const {
   renderedPdfDefaultFileName
 } = require("./pdf-document.cjs");
 const { renderTicketHtml } = require("./ticket-renderer.cjs");
+const { renderCustomerDisplayHtml } = require("./customer-display-renderer.cjs");
+const { createCustomerDisplayController } = require("./customer-display-controller.cjs");
+const { sendLineDisplay } = require("./customer-line-display.cjs");
+const { listSerialPorts } = require("./serial-ports.cjs");
 const { renderProductLabelHtml, normalizedProfile } = require("./product-label-renderer.cjs");
 const { renderTableReportHtml } = require("./table-report-renderer.cjs");
 const { restrictNavigation, trustedOrigin } = require("./navigation-security.cjs");
@@ -48,6 +52,18 @@ if (process.platform === "win32") {
   app.setAppUserModelId(desktopAppConfig.appId);
 }
 const desktopAppIcon = resolveDesktopIcon(desktopAppConfig);
+const customerDisplayBrandPath = path.resolve(__dirname, "..", "branding", "espos-wordmark.png");
+// Temporary development preview for checking the customer layout at different sizes.
+const customerDisplayWindowed = !app.isPackaged;
+const customerDisplayController = createCustomerDisplayController({
+  BrowserWindow, screen, renderHtml: renderCustomerDisplayHtml, sendLineDisplay,
+  windowed: customerDisplayWindowed,
+  getOperatorDisplayId: () => mainWindow && !mainWindow.isDestroyed()
+    ? screen.getDisplayMatching(mainWindow.getBounds()).id : screen.getPrimaryDisplay().id,
+  icon: desktopAppIcon,
+  esposLogo: fs.existsSync(customerDisplayBrandPath)
+    ? `data:image/png;base64,${fs.readFileSync(customerDisplayBrandPath).toString("base64")}` : undefined
+});
 const appName = process.env.TPV_DESKTOP_APP_NAME || desktopAppConfig.name;
 let appUrl = process.env.TPV_DESKTOP_APP_URL || "";
 const mainWindowMode = process.env.TPV_DESKTOP_WINDOW_MODE || desktopAppConfig.windowMode;
@@ -71,10 +87,18 @@ const defaultHardwareConfig = {
   cashDrawerHost: "",
   cashDrawerPort: 9100,
   customerDisplayEnabled: false,
-  customerDisplayMode: "COMPACT",
+  customerDisplayMode: "DIGITAL_SCREEN",
   customerDisplayIdleLine1: "BIENVENIDO",
   customerDisplayIdleLine2: "GRACIAS POR SU COMPRA",
   customerDisplayScreenId: "",
+  customerDisplayConnection: "SERIAL",
+  customerDisplayProtocol: "ESC_POS_DISPLAY",
+  customerDisplayEncoding: "CP858",
+  customerDisplayColumns: 20,
+  customerDisplayDevicePath: "",
+  customerDisplaySerialBaudRate: 9600,
+  customerDisplayHost: "",
+  customerDisplayPort: 9100,
   a4PrinterName: "",
   documentPrintRoutes: [
     {
@@ -140,7 +164,6 @@ const defaultHardwareConfig = {
 
 let mainWindow;
 let mainWindowDisplay;
-let customerDisplayWindow;
 let salesDocumentWindow;
 const salesDocumentBootstraps = new Map();
 let salesUtilityWindow;
@@ -195,6 +218,8 @@ function createWindow() {
       sandbox: true
     }
   });
+  mainWindow.on("closed", () => { void customerDisplayController.close().catch(() => {}); });
+  mainWindow.on("move", () => customerDisplayController.checkDisplays());
 
   mainWindowDisplay = desktopAppConfig.key === "venta"
     ? createWindowDisplay({ window: mainWindow, screen, userDataPath: app.getPath("userData"), fallbackMode: mainWindowMode, terminalScope })
@@ -391,6 +416,15 @@ function structuredError(code, message) {
 
 function normalizeHardwareConfig(config) {
   const nextConfig = { ...defaultHardwareConfig, ...config };
+  nextConfig.customerDisplayMode = config?.customerDisplayMode === "LINE_DISPLAY" ? "LINE_DISPLAY" : "DIGITAL_SCREEN";
+  nextConfig.customerDisplayConnection = config?.customerDisplayConnection === "NETWORK" ? "NETWORK" : "SERIAL";
+  nextConfig.customerDisplayProtocol = config?.customerDisplayProtocol === "PLAIN_TEXT" ? "PLAIN_TEXT" : "ESC_POS_DISPLAY";
+  nextConfig.customerDisplayEncoding = config?.customerDisplayEncoding === "ASCII" ? "ASCII" : "CP858";
+  nextConfig.customerDisplayColumns = Math.min(80, Math.max(10, Math.trunc(Number(config?.customerDisplayColumns) || 20)));
+  nextConfig.customerDisplayPort = Math.min(65535, Math.max(1, Math.trunc(Number(config?.customerDisplayPort) || 9100)));
+  const customerDisplaySerialBaudRate = Number(config?.customerDisplaySerialBaudRate);
+  nextConfig.customerDisplaySerialBaudRate = Number.isSafeInteger(customerDisplaySerialBaudRate) && customerDisplaySerialBaudRate > 0
+    ? customerDisplaySerialBaudRate : 9600;
   delete nextConfig.scannerMinimumLength;
   delete nextConfig.scannerMaximumInterKeyMs;
   delete nextConfig.scannerMaximumDurationMs;
@@ -631,57 +665,12 @@ function legacyRenderTicketHtml(ticket) {
 </html>`;
 }
 
-function renderCustomerDisplayHtml(state) {
-  return `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    html, body {
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      overflow: hidden;
-      background: #05070b;
-      color: #f8fbff;
-      font-family: "Segoe UI", "Microsoft YaHei UI", Arial, sans-serif;
-    }
-    body {
-      display: grid;
-      grid-template-rows: 1fr 1fr;
-      align-items: center;
-      justify-items: center;
-      padding: 5vh 5vw;
-    }
-    .line {
-      width: 100%;
-      text-align: center;
-      font-size: clamp(42px, 11vw, 150px);
-      line-height: 1.05;
-      font-weight: 900;
-      letter-spacing: 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .line + .line {
-      color: #9fd0ff;
-    }
-  </style>
-</head>
-<body>
-  <div class="line">${escapeHtml(state?.line1 || "")}</div>
-  <div class="line">${escapeHtml(state?.line2 || "")}</div>
-</body>
-</html>`;
-}
-
-function loadCustomerDisplayState(state) {
-  if (!customerDisplayWindow || customerDisplayWindow.isDestroyed()) {
-    return structuredError("CUSTOMER_DISPLAY_NOT_OPEN", "Pantalla cliente no esta abierta");
+async function loadCustomerDisplayState(state) {
+  try {
+    return await customerDisplayController.update(readHardwareConfig(), state);
+  } catch (error) {
+    return structuredError("CUSTOMER_DISPLAY_UNAVAILABLE", error instanceof Error ? error.message : "No se pudo actualizar el visor de cliente");
   }
-  customerDisplayWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(renderCustomerDisplayHtml(state))}`);
-  return { ok: true };
 }
 
 function encodePowerShellCommand(command) {
@@ -798,52 +787,20 @@ async function sendDrawerRawBuffer(config, buffer) {
 
 function listCustomerDisplays() {
   const primaryDisplay = screen.getPrimaryDisplay();
+  const operatorDisplay = mainWindow && !mainWindow.isDestroyed()
+    ? screen.getDisplayMatching(mainWindow.getBounds()) : primaryDisplay;
   return screen.getAllDisplays().map((display, index) => ({
     id: String(display.id),
     label: `Pantalla ${index + 1} (${display.size.width}x${display.size.height})`,
     width: display.size.width,
     height: display.size.height,
-    primary: display.id === primaryDisplay.id
+    primary: display.id === primaryDisplay.id,
+    operator: display.id === operatorDisplay.id
   }));
 }
 
-function findCustomerDisplay(config) {
-  const displays = screen.getAllDisplays();
-  const selected = displays.find((display) => String(display.id) === String(config?.customerDisplayScreenId || ""));
-  if (selected) {
-    return selected;
-  }
-  return displays.find((display) => display.id !== screen.getPrimaryDisplay().id) ?? screen.getPrimaryDisplay();
-}
-
 function openCustomerDisplay(config, state) {
-  const targetDisplay = findCustomerDisplay(config);
-  if (customerDisplayWindow && !customerDisplayWindow.isDestroyed()) {
-    customerDisplayWindow.setBounds(targetDisplay.bounds);
-    customerDisplayWindow.show();
-    return loadCustomerDisplayState(state);
-  }
-
-  customerDisplayWindow = new BrowserWindow({
-    icon: desktopAppIcon,
-    x: targetDisplay.bounds.x,
-    y: targetDisplay.bounds.y,
-    width: targetDisplay.bounds.width,
-    height: targetDisplay.bounds.height,
-    frame: false,
-    fullscreen: true,
-    autoHideMenuBar: true,
-    backgroundColor: "#05070b",
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true
-    }
-  });
-  customerDisplayWindow.on("closed", () => {
-    customerDisplayWindow = undefined;
-  });
-  return loadCustomerDisplayState(state);
+  return customerDisplayController.open(normalizeHardwareConfig(config), state);
 }
 
 async function printTicket(ticket, config) {
@@ -1521,6 +1478,14 @@ registerIpc("tpv:hardware:get-ticket-printer-health", async () => {
   }
 });
 
+registerIpc("tpv:hardware:list-serial-ports", async () => {
+  try {
+    return { ok: true, ports: await listSerialPorts() };
+  } catch {
+    return structuredError("HARDWARE_UNAVAILABLE", "No se pudieron detectar los puertos COM");
+  }
+});
+
 registerIpc("tpv:hardware:list-customer-displays", () => ({
   ok: true,
   displays: listCustomerDisplays()
@@ -1529,7 +1494,8 @@ registerIpc("tpv:hardware:list-customer-displays", () => ({
 registerIpc("tpv:hardware:get-config", () => readHardwareConfig(), mainAndSalesWindows);
 
 registerIpc("tpv:hardware:save-config", (_event, config) => {
-  writeHardwareConfig(config);
+  const nextConfig = writeHardwareConfig(config);
+  void customerDisplayController.configurationChanged(nextConfig).catch(() => {});
   return { ok: true };
 });
 
@@ -1563,21 +1529,20 @@ registerIpc("tpv:hardware:test-scanner-input", (_event, code) => ({
   readAt: new Date().toISOString()
 }));
 
-registerIpc("tpv:hardware:open-customer-display", (_event, config, state) => {
+registerIpc("tpv:hardware:open-customer-display", async (_event, config, state) => {
   try {
-    return openCustomerDisplay({ ...readHardwareConfig(), ...config }, state);
+    return await openCustomerDisplay({ ...readHardwareConfig(), ...config }, state);
   } catch (error) {
     return structuredError("CUSTOMER_DISPLAY_UNAVAILABLE", error instanceof Error ? error.message : "No se pudo abrir pantalla cliente");
   }
 });
 
-registerIpc("tpv:hardware:close-customer-display", () => {
-  if (!customerDisplayWindow || customerDisplayWindow.isDestroyed()) {
-    return structuredError("CUSTOMER_DISPLAY_NOT_OPEN", "Pantalla cliente no esta abierta");
+registerIpc("tpv:hardware:close-customer-display", async () => {
+  try {
+    return await customerDisplayController.close();
+  } catch (error) {
+    return structuredError("CUSTOMER_DISPLAY_UNAVAILABLE", error instanceof Error ? error.message : "No se pudo cerrar el visor de cliente");
   }
-  customerDisplayWindow.close();
-  customerDisplayWindow = undefined;
-  return { ok: true };
 });
 
 registerIpc("tpv:hardware:update-customer-display", (_event, state) => loadCustomerDisplayState(state));
@@ -1747,7 +1712,17 @@ async function initializeDesktopRuntime() {
 app.whenReady().then(async () => {
   try {
     await initializeDesktopRuntime();
+    customerDisplayController.start();
     createWindow();
+    if (customerDisplayWindowed && desktopAppConfig.key === "venta") {
+      const displayConfig = readHardwareConfig();
+      if (displayConfig.customerDisplayEnabled && displayConfig.customerDisplayMode === "DIGITAL_SCREEN") {
+        void customerDisplayController.open(displayConfig, { phase: "IDLE",
+          line1: displayConfig.customerDisplayIdleLine1, line2: displayConfig.customerDisplayIdleLine2,
+        }).then(() => console.info("Visor de cliente abierto en ventana redimensionable"))
+          .catch(error => console.error("No se pudo abrir el visor de cliente", error));
+      }
+    }
     connectionRecovery?.startMonitor();
   } catch (error) {
     dialog.showErrorBox("No se puede iniciar TPV ERP", error instanceof Error ? error.message : "Error de inicio");

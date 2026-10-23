@@ -11,6 +11,7 @@ import {
   productQuantityStep,
 } from "../sale/productQuantity";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
+import { useTableRowArrowFocus } from "./useTableRowArrowFocus";
 
 type ReturnLineOption = {
   lineId: string;
@@ -119,6 +120,8 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], init
   const valuationRequest = useRef(0);
   const initialSearchStarted = useRef(false);
   const productSearchRef = useRef<HTMLInputElement>(null);
+  const returnLinesRef = useRef<HTMLDivElement>(null);
+  const handleReturnRowArrow = useTableRowArrowFocus(returnLinesRef, ".ticket-return-main-row", Boolean(preview), preview?.ticketId ?? "");
 
   useEffect(() => dialogRef.current
     ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document)
@@ -466,7 +469,7 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], init
               <button type="button" className="primary erp-dialog-action-confirm" disabled={preview.lines.every((line) => availableQuantity(line) <= 0) || busy} onClick={selectAll}>{t("ticketReturn.selectAll")}</button>
               <button type="button" disabled={selections.length === 0 || busy} onClick={() => setSelections([])}>{t("ticketReturn.clearSelection")}</button>
             </div>}
-            <div className="ticket-return-lines">
+            <div ref={returnLinesRef} className="ticket-return-lines">
               <table aria-label={t("ticketReturn.productList")}>
                 <colgroup>
                   <col className="ticket-return-select-column" />
@@ -490,7 +493,8 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], init
                     const serials = availableSerialNumbers(option);
                     const key = `${option.giftReceiptLineId ?? "ticket"}-${option.lineId}`;
                     return <Fragment key={key}>
-                      <tr className={selection ? "is-selected" : undefined}>
+                      <tr className={`ticket-return-main-row${selection ? " is-selected" : ""}`}
+                        tabIndex={0} onKeyDown={handleReturnRowArrow}>
                         <td className="ticket-return-select-cell">
                           <input
                             type="checkbox"

@@ -189,6 +189,7 @@ describe("desktop display preference", () => {
         show() { shown = true; }
         getBounds() { return { x: options.x, y: options.y, width: options.width, height: options.height }; }
         loadURL() {}
+        on() {}
         once(event, callback) { if (event === "ready-to-show") readyToShow = callback; }
       },
     });
@@ -224,6 +225,7 @@ describe("desktop display preference", () => {
         maximize() { maximized = true; }
         show() { shown = true; }
         loadURL() {}
+        on() {}
         once(event, callback) { if (event === "ready-to-show") readyToShow = callback; }
       },
     });

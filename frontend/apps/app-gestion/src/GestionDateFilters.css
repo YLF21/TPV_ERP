@@ -1,0 +1,53 @@
+/* Ranges shown here always reflect the dates currently applied to the view. */
+html[data-app="gestion"] .report-date-range-summary--weekdays {
+  align-items: flex-start;
+}
+
+html[data-app="gestion"] .report-date-range-summary--weekdays time {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+html[data-app="gestion"] .report-date-range-weekday {
+  color: #5b7088;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+html[data-app="gestion"] .gd-filters.gestion-filter-toolbar > .report-date-range-summary {
+  align-self: end;
+  margin-left: auto;
+}
+
+html[data-app="gestion"] .gestion-control-timeline .gestion-control-date-toolbar {
+  grid-template-columns: 128px minmax(112px, 1fr) minmax(112px, 1fr) auto minmax(180px, max-content);
+  border-color: #b8c3cc;
+}
+
+html[data-app="gestion"] .gestion-control-date-toolbar > .report-date-range-summary {
+  align-self: end;
+  justify-self: end;
+}
+
+html[data-app="gestion"] .fiscal-workspace-dialog-purpose-filters .gestion-verifactu-filters > .report-date-range-summary {
+  grid-column: 3;
+  align-self: end;
+  justify-self: end;
+}
+
+@media (max-width: 900px) {
+  html[data-app="gestion"] .gestion-control-timeline .gestion-control-date-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  html[data-app="gestion"] .gestion-control-date-toolbar > .report-date-range-summary {
+    grid-column: 1 / -1;
+  }
+
+  html[data-app="gestion"] .fiscal-workspace-dialog-purpose-filters .gestion-verifactu-filters > .report-date-range-summary {
+    grid-column: 1 / -1;
+  }
+}

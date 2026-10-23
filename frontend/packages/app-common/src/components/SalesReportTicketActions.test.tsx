@@ -73,7 +73,10 @@ async function mountReport({
     session={{ username: "operator", displayName: "Operator", accessToken: "token", permissions: granted }}
     terminalContext={terminalContext} initialReport="salesReport.tickets" request={request}
     onBack={vi.fn()} onLocaleChange={vi.fn()} />);
-  await waitFor(() => expect(container.querySelectorAll(".report-table tbody tr")).toHaveLength(2));
+  await waitFor(() => {
+    expect(container.querySelectorAll(".report-table tbody tr")).toHaveLength(rows.length);
+    expect(screen.queryByText(createTranslator(locale)("salesReport.loading"))).not.toBeInTheDocument();
+  });
   const row = container.querySelectorAll<HTMLTableRowElement>(".report-table tbody tr")[1];
   return { row, request, t: createTranslator(locale) };
 }
@@ -173,6 +176,7 @@ describe("Ticket report document actions", () => {
       t("sale.ticketCancel.title"),
     ]);
     expect(within(menu).getByRole("menuitem", { name: t("sale.ticketCancel.title") })).toBeEnabled();
+    expect(within(menu).getByRole("menuitem", { name: t("salesReport.serialSearch.title") })).toBeEnabled();
   });
 
   it("opens the existing cancellation confirmation for the selected ticket without cancelling it", async () => {
@@ -264,8 +268,9 @@ describe("Ticket report document actions", () => {
       .toEqual(expect.arrayContaining([expect.stringContaining("/ui/table-preferences/")]));
   });
 
-  it("disables document actions without a selected row and keeps the report Excel button", async () => {
-    await mountReport();
+  it("disables document actions for an empty ticket report and keeps the report Excel button", async () => {
+    const { request } = await mountReport({ rows: [] });
+    expect(screen.queryByRole("row", { name: /T-00[12]/ })).not.toBeInTheDocument();
     const menu = openMenu();
     for (const name of ["Imprimir copia", "Imprimir ticket regalo", "Exportar Excel", "Convertir ticket a factura", "Anular ticket"]) {
       expect(within(menu).getByRole("menuitem", { name })).toBeDisabled();
@@ -273,6 +278,24 @@ describe("Ticket report document actions", () => {
     const reportExcel = screen.getByRole("button", { name: "Excel" });
     expect(reportExcel).toBeEnabled();
     expect(reportExcel).toHaveAttribute("aria-keyshortcuts", "F6");
+    expect(request).not.toHaveBeenCalledWith(expect.stringMatching(/\/detail$|\/print-set$/), expect.anything());
+    expect(outputConfirmedTicketsSequentially).not.toHaveBeenCalled();
+  });
+
+  it("selects the first ticket after loading and moves with ArrowDown without opening or printing it", async () => {
+    const { row, request } = await mountReport();
+    const firstRow = row.previousElementSibling as HTMLTableRowElement;
+    await waitFor(() => expect(firstRow).toHaveFocus());
+    expect(firstRow).toHaveAttribute("aria-selected", "true");
+    expect(row).toHaveAttribute("aria-selected", "false");
+
+    fireEvent.keyDown(firstRow, { key: "ArrowDown" });
+    expect(row).toHaveFocus();
+    expect(row).toHaveAttribute("aria-selected", "true");
+    expect(firstRow).toHaveAttribute("aria-selected", "false");
+    expect(request).not.toHaveBeenCalledWith(expect.stringMatching(/\/detail$|\/print-set$/), expect.anything());
+    expect(outputConfirmedTicketsSequentially).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("exports only the selected ticket without opening its detail or writing business data", async () => {

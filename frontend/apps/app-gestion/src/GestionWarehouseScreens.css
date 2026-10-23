@@ -373,6 +373,65 @@ html[data-app="gestion"] body:has(.gestion-warehouse-screen) > .table-layout-col
   margin: 0;
 }
 
+/* Document and warehouse headings follow the customer document reports. */
+.gestion-warehouse-screen[data-document-heading].gestion-embedded-module > .work-shell {
+  padding: 14px 18px 10px !important;
+  grid-template-rows: 42px minmax(0, 1fr) !important;
+  gap: 0 !important;
+}
+
+.gestion-warehouse-screen[data-document-heading]:not(.gestion-embedded-module) {
+  padding: 14px 18px 10px !important;
+}
+
+.gestion-warehouse-screen[data-document-heading] :is(.work-topbar, .inventory-module-title, .gestion-warehouse-transfer-module-title, .gestion-adjustment-module-title) {
+  height: 42px;
+  flex-basis: 42px;
+  align-items: center !important;
+  padding: 0 2px 8px !important;
+  border-bottom: 1px solid var(--gestion-border-dark) !important;
+}
+
+.gestion-warehouse-screen[data-document-heading]:not(.gestion-embedded-module) > :is(.inventory-module-title, .gestion-warehouse-transfer-module-title, .gestion-adjustment-module-title) {
+  /* Join the two headings while retaining the gaps between the list controls. */
+  margin-bottom: -12px !important;
+}
+
+.gestion-warehouse-screen[data-document-heading] :is(.work-topbar, .inventory-module-title, .gestion-warehouse-transfer-module-title, .gestion-adjustment-module-title) :is(h1, .report-title) {
+  margin: 0 !important;
+  font-family: inherit;
+  font-size: 23px !important;
+  font-weight: 950 !important;
+  line-height: 1 !important;
+  text-transform: none;
+}
+
+.gestion-warehouse-screen[data-document-heading] .stock-list {
+  left: 0;
+}
+
+.gestion-warehouse-screen[data-document-heading] :is(.stock-panel-heading, .gestion-warehouse-titlebar) {
+  min-height: 0 !important;
+  margin: 0 !important;
+  align-items: center;
+  padding: 6px 14px 7px !important;
+  border-bottom: 1px solid #aeb9c8 !important;
+  background: transparent;
+}
+
+.gestion-warehouse-screen[data-document-heading] :is(.stock-panel-heading, .gestion-warehouse-titlebar) h2 {
+  margin: 0;
+  color: var(--tpv-v3-text, #102033);
+  font-family: inherit;
+  font-size: 22px !important;
+  line-height: 1.1 !important;
+  font-weight: 900;
+}
+
+.gestion-warehouse-screen[data-document-heading] :is(.stock-panel-heading, .gestion-warehouse-titlebar) > div:first-child > :is(p, span) {
+  display: none;
+}
+
 .gestion-warehouse-screen .gestion-warehouse-title-actions {
   flex: 0 1 auto;
   justify-content: flex-end;
@@ -487,6 +546,14 @@ html[data-app="gestion"] .gestion-warehouse-screen .gestion-warehouse-toolbar {
   color: inherit !important;
 }
 
+.gestion-warehouse-screen .goods-check-search {
+  grid-template-rows: auto 34px;
+}
+
+.gestion-warehouse-screen .goods-check-type-filter > button {
+  border-color: #68737e;
+}
+
 .gestion-warehouse-screen :is(.gestion-warehouse-operations-header, .gestion-warehouse-adjustments-pages, .goods-check-type-filter) > button {
   display: inline-flex;
   align-items: center;
@@ -501,6 +568,10 @@ html[data-app="gestion"] .gestion-warehouse-screen :is(.gestion-warehouse-transf
   border: 1px solid #aebfd0 !important;
   border-radius: 6px !important;
   overflow: auto;
+}
+
+.gestion-warehouse-screen .inventory-list-scroll > .inventory-table {
+  border: 0 !important;
 }
 
 .gestion-warehouse-screen .gestion-warehouse-card {

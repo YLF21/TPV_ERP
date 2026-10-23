@@ -1,7 +1,11 @@
 import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import "../../../packages/app-common/src/components/ErpClassicTables.css";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useTableArrowRepeat } from "../../../packages/app-common/src/components/useTableArrowRepeat";
+import { ensureTableRowVisible } from "../../../packages/app-common/src/components/ensureTableRowVisible";
+import { useTableInitialFocus } from "../../../packages/app-common/src/components/useTableInitialFocus";
+import { Plus } from "@phosphor-icons/react";
 import {
   ErpSelect,
   PartyDirectoryPanel,
@@ -25,6 +29,8 @@ import "./supplier-management-classic.css";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { ErpConfirmDialog } from "../../../packages/app-common/src/components/ErpConfirmDialog";
 import { ShortcutButtonLabel } from "../../../packages/app-common/src/components/ShortcutButtonLabel";
+import { GestionSearchFrame } from "../../../packages/app-common/src/components/GestionSearchFrame";
+import { GestionModuleHeading } from "./GestionModuleHeading";
 
 type SupplierManagementScreenProps = {
   locale: LocaleCode;
@@ -122,7 +128,7 @@ export function SupplierManagementScreen({ locale, session }: SupplierManagement
     return <div className="gestion-security-state error" role="alert">{t("safeManagement.noAccess")}</div>;
   }
 
-  const tabs = (<div className="gestion-safe-management-tabs" role="tablist" aria-label={t("safeManagement.suppliers.title")}>
+  const tabs = (<div className="gestion-safe-management-tabs gestion-toolbar-actions" role="tablist" aria-label={t("safeManagement.suppliers.title")}>
         <button type="button" role="tab" aria-selected={tab === "suppliers"} className={tab === "suppliers" ? "selected" : ""} onClick={() => setTab("suppliers")}>
           {t("safeManagement.suppliers.tab.suppliers")}
         </button>
@@ -132,10 +138,8 @@ export function SupplierManagementScreen({ locale, session }: SupplierManagement
       </div>);
 
   return (
-    <section className="gestion-safe-management erp-classic-tables" aria-labelledby="supplier-management-title">
-      <header className="gestion-safe-management-heading">
-        <h1 id="supplier-management-title">{t("home.product").toLocaleUpperCase(locale === "zh" ? "zh-CN" : locale)}</h1>
-      </header>
+    <section className="gestion-safe-management erp-classic-tables gestion-module-screen" aria-labelledby="supplier-management-title">
+      <GestionModuleHeading id="supplier-management-title" className="gestion-safe-management-heading" group={t("gestion.navigation.group.configuration")} />
 
       <div role="tabpanel" className={tab === "suppliers" ? "supplier-directory-tab" : undefined}>
         {tab === "suppliers"
@@ -168,6 +172,7 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
   const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
   const [supplierId, setSupplierId] = useState("");
   const [primaryLink, setPrimaryLink] = useState(false);
+  const tableRef = useRef<HTMLDivElement>(null);
   const tableLayout = useTableLayoutPreference({
     app: "gestion",
     username: session.username,
@@ -398,16 +403,36 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
   }
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || !["F7", "F8", "F9"].includes(event.key)) return;
+      if (event.defaultPrevented || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || !["F5", "F7", "F9"].includes(event.key)) return;
       if (dialogOpen || retirementOpen || confirmation || document.querySelector('[aria-modal="true"]')) return;
       event.preventDefault();
-      if (event.key === "F8") openNew();
+      if (event.key === "F5") openNew();
       if (event.key === "F7" && toolbarRepresentative && !loading) openRepresentative(toolbarRepresentative);
       if (event.key === "F9") retireToolbarRepresentative();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   });
+  useTableInitialFocus(tableRef, "button.representative-management-row[data-representative-id]", {
+    ready: !loading && !loadError && !dialogOpen && !retirementOpen && !confirmation && sortedRows.length > 0,
+    onSelect: (row) => setSelectedRowId(row.dataset.representativeId ?? null)
+  });
+  const handleArrow = useTableArrowRepeat(direction => {
+    const active = document.activeElement;
+    if (loading || loadingMore || saving || dialogOpen || retirementOpen || confirmation || document.querySelector('[aria-modal="true"]')
+      || !(active instanceof HTMLButtonElement) || !tableRef.current?.contains(active)
+      || !active.matches("button.representative-management-row[data-representative-id]")) return false;
+    const index = sortedRows.findIndex(row => row.id === active.dataset.representativeId);
+    const next = sortedRows[index + (direction === "ArrowDown" ? 1 : -1)];
+    if (index < 0 || !next) return false;
+    const nextElement = Array.from(tableRef.current.querySelectorAll<HTMLButtonElement>("button.representative-management-row[data-representative-id]"))
+      .find(element => element.dataset.representativeId === next.id);
+    if (!nextElement) return false;
+    setSelectedRowId(next.id);
+    nextElement.focus({ preventScroll: true });
+    ensureTableRowVisible(tableRef.current, nextElement);
+    return true;
+  }, !loading && !loadingMore && !saving && !dialogOpen && !retirementOpen && !confirmation);
 
   async function completeRetirement(result: RetirementResult) {
     await load(false, true);
@@ -423,17 +448,17 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
           <h2 id="representative-management-title">{t("safeManagement.representatives.title")}</h2>
           <span>{t("safeManagement.representatives.subtitle")}</span>
         </div>
-        <div className="management-record-actions">
-          <button type="button" aria-keyshortcuts="F7" disabled={!toolbarRepresentative || loading} onClick={() => toolbarRepresentative && openRepresentative(toolbarRepresentative)}><ShortcutButtonLabel label={t("safeManagement.representatives.edit")} shortcut={t("safeManagement.shortcut.modify")} /></button>
-          <button type="button" aria-keyshortcuts="F8" onClick={openNew}><ShortcutButtonLabel label={t("safeManagement.representatives.new")} shortcut={t("safeManagement.shortcut.add")} /></button>
-          <button type="button" aria-keyshortcuts="F9" className="safe-retirement-open" disabled={!toolbarRepresentative || loading} onClick={retireToolbarRepresentative}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut={t("safeManagement.shortcut.retire")} /></button>
+        <div className="management-record-actions gestion-toolbar-actions">
+          <button type="button" className="gestion-module-action" aria-keyshortcuts="F7" disabled={!toolbarRepresentative || loading} onClick={() => toolbarRepresentative && openRepresentative(toolbarRepresentative)}><ShortcutButtonLabel label={t("safeManagement.representatives.edit")} shortcut={t("safeManagement.shortcut.modify")} /></button>
+          <button type="button" className="gestion-module-action primary" aria-keyshortcuts="F5" onClick={openNew}><span><Plus size={16} aria-hidden="true" />{t("safeManagement.representatives.new")}</span>{" "}<kbd>{t("safeManagement.shortcut.add")}</kbd></button>
+          <button type="button" aria-keyshortcuts="F9" className="gestion-module-action safe-retirement-open" disabled={!toolbarRepresentative || loading} onClick={retireToolbarRepresentative}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut={t("safeManagement.shortcut.retire")} /></button>
         </div>
       </header>
       {headerExtra}
-      <div className="party-directory-toolbar party-directory-toolbar--classic">
+      <div className="party-directory-toolbar party-directory-toolbar--classic gestion-filter-toolbar">
         <label className="party-directory-search-label" htmlFor="representative-search">{t("party.searchLabel")}</label>
-        <input id="representative-search" type="search" aria-label={t("safeManagement.representatives.search")} placeholder={t("safeManagement.representatives.search")} value={query} onChange={(event) => setQuery(event.target.value)} />
-        <label className="party-directory-status-filter"><span>{t("party.column.status")}</span><ErpSelect
+        <GestionSearchFrame><input id="representative-search" type="search" aria-label={t("safeManagement.representatives.search")} placeholder={t("safeManagement.representatives.search")} value={query} onChange={(event) => setQuery(event.target.value)} /></GestionSearchFrame>
+        <label className="party-directory-status-filter" data-filter-active={activeFilter !== "all"}><span>{t("party.column.status")}</span><ErpSelect
           className="erp-select--compact"
           aria-label={t("safeManagement.representatives.column.status")}
           value={activeFilter}
@@ -447,7 +472,7 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
         { key: "active", label: t("party.status"), value: activeFilter === "all" ? "" : t(`party.filter.status.${activeFilter}`), onRemove: () => setActiveFilter("all") }
       ]} onClear={() => { setQuery(""); setActiveFilter("all"); }} />
       {status && <p className="product-create-status safe-management-notice" role={loadError ? "alert" : "status"}>{status}</p>}
-      <div className="representative-management-table-wrap">
+      <div ref={tableRef} className="representative-management-table-wrap gestion-module-table">
       <div className="representative-management-table" role="table" aria-label={t("safeManagement.representatives.title")}
         style={{ minWidth: visibleColumns.reduce((total, column) => total + column.width, 0) }}>
         <div className="representative-management-row header" role="row" style={{ gridTemplateColumns }}>
@@ -468,25 +493,26 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
           })}
         </div>
         {loading && <div className="party-directory-state">{t("common.loading")}</div>}
-        {!loading && loadError && <div className="party-directory-state error" role="alert"><button type="button" onClick={() => void load()}>{t("party.retry")}</button></div>}
+        {!loading && loadError && <div className="party-directory-state error" role="alert"><button type="button" className="gestion-module-action" onClick={() => void load()}>{t("party.retry")}</button></div>}
         {!loading && !loadError && sortedRows.map((row) => (
           <button type="button" className={`representative-management-row${selectedRowId === row.id ? " selected" : ""}`}
-            role="row" aria-selected={selectedRowId === row.id} key={row.id} style={{ gridTemplateColumns }} onClick={(event) => { setSelectedRowId(row.id); if (event.detail === 0) openRepresentative(row); }} onDoubleClick={() => openRepresentative(row)}>
+            role="row" aria-selected={selectedRowId === row.id} data-representative-id={row.id} key={row.id} style={{ gridTemplateColumns }} onClick={(event) => { setSelectedRowId(row.id); if (event.detail === 0) openRepresentative(row); }} onDoubleClick={() => openRepresentative(row)}
+            onKeyDown={event => { if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); handleArrow(event); } }}>
             {visibleColumns.map((column) => <span role="cell" data-column-key={column.key} key={column.key}>{representativeCell(row, column.key)}</span>)}
           </button>
         ))}
         {!loading && !loadError && rows.length === 0 && <div className="party-directory-state">{t("safeManagement.representatives.empty")}</div>}
       </div>
       </div>
-      {!loading && !loadError && hasMore && <div className="party-directory-pagination"><button type="button" onClick={() => void load(true)} disabled={loadingMore || !nextCursor}>{t(loadingMore ? "safeManagement.pagination.loading" : "safeManagement.pagination.more")}</button></div>}
+      {!loading && !loadError && hasMore && <div className="party-directory-pagination"><button type="button" className="gestion-module-action" onClick={() => void load(true)} disabled={loadingMore || !nextCursor}>{t(loadingMore ? "safeManagement.pagination.loading" : "safeManagement.pagination.more")}</button></div>}
 
       {dialogOpen && <div className="filter-overlay erp-classic-overlay" role="dialog" aria-modal="true" aria-labelledby="representative-form-title">
-        <section className="filter-dialog product-create-dialog representative-management-dialog erp-classic-window" inert={confirmation !== null || undefined}>
+        <section className="filter-dialog product-create-dialog representative-management-dialog erp-classic-window gestion-module-panel" inert={confirmation !== null || undefined}>
           <header className="filter-header">
             <div><h3 id="representative-form-title">{selected ? t("safeManagement.representatives.detail") : t("safeManagement.representatives.new")}</h3><span>{selected?.commercialId ?? t("safeManagement.representatives.subtitle")}</span></div>
             <WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setDialogOpen(false)} disabled={saving} >{t("common.close")}</WindowCloseButton>
           </header>
-          <form className="representative-management-form" onSubmit={saveRepresentative}>
+          <form className="representative-management-form gestion-module-fields" onSubmit={saveRepresentative}>
             <label><span>{t("safeManagement.representatives.column.name")}</span><input autoFocus required value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} /></label>
             <label><span>{t("safeManagement.representatives.column.phone")}</span><input type="tel" value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} /></label>
             <label><span>{t("safeManagement.representatives.column.email")}</span><input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} /></label>
@@ -494,12 +520,12 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
             {selected && <section className="representative-supplier-links" aria-labelledby="representative-links-title">
               <h4 id="representative-links-title">{t("safeManagement.representatives.linkedSuppliers")}</h4>
               {selected.suppliers.length === 0 && <p>{t("safeManagement.representatives.noLinkedSuppliers")}</p>}
-              {selected.suppliers.map((link) => <div className="representative-supplier-link" key={link.supplierId}><span><strong>{link.supplierCode}</strong> · {link.supplierName}{link.primary ? ` · ${t("safeManagement.representatives.primary")}` : ""}</span><button type="button" onClick={() => setConfirmation({ type: "unlink", link })} disabled={saving}>{t("safeManagement.representatives.unlink")}</button></div>)}
+              {selected.suppliers.map((link) => <div className="representative-supplier-link" key={link.supplierId}><span><strong>{link.supplierCode}</strong> · {link.supplierName}{link.primary ? ` · ${t("safeManagement.representatives.primary")}` : ""}</span><button type="button" className="gestion-module-action" onClick={() => setConfirmation({ type: "unlink", link })} disabled={saving}>{t("safeManagement.representatives.unlink")}</button></div>)}
               <div className="representative-link-editor">
                 <label><span>{t("safeManagement.representatives.supplierSearch")}</span><input type="search" value={supplierQuery} onChange={(event) => { setSupplierQuery(event.target.value); setSupplierId(""); }} /></label>
                 <ErpSelect aria-label={t("safeManagement.representatives.selectSupplier")} value={supplierId} onChange={setSupplierId} options={[{ value: "", label: t("safeManagement.representatives.selectSupplier") }, ...supplierOptions.map((supplier) => ({ value: supplier.id, label: `${supplier.supplierId} · ${supplier.legalName}` }))]} />
                 <label className="representative-primary-link"><input type="checkbox" checked={primaryLink} onChange={(event) => setPrimaryLink(event.target.checked)} /><span>{t("safeManagement.representatives.primary")}</span></label>
-                <button type="button" onClick={() => void linkSupplier()} disabled={!supplierId || saving}>{t("safeManagement.representatives.link")}</button>
+                <button type="button" className="gestion-module-action" onClick={() => void linkSupplier()} disabled={!supplierId || saving}>{t("safeManagement.representatives.link")}</button>
               </div>
             </section>}
             {status && <p className="product-create-status" role="status">{status}</p>}

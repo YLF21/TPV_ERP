@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
 import { apiRequest, type UserSession } from "@tpverp/app-common";
 import "./MemberLoyaltySettingsScreen.css";
 import { GestionTableSearch, matchesGestionTableSearch } from "./GestionTableSearch";
+import { GestionModuleHeading } from "./GestionModuleHeading";
 
 type Translator = (key: string) => string;
 type Request = typeof apiRequest;
@@ -63,6 +65,8 @@ export function MemberLoyaltySettingsScreen({ session, t, request = apiRequest }
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<"saved" | "loadError" | "saveError" | "invalid" | null>(null);
+  const channelTableRef = useRef<HTMLDivElement>(null);
+  const handleChannelRowArrowFocus = useTableRowArrowFocus(channelTableRef, "[role='row'][tabindex]", !loading && !saving && feedback !== "loadError");
   const canManage = session.permissions.includes("ADMIN");
 
   useEffect(() => {
@@ -188,12 +192,8 @@ export function MemberLoyaltySettingsScreen({ session, t, request = apiRequest }
     : "gestion.memberSettings.disabled");
 
   return (
-    <section className="member-settings-screen">
-      <header className="member-settings-header">
-        <div>
-          <h1>{t("gestion.memberSettings.title")}</h1>
-          <p>{t("gestion.memberSettings.subtitle")}</p>
-        </div>
+    <section className="member-settings-screen gestion-module-screen">
+      <GestionModuleHeading className="member-settings-header" group={t("gestion.navigation.group.configuration")} title={t("gestion.memberSettings.title")} description={t("gestion.memberSettings.subtitle")}>
         <div className="member-settings-example" aria-label={t("gestion.memberSettings.exampleTitle")}>
           <span>{t("gestion.memberSettings.exampleTitle")}</span>
           <label className="member-settings-example-amount">
@@ -206,10 +206,10 @@ export function MemberLoyaltySettingsScreen({ session, t, request = apiRequest }
           <output>{examplePoints} {t("gestion.memberSettings.pointsUnit")}</output>
           <output>{exampleBalance} € {t("gestion.memberSettings.balanceUnit")}</output>
         </div>
-      </header>
+      </GestionModuleHeading>
 
       <div className="member-settings-grid">
-        <section className="member-settings-panel">
+        <section className="member-settings-panel gestion-module-panel gestion-module-fields">
           <header>
             <div><span className="member-settings-index">{t("gestion.memberSettings.sectionPoints")}</span><h2>{t("gestion.memberSettings.pointsTitle")}</h2></div>
             <label className="member-settings-toggle">
@@ -233,7 +233,7 @@ export function MemberLoyaltySettingsScreen({ session, t, request = apiRequest }
           </div>
         </section>
 
-        <section className="member-settings-panel">
+        <section className="member-settings-panel gestion-module-panel gestion-module-fields">
           <header>
             <div><span className="member-settings-index">{t("gestion.memberSettings.sectionBalance")}</span><h2>{t("gestion.memberSettings.balanceTitle")}</h2></div>
             <label className="member-settings-toggle">
@@ -259,7 +259,7 @@ export function MemberLoyaltySettingsScreen({ session, t, request = apiRequest }
       </div>
 
       <div className="member-settings-secondary">
-        <section className="member-settings-panel">
+        <section className="member-settings-panel gestion-module-panel gestion-module-fields">
           <header><div><span className="member-settings-index">{t("gestion.memberSettings.sectionExpiration")}</span><h2>{t("gestion.memberSettings.expirationTitle")}</h2></div></header>
           <label className="member-settings-field"><span>{t("gestion.memberSettings.expirationPolicy")}</span>
             <select value={draft.balanceExpirationPolicy} disabled={disabled || !draft.balanceAccrualEnabled}
@@ -269,7 +269,7 @@ export function MemberLoyaltySettingsScreen({ session, t, request = apiRequest }
           </label>
           <small>{t("gestion.memberSettings.expirationHint")}</small>
         </section>
-        <section className="member-settings-panel">
+        <section className="member-settings-panel gestion-module-panel gestion-module-fields">
           <header><div><span className="member-settings-index">{t("gestion.memberSettings.sectionCategories")}</span><h2>{t("gestion.memberSettings.categoryTitle")}</h2></div></header>
           <label className="member-settings-check"><input type="checkbox" checked={draft.categoryAutoEnabled} disabled={disabled}
             onChange={(event) => setDraft({ ...draft, categoryAutoEnabled: event.target.checked })} />
@@ -278,24 +278,24 @@ export function MemberLoyaltySettingsScreen({ session, t, request = apiRequest }
         </section>
       </div>
 
-      <section className="member-settings-panel member-settings-channels">
+      <section className="member-settings-panel member-settings-channels gestion-module-panel">
         <header><div><span className="member-settings-index">{String(5).padStart(2, "0")}</span><h2>{t("party.members.channelsTitle")}</h2></div></header>
         <p>{t("party.members.channelsHint")}</p>
-        <form onSubmit={(event) => void saveChannel(event)}>
+        <form className="gestion-module-fields" onSubmit={(event) => void saveChannel(event)}>
           <label className="member-settings-field"><span>{t("party.code")}</span><input value={channelDraft.code} disabled={disabled} onChange={(event) => setChannelDraft({ ...channelDraft, code: event.target.value })} /></label>
           <label className="member-settings-field"><span>{t("party.name")}</span><input value={channelDraft.name} disabled={disabled} onChange={(event) => setChannelDraft({ ...channelDraft, name: event.target.value })} /></label>
           <label className="member-settings-check"><input type="checkbox" checked={channelDraft.active} disabled={disabled} onChange={(event) => setChannelDraft({ ...channelDraft, active: event.target.checked })} /><span><strong>{t("party.active")}</strong></span></label>
-          <button type="submit" className="primary-button" disabled={disabled}>{t(channelDraft.id ? "party.members.updateChannel" : "party.members.createChannel")}</button>
+          <div className="gestion-toolbar-actions"><button type="submit" className="primary-button" disabled={disabled}>{t(channelDraft.id ? "party.members.updateChannel" : "party.members.createChannel")}</button></div>
         </form>
         {channelFeedback && <p className={channelFeedback === "party.members.channelSaved" ? "is-success" : "is-error"} role="status">{t(channelFeedback)}</p>}
         <GestionTableSearch value={channelQuery} onChange={setChannelQuery} t={t} />
-        <div className="member-settings-channel-table" role="table" aria-label={t("party.members.channelsTitle")}>
+        <div ref={channelTableRef} className="member-settings-channel-table gestion-module-table" role="table" aria-label={t("party.members.channelsTitle")}>
           <div className="header" role="row"><span>{t("party.code")}</span><span>{t("party.name")}</span><span>{t("party.status")}</span><span>{t("common.actions")}</span></div>
-          {channels.filter(channel => matchesGestionTableSearch(channelQuery, [channel.code, channel.name, t(channel.active ? "party.active" : "party.inactive")])).map((channel) => <div role="row" key={channel.id}><code>{channel.code}</code><strong>{channel.name}</strong><span>{t(channel.active ? "party.active" : "party.inactive")}</span><button type="button" disabled={disabled} onClick={() => { setChannelDraft({ ...channel }); setChannelFeedback(""); }}>{t("party.members.edit")}</button></div>)}
+          {channels.filter(channel => matchesGestionTableSearch(channelQuery, [channel.code, channel.name, t(channel.active ? "party.active" : "party.inactive")])).map((channel) => <div role="row" tabIndex={0} onKeyDown={handleChannelRowArrowFocus} key={channel.id}><code>{channel.code}</code><strong>{channel.name}</strong><span>{t(channel.active ? "party.active" : "party.inactive")}</span><div className="gestion-toolbar-actions"><button type="button" disabled={disabled} onClick={() => { setChannelDraft({ ...channel }); setChannelFeedback(""); }}>{t("party.members.edit")}</button></div></div>)}
         </div>
       </section>
 
-      <details className="member-settings-admin">
+      <details className="member-settings-admin gestion-module-panel gestion-module-fields">
         <summary>{t("gestion.memberSettings.adminOptions")}</summary>
         <div>
           <label className="member-settings-check"><input type="checkbox" checked={draft.memberWelcomeEnabled} disabled={disabled}
@@ -309,7 +309,7 @@ export function MemberLoyaltySettingsScreen({ session, t, request = apiRequest }
         </div>
       </details>
 
-      <footer className="member-settings-actions">
+      <footer className="member-settings-actions gestion-toolbar-actions">
         <div>{feedback && <span className={feedback === "saved" ? "is-success" : "is-error"}>{t(`gestion.memberSettings.${feedback}`)}</span>}
           {!canManage && <span className="is-error">{t("gestion.memberSettings.adminRequired")}</span>}</div>
         <button type="button" className="secondary-button" disabled={!dirty || saving} onClick={() => { setDraft(baseline); setFeedback(null); }}>{t("common.cancel")}</button>

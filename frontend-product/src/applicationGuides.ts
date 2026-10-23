@@ -17,7 +17,7 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
     previewNote: "Interfaz real en español · Datos de demostración",
     tourAction: "Ver recorrido",
     demoAction: "Solicitar demo de esta app",
-    consultAction: "Consultar la implantación",
+    consultAction: "Ver cómo preparar la implantación",
     scopeNote: "Funciones y módulos según configuración. Confirma compatibilidad y alcance antes de contratar.",
     apps: {
       venta: {
@@ -26,19 +26,19 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
         tasks: [
           { title: "Preparar la venta", body: "Añade artículos, selecciona el cliente y revisa cantidades e importes." },
           { title: "Cobrar y documentar", body: "Usa los medios habilitados y emite el documento de venta correspondiente." },
-          { title: "Revisar la caja", body: "Consulta movimientos, devoluciones y ventas pendientes según tus permisos." }
+          { title: "Revisar la caja", body: "Consulta movimientos, devoluciones y saldos pendientes por cliente según tus permisos." }
         ],
         workflow: [
           { title: "Prepara el ticket", body: "Un cliente lleva dos artículos: añádelos y comprueba el total." },
-          { title: "Registra el cobro", body: "Selecciona efectivo y revisa el importe recibido y el cambio." },
+          { title: "Registra el cobro", body: "Selecciona efectivo, cobra el total y revisa el importe recibido y el cambio." },
           { title: "Consulta la operación", body: "Finaliza y localiza la venta registrada para su seguimiento." }
         ],
         requirements: ["Equipo Windows de 64 bits compatible.", "Instalación de tienda y terminal configurados.", "Usuario autorizado y periféricos revisados."],
-        connection: "Necesita acceso al servicio local de la tienda. La sincronización central y los servicios externos requieren conexión; no todas las funciones son offline.",
+        connection: "Necesita acceso al servicio local de la tienda. La sincronización central y los servicios externos requieren internet; no todas las funciones son offline.",
         worksWith: "Gestión mantiene catálogo y consulta la actividad; SaaS muestra la información recibida de las tiendas vinculadas.",
         questions: [
           { question: "¿Sirve con cualquier terminal de tarjeta?", answer: "No automáticamente. Hay que confirmar proveedor, integración, servicio y configuración del terminal antes de utilizar pagos reales." },
-          { question: "¿Puedo cobrar una venta más adelante?", answer: "Hay ventas pendientes y cobro posterior por los medios habilitados, con cliente identificado y los permisos necesarios." }
+          { question: "¿Puedo cobrar una venta más adelante?", answer: "Facturas y albaranes de venta admiten saldo pendiente; el cobro unificado también permite tickets pendientes con cliente identificado y las autorizaciones requeridas. El saldo pendiente no cuenta como dinero cobrado." }
         ]
       },
       gestion: {
@@ -55,7 +55,7 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "Registra la operación", body: "Prepara el documento o movimiento correspondiente y comprueba su resultado." }
         ],
         requirements: ["Equipo Windows de 64 bits compatible.", "Acceso al servicio de tienda configurado.", "Cuenta con permisos para las tareas previstas."],
-        connection: "La aplicación de escritorio necesita acceso al servicio del negocio. La información central depende de la conexión y de la sincronización configurada.",
+        connection: "La aplicación de escritorio necesita acceso al servicio de tienda. La información central depende de internet y de la sincronización configurada.",
         worksWith: "Mantiene la base operativa usada por Venta y permite autorizar dispositivos PDA y revisar sus tareas de almacén.",
         questions: [
           { question: "¿Puedo importar mi Excel directamente?", answer: "La importación requiere revisar estructura, campos y datos. El alcance de una migración se valida con una muestra antes de aplicarla." },
@@ -87,9 +87,9 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
         outcome: "Consulta la actividad recibida de tus tiendas y la información del servicio desde un portal cliente.",
         audience: "Dirección y responsables autorizados que necesitan consultar una o varias tiendas vinculadas.",
         tasks: [
-          { title: "Revisar documentos", body: "Consulta operaciones de las tiendas autorizadas, conservando su contexto de origen." },
+          { title: "Revisar documentos", body: "Consulta los documentos recibidos de las tiendas autorizadas, identificando su origen." },
           { title: "Consultar una tienda", body: "Selecciona un establecimiento y revisa su stock y estado de sincronización." },
-          { title: "Consultar el servicio", body: "Accede a licencias, facturas del servicio SaaS y soporte según permisos." }
+          { title: "Consultar el servicio", body: "Accede a licencias, facturas del servicio y soporte según permisos." }
         ],
         workflow: [
           { title: "Accede a tu portal", body: "La persona responsable entra con la cuenta habilitada para su organización." },
@@ -97,7 +97,7 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "Comprueba la actualidad", body: "Revisa la sincronización antes de interpretar el dato o consultar al equipo." }
         ],
         requirements: ["Navegador compatible y conexión a internet.", "Organización y cuenta cliente habilitadas.", "Tiendas vinculadas y permisos de consulta."],
-        connection: "Los datos centrales reflejan lo recibido por sincronización. Una tienda desconectada puede mostrar información anterior; no se promete actualización instantánea universal.",
+        connection: "Los datos centrales reflejan lo recibido por sincronización. Si una tienda se desconecta, su información puede quedar desactualizada; no se garantiza actualización instantánea.",
         worksWith: "Recibe información de la instalación de tienda. Complementa Venta y Gestión: no reemplaza su operativa local ni es el panel interno de esPOS.",
         questions: [
           { question: "¿Es el acceso de administración interna?", answer: "No. Es el portal autorizado de tu organización, separado de las herramientas internas del proveedor." },
@@ -106,14 +106,14 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
       }
     },
     gettingStarted: {
-      title: "De tus necesidades a una configuración concreta",
-      body: "Puedes solicitar una sola aplicación, combinar varias o consultar el paquete completo.",
+      title: "Prepara una demo útil para tu equipo",
+      body: "Indica tu interés en una o varias aplicaciones, o en las cuatro, para preparar una demo adaptada a tus necesidades.",
       steps: [
         { title: "Cuéntanos tu operativa", body: "Indica qué tareas quieres mejorar, cuántas tiendas tienes y qué equipos las realizan." },
         { title: "Revisamos el encaje", body: "Validamos dispositivos, conexión, permisos y una muestra de los datos que quieras trasladar." },
         { title: "Concretamos la demostración", body: "Revisamos las aplicaciones y la configuración adecuadas con ejemplos de tu actividad." }
       ],
-      note: "La compatibilidad, los módulos y las condiciones de implantación se confirman para cada negocio."
+      note: "Revisamos las dependencias entre aplicaciones y confirmamos compatibilidad, módulos y condiciones de implantación para tu negocio."
     }
   },
   en: {
@@ -129,7 +129,7 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
     previewNote: "Real interface in Spanish · Demonstration data",
     tourAction: "View the tour",
     demoAction: "Request a demo of this app",
-    consultAction: "Discuss your setup",
+    consultAction: "See how to prepare for rollout",
     scopeNote: "Features and modules depend on configuration. Confirm compatibility and scope before purchasing.",
     apps: {
       venta: {
@@ -138,26 +138,26 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
         tasks: [
           { title: "Prepare the sale", body: "Add products, select the customer and check quantities and amounts." },
           { title: "Take and record payment", body: "Use enabled methods and issue the appropriate sales document." },
-          { title: "Review the register", body: "Check movements, returns and pending sales within your permissions." }
+          { title: "Review the register", body: "Check movements, returns and customer outstanding amounts within your permissions." }
         ],
         workflow: [
           { title: "Prepare the receipt", body: "A customer brings two items: add them and check the total." },
-          { title: "Record the payment", body: "Select cash and check the amount received and change due." },
+          { title: "Record the payment", body: "Select cash, collect the full amount and check the amount received and change due." },
           { title: "Find the transaction", body: "Finish and locate the recorded sale for follow-up." }
         ],
-        requirements: ["A compatible 64-bit Windows computer.", "A configured store installation and terminal.", "An authorized user and checked peripherals."],
-        connection: "Needs access to the local store service. Central synchronization and external services need a connection; not every feature works offline.",
+        requirements: ["A compatible 64-bit Windows computer.", "A configured store installation and terminal.", "An authorised user and checked peripherals."],
+        connection: "Needs access to the local store service. Central synchronisation and external services need internet access; not every feature works offline.",
         worksWith: "Management maintains the catalogue and reviews activity; SaaS shows information received from linked stores.",
         questions: [
           { question: "Does it work with every card terminal?", answer: "Not automatically. The provider, integration, service and terminal configuration must be confirmed before taking real payments." },
-          { question: "Can I collect payment later?", answer: "Pending sales and later collection use enabled methods, an identified customer and the required permissions." }
+          { question: "Can I collect payment later?", answer: "Sales invoices and delivery notes can have outstanding amounts; unified checkout also allows pending receipts with an identified customer and the required authorisations. An outstanding amount is not money collected." }
         ]
       },
       gestion: {
         outcome: "Connect catalogue, stock and sales activity to make better-informed business decisions.",
         audience: "Managers, administration and teams responsible for products, purchasing or warehouses.",
         tasks: [
-          { title: "Organize your catalogue", body: "Review products, prices, promotions, customers and suppliers in the administration app." },
+          { title: "Organise your catalogue", body: "Review products, prices, promotions, customers and suppliers in the administration app." },
           { title: "Understand your stock", body: "Check warehouse-level stock, movements and activity reports." },
           { title: "Prepare your data", body: "Review Excel sheets before importing and assign permissions by responsibility." }
         ],
@@ -166,12 +166,12 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "Review the context", body: "Check movements and sales for the period to understand demand." },
           { title: "Record the operation", body: "Prepare the relevant document or movement and check its result." }
         ],
-        requirements: ["A compatible 64-bit Windows computer.", "Configured access to the store service.", "An account authorized for the intended tasks."],
-        connection: "The desktop app needs access to the business service. Central information depends on connectivity and the configured synchronization.",
-        worksWith: "Maintains the operational data used by Sales and lets you authorize PDA devices and review their warehouse tasks.",
+        requirements: ["A compatible 64-bit Windows computer.", "Configured access to the store service.", "An account authorised for the intended tasks."],
+        connection: "The desktop app needs access to the store service. Central information depends on internet access and the configured synchronisation.",
+        worksWith: "Maintains the operational data used by Sales and lets you authorise PDA devices and review their warehouse tasks.",
         questions: [
           { question: "Can I import my Excel file directly?", answer: "Importing requires checking the structure, fields and data. Migration scope is validated with a sample before applying it." },
-          { question: "Does everyone see the same features?", answer: "Access is organized through users, roles and permissions; each profile should match its responsibilities." }
+          { question: "Does everyone see the same features?", answer: "Access is organised through users, roles and permissions; each profile should match its responsibilities." }
         ]
       },
       pda: {
@@ -179,53 +179,53 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
         audience: "Teams receiving, counting, checking and replenishing goods between warehouses.",
         tasks: [
           { title: "Count stock", body: "Scan products, enter quantities and review differences before confirming." },
-          { title: "Check documents", body: "Compare goods with a confirmed document without creating another receipt." },
+          { title: "Check documents", body: "Compare goods with a confirmed document without recording another goods receipt." },
           { title: "Prepare replenishment", body: "Check stock and record transfers between source and destination warehouses." }
         ],
         workflow: [
           { title: "Choose the warehouse", body: "To count a shelf, select the warehouse you want to check." },
           { title: "Record the count", body: "Scan each product and enter the quantity physically present." },
-          { title: "Review and confirm", body: "Check differences before applying the stock count with your authorization." }
+          { title: "Review and confirm", body: "Check differences before applying the stock count with your authorisation." }
         ],
         requirements: ["An Android device with a compatible browser.", "A device linked and approved in Management.", "Network access to the store service."],
         connection: "A web app connected to the store service. It needs network access and permissions; it is not a public APK or a fully offline warehouse app.",
-        worksWith: "Management authorizes the device and shares available warehouses and movements. PDA does not replace Sales at checkout.",
+        worksWith: "Management authorises the device and provides access to available warehouses and movements. PDA does not replace Sales at checkout.",
         questions: [
-          { question: "Do I need to download an APK?", answer: "No. Web access is configured during setup and used from the authorized device." },
+          { question: "Do I need to download an APK?", answer: "No. Web access is configured during setup and used from the authorised device." },
           { question: "Does checking a delivery duplicate stock?", answer: "No. Checking compares goods against an already confirmed document; it does not record another goods receipt." }
         ]
       },
       saas: {
         outcome: "Review activity received from your stores and service information through a customer portal.",
-        audience: "Managers and authorized supervisors consulting one or several linked stores.",
+        audience: "Managers and authorised supervisors consulting one or several linked stores.",
         tasks: [
-          { title: "Review documents", body: "Consult authorized stores' transactions while retaining their source-store context." },
-          { title: "Check a store", body: "Select one location and review its stock and synchronization status." },
-          { title: "Check your service", body: "Access licenses, SaaS service invoices and support within your permissions." }
+          { title: "Review documents", body: "View documents received from authorised stores, identifying their source." },
+          { title: "Check a store", body: "Select one location and review its stock and synchronisation status." },
+          { title: "Check your service", body: "Access licences, service invoices and support within your permissions." }
         ],
         workflow: [
-          { title: "Open your portal", body: "The responsible person signs in with the organization's enabled account." },
+          { title: "Open your portal", body: "The responsible person signs in with the organisation's enabled account." },
           { title: "Select a store", body: "Check its stock and the latest information received from that store." },
-          { title: "Check data freshness", body: "Review synchronization before interpreting the data or contacting the team." }
+          { title: "Check data freshness", body: "Review synchronisation before interpreting the data or contacting the team." }
         ],
-        requirements: ["A compatible browser and internet connection.", "An enabled organization and customer account.", "Linked stores and viewing permissions."],
-        connection: "Central data reflects information received through synchronization. A disconnected store may show older information; instant updates are not universally guaranteed.",
+        requirements: ["A compatible browser and internet connection.", "An enabled organisation and customer account.", "Linked stores and viewing permissions."],
+        connection: "Central data reflects information received through synchronisation. If a store disconnects, its information may become outdated; instant updates are not guaranteed.",
         worksWith: "Receives information from the store installation. Complements Sales and Management without replacing local operation or exposing esPOS's internal administration panel.",
         questions: [
-          { question: "Is this the internal administrator login?", answer: "No. It is your organization's authorized customer portal, separate from the provider's internal tools." },
-          { question: "Can I edit everything from the cloud?", answer: "The portal described provides consultation and service access, not complete remote editing or consolidated accounting." }
+          { question: "Is this the internal administrator login?", answer: "No. It is your organisation's authorised customer portal, separate from the provider's internal tools." },
+          { question: "Can I edit everything from the cloud?", answer: "The portal described provides viewing and service access, not complete remote editing or consolidated accounting." }
         ]
       }
     },
     gettingStarted: {
-      title: "From your needs to a specific setup",
-      body: "Request one application, combine several or discuss the complete package.",
+      title: "Prepare a useful demo for your team",
+      body: "Tell us whether you are interested in one, several or all four applications so we can prepare a demo around your needs.",
       steps: [
         { title: "Describe your operation", body: "Tell us which tasks need improvement, how many stores you have and who uses the equipment." },
         { title: "Check the fit", body: "We review devices, connectivity, permissions and a sample of any data you want to move." },
         { title: "Shape the demonstration", body: "We review suitable applications and configuration using examples from your activity." }
       ],
-      note: "Compatibility, modules and implementation conditions are confirmed for each business."
+      note: "We review dependencies between applications and confirm compatibility, modules and implementation terms for your business."
     }
   },
   zh: {
@@ -241,7 +241,7 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
     previewNote: "西班牙语真实界面 · 演示数据",
     tourAction: "查看操作导览",
     demoAction: "申请此应用的演示",
-    consultAction: "咨询部署方案",
+    consultAction: "了解上线前的准备",
     scopeNote: "功能和模块取决于具体配置。购买前请确认兼容性和实施范围。",
     apps: {
       venta: {
@@ -250,19 +250,19 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
         tasks: [
           { title: "准备销售", body: "添加商品、选择客户，并核对数量和金额。" },
           { title: "收款并生成单据", body: "使用已启用的支付方式，生成相应的销售单据。" },
-          { title: "核对收银记录", body: "根据账户权限查询资金变动、退货和待收款销售。" }
+          { title: "核对收银记录", body: "根据账户权限查询资金变动、退货及各客户的待收金额。" }
         ],
         workflow: [
           { title: "准备小票", body: "客户购买两件商品：添加商品并核对总额。" },
-          { title: "登记收款", body: "选择现金，核对实收金额与应找零金额。" },
+          { title: "登记收款", body: "选择现金，收取全额并核对实收金额与应找零金额。" },
           { title: "查询交易", body: "完成销售后，查找已登记的交易以便后续跟进。" }
         ],
         requirements: ["兼容的 64 位 Windows 电脑。", "已配置的门店安装环境与收银终端。", "授权用户及已检查的外设。"],
-        connection: "需要能够访问门店本地服务。中央同步及外部服务需要网络连接，并非所有功能均可离线使用。",
+        connection: "需要能够访问门店本地服务。中央同步及外部服务需要互联网连接，并非所有功能均可离线使用。",
         worksWith: "管理应用维护商品资料并查看业务活动；SaaS 展示从已关联门店接收到的信息。",
         questions: [
           { question: "可以直接连接任何刷卡终端吗？", answer: "不能默认兼容。使用真实支付前，需要确认服务商、集成、相关服务及终端配置。" },
-          { question: "可以先销售、之后再收款吗？", answer: "支持待收款销售及后续收款，但需指定客户、使用已启用的收款方式，并具备相应权限。" }
+          { question: "可以先销售、之后再收款吗？", answer: "销售发票和送货单可保留待收金额；统一收款流程也支持待收款小票，但必须指定客户并取得所需授权。待收金额不计为已收款。" }
         ]
       },
       gestion: {
@@ -279,7 +279,7 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "登记操作", body: "准备相应单据或库存变动，并核对操作结果。" }
         ],
         requirements: ["兼容的 64 位 Windows 电脑。", "已配置的门店服务访问环境。", "具备所需操作权限的账户。"],
-        connection: "桌面应用需要能够访问业务服务。中央数据的可用性取决于网络连接及已配置的同步机制。",
+        connection: "桌面应用需要能够访问门店服务。中央数据的可用性取决于互联网连接及已配置的同步机制。",
         worksWith: "维护销售应用使用的业务数据，也可授权 PDA 设备并查看其仓库作业。",
         questions: [
           { question: "现有 Excel 文件能直接导入吗？", answer: "需要先检查表格结构、字段和数据。正式迁移前，会通过样本确认迁移范围。" },
@@ -311,9 +311,9 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
         outcome: "通过客户门户查询已接收的门店业务数据及服务信息。",
         audience: "需要查询一个或多个已关联门店的管理层及授权负责人。",
         tasks: [
-          { title: "查看业务单据", body: "查询授权门店的交易，并保留每笔交易所属门店的信息。" },
+          { title: "查看业务单据", body: "查询从授权门店接收到的单据，并识别其来源门店。" },
           { title: "查看指定门店", body: "选择一家门店，查询其库存与同步状态。" },
-          { title: "查看服务信息", body: "根据账户权限查看许可证、SaaS 服务账单及支持入口。" }
+          { title: "查看服务信息", body: "根据账户权限查看许可证、服务账单及支持入口。" }
         ],
         workflow: [
           { title: "登录客户门户", body: "负责人使用已为所属组织开通的账户登录。" },
@@ -321,7 +321,7 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "核对数据时效", body: "判断数据或联系团队前，先检查同步状态。" }
         ],
         requirements: ["兼容浏览器及互联网连接。", "已开通的组织与客户账户。", "已关联门店及相应查询权限。"],
-        connection: "中央数据反映通过同步实际接收到的信息。门店断网时可能显示较早数据，不承诺所有信息均即时更新。",
+        connection: "中央数据反映通过同步实际接收到的信息。门店断网后，相关信息可能过时，不保证即时更新。",
         worksWith: "接收门店安装环境的数据，补充销售与管理应用的功能；不替代门店本地作业，也不是 esPOS 内部管理后台。",
         questions: [
           { question: "这是内部管理员的登录入口吗？", answer: "不是。这是面向您所属组织的授权客户门户，与服务商内部工具分开。" },
@@ -330,14 +330,14 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
       }
     },
     gettingStarted: {
-      title: "从实际需求出发，明确具体配置",
-      body: "可以申请一款应用、组合多款，或咨询完整套装。",
+      title: "为您的团队准备有针对性的演示",
+      body: "您可以表达对一款、多款或全部四款应用的演示意向，以便我们按您的实际需求准备演示。",
       steps: [
         { title: "介绍您的业务", body: "说明希望改善的工作、门店数量，以及各设备由哪些团队使用。" },
         { title: "确认适配条件", body: "核对设备、网络、权限，以及需要迁移的数据样本。" },
         { title: "确定演示内容", body: "结合您的业务场景，讨论适合的应用及配置。" }
       ],
-      note: "兼容性、功能模块及实施条件需按每家商户的情况确认。"
+      note: "我们会核对应用之间的依赖关系，并根据您的业务情况确认兼容性、功能模块及实施条件。"
     }
   }
 };

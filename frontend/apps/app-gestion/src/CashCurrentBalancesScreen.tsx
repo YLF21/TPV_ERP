@@ -9,6 +9,7 @@ import {
   type UserSession
 } from "@tpverp/app-common";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
 import { GestionTableSearch, matchesGestionTableSearch } from "./GestionTableSearch";
 import {
   loadCashCurrentBalances,
@@ -46,6 +47,8 @@ export function CashCurrentBalancesScreen({ session, t }: Props) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [reloadGeneration, setReloadGeneration] = useState(0);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const handleRowArrowFocus = useTableRowArrowFocus(tableRef, ".gestion-cash-balances-body > .gestion-cash-balance-row[tabindex]", !loading && !loadError);
   const tableLayout = useTableLayoutPreference({
     app: "gestion",
     username: session.username,
@@ -204,7 +207,7 @@ export function CashCurrentBalancesScreen({ session, t }: Props) {
 
       <section className="gestion-cash-balances-list" aria-label={t("gestion.cashCurrentBalances.title")}>
         <GestionTableSearch value={query} onChange={setQuery} t={t} />
-        <div className="gestion-cash-balances-table" role="table">
+        <div ref={tableRef} className="gestion-cash-balances-table" role="table">
           <div className="gestion-cash-balance-row head" role="row" style={tableStyle}>
             {visibleColumns.map((column) => (
               <TableLayoutHeaderCell
@@ -225,7 +228,7 @@ export function CashCurrentBalancesScreen({ session, t }: Props) {
           </div>
           <div className="gestion-cash-balances-body">
             {visibleRows.map((row) => (
-              <div className="gestion-cash-balance-row" role="row" style={tableStyle} key={row.terminalId}>
+              <div className="gestion-cash-balance-row" role="row" tabIndex={0} onKeyDown={handleRowArrowFocus} style={tableStyle} key={row.terminalId}>
                 {visibleColumns.map((column) => (
                   <span role="cell" data-column-key={column.key} key={column.key} title={plainCellTitle(row, column.key, t, moneyFormatter, dateTimeFormatter)}>
                     {renderCell(row, column.key)}

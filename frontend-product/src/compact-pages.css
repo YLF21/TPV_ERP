@@ -1,0 +1,198 @@
+/* Match the compact solution without changing its content or the other apps. */
+.mk-page {
+  --mk-content-width: 1440px;
+  --mk-compact-gutter: clamp(20px, 4vw, 56px);
+}
+.mk-page .mk-header { min-height: 68px; padding-inline: var(--mk-compact-gutter); }
+.mk-page .mk-header.is-scrolled { min-height: 64px; }
+.mk-page .mk-brand img { width: 120px; height: 38px; }
+.mk-page .mk-footer {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px 24px;
+  min-height: 0;
+  padding: 20px var(--mk-compact-gutter) 16px;
+}
+.mk-page .mk-footer p { max-width: 60ch; margin: 0; justify-self: center; font-size: 13px; line-height: 1.5; }
+.mk-page .mk-footer > div { gap: 6px 16px; }
+.mk-page .mk-footer small { padding-top: 12px; font-size: 12px; }
+
+.mk-inner-page.mk-apps-page,
+.mk-inner-page.mk-advantages-page,
+.mk-home-page {
+  width: 100%;
+  max-width: var(--mk-content-width);
+  min-height: 0;
+  margin-inline: auto;
+  padding: 28px var(--mk-compact-gutter) 32px;
+  background: var(--mk-paper);
+}
+.mk-inner-page:is(.mk-apps-page, .mk-advantages-page) > .mk-page-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 28px;
+  max-width: none;
+  margin: 0 0 22px;
+}
+.mk-inner-page:is(.mk-apps-page, .mk-advantages-page) > .mk-page-heading .mk-kicker { margin-bottom: 8px; }
+.mk-inner-page:is(.mk-apps-page, .mk-advantages-page) > .mk-page-heading h1 {
+  margin: 0;
+  font-size: clamp(32px, 3.1vw, 44px);
+  line-height: 1.2;
+  letter-spacing: -.045em;
+}
+.mk-inner-page:is(.mk-apps-page, .mk-advantages-page) > .mk-page-heading .mk-page-heading-support { align-self: center; }
+.mk-inner-page:is(.mk-apps-page, .mk-advantages-page) > .mk-page-heading .mk-page-heading-support > p {
+  max-width: 64ch;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+}
+.mk-inner-page:is(.mk-apps-page, .mk-advantages-page) .mk-heading-actions { gap: 12px; margin-top: 12px; }
+.mk-inner-page:is(.mk-apps-page, .mk-advantages-page) .mk-page-heading-support > small { margin-top: 8px; font-size: 12px; line-height: 1.4; }
+
+.mk-home-page { flex: 1 0 auto; }
+.mk-home-page .mk-hero {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 28px;
+  min-height: 0;
+  max-height: none;
+  border: 0;
+  overflow: visible;
+  background: transparent;
+}
+.mk-home-page .mk-hero-copy { padding: 0; }
+.mk-home-page .mk-hero-kicker { margin: 0 0 10px; font-size: 11px; line-height: 1.5; }
+.mk-home-page .mk-hero h1 { font-size: clamp(32px, 3.1vw, 44px); line-height: 1.2; letter-spacing: -.045em; }
+.mk-home-page .mk-lead { gap: 8px; margin: 14px 0 0; font-size: 15px; line-height: 1.55; }
+.mk-home-page .mk-lead strong { font-size: 18px; line-height: 1.4; }
+.mk-home-page .mk-actions { gap: 10px; margin-top: 16px; }
+.mk-home-page .mk-actions > a { min-height: 44px; font-size: 14px; }
+.mk-home-page .mk-checks { gap: 6px 14px; margin-top: 14px; font-size: 13px; line-height: 1.5; }
+.mk-home-page .mk-hero-product {
+  flex-direction: column;
+  align-self: center;
+  gap: 12px;
+  min-height: 0;
+  border: 1px solid var(--mk-line);
+  border-radius: 22px;
+  padding: 16px;
+  overflow: visible;
+}
+.mk-home-page .mk-hero-product img { display: block; width: 100%; max-width: 100%; height: auto; max-height: 300px; object-fit: contain; mix-blend-mode: normal; }
+.mk-home-page .mk-proof-panel {
+  position: static;
+  width: 100%;
+  border: 1px solid var(--mk-line);
+  border-radius: 12px;
+  overflow: visible;
+  background: white;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.mk-home-page .mk-proof-panel > span { padding: 9px; }
+.mk-home-page .mk-proof-panel strong { font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.mk-home-page .mk-proof-panel small { color: var(--mk-muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.mk-home-page .mk-app-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  min-height: 0;
+  margin-top: 22px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+.mk-home-page .mk-app-strip > article {
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  border: 1px solid var(--mk-line);
+  border-radius: 14px;
+  padding: 14px;
+  background: white;
+}
+.mk-home-page .mk-app-strip > article > svg { width: 34px; height: 34px; }
+.mk-home-page .mk-app-strip strong { font-size: 15px; line-height: 1.4; }
+.mk-home-page .mk-app-strip small { color: var(--mk-muted); font-size: 14px; line-height: 1.5; }
+.mk-home-page .mk-intro {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: "kicker summary" "title summary" "action summary" "sectors sectors";
+  align-items: start;
+  gap: 8px 28px;
+  min-height: 0;
+  margin-top: 24px;
+  border-top: 1px solid var(--mk-line);
+  padding: 22px 0 0;
+  background: transparent;
+}
+.mk-home-page .mk-intro > .mk-kicker { grid-area: kicker; margin: 0; }
+.mk-home-page .mk-intro > h2 { grid-area: title; font-size: clamp(26px, 2.3vw, 34px); line-height: 1.25; letter-spacing: -.035em; }
+.mk-home-page .mk-intro > p:not(.mk-kicker) { grid-area: summary; align-self: center; font-size: 15px; line-height: 1.6; }
+.mk-home-page .mk-intro > a { grid-area: action; min-height: 44px; width: fit-content; max-width: 100%; font-size: 14px; }
+.mk-home-page .mk-home-sector-preview {
+  grid-area: sectors;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.mk-home-page .mk-home-sector-preview article {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  border: 1px solid var(--mk-line);
+  border-radius: 14px;
+  padding: 14px;
+  background: white;
+  box-shadow: none;
+}
+.mk-home-page .mk-home-sector-preview article > p { margin: 0; color: var(--mk-blue); font-size: 12px; line-height: 1.4; font-weight: 800; }
+.mk-home-page .mk-home-sector-preview h3 { margin: 0; font-size: 17px; line-height: 1.35; }
+.mk-home-page .mk-home-sector-preview small { display: flex; align-items: start; gap: 6px; margin-top: auto; border-top: 0; padding-top: 0; color: var(--mk-muted); font-size: 13px; line-height: 1.5; }
+.mk-home-page .mk-home-sector-preview small svg { flex: 0 0 15px; width: 15px; height: 15px; margin-top: 3px; color: var(--mk-blue); }
+
+.mk-advantages-page .mk-comparison { border: 1px solid var(--mk-line); border-radius: 18px; background: white; box-shadow: none; }
+.mk-advantages-page .mk-comparison-row { grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(0, 1fr)); min-height: 0; }
+.mk-advantages-page .mk-comparison-row > * { padding: 11px 14px; font-size: 14px; line-height: 1.5; }
+.mk-advantages-page .mk-comparison-row.is-head { min-height: 0; }
+.mk-advantages-page .mk-comparison-row.is-head > * { font-size: 12px; line-height: 1.5; }
+.mk-advantages-page .mk-note { margin-top: 12px; color: var(--mk-muted); font-size: 13px; line-height: 1.55; }
+
+@media (min-width: 1121px) {
+  .mk-page .mk-header nav { grid-template-columns: repeat(5, max-content); gap: 10px; }
+  .mk-page .mk-header nav a { padding-inline: 10px; font-size: 14px; }
+}
+
+@media (max-width: 959px) {
+  .mk-inner-page:is(.mk-apps-page, .mk-advantages-page) > .mk-page-heading { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .mk-home-page .mk-hero { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .mk-home-page .mk-app-strip, .mk-home-page .mk-home-sector-preview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mk-home-page .mk-intro { grid-template-columns: minmax(0, 1fr); grid-template-areas: "kicker" "title" "summary" "action" "sectors"; }
+  .mk-page .mk-footer { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .mk-page .mk-footer p { justify-self: start; }
+}
+
+@media (max-width: 760px) {
+  .mk-page { --mk-compact-gutter: 16px; }
+  .mk-inner-page.mk-apps-page, .mk-inner-page.mk-advantages-page, .mk-home-page { padding-top: 22px; padding-bottom: 28px; }
+  .mk-inner-page:is(.mk-apps-page, .mk-advantages-page) > .mk-page-heading h1, .mk-home-page .mk-hero h1 { font-size: clamp(30px, 7.5vw, 38px); }
+  .mk-inner-page:is(.mk-apps-page, .mk-advantages-page) > .mk-page-heading .mk-page-heading-support > p { font-size: 16px; }
+  .mk-inner-page:is(.mk-apps-page, .mk-advantages-page) .mk-heading-actions > a { display: inline-flex; align-items: center; min-height: 44px; font-size: 14px; }
+  .mk-home-page .mk-lead, .mk-home-page .mk-intro > p:not(.mk-kicker), .mk-home-page .mk-app-strip small { font-size: 16px; }
+  .mk-home-page .mk-hero-product { padding: 12px; border-radius: 18px; }
+  .mk-home-page .mk-hero-product img { max-height: 260px; }
+  .mk-home-page .mk-actions { flex-direction: row; align-items: stretch; }
+  .mk-home-page .mk-actions > a { flex: 1 1 170px; }
+  .mk-advantages-page .mk-comparison { gap: 10px; border: 0; border-radius: 0; overflow: visible; background: transparent; }
+  .mk-advantages-page .mk-comparison-row { grid-template-columns: repeat(2, minmax(0, 1fr)); border-radius: 14px; box-shadow: none; }
+  .mk-advantages-page .mk-comparison-row > * { padding: 12px; font-size: 15px; }
+  .mk-advantages-page .mk-comparison-row.is-head { min-height: 0; }
+}
+
+@media (max-width: 540px) {
+  .mk-home-page .mk-app-strip, .mk-home-page .mk-home-sector-preview { grid-template-columns: minmax(0, 1fr); }
+  .mk-advantages-page .mk-comparison-row { grid-template-columns: minmax(0, 1fr); }
+  .mk-advantages-page .mk-comparison-row > * { grid-column: 1 / -1; }
+  .mk-advantages-page .mk-comparison-row > * + * { border-top: 1px solid var(--mk-line); }
+}

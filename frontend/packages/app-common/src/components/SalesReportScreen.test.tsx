@@ -968,7 +968,13 @@ describe("SalesReportScreen", () => {
             hasMore: false
           });
         }
-        return Promise.resolve({ items: [], nextCursor: "invoice-page-2", hasMore: true });
+        return Promise.resolve({
+          items: [{
+            id: "invoice-1", tipo: "FACTURA_VENTA", estado: "CONFIRMADO",
+            numero: "FV-AUTO-1", fecha: todayIso, total: "12.10"
+          }],
+          nextCursor: "invoice-page-2", hasMore: true
+        });
       }
       if (path === "/tickets" || path === "/warehouses") return Promise.resolve([]);
       return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
@@ -988,6 +994,10 @@ describe("SalesReportScreen", () => {
     );
 
     expect(await screen.findByText("FV-AUTO-2")).toBeVisible();
+    const firstRow = screen.getByText("FV-AUTO-1").closest("tr");
+    await waitFor(() => expect(firstRow).toHaveFocus());
+    expect(firstRow).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("FV-AUTO-2").closest("tr")).toHaveAttribute("aria-selected", "false");
     expect(request).toHaveBeenCalledWith(
       expect.stringContaining("cursor=invoice-page-2"),
       { token: "token" }
@@ -1079,7 +1089,7 @@ describe("SalesReportScreen", () => {
     expect(screen.getByText("ANA")).toBeVisible();
   });
 
-  it("uses one query date and reloads the daily report when it changes", async () => {
+  it.each(["venta", "gestion"] as const)("uses one query date and reloads the daily report in %s when it changes", async (app) => {
     const request = vi.fn().mockImplementation((path: string) => {
       if (path === "/sales-activity/filter-options") {
         return Promise.resolve({ earliestDate: "2024-01-01", currentDate: "2026-07-16" });
@@ -1097,7 +1107,7 @@ describe("SalesReportScreen", () => {
 
     render(
       <SalesReportScreen
-        app="venta"
+        app={app}
         locale="es"
         session={{ ...session, accessToken: "token" }}
         terminalContext={terminalContext}
@@ -1109,10 +1119,18 @@ describe("SalesReportScreen", () => {
 
     const dateInput = await screen.findByLabelText("Fecha de consulta");
     expect(screen.getAllByLabelText("Fecha de consulta")).toHaveLength(1);
+    if (app === "gestion") {
+      expect(await within(dateInput.closest("label")!).findByText("Jueves")).toBeVisible();
+      const toolbar = dateInput.closest(".sales-activity-toolbar")!;
+      expect(toolbar).toHaveClass("gestion-filter-toolbar");
+      expect(toolbar.querySelector(".report-date-range-summary")).toBeNull();
+      expect([...toolbar.querySelectorAll(".sales-activity-output-actions button > span")].map((label) => label.textContent)).toEqual(["Imprimir", "Excel", "PDF"]);
+    }
     fireEvent.change(dateInput, { target: { value: "2026-07-05" } });
     await waitFor(() => expect(request).toHaveBeenCalledWith(
       "/sales-activity/daily?date=2026-07-05", { token: "token" }
     ));
+    if (app === "gestion") expect(within(dateInput.closest("label")!).getByText("Domingo")).toBeVisible();
   });
 
   it("shows the new daily report error and retries without calculating local totals", async () => {
@@ -1274,13 +1292,16 @@ describe("SalesReportScreen", () => {
       />
     );
 
-    const customPeriod = await screen.findByRole("button", { name: "Periodo personalizado" });
-    await waitFor(() => expect(customPeriod).not.toBeDisabled());
-    fireEvent.click(customPeriod);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Aplicar" })).toBeEnabled());
+    expect(screen.getByLabelText("Desde")).toHaveValue("2026-08-16");
+    expect(screen.getByLabelText("Hasta")).toHaveValue("2026-08-16");
     fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-08-15" } });
     fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-08-16" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar periodo" }));
-    expect(screen.getAllByText("15/8/2026 — 16/8/2026")[0]).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/sales-activity/documents/by-day?dateFrom=2026-08-15&dateTo=2026-08-16&limit=250", { token: "token" }
+    ));
+    expect(await screen.findByText("15/8/2026 — 16/8/2026")).toBeVisible();
 
     view.rerender(
       <SalesActivityPanel
@@ -1293,7 +1314,9 @@ describe("SalesReportScreen", () => {
         request={request}
       />
     );
-    expect(screen.getAllByText("15/08/2026 — 16/08/2026")[0]).toBeVisible();
+    expect(await screen.findByText("15/08/2026 — 16/08/2026")).toBeVisible();
+    expect(screen.getByLabelText("From")).toHaveValue("2026-08-15");
+    expect(screen.getByLabelText("To")).toHaveValue("2026-08-16");
   });
 
   it("moves a TODAY document range to the server date after midnight", async () => {
@@ -1684,7 +1707,9 @@ describe("SalesReportScreen", () => {
     expect(within(dock).getByRole("button", { name: "Hoy" })).toBeVisible();
     expect(within(dock).getByRole("button", { name: "Ayer" })).toBeVisible();
     expect(within(dock).getByRole("button", { name: "Semana actual" })).toBeVisible();
-    expect(within(dock).getByRole("button", { name: "Periodo personalizado" })).toBeVisible();
+    expect(within(dock).getByLabelText("Desde")).toBeVisible();
+    expect(within(dock).getByLabelText("Hasta")).toBeVisible();
+    expect(within(dock).getByRole("button", { name: "Aplicar" })).toBeVisible();
   });
 
   it("localizes integrated document payment methods while preserving custom identifiers", async () => {
@@ -2050,7 +2075,7 @@ describe("SalesReportScreen", () => {
     expect(screen.queryByText("F5: selecciona una fila · F6/F7: líneas visibles")).not.toBeInTheDocument();
   });
 
-  it("does not select the first warehouse row automatically and opens its lines on double click", async () => {
+  it("selects and focuses the first warehouse row without opening its lines until double click", async () => {
     const now = new Date();
     const today = [
       now.getFullYear(),
@@ -2109,10 +2134,11 @@ describe("SalesReportScreen", () => {
     expect(within(reconciliation).getByText("Unidades de entrada").parentElement).toHaveTextContent("1");
     expect(within(reconciliation).getByText("Unidades de salida").parentElement).toHaveTextContent("No disponible");
     expect(within(reconciliation).getByText("Balance de unidades").parentElement).toHaveTextContent("No disponible");
-    expect(row).not.toHaveClass("selected");
-    expect(row).toHaveAttribute("aria-selected", "false");
-    fireEvent.click(row!);
+    await waitFor(() => expect(row).toHaveFocus());
     expect(row).toHaveClass("selected");
+    expect(row).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("dialog", { name: "ENT-NO-SELECT" })).not.toBeInTheDocument();
+    expect(request).not.toHaveBeenCalledWith(expect.stringMatching(/^\/documents\//), expect.anything());
     fireEvent.doubleClick(row!);
     expect(await screen.findByRole("heading", { name: "ENT-NO-SELECT" })).toBeVisible();
     expect(await screen.findByText("CAF-001")).toBeVisible();
@@ -2229,6 +2255,7 @@ describe("SalesReportScreen", () => {
             position: 1,
             code: "P-001",
             name: "Producto del albarán",
+            serialNumbers: ["SN-123"],
             quantity: "2.000",
             unitPrice: "25.00",
             discount: "0.00",
@@ -2285,6 +2312,7 @@ describe("SalesReportScreen", () => {
     expect(await screen.findByRole("heading", { name: "AV-001" })).toBeVisible();
     expect(await screen.findByText("Producto del albarán")).toBeVisible();
     expect(request).toHaveBeenCalledWith("/documents/delivery-1/detail", { token: "token" });
+    expect(screen.getByText("S/N: SN-123")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Imprimir copia" }));
     await waitFor(() => expect(request).toHaveBeenCalledWith("/documents/delivery-1/print-copy", { token: "token" }));
     expect(createObjectUrl).toHaveBeenCalledWith(expect.objectContaining({ type: "application/pdf" }));

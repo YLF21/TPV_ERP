@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useTableInitialFocus } from "./useTableInitialFocus";
+import { useTableArrowRepeat } from "./useTableArrowRepeat";
+import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import { ShortcutButtonLabel } from "./ShortcutButtonLabel";
 import { ApiError, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -484,10 +487,39 @@ export function WarehouseDocumentDialog({
   const rowDiscountRefs = useRef<Array<HTMLInputElement | null>>([]);
   const rowQuantityRefs = useRef<Array<HTMLInputElement | null>>([]);
   const productSearchRef = useRef<HTMLInputElement | null>(null);
+  const linesTableRef = useRef<HTMLDivElement>(null);
   const lineEditNameRef = useRef<HTMLInputElement | null>(null);
   const lineEditPriceRef = useRef<HTMLInputElement | null>(null);
   const quickLineEditInputRef = useRef<HTMLInputElement | null>(null);
   const fileMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useTableInitialFocus(linesTableRef, "tbody tr[data-line-index]", {
+    enabled: open && app !== "pda" && lineEditorIndex === null && quickLineEditMode === null
+      && !productSearchOpen && !supplierDialogOpen && !excelImportOpen,
+    ready: initializedDocumentRef.current?.document === document,
+    scopeKey: `${open}:${mode}:${document?.id ?? "new"}`,
+    onSelect: () => setSelectedLineIndex(0),
+    focusTarget: () => productSearchRef.current
+      ?? linesTableRef.current?.querySelector<HTMLElement>("tbody tr[data-line-index]") ?? null,
+  });
+  const repeatLineArrow = useTableArrowRepeat(direction => {
+    const container = linesTableRef.current;
+    const active = globalThis.document.activeElement;
+    if (!container || !active || lineEditorIndex !== null || quickLineEditMode !== null
+      || productSearchOpen || supplierDialogOpen || excelImportOpen) return false;
+    const focusedRow = active instanceof HTMLElement ? active.closest<HTMLElement>("tr[data-line-index]") : null;
+    if (active !== productSearchRef.current && (!focusedRow || !container.contains(focusedRow))) return false;
+    const current = focusedRow ? Number(focusedRow.dataset.lineIndex) : selectedLineIndex ?? 0;
+    const next = Math.max(0, Math.min(lines.length - 1, current + (direction === "ArrowDown" ? 1 : -1)));
+    if (next === current || lines.length === 0) return false;
+    setSelectedLineIndex(next);
+    const row = container.querySelector<HTMLElement>(`tr[data-line-index="${next}"]`);
+    if (row) {
+      if (focusedRow) row.focus({ preventScroll: true });
+      ensureTableRowVisible(container, row);
+    }
+    return true;
+  }, open && app !== "pda");
 
   useEffect(() => {
     printActionMountedRef.current = true;
@@ -1676,7 +1708,12 @@ export function WarehouseDocumentDialog({
         const target = event.target as HTMLElement;
         const isProductSearch = target === productSearchRef.current;
         const isTextControl = target.matches("input, textarea, select");
-        if (event.key === "Escape") {
+        if (app !== "pda" && (event.key === "ArrowUp" || event.key === "ArrowDown")
+          && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey
+          && (isProductSearch || (target.matches("tr[data-line-index]") && linesTableRef.current?.contains(target)))) {
+          event.preventDefault();
+          repeatLineArrow(event);
+        } else if (event.key === "Escape") {
           event.preventDefault();
           onClose();
         } else if (event.ctrlKey && event.key.toLocaleLowerCase() === "p") {
@@ -1992,7 +2029,7 @@ export function WarehouseDocumentDialog({
                 </div>
               </div>
             </div>
-            <div className="warehouse-document-table-scroll">
+            <div ref={linesTableRef} className="warehouse-document-table-scroll">
               <table className="report-table warehouse-document-table">
                 <colgroup>
                   {visibleColumns.map((column) => (
@@ -2031,9 +2068,12 @@ export function WarehouseDocumentDialog({
                 <tbody>
                   {lines.map((line, index) => (
                     <tr
+                      data-line-index={index}
+                      tabIndex={app !== "pda" ? 0 : undefined}
                       className={(line.valid ? "" : "warehouse-document-line-error") + (selectedLineIndex === index ? " warehouse-document-line-selected" : "")}
                       key={line.rowNumber + "-" + index}
                       onClick={() => setSelectedLineIndex(index)}
+                      onFocus={() => { if (app !== "pda") setSelectedLineIndex(index); }}
                       onDoubleClick={() => openLineEditor(index)}
                     >
                       {visibleColumns.map((column) => (

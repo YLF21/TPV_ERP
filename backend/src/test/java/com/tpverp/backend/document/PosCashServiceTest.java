@@ -33,6 +33,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.security.core.Authentication;
 
 class PosCashServiceTest {
@@ -634,6 +636,134 @@ class PosCashServiceTest {
         assertThat(prepared.sensitiveOperations()).containsExactlyInAnyOrder(
                 SaleOperationCode.TEMPORARY_PRICE_CHANGE,
                 SaleOperationCode.APPLY_CHECKOUT_DISCOUNT);
+    }
+
+    @ParameterizedTest
+    @EnumSource(PreviousTicketImportPricingMode.class)
+    void importedSerialNumbersMayMatchAcrossDifferentReplayProducts(
+            PreviousTicketImportPricingMode mode) {
+        var first = serialReplayLine(UUID.randomUUID(), " sn-001 ");
+        var second = serialReplayLine(UUID.randomUUID(), "SN-001");
+
+        var quote = quoteSerialReplay(mode, List.of(first, second), List.of());
+
+        assertThat(quote.lines()).extracting(PosCashService.QuoteLine::productId)
+                .containsExactly(first.productoId(), second.productoId());
+        assertThat(quote.total()).isEqualByComparingTo("20.00");
+    }
+
+    @ParameterizedTest
+    @EnumSource(PreviousTicketImportPricingMode.class)
+    void importedSerialNumbersMayMatchANewLineForADifferentProduct(
+            PreviousTicketImportPricingMode mode) {
+        var imported = serialReplayLine(UUID.randomUUID(), " sn-001 ");
+        var current = new PosCashController.LineRequest(
+                UUID.randomUUID(), BigDecimal.ONE, BigDecimal.ZERO, null, List.of("SN-001"));
+
+        var quote = quoteSerialReplay(mode, List.of(imported), List.of(current));
+
+        assertThat(quote.lines()).extracting(PosCashService.QuoteLine::productId)
+                .containsExactly(imported.productoId(), current.productId());
+        assertThat(quote.total()).isEqualByComparingTo("20.00");
+    }
+
+    @ParameterizedTest
+    @EnumSource(PreviousTicketImportPricingMode.class)
+    void importedSerialNumbersRejectNormalizedDuplicatesWithinTheSameReplayProduct(
+            PreviousTicketImportPricingMode mode) {
+        var productId = UUID.randomUUID();
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> quoteSerialReplay(
+                        mode, List.of(serialReplayLine(productId, " sn-001 "),
+                                serialReplayLine(productId, "SN-001")), List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("message.document.previous_ticket_serial_duplicated");
+    }
+
+    @ParameterizedTest
+    @EnumSource(PreviousTicketImportPricingMode.class)
+    void importedSerialNumbersRejectNormalizedDuplicatesOnANewLineForTheSameProduct(
+            PreviousTicketImportPricingMode mode) {
+        var productId = UUID.randomUUID();
+        var current = new PosCashController.LineRequest(
+                productId, BigDecimal.ONE, BigDecimal.ZERO, null, List.of("SN-001"));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> quoteSerialReplay(
+                        mode, List.of(serialReplayLine(productId, " sn-001 ")), List.of(current)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("message.document.previous_ticket_serial_duplicated");
+    }
+
+    private static DocumentLineCommand serialReplayLine(UUID productId, String serial) {
+        return new DocumentLineCommand(
+                productId, BigDecimal.ONE, "SN", "Producto con serie", "VENTA",
+                BigDecimal.TEN, BigDecimal.ZERO, true, "IVA", new BigDecimal("21.00"),
+                DocumentLineType.PRODUCT, null, null, null, List.of(serial), false, false);
+    }
+
+    private static PosCashService.Quote quoteSerialReplay(
+            PreviousTicketImportPricingMode mode,
+            List<DocumentLineCommand> imported,
+            List<PosCashController.LineRequest> current) {
+        var documents = mock(DocumentService.class);
+        var products = mock(ProductRepository.class);
+        var taxes = mock(StoreTaxRepository.class);
+        var warehouses = mock(WarehouseRepository.class);
+        var organization = mock(CurrentOrganization.class);
+        var previousImports = mock(PreviousTicketImportService.class);
+        var store = mock(Store.class);
+        var storeId = UUID.randomUUID();
+        var userId = UUID.randomUUID();
+        var warehouse = Warehouse.general(storeId);
+        var tax = new StoreTax(storeId, new BigDecimal("21.00"), true);
+        when(store.getId()).thenReturn(storeId);
+        when(store.getTimezone()).thenReturn("Atlantic/Canary");
+        when(organization.currentStore()).thenReturn(store);
+        when(warehouses.findByStoreIdAndPredeterminadoTrue(storeId))
+                .thenReturn(Optional.of(warehouse));
+        when(taxes.findById(tax.getId())).thenReturn(Optional.of(tax));
+        var productIds = java.util.stream.Stream.concat(
+                        imported.stream().map(DocumentLineCommand::productoId),
+                        current.stream().map(PosCashController.LineRequest::productId))
+                .distinct().toList();
+        var catalog = productIds.stream().map(productId -> {
+            var product = mock(Product.class);
+            configureSaleProduct(product, productId, storeId, tax.getId(),
+                    "CURRENT", "Producto actual", BigDecimal.TEN);
+            when(products.findById(productId)).thenReturn(Optional.of(product));
+            return product;
+        }).toList();
+        when(products.findAllByStoreIdAndIdIn(storeId, productIds)).thenReturn(catalog);
+        var historical = new CommercialDocument(storeId, warehouse.getId(),
+                CommercialDocumentType.TICKET, LocalDate.of(2026, 10, 17), userId, BigDecimal.ZERO);
+        imported.forEach(line -> historical.addLine(line.toEntity(historical)));
+        var replay = new PreviousTicketImportService.ResolvedImport(
+                UUID.randomUUID(), "T-SERIAL", DocumentStatus.CONFIRMADO, mode, null,
+                "serial-fingerprint", historical.getBaseTotal(), historical.getImpuestoTotal(),
+                historical.getTotal(), imported, imported.size(), BigDecimal.ZERO, List.of());
+        when(previousImports.resolve(any(), any(), any())).thenReturn(replay);
+        when(previousImports.currentTaxRegime()).thenReturn("IVA");
+        var authentication = mock(Authentication.class);
+        var user = mock(UserAccount.class);
+        when(user.getId()).thenReturn(userId);
+        when(authentication.getPrincipal()).thenReturn(user);
+        when(documents.quoteTicket(any(DocumentCommand.class), any())).thenAnswer(invocation -> {
+            DocumentCommand command = invocation.getArgument(0);
+            var quoted = new CommercialDocument(storeId, warehouse.getId(),
+                    CommercialDocumentType.TICKET, command.fecha(), userId, BigDecimal.ZERO);
+            command.lineas().forEach(line -> quoted.addLine(line.toEntity(quoted)));
+            return quoted;
+        });
+        var service = new PosCashService(documents, products, taxes, warehouses,
+                mock(PaymentMethodRepository.class), organization,
+                mock(PosCashCheckoutRepository.class), new PosCashTicketSnapshot(),
+                mock(CurrentTerminal.class));
+        service.setPreviousTicketImportService(previousImports);
+        var request = new PosCashController.SaleRequest(null, current, null, null, null, null,
+                Map.of(), new PosCashController.PreviousTicketImportRequest(
+                        replay.ticketId(), replay.fingerprint(), Map.of()), null);
+
+        return service.quote(request, authentication);
     }
 
     @Test

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest, type UserSession } from "@tpverp/app-common";
+import { GestionModuleHeading } from "./GestionModuleHeading";
 import "./TerminalServerConnection.css";
 
 export type TerminalServerConnection = {
@@ -194,20 +195,15 @@ export function TerminalManagementScreen({ session, t }: {
   }
 
   return (
-    <section className="gestion-workspace gestion-terminal-workspace">
-      <header className="gestion-terminal-heading">
-        <div>
-          <span>{t("gestion.security.eyebrow")}</span>
-          <h2>{t("gestion.terminals.title")}</h2>
-          <p>{t("gestion.terminals.subtitle")}</p>
-        </div>
+    <section className="gestion-workspace gestion-module-screen gestion-terminal-workspace">
+      <GestionModuleHeading group={t("gestion.navigation.group.security")} title={t("gestion.terminals.title")} description={t("gestion.terminals.subtitle")}>
         <button type="button" disabled={loading || busy} onClick={() => {
           setConnectionRevision(value => value + 1);
           void refresh();
         }}>{t("common.refresh")}</button>
-      </header>
+      </GestionModuleHeading>
 
-      <section className="gestion-terminal-server-connection" aria-label={t("gestion.terminals.serverConnection.title")} aria-busy={connectionLoading}>
+      <section className="gestion-terminal-server-connection gestion-module-panel" aria-label={t("gestion.terminals.serverConnection.title")} aria-busy={connectionLoading}>
         <h3>{t("gestion.terminals.serverConnection.title")}</h3>
         {connectionLoading ? <p role="status">{t("common.loading")}</p> : connectionError ?
           <p className="gestion-inline-error" role="alert">{t("gestion.terminals.serverConnection.loadError")}</p> : serverConnection &&
@@ -228,7 +224,7 @@ export function TerminalManagementScreen({ session, t }: {
       </div>
 
       <div className="gestion-terminal-layout">
-        <section className="gestion-terminal-list" aria-label={t("gestion.terminals.title")}>
+        <section className="gestion-terminal-list gestion-module-panel" aria-label={t("gestion.terminals.title")}>
           {workstations?.slots.map(slot => <button type="button" key={slot.code}
             className={slot.code === selectedSlotCode ? "selected" : ""}
             onClick={() => { setSelectedSlotCode(slot.code); setSelectedLegacyId(""); setSelectedId(""); setPairing(null); }}>
@@ -256,7 +252,7 @@ export function TerminalManagementScreen({ session, t }: {
           {!loading && terminals.length === 0 && !workstations?.slots.length && !workstations?.legacyTerminals.length && <p>{t("gestion.terminals.empty")}</p>}
         </section>
 
-        <aside className="gestion-terminal-detail">
+        <aside className="gestion-terminal-detail gestion-module-panel">
           {selectedSlot ? <>
             <header><span>{t("gestion.terminals.workstations.code")}</span><h3>{selectedSlot.code} · {selectedSlot.name || t("gestion.terminals.workstations.unnamed")}</h3></header>
             <dl>
@@ -267,7 +263,7 @@ export function TerminalManagementScreen({ session, t }: {
               <div><dt>{t("gestion.terminals.id")}</dt><dd>{selectedSlot.terminalId || "—"}</dd></div>
               {selectedSlot.expiresAt && <div><dt>{t("gestion.terminals.pairingExpires")}</dt><dd>{new Date(selectedSlot.expiresAt).toLocaleString()}</dd></div>}
             </dl>
-            <div className="gestion-terminal-actions">
+            <div className="gestion-terminal-actions gestion-toolbar-actions">
               {["PENDING", "DISABLED"].includes(selectedSlot.status) && selectedSlot.code !== "001" && <button className="primary" type="button" disabled={busy || !selectedSlot.bindingId || selectedSlot.outOfQuota} onClick={() => void actOnSlot("approve")}>{t(selectedSlot.status === "DISABLED" ? "gestion.terminals.workstations.reactivate" : "gestion.terminals.workstations.approve")}</button>}
               {selectedSlot.status === "PENDING" && <>
                 <button type="button" disabled={busy || !selectedSlot.bindingId} onClick={() => void actOnSlot("cancel")}>{t("gestion.terminals.workstations.cancel")}</button>
@@ -277,26 +273,26 @@ export function TerminalManagementScreen({ session, t }: {
             </div>
             <h4>{t("gestion.terminals.workstations.history")}</h4>
             {historyError ? <p role="alert">{t("gestion.terminals.loadError")}</p> : history === null ? <p>{t("common.loading")}</p> : history.length === 0 ? <p>{t("gestion.terminals.workstations.noHistory")}</p> :
-              <table className="gestion-terminal-history"><thead><tr>
+              <div className="gestion-module-table"><table className="gestion-terminal-history"><thead><tr>
                 <th>{t("gestion.terminals.workstations.device")}</th><th>{t("gestion.terminals.status")}</th>
                 <th>{t("gestion.terminals.workstations.created")}</th><th>{t("gestion.terminals.workstations.ended")}</th>
               </tr></thead><tbody>{history.map(item => <tr key={item.bindingId}>
                 <td>{item.deviceName || item.name || "—"}</td><td>{t(`gestion.terminals.workstations.status.${item.status}`)}</td>
                 <td>{new Date(item.createdAt).toLocaleString()}</td><td>{item.endedAt ? new Date(item.endedAt).toLocaleString() : "—"}</td>
-              </tr>)}</tbody></table>}
+              </tr>)}</tbody></table></div>}
           </> : selectedLegacy ? <>
             <header><span>{t("gestion.terminals.workstations.legacy")}</span><h3>{selectedLegacy.name}</h3></header>
             <dl>
               <div><dt>{t("gestion.terminals.lastIp")}</dt><dd>{selectedLegacy.lastIp || "—"}</dd></div>
             </dl>
             <p>{t("gestion.terminals.workstations.assignHelp")}</p>
-            <label className="gestion-terminal-assign">{t("gestion.terminals.workstations.code")}
+            <label className="gestion-terminal-assign gestion-module-fields">{t("gestion.terminals.workstations.code")}
               <select value={assignCode} onChange={event => setAssignCode(event.target.value)}>
                 <option value="">{t("gestion.terminals.workstations.chooseCode")}</option>
                 {legacyCodes.map(code => <option key={code} value={code}>{code}</option>)}
               </select>
             </label>
-            <div className="gestion-terminal-actions"><button className="primary" type="button" disabled={busy || !assignCode} onClick={() => void assignLegacy()}>{t("gestion.terminals.workstations.assign")}</button></div>
+            <div className="gestion-terminal-actions gestion-toolbar-actions"><button className="primary" type="button" disabled={busy || !assignCode} onClick={() => void assignLegacy()}>{t("gestion.terminals.workstations.assign")}</button></div>
           </> : !selected ? <p>{t("gestion.terminals.select")}</p> : (
             <>
               <header><span>{t(`gestion.terminals.type.${selected.type}`)}</span><h3>{selected.name}</h3></header>
@@ -305,7 +301,7 @@ export function TerminalManagementScreen({ session, t }: {
                 <div><dt>{t("gestion.terminals.lastIp")}</dt><dd>{selected.lastIp || "—"}</dd></div>
                 <div><dt>{t("gestion.terminals.status")}</dt><dd>{t(`gestion.terminals.status.${terminalDisplayStatus(selected)}`)}</dd></div>
               </dl>
-              <div className="gestion-terminal-actions">
+              <div className="gestion-terminal-actions gestion-toolbar-actions">
                 {!selected.approved && <button className="primary" type="button" disabled={busy} onClick={() => void approve()}>{t("gestion.terminals.approve")}</button>}
                 {selected.approved && selected.active && selected.type === "PDA" && <button className="primary" type="button" disabled={busy} onClick={() => void createPairingCode()}>{t("gestion.terminals.pairingCreate")}</button>}
                 {selected.approved && selected.active && selected.type !== "SERVIDOR" && <button className="danger" type="button" disabled={busy} onClick={() => void deactivate()}>{t("gestion.terminals.deactivate")}</button>}

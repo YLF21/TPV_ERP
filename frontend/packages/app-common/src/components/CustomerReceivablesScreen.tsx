@@ -15,7 +15,10 @@ import { CustomerReceivablePaymentDialog, type CustomerReceivable } from "./Cust
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { TableSortButton } from "./TableSortButton";
 import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
+import { ReportDateRangeSummary } from "./ReportDateRangeFilter";
+import "./NativeDateFilterSummary.css";
 import { sortTableRows, useTableSortPreference } from "./tableSorting";
+import { useTableRowArrowFocus } from "./useTableRowArrowFocus";
 
 type Request = <T>(path: string, options?: { method?: string; token?: string; body?: unknown }) => Promise<T>;
 type ReceivablesView = "OPEN" | "HISTORY" | "ACCOUNT";
@@ -124,6 +127,8 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
   const loadGeneration = useRef(0);
   const detailGeneration = useRef(0);
   const dialogRef = useRef<HTMLElement>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const handleRowArrow = useTableRowArrowFocus(tableRef, '[role="row"]:not(.header)', !loading && !error && !printing && !selected && !selectedHistory, view);
   const canPay = hasPermission(session, "CUSTOMER_RECEIVABLES_PAY");
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
@@ -336,29 +341,31 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
           <label className="receivables-checkbox"><input aria-label={t("receivables.overdueOnly")} type="checkbox" checked={overdue} onChange={(event) => setOverdue(event.target.checked)} />{t("receivables.overdueOnly")}</label>
           <label>{t("receivables.dueFrom")}<input type="date" value={dueFrom} onChange={(event) => setDueFrom(event.target.value)} /></label>
           <label>{t("receivables.dueTo")}<input type="date" value={dueTo} onChange={(event) => setDueTo(event.target.value)} /></label>
+          <ReportDateRangeSummary collapseSingleDay={false} showWeekday={false} locale={locale} value={{ from: dueFrom, to: dueTo, label: "" }} />
         </div>
       </> : view === "HISTORY" ? <div className="customer-receivables-filters receivables-history-filters">
         <label>{t("receivables.history.search")}<input ref={historySearchRef} value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} /></label>
         <label>{t("receivables.history.method")}<select value={paymentMethodId} onChange={(event) => setPaymentMethodId(event.target.value)}><option value="">{t("receivables.all")}</option>{methods.map((method) => <option key={method.id} value={method.id}>{method.name ?? method.nombre ?? method.id}</option>)}</select></label>
         <label>{t("receivables.history.collectedFrom")}<input type="date" value={collectedFrom} onChange={(event) => setCollectedFrom(event.target.value)} /></label>
         <label>{t("receivables.history.collectedTo")}<input type="date" value={collectedTo} onChange={(event) => setCollectedTo(event.target.value)} /></label>
+        <ReportDateRangeSummary collapseSingleDay={false} showWeekday={false} locale={locale} value={{ from: collectedFrom, to: collectedTo, label: "" }} />
       </div> : null}
       {tableTheme === "erp-blue-classic" && view !== "ACCOUNT" && <ErpFilterChips locale={locale} chips={filterChips}
         focusRef={view === "OPEN" ? searchRef : historySearchRef} onClear={clearFilters} />}
       {error && <div className="receivables-error"><p role="alert">{error}</p><button type="button" onClick={() => void load()}>{t("receivables.action.retry")}</button></div>}
       {retryPrint && <div className="receivables-error"><p role="alert">{t("receivables.print.pending")}</p><button type="button" disabled={printing} onClick={() => void retryFailedPrint()}>{printing ? t("receivables.history.printing") : t("payment.result.retryPrint")}</button></div>}
-      {view === "OPEN" ? <div className="customer-receivables-table" role="table" aria-label={t("receivables.title")}>
+      {view === "OPEN" ? <div ref={tableRef} className="customer-receivables-table" role="table" aria-label={t("receivables.title")}>
         <div role="row" className="receivable-row header">{columns.map((value) => { const label = t(`receivables.column.${value}`); return <span role="columnheader" aria-sort={openSorting.sort?.column === value ? (openSorting.sort.direction === "asc" ? "ascending" : "descending") : undefined} key={value}>{value === "actions" ? label : <TableSortButton label={`${t("party.sortBy")} ${label}`} direction={openSorting.sort?.column === value ? openSorting.sort.direction : null} onSort={() => openSorting.toggleSort(value)}>{label}</TableSortButton>}</span>; })}</div>
         {loading && <p>{t("common.loading")}</p>}
-        {!loading && sortedRows.map((row) => <div role="row" className={`receivable-row${row.overdue ? " overdue" : ""}`} key={row.documentId}>
+        {!loading && sortedRows.map((row) => <div role="row" className={`receivable-row${row.overdue ? " overdue" : ""}`} key={row.documentId} tabIndex={0} onKeyDown={handleRowArrow}>
           <strong role="cell">{row.documentNumber}</strong><span role="cell">{row.customerName}</span><span role="cell">{row.issueDate}</span><span role="cell">{row.dueDate || "-"}</span><span role="cell">{money(row.total, locale)}</span><span role="cell">{money(row.paidTotal, locale)}</span><span role="cell">{money(row.pendingTotal, locale)}</span><span role="cell">{t(statusKey(effectiveReceivableStatus(row)))}</span>
           <span role="cell"><button type="button" aria-label={`${t("receivables.action.collect")} ${row.documentNumber}`} disabled={printing || !canPay || effectiveReceivableStatus(row) === "PAGADO"} onClick={() => setSelected(row)}>{t("receivables.action.collect")}</button></span>
         </div>)}
-      </div> : view === "HISTORY" ? <div className="customer-receivables-table" role="table" aria-label={t("receivables.history.title")}>
+      </div> : view === "HISTORY" ? <div ref={tableRef} className="customer-receivables-table" role="table" aria-label={t("receivables.history.title")}>
         <div role="row" className="receivable-history-row header">{historyColumns.map((value) => { const label = t(`receivables.column.${value}`); return <span role="columnheader" aria-sort={historySorting.sort?.column === value ? (historySorting.sort.direction === "asc" ? "ascending" : "descending") : undefined} key={value}>{value === "actions" ? label : <TableSortButton label={`${t("party.sortBy")} ${label}`} direction={historySorting.sort?.column === value ? historySorting.sort.direction : null} onSort={() => historySorting.toggleSort(value)}>{label}</TableSortButton>}</span>; })}</div>
         {loading && <p>{t("common.loading")}</p>}
         {!loading && historyRows.length === 0 && <p className="receivables-empty">{t("receivables.history.empty")}</p>}
-        {!loading && sortedHistoryRows.map((row) => <div role="row" className="receivable-history-row" key={row.paymentId}>
+        {!loading && sortedHistoryRows.map((row) => <div role="row" className="receivable-history-row" key={row.paymentId} tabIndex={0} onKeyDown={handleRowArrow}>
           <strong role="cell">{row.documentNumber}</strong><span role="cell">{row.customerName}</span><span role="cell">{dateTime(row.collectedAt, locale)}</span><span role="cell">{row.paymentMethodName}</span><span role="cell">{money(row.amount, locale)}</span><span role="cell">{row.transferDate || "-"}</span><span role="cell">{row.reference || "-"}</span>
           <span role="cell"><button type="button" disabled={printing} aria-label={`${t("receivables.action.consult")} ${row.documentNumber}`} onClick={() => void consultHistory(row)}>{t("receivables.action.consult")}</button></span>
         </div>)}
@@ -374,10 +381,10 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
             <article><span>{t("receivables.account.openDocuments")}</span><strong>{account.openDocumentCount}</strong></article>
           </section>
           {(account.creditBlocked || !account.creditEnabled || (account.blockOnOverdue && Number(account.overdueDebt) > 0)) && <p className="receivables-account-blocked" role="status">{t("receivables.account.blocked")}</p>}
-          <div className="customer-receivables-table" role="table" aria-label={t("receivables.account.statement")}>
+          <div ref={tableRef} className="customer-receivables-table" role="table" aria-label={t("receivables.account.statement")}>
             <div role="row" className="receivable-account-row header">{accountSortColumns.map((column) => { const label = t(column === "document" ? "receivables.column.document" : `receivables.account.${column}`); return <span role="columnheader" aria-sort={accountSorting.sort?.column === column ? (accountSorting.sort.direction === "asc" ? "ascending" : "descending") : undefined} key={column}><TableSortButton label={`${t("party.sortBy")} ${label}`} direction={accountSorting.sort?.column === column ? accountSorting.sort.direction : null} onSort={() => accountSorting.toggleSort(column)}>{label}</TableSortButton></span>; })}</div>
             {account.entries.length === 0 && <p className="receivables-empty">{t("receivables.account.empty")}</p>}
-            {sortedAccountEntries.map((entry) => <div role="row" className="receivable-account-row" key={`${entry.kind}-${entry.id}`}><span role="cell">{dateTime(entry.occurredAt, locale)}</span><strong role="cell">{entry.documentNumber}</strong><span role="cell">{entry.kind === "SALE" ? t("receivables.account.sale") : entry.paymentMethod || t("receivables.account.payment")}</span><span role="cell">{Number(entry.debit) > 0 ? money(entry.debit, locale) : "-"}</span><span role="cell">{Number(entry.credit) > 0 ? money(entry.credit, locale) : "-"}</span><strong role="cell">{money(entry.balance, locale)}</strong></div>)}
+            {sortedAccountEntries.map((entry) => <div role="row" className="receivable-account-row" key={`${entry.kind}-${entry.id}`} tabIndex={0} onKeyDown={handleRowArrow}><span role="cell">{dateTime(entry.occurredAt, locale)}</span><strong role="cell">{entry.documentNumber}</strong><span role="cell">{entry.kind === "SALE" ? t("receivables.account.sale") : entry.paymentMethod || t("receivables.account.payment")}</span><span role="cell">{Number(entry.debit) > 0 ? money(entry.debit, locale) : "-"}</span><span role="cell">{Number(entry.credit) > 0 ? money(entry.credit, locale) : "-"}</span><strong role="cell">{money(entry.balance, locale)}</strong></div>)}
           </div>
         </>}
       </div>}
