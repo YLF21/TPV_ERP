@@ -342,7 +342,11 @@ Describe 'Despliegue productivo backend Windows' {
 
     It 'no descarga ejecutables ni acepta secretos en el instalador' {
         $text = Get-Content -LiteralPath $scriptPaths[2] -Raw
-        $text | Should Not Match '(?i)Invoke-WebRequest|Start-BitsTransfer|DownloadFile|password'
+        $text | Should Not Match '(?i)Invoke-WebRequest|Start-BitsTransfer|DownloadFile'
+        $installerAst = [System.Management.Automation.Language.Parser]::ParseFile($scriptPaths[2], [ref]$null, [ref]$null)
+        @($installerAst.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -match '(?i)password|secretvalue' }).Count | Should Be 0
+        # SCM requires an explicitly empty password for a virtual service account.
+        $text | Should Match "StartPassword=''"
         $text | Should Match 'WinSwSha256'
         $text | Should Match 'ConfigurationFile'
         $text | Should Match 'Preflight'

@@ -19,7 +19,7 @@ Prepare antes de la instalación:
 
 - Java 25 instalado en el servidor.
 - Un bundle backend validado y su `ExpectedReleaseId` aprobado.
-- WinSW proporcionado por el operador y el SHA-256 esperado de su ejecutable.
+- WinSW 3.x proporcionado por el operador y el SHA-256 esperado de su ejecutable.
 - Caddy proporcionado por el operador y el SHA-256 esperado de su ejecutable.
 - Un certificado TLS y su clave privada en formato PEM, proporcionados para el
   nombre público elegido.

@@ -49,6 +49,86 @@ if ($ServiceName -notmatch '^[A-Za-z0-9]{1,80}$') {
     throw 'ServiceName debe ser un ID WinSW alfanumerico (1-80 caracteres).'
 }
 
+function Assert-TpvWinSw3([string] $Path) {
+    # Read PE metadata only: preflight must not register or execute the wrapper.
+    if ((Get-Item -LiteralPath $Path).VersionInfo.FileMajorPart -ne 3) {
+        throw 'Se requiere WinSW 3; WinSW 2 ignora la identidad username del XML.'
+    }
+}
+
+function Assert-TpvScmIdentity([string] $Id, [string] $Executable, [string] $Account,
+    [switch] $Stopped, [string] $StartMode = '') {
+    $registered = Get-CimInstance -ClassName Win32_Service -Filter "Name = '$Id'"
+    if ($null -eq $registered -or
+        -not [StringComparer]::OrdinalIgnoreCase.Equals(([string]$registered.PathName).Trim('"'), $Executable) -or
+        -not [StringComparer]::OrdinalIgnoreCase.Equals([string]$registered.StartName, $Account) -or
+        ($Stopped -and $registered.State -ne 'Stopped') -or
+        ($StartMode -and $registered.StartMode -ne $StartMode)) {
+        throw "La identidad, ruta o estado SCM de $Id no coincide con el registro aprobado."
+    }
+}
+
+function Remove-TpvNewRegistration([string] $Id, [string] $Executable) {
+    $registered = Get-CimInstance -ClassName Win32_Service -Filter "Name = '$Id'"
+    if ($null -eq $registered) { return }
+    if (-not [StringComparer]::OrdinalIgnoreCase.Equals(([string]$registered.PathName).Trim('"'), $Executable)) {
+        throw "No se elimina ${Id}: la ruta SCM no pertenece a este registro."
+    }
+    # Leave it disabled even if deletion fails; never silently retain LocalSystem.
+    $disabled = Invoke-CimMethod -InputObject $registered -MethodName ChangeStartMode -Arguments @{StartMode='Disabled'}
+    if ($null -eq $disabled -or $disabled.ReturnValue -ne 0) { throw "No se pudo deshabilitar el registro fallido $Id." }
+    if ($registered.State -ne 'Stopped') {
+        $stopped = Invoke-CimMethod -InputObject $registered -MethodName StopService
+        if ($null -eq $stopped -or $stopped.ReturnValue -notin @(0, 6)) { throw "No se pudo detener el registro fallido $Id." }
+    }
+    $deleted = Invoke-CimMethod -InputObject $registered -MethodName Delete
+    if ($null -eq $deleted -or $deleted.ReturnValue -ne 0) { throw "No se pudo eliminar $Id; permanece deshabilitado." }
+}
+
+function Register-TpvNewService([string] $Executable, [string] $XmlPath, [string] $Id, [string] $Account) {
+    if ($null -ne (Get-CimInstance -ClassName Win32_Service -Filter "Name = '$Id'")) {
+        throw "El servicio $Id ya existe; no se adopta durante un registro nuevo."
+    }
+    $canonical = [IO.File]::ReadAllText($XmlPath)
+    $definition = [xml]::new()
+    $definition.XmlResolver = $null
+    $definition.LoadXml($canonical)
+    if ([string]$definition.service.id -cne $Id -or [string]$definition.service.startmode -cne 'Manual' -or
+        [string]$definition.service.serviceaccount.username -cne $Account) {
+        throw 'El XML no declara el registro manual y la identidad aprobados.'
+    }
+    $virtual = $Account -ceq "NT SERVICE\$Id"
+    try {
+        if ($virtual) {
+            # WinSW 3 resolves the virtual SID before CreateService, and XML wins
+            # over --user. Bootstrap DISABLED, then assign the virtual identity via SCM.
+            $definition.service.serviceaccount.username = 'LocalSystem'
+            $definition.service.startmode = 'Disabled'
+            try {
+                [IO.File]::WriteAllText($XmlPath, $definition.OuterXml, [Text.UTF8Encoding]::new($false))
+                & $Executable install --no-elevate
+                if ($LASTEXITCODE -ne 0) { throw 'WinSW no pudo registrar el servicio deshabilitado.' }
+            } finally {
+                [IO.File]::WriteAllText($XmlPath, $canonical, [Text.UTF8Encoding]::new($false))
+            }
+            Assert-TpvScmIdentity $Id $Executable 'LocalSystem' -Stopped -StartMode Disabled
+            $registered = Get-CimInstance -ClassName Win32_Service -Filter "Name = '$Id'"
+            $changed = Invoke-CimMethod -InputObject $registered -MethodName Change -Arguments @{
+                StartName=$Account; StartPassword=''; StartMode='Manual'
+            }
+            if ($null -eq $changed -or $changed.ReturnValue -ne 0) { throw "SCM no pudo asignar la cuenta virtual de $Id." }
+        } else {
+            & $Executable install --no-elevate
+            if ($LASTEXITCODE -ne 0) { throw 'WinSW no pudo registrar el servicio.' }
+        }
+        Assert-TpvScmIdentity $Id $Executable $Account -Stopped -StartMode Manual
+    } catch {
+        $failure = $_
+        Remove-TpvNewRegistration $Id $Executable
+        throw $failure
+    }
+}
+
 function Assert-Administrator {
     if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
         throw 'Este instalador solo puede ejecutarse en Windows.'
@@ -290,6 +370,7 @@ Assert-SafePlannedPath $SecretDirectory 'El directorio de secretos' 'Directory'
 Assert-SafePlannedPath $ExportDirectory 'El directorio de exportaciones' 'Directory'
 $wrapperActualHash = (Get-FileHash -LiteralPath $wrapperSource -Algorithm SHA256).Hash
 if ($wrapperActualHash -cne $WinSwSha256.ToUpperInvariant()) { throw 'El SHA-256 de WinSW no coincide.' }
+Assert-TpvWinSw3 $wrapperSource
 $expectedStartName = switch ($ServiceAccount) {
     'VirtualService' { "NT SERVICE\$ServiceName" }
     'LocalSystem' { 'LocalSystem' }
@@ -384,6 +465,7 @@ if ($Preflight) {
 if ($Phase -eq 'Start') {
     if ($PSCmdlet.ShouldProcess($ServiceName, 'Habilitar inicio automatico y arrancar tras verificar ACL y release')) {
         try {
+            Assert-TpvScmIdentity $ServiceName $serviceExe $expectedStartName
             Set-Service -Name $ServiceName -StartupType Automatic
             & $serviceExe start
             if ($LASTEXITCODE -ne 0) { throw 'WinSW no pudo arrancar; revise logs y conserve la evidencia.' }
@@ -501,11 +583,11 @@ if ($PSCmdlet.ShouldProcess($install, "Instalar/actualizar $ServiceName con rele
         Set-Content -LiteralPath $serviceXml -Value $xml -Encoding UTF8
 
         if ($null -eq $service) {
-            & $serviceExe install
-            if ($LASTEXITCODE -ne 0) { throw 'WinSW no pudo registrar el servicio.' }
+            Register-TpvNewService $serviceExe $serviceXml $ServiceName $expectedStartName
         } else {
             & $serviceExe refresh
             if ($LASTEXITCODE -ne 0) { throw 'WinSW no pudo refrescar la configuracion del servicio.' }
+            Assert-TpvScmIdentity $ServiceName $serviceExe $expectedStartName -Stopped -StartMode Manual
         }
     }
     catch {
@@ -514,7 +596,6 @@ if ($PSCmdlet.ShouldProcess($install, "Instalar/actualizar $ServiceName con rele
             Copy-Item -LiteralPath $previousExePath -Destination $serviceExe -Force
         }
         if ($null -ne $service) { try { & $serviceExe refresh | Out-Null } catch { } }
-        else { try { & $serviceExe uninstall | Out-Null } catch { } }
         throw
     }
     Write-Host "Servicio $ServiceName instalado/actualizado sin arrancarlo. Release: $($bundleInfo.ReleaseId)" -ForegroundColor Green

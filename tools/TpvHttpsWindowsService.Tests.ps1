@@ -111,7 +111,7 @@ Describe 'TPV HTTPS Windows service installer' {
         $source.IndexOf('Assert-CaddyConfiguration $caddySource') -lt $source.IndexOf('ShouldProcess($install') | Should Be $true
         $source | Should Match "if \(\`$Preflight\)"
         $source | Should Match 'if \(-not \$PSCmdlet.ShouldProcess\(\$install'
-        $source | Should Match '(?s)if \(\$createdService\).*uninstall'
+        $source | Should Match '(?s)if \(\$createdService.*Remove-TpvNewRegistration \$ServiceName \$exe'
         $source | Should Match '\$previousFiles\[\$target\]'
         $source | Should Match 'Assert-InstalledGateway \$install'
         $source | Should Match '\$CaddyfileText \| & \$Executable validate --config - --adapter caddyfile'

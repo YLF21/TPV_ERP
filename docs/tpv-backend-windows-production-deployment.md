@@ -121,12 +121,30 @@ falla se restauran ambos y se intenta refrescar de nuevo; esto no es un rollback
 completo de todos los efectos externos, sino la conservación recuperable del
 XML, wrapper y bundles locales.
 
+Se exige WinSW **3.x**, con SHA-256 aprobado y version principal del ejecutable
+comprobados antes de cualquier cambio. WinSW 2 puede ignorar `username` y
+registrar LocalSystem, por lo que se rechaza incluso en preflight.
 WinSW v3 requiere `<serviceaccount><username>...</username></serviceaccount>`;
 la forma de cuenta está contrastada con la [documentación oficial de
 WinSW](https://github.com/winsw/winsw/blob/v3/docs/xml-config-file.md#service-account).
 En una instalación nueva se escribe la cuenta integrada solicitada y también
 `TPV_VERIFACTU_SERVICE_ACCOUNT` en el XML. En una actualización WinSW no cambia
 la cuenta con `refresh`: el script compara `StartName` y aborta si no coincide.
+
+Para crear una cuenta virtual nueva, WinSW 3 intenta resolver su SID antes de
+registrar el servicio. El instalador registra primero una definicion temporal
+LocalSystem **Disabled**, restaura inmediatamente el XML canonico con la cuenta
+virtual, y usa `Win32_Service.Change` para asignar `NT SERVICE\<servicio>`,
+contrasena vacia e inicio Manual. Verifica de nuevo ruta, cuenta, modo Manual y
+estado Stopped en SCM; nunca arranca el registro temporal. Ante un fallo,
+deshabilita y elimina exclusivamente ese nuevo registro. Si la eliminacion
+falla, informa del error y conserva el servicio deshabilitado para inspeccion.
+El arranque vuelve a comprobar la identidad SCM antes de habilitar Automatic.
+Este procedimiento tambien se aplica al backend TEST_ONLY y al gateway HTTPS.
+En WinSW 3.0.0-alpha.11, la cuenta del XML tiene prioridad sobre `install --user`;
+no basta con cambiar el argumento de consola. Referencias:
+[implementacion oficial de WinSW](https://github.com/winsw/winsw/blob/v3.0.0-alpha.11/src/WinSW/Program.cs)
+y [Change de Win32_Service](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/change-method-in-class-win32-service).
 
 El XML activa explícitamente el perfil Spring `prod`. La ruta externa se pasa
 como una URI `file:///C:/...` obligatoria y como un único argumento citado (sin

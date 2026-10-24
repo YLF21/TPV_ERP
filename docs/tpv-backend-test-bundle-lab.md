@@ -50,7 +50,7 @@ El instalador comprueba el hardware VirtualBox, el fichero `.properties`, el JDB
 
 ## Registro de servicios dentro de la VM
 
-En PowerShell elevado de A, con WinSW y Java 25 ya proporcionados y sus hashes comprobados, efectuar primero un preflight; después registrar el backend **detenido**. El instalador TEST exige que `TPVERPBackend` no exista previamente y utiliza `C:\ProgramData\TPV ERP\Backend`:
+En PowerShell elevado de A, con WinSW 3.x y Java 25 ya proporcionados y sus hashes comprobados, efectuar primero un preflight; después registrar el backend **detenido**. El instalador TEST exige que `TPVERPBackend` no exista previamente y utiliza `C:\ProgramData\TPV ERP\Backend`:
 
 ```powershell
 $args = @{
