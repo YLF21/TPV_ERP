@@ -91,3 +91,33 @@ La ACL privada usa las rutas efectivas del fichero instalado: claves de instalac
 El XML de WinSW debe declarar `--spring.profiles.active=lab-bundle` y el JAR verificado. Para HTTPS, registrar el servicio real `TPVERPHTTPS` con `Install-TpvHttpsWindowsService.ps1` y un certificado de laboratorio, siguiendo sus dos fases de registro/inicio y sus verificaciones de hash/ACL. El asistente de recuperación requiere ese servicio HTTPS instalado y verifica su identidad. No crear XML de servicio a mano como sustituto de un servicio SCM.
 
 Los accesos de APP VENTA y APP GESTIÓN en la VM apuntan al HTTPS de laboratorio. Ejecutar allí la copia, subida SaaS, solicitud, recepción y activación mediante las ventanas de mantenimiento. Las ventanas invocan los scripts incluidos en la release activa, elevan UAC, aplican las ACL y detienen/arrancan el servicio de verdad. Los scripts descubren el canal desde el JAR instalado; no aceptan un modo TEST indicado por la interfaz. La activación comprueba `/actuator/health/readiness` antes de informar éxito.
+
+## Ensayo completado el 24 de octubre de 2026
+
+Se probó el flujo con datos sintéticos entre dos Windows independientes en
+VirtualBox y un SaaS aislado de laboratorio, sin acceder a la base de datos ni
+cambiar servicios, configuración o bloqueos del servidor físico.
+
+- Cuatro copias creadas mediante la API del origen y subidas automáticamente.
+  El catálogo de SaaS y sus archivos físicos conservaban exactamente las tres
+  más recientes; la primera estaba retirada.
+- Solicitud generada desde Gestión y autorización real con rol `SUPPORT`.
+  Los accesos anónimos y de un usuario sin permisos devolvieron 401/403;
+  aprobar antes de recibir la copia devolvió 409 y no cambió su estado.
+- Recepción desde el asistente visual, revisión por soporte, aprobación,
+  activación central y estado local final `COMPLETE`. HTTP y HTTPS confirmaron
+  `UP`. La consola se abrió desde Electron y la consulta final interpretó
+  correctamente el JSON de Actuator recibido como bytes en PowerShell 5.
+- Comprobación de identidad de instalación, empresa, tienda y servidor `001`,
+  archivos, certificado fiscal y contador de copias. Quedaron cero sesiones
+  activas: tres fueron revocadas por la recuperación y una conservó su motivo
+  histórico de revocación.
+- El verificador TEST_ONLY aceptó el paquete y el productivo lo rechazó.
+  Las VM se apagaron con PostgreSQL detenido limpiamente y se conservaron
+  instantáneas del origen y del destino recuperado.
+
+El ensayo usó modo fiscal `SANDBOX`; no acredita un despliegue productivo ni
+reconstruye documentos posteriores a la copia desde SaaS. El origen sintético
+no tenía una vinculación física previa de `001`, por lo que no se ensayó su
+revinculación. Los paquetes generados, las credenciales y los archivos privados
+del laboratorio se conservan fuera de Git.

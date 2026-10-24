@@ -185,4 +185,3 @@ foreach ($installer in @('Install-TpvBackendWindowsService.ps1', 'Install-TpvBac
         }
     }
 }
-

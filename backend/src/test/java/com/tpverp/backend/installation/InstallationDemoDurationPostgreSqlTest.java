@@ -143,4 +143,3 @@ class InstallationDemoDurationPostgreSqlTest {
     @FunctionalInterface private interface DatabaseAction { void run(Connection db) throws Exception; }
     @FunctionalInterface private interface SqlAction { void run() throws Exception; }
 }
-
