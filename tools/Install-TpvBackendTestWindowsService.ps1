@@ -264,9 +264,20 @@ function Assert-RestrictedTreeAcl([string] $Path, [Security.Principal.SecurityId
 }
 
 function Assert-Java25([string] $Path) {
-    $versionOutput = (& $Path -version 2>&1 | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -and [string]::IsNullOrWhiteSpace($versionOutput)) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw "No se pudo ejecutar Java para comprobar la version: $Path"
+    }
+    $previousErrorAction = $ErrorActionPreference
+    try {
+        # Windows PowerShell 5.1 reports native stderr as NativeCommandError under Stop.
+        $ErrorActionPreference = 'Continue'
+        $versionOutput = ((& $Path -version 2>&1 | ForEach-Object { $_.ToString() }) -join "`n").Trim()
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorAction
+    }
+    if ($null -eq $exitCode -or $exitCode -ne 0) {
+        throw "No se pudo ejecutar Java para comprobar la version: $Path (codigo $exitCode): $versionOutput"
     }
     $match = [Regex]::Match($versionOutput, '(?m)(?:version\s+"|openjdk\s+|java\s+)(\d+)')
     if (-not $match.Success -or [int]$match.Groups[1].Value -ne 25) {
