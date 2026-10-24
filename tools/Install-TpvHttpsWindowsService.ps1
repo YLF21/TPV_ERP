@@ -29,6 +29,15 @@ function Assert-TpvWinSw3([string] $Path) {
     }
 }
 
+function Assert-TpvWinSwStartupPolicy([xml] $Definition) {
+    # WinSW 3 alpha.11 AutoRefresh requests SERVICE_ALL_ACCESS as the service
+    # account before ServiceBase.Run. Only the elevated installer may refresh SCM.
+    $nodes = $Definition.SelectNodes('/service/autoRefresh')
+    if ($nodes.Count -ne 1 -or $nodes[0].InnerText -cne 'false') {
+        throw 'WinSW exige autoRefresh=false; vuelva a registrar con el instalador aprobado antes de arrancar.'
+    }
+}
+
 function Assert-TpvScmIdentity([string] $Id, [string] $Executable, [string] $Account,
     [switch] $Stopped, [string] $StartMode = '') {
     $registered = Get-CimInstance -ClassName Win32_Service -Filter "Name = '$Id'"
@@ -66,6 +75,7 @@ function Register-TpvNewService([string] $Executable, [string] $XmlPath, [string
     $definition = [xml]::new()
     $definition.XmlResolver = $null
     $definition.LoadXml($canonical)
+    Assert-TpvWinSwStartupPolicy $definition
     if ([string]$definition.service.id -cne $Id -or [string]$definition.service.startmode -cne 'Manual' -or
         [string]$definition.service.serviceaccount.username -cne $Account) {
         throw 'El XML no declara el registro manual y la identidad aprobados.'
@@ -257,6 +267,7 @@ function New-TpvWinSwXml([string] $Id, [string] $BackendId, [string] $CaddyPath,
   <arguments>$(& $escape $args)</arguments>
   <workingdirectory>$(& $escape $Root)</workingdirectory>
   <startmode>Manual</startmode>
+  <autoRefresh>false</autoRefresh>
   <depend>$(& $escape $BackendId)</depend>
   <env name="TPV_HTTPS_PUBLIC_URL" value="$(& $escape $PublicOrigin)" />
   <env name="TPV_HTTPS_BACKEND_URL" value="$(& $escape $BackendOrigin)" />
@@ -445,6 +456,10 @@ if ($Phase -eq 'Start') {
     if ($null -eq $service) { throw 'Registre primero el servicio HTTPS.' }
     $sid = Get-TpvServiceSid $ServiceName
     Assert-InstalledGateway $install $ServiceName $BackendServiceName $caddyHash $wrapperHash $certHash $keyHash $publicOrigin $backendOrigin $sid
+    $installedXml = [xml]::new()
+    $installedXml.XmlResolver = $null
+    $installedXml.Load($xml)
+    Assert-TpvWinSwStartupPolicy $installedXml
 }
 if ($Preflight) {
     Write-Host "Preflight $Phase para $ServiceName ($publicOrigin -> $backendOrigin). Sin cambios." -ForegroundColor Yellow
@@ -453,6 +468,7 @@ if ($Preflight) {
 if ($Phase -eq 'Start') {
     if ($PSCmdlet.ShouldProcess($ServiceName, 'Habilitar inicio automatico y arrancar gateway HTTPS')) {
         try {
+            Assert-TpvWinSwStartupPolicy $installedXml
             Assert-TpvScmIdentity $ServiceName $exe "NT SERVICE\$ServiceName"
             Set-Service -Name $ServiceName -StartupType Automatic
             if ($service.State -ne 'Running') {

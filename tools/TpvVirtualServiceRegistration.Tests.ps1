@@ -5,7 +5,7 @@ foreach ($installer in @('Install-TpvBackendWindowsService.ps1', 'Install-TpvBac
         $path = Join-Path $PSScriptRoot $installer
         $errors = $null
         $ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$errors)
-        foreach ($name in @('Assert-TpvWinSw3', 'Assert-TpvScmIdentity', 'Remove-TpvNewRegistration', 'Register-TpvNewService')) {
+        foreach ($name in @('Assert-TpvWinSw3', 'Assert-TpvWinSwStartupPolicy', 'Assert-TpvScmIdentity', 'Remove-TpvNewRegistration', 'Register-TpvNewService')) {
             $definition = $ast.FindAll({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst]}, $true) |
                 Where-Object Name -eq $name
             . ([scriptblock]::Create($definition.Extent.Text))
@@ -30,7 +30,7 @@ foreach ($installer in @('Install-TpvBackendWindowsService.ps1', 'Install-TpvBac
         }
         BeforeEach {
             $xmlPath = Join-Path $TestDrive 'service.xml'
-            $canonical = '<service><id>TPVERPBackend</id><startmode>Manual</startmode><serviceaccount><username>NT SERVICE\TPVERPBackend</username></serviceaccount></service>'
+            $canonical = '<service><id>TPVERPBackend</id><startmode>Manual</startmode><autoRefresh>false</autoRefresh><serviceaccount><username>NT SERVICE\TPVERPBackend</username></serviceaccount></service>'
             [IO.File]::WriteAllText($xmlPath,$canonical)
             $global:tpvRegistrationTestState = @{
                 Service=$null; Xml=$xmlPath; Calls=@(); InstallExit=0; ChangeExit=0; KeepWrongAccount=$false; DeleteExit=0
@@ -110,6 +110,54 @@ foreach ($installer in @('Install-TpvBackendWindowsService.ps1', 'Install-TpvBac
             $global:tpvRegistrationTestState.Service.StartMode | Should Be 'Disabled'
             $global:tpvRegistrationTestState.Service.State | Should Be 'Stopped'
         }
+        It 'rejects implicit, enabled or duplicate auto refresh before creating a service' {
+            foreach ($unsafe in @('', '<autoRefresh>true</autoRefresh>',
+                    '<autoRefresh>false</autoRefresh><autoRefresh>false</autoRefresh>')) {
+                [IO.File]::WriteAllText($xmlPath, $canonical.Replace('<autoRefresh>false</autoRefresh>', $unsafe))
+                Assert-RegistrationThrows { Register-TpvNewService 'Invoke-TestWinSw' $xmlPath 'TPVERPBackend' 'NT SERVICE\TPVERPBackend' }
+            }
+            $global:tpvRegistrationTestState.Calls.Count | Should Be 0
+            Assert-MockCalled Invoke-CimMethod -Times 0 -Exactly -Scope It
+        }
+        It 'starts an approved virtual service without changing its identity or security descriptor' {
+            $global:tpvRegistrationTestState.Service=[pscustomobject]@{
+                PathName='Invoke-TestWinSw'; StartName='NT SERVICE\TPVERPBackend'; State='Stopped'; StartMode='Manual'
+            }
+            Mock Set-Service {}
+            Mock Invoke-TestWinSw { $global:LASTEXITCODE=0 }
+            $Phase='Start';$ServiceName='TPVERPBackend';$serviceExe='Invoke-TestWinSw';$exe=$serviceExe
+            $expectedStartName='NT SERVICE\TPVERPBackend';$service=$global:tpvRegistrationTestState.Service
+            $installedXml=[xml]$canonical
+            $startBlock=$ast.FindAll({param($n)
+                $n -is [System.Management.Automation.Language.IfStatementAst] -and
+                $n.Clauses[0].Item1.Extent.Text -eq '$Phase -eq ''Start''' -and
+                $n.Extent.Text -match 'Habilitar inicio automatico'
+            },$true) | Select-Object -First 1
+            $startAction=[scriptblock]::Create('[CmdletBinding(SupportsShouldProcess=$true)]param()'+[Environment]::NewLine+$startBlock.Extent.Text)
+            & $startAction -Confirm:$false
+            Assert-MockCalled Set-Service -Times 1 -Exactly -Scope It -ParameterFilter {$StartupType -eq 'Automatic'}
+            Assert-MockCalled Set-Service -Times 0 -Exactly -Scope It -ParameterFilter {$StartupType -eq 'Manual'}
+            Assert-MockCalled Invoke-TestWinSw -Times 1 -Exactly -Scope It -ParameterFilter {$Operation -eq 'start'}
+            Assert-MockCalled Invoke-CimMethod -Times 0 -Exactly -Scope It
+        }
+        It 'refuses automatic startup and wrapper execution when auto refresh is enabled' {
+            $global:tpvRegistrationTestState.Service=[pscustomobject]@{
+                PathName='Invoke-TestWinSw'; StartName='NT SERVICE\TPVERPBackend'; State='Stopped'; StartMode='Manual'
+            }
+            Mock Set-Service {}
+            $Phase='Start';$ServiceName='TPVERPBackend';$serviceExe='Invoke-TestWinSw';$exe=$serviceExe
+            $expectedStartName='NT SERVICE\TPVERPBackend';$service=$global:tpvRegistrationTestState.Service
+            $installedXml=[xml]$canonical.Replace('<autoRefresh>false</autoRefresh>', '<autoRefresh>true</autoRefresh>')
+            $startBlock=$ast.FindAll({param($n)
+                $n -is [System.Management.Automation.Language.IfStatementAst] -and
+                $n.Clauses[0].Item1.Extent.Text -eq '$Phase -eq ''Start''' -and
+                $n.Extent.Text -match 'Habilitar inicio automatico'
+            },$true) | Select-Object -First 1
+            $startAction=[scriptblock]::Create('[CmdletBinding(SupportsShouldProcess=$true)]param()'+[Environment]::NewLine+$startBlock.Extent.Text)
+            Assert-RegistrationThrows { & $startAction -Confirm:$false }
+            Assert-MockCalled Set-Service -Times 0 -Exactly -Scope It -ParameterFilter {$StartupType -eq 'Automatic'}
+            $global:tpvRegistrationTestState.Calls.Count | Should Be 0
+        }
         It 'does not mutate a preexisting service' {
             $global:tpvRegistrationTestState.Service=[pscustomobject]@{PathName='other.exe'}
             Assert-RegistrationThrows { Register-TpvNewService 'Invoke-TestWinSw' $xmlPath 'TPVERPBackend' 'NT SERVICE\TPVERPBackend' }
@@ -121,6 +169,7 @@ foreach ($installer in @('Install-TpvBackendWindowsService.ps1', 'Install-TpvBac
                 PathName='Invoke-TestWinSw'; StartName='LocalSystem'; State='Stopped'; StartMode='Manual'
             }
             Mock Set-Service {}
+            $installedXml=[xml]$canonical
             $Phase='Start';$ServiceName='TPVERPBackend';$serviceExe='Invoke-TestWinSw';$exe=$serviceExe
             $expectedStartName='NT SERVICE\TPVERPBackend';$service=$global:tpvRegistrationTestState.Service
             $startBlock=$ast.FindAll({param($n)

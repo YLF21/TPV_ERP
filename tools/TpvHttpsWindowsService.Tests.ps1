@@ -94,6 +94,7 @@ Describe 'TPV HTTPS Windows service installer' {
         $xml = [xml]$xmlText
         $xml.service.id | Should Be 'TPVERPHTTPS'
         $xml.service.startmode | Should Be 'Manual'
+        $xml.service.autoRefresh | Should Be 'false'
         $xml.service.depend | Should Be 'TPVERPBackend'
         $xml.service.serviceaccount.username | Should Be 'NT SERVICE\TPVERPHTTPS'
         $xml.service.executable | Should Be 'C:\ProgramData\TPV ERP\HTTPS\caddy.exe'

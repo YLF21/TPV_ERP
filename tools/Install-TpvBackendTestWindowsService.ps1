@@ -61,6 +61,15 @@ function Assert-TpvWinSw3([string] $Path) {
     }
 }
 
+function Assert-TpvWinSwStartupPolicy([xml] $Definition) {
+    # WinSW 3 alpha.11 AutoRefresh requests SERVICE_ALL_ACCESS as the service
+    # account before ServiceBase.Run. Only the elevated installer may refresh SCM.
+    $nodes = $Definition.SelectNodes('/service/autoRefresh')
+    if ($nodes.Count -ne 1 -or $nodes[0].InnerText -cne 'false') {
+        throw 'WinSW exige autoRefresh=false; vuelva a registrar con el instalador aprobado antes de arrancar.'
+    }
+}
+
 function Assert-TpvScmIdentity([string] $Id, [string] $Executable, [string] $Account,
     [switch] $Stopped, [string] $StartMode = '') {
     $registered = Get-CimInstance -ClassName Win32_Service -Filter "Name = '$Id'"
@@ -98,6 +107,7 @@ function Register-TpvNewService([string] $Executable, [string] $XmlPath, [string
     $definition = [xml]::new()
     $definition.XmlResolver = $null
     $definition.LoadXml($canonical)
+    Assert-TpvWinSwStartupPolicy $definition
     if ([string]$definition.service.id -cne $Id -or [string]$definition.service.startmode -cne 'Manual' -or
         [string]$definition.service.serviceaccount.username -cne $Account) {
         throw 'El XML no declara el registro manual y la identidad aprobados.'
@@ -473,6 +483,7 @@ if ($Phase -eq 'Start') {
     $installedXml = [xml]::new()
     $installedXml.XmlResolver = $null
     $installedXml.Load($serviceXml)
+    Assert-TpvWinSwStartupPolicy $installedXml
     $expectedArguments = "--enable-native-access=ALL-UNNAMED -jar `"$releaseJar`" --spring.profiles.active=lab-bundle --server.address=$ListenAddress --server.port=$Port$publicUrlArgument `"--spring.config.additional-location=$configurationUri`""
     if ([string]$installedXml.service.executable -cne $java -or
         [string]$installedXml.service.arguments -cne $expectedArguments -or
@@ -497,6 +508,7 @@ if ($Preflight) {
 if ($Phase -eq 'Start') {
     if ($PSCmdlet.ShouldProcess($ServiceName, 'Habilitar inicio automatico y arrancar tras verificar ACL y release')) {
         try {
+            Assert-TpvWinSwStartupPolicy $installedXml
             Assert-TpvScmIdentity $ServiceName $serviceExe $expectedStartName
             Set-Service -Name $ServiceName -StartupType Automatic
             & $serviceExe start
@@ -600,6 +612,7 @@ if ($PSCmdlet.ShouldProcess($install, "Instalar/actualizar $ServiceName con rele
   <arguments>--enable-native-access=ALL-UNNAMED -jar &quot;$escapedJar&quot; --spring.profiles.active=lab-bundle --server.address=$escapedListen --server.port=$Port$(ConvertTo-XmlText $publicUrlArgument) &quot;--spring.config.additional-location=$escapedConfigurationUri&quot;</arguments>
   <workingdirectory>$escapedInstall</workingdirectory>
   <startmode>Manual</startmode>
+  <autoRefresh>false</autoRefresh>
   <env name="TPV_VERIFACTU_SERVICE_ACCOUNT" value="$([Security.SecurityElement]::Escape($expectedStartName))" />
   $publicUrlEnvironment
   $accountXml

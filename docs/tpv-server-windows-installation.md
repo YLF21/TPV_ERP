@@ -34,6 +34,19 @@ el JAR, la configuración Spring y los secretos no se incorporan al bundle de
 instalación conjunta. No incluya contraseñas, tokens ni claves en la línea de
 comandos ni en esta tabla de parámetros.
 
+Los XML de backend y HTTPS desactivan expresamente `autoRefresh`. En WinSW
+3.0.0-alpha.11, el refresco automático previo al arranque solicita control total
+del servicio y puede intentar restablecer el inicio manual del XML. La cuenta
+virtual conserva sus permisos: el instalador elevado aplica los cambios mediante
+`refresh` durante el registro o actualización. El preflight de arranque rechaza
+XML anteriores sin `<autoRefresh>false</autoRefresh>`; actualícelos mediante la
+fase `Register` del instalador aprobado antes de ejecutar `Start`. No conceda
+control total del servicio a su cuenta virtual para resolver este error.
+
+Referencias de WinSW 3.0.0-alpha.11:
+[AutoRefresh y DoRefresh](https://github.com/winsw/winsw/blob/v3.0.0-alpha.11/src/WinSW/Program.cs#L1003-L1064),
+[OpenService con acceso predeterminado All](https://github.com/winsw/winsw/blob/v3.0.0-alpha.11/src/WinSW.Core/Native/Service.cs#L154-L162).
+
 ## Orígenes y puertos
 
 El backend escucha por HTTP en `127.0.0.1` por defecto, o en `::1` si se
