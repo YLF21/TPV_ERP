@@ -8,6 +8,18 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+function ConvertFrom-TpvHttpJson([object] $Content) {
+    # Windows PowerShell may return vendor JSON media types as bytes instead of text.
+    if ($Content -is [byte[]]) {
+        $json = [Text.UTF8Encoding]::new($false, $true).GetString($Content)
+    } elseif ($Content -is [string]) {
+        $json = $Content
+    } else {
+        throw 'La respuesta HTTP no contiene JSON de texto o UTF-8.'
+    }
+    return ConvertFrom-Json -InputObject $json -ErrorAction Stop
+}
+
 function Assert-PlainFile([string] $Value, [string] $Description) {
     $full = [IO.Path]::GetFullPath($Value)
     if (-not [IO.Path]::IsPathRooted($full)) { throw "$Description debe tener ruta absoluta." }
@@ -449,7 +461,7 @@ try {
         $readyNow = $false
         try {
             $response = Invoke-WebRequest -Uri "$($service.LocalUrl)/actuator/health/readiness" -UseBasicParsing -TimeoutSec 3
-            $health = $response.Content | ConvertFrom-Json -ErrorAction Stop
+            $health = ConvertFrom-TpvHttpJson -Content $response.Content
             $readyNow = $response.StatusCode -eq 200 -and $health.status -ceq 'UP'
         } catch { }
         if (-not $readyNow) { $result.state = 'ACTIVATED_SERVICE_UNREADY' }
@@ -477,7 +489,7 @@ try {
         for ($attempt = 0; $attempt -lt 45; $attempt++) {
             try {
                 $response = Invoke-WebRequest -Uri "$($service.LocalUrl)/actuator/health/readiness" -UseBasicParsing -TimeoutSec 3
-                $health = $response.Content | ConvertFrom-Json -ErrorAction Stop
+                $health = ConvertFrom-TpvHttpJson -Content $response.Content
                 if ($response.StatusCode -eq 200 -and $health.status -ceq 'UP') { $ready = $true; break }
             } catch { Start-Sleep -Seconds 2 }
         }
