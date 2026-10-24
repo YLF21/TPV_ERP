@@ -21,7 +21,7 @@ import com.tpverp.backend.terminal.TerminalRepository;
 import java.security.KeyPairGenerator;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -63,7 +63,7 @@ class InstallationBootstrapServiceTest {
 				terminalRepository,
 				identityStore,
 				passwordEncoder,
-				Clock.fixed(Instant.parse("2026-06-08T10:00:00Z"), ZoneOffset.UTC));
+				Clock.fixed(Instant.parse("2026-10-24T10:00:00Z"), ZoneId.of("Atlantic/Canary")));
 	}
 
 	@Test
@@ -87,7 +87,9 @@ class InstallationBootstrapServiceTest {
 		verify(terminalRepository, never()).save(any(Terminal.class));
 
 		assertThat(installation.getValue().getDemoHasta())
-				.isEqualTo(Instant.parse("2026-07-08T10:00:00Z"));
+				.isEqualTo(Instant.parse("2026-11-23T10:00:00Z"));
+		assertThat(java.time.Duration.between(installation.getValue().getCreadaEn(),
+				installation.getValue().getDemoHasta()).toHours()).isEqualTo(720);
 		assertThat(role.getValue().getNombre()).isEqualTo("ADMIN");
 		assertThat(role.getValue().isProtegido()).isTrue();
 		assertThat(user.getValue().getNombre()).isEqualTo("ADMIN");

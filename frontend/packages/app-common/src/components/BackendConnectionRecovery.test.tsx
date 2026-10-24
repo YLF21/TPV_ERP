@@ -2,6 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prepareOfflineApplicationClose, resetOfflineApplicationClosePreparation } from "../sale/offlineClosePreparation";
 import { BackendConnectionRecovery } from "./BackendConnectionRecovery";
@@ -77,6 +78,30 @@ describe("BackendConnectionRecovery", () => {
     expect(retry).toHaveBeenCalledTimes(1);
     expect(onRecovered).toHaveBeenCalledTimes(1);
     expect(closeApplication).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["es", "Recuperar desde copia"],
+    ["en", "Recover from backup"],
+    ["zh", "从备份恢复"],
+  ] as const)("offers keyboard access to backup recovery in %s", async (locale, label) => {
+    status.mockResolvedValue(offline);
+    const onOpenDisasterRecovery = vi.fn();
+    const onOpenMaintenance = vi.fn();
+    render(<BackendConnectionRecovery locale={locale} onOpenMaintenance={onOpenMaintenance}
+      onOpenDisasterRecovery={onOpenDisasterRecovery} />);
+    const retryButton = await screen.findByRole("button", { name: locale === "es" ? "Reintentar" : locale === "en" ? "Retry" : "重试" });
+    const recoveryButton = screen.getByRole("button", { name: label });
+    const user = userEvent.setup();
+    await waitFor(() => expect(retryButton).toHaveFocus());
+    expect(document.getElementById("root")?.inert).toBe(true);
+    await user.tab();
+    await user.tab();
+    expect(recoveryButton).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(onOpenDisasterRecovery).toHaveBeenCalledOnce();
+    expect(onOpenMaintenance).not.toHaveBeenCalled();
+    expect(retry).not.toHaveBeenCalled();
   });
 
   it("prepares offline data before closing and blocks closing if preparation fails", async () => {

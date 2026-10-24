@@ -1355,7 +1355,7 @@ registerIpc("tpv:disaster-recovery:maintenance", async (_event, request) => {
   try {
     await new Promise((resolve, reject) => {
       const process = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
-        "-Action", request.action], { detached: true, stdio: "ignore", windowsHide: false });
+        "-Action", request.action], { detached: false, stdio: "ignore", windowsHide: false });
       process.once("error", reject);
       process.once("spawn", () => { process.unref(); resolve(); });
     });

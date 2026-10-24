@@ -11,7 +11,19 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-$bundle = & (Join-Path $PSScriptRoot 'Test-TpvBackendProductionBundle.ps1') -BundleDirectory $BundleDirectory -ExpectedReleaseId $ExpectedReleaseId -AsObject
+try {
+    $bundle = & (Join-Path $PSScriptRoot 'Test-TpvBackendProductionBundle.ps1') `
+        -BundleDirectory $BundleDirectory -ExpectedReleaseId $ExpectedReleaseId -AsObject
+} catch {
+    if ($_.Exception.Message -notmatch 'marcador TEST_ONLY') { throw }
+    $policy = & (Join-Path $PSScriptRoot 'Resolve-TpvBackendInstalledBundleVerifier.ps1') -BundleDirectory $BundleDirectory
+    if (-not $policy.TestOnly -or $policy.Bundle.ReleaseId -cne $ExpectedReleaseId) {
+        throw 'La release TEST_ONLY instalada no coincide con ExpectedReleaseId.'
+    }
+    & (Join-Path $PSScriptRoot 'Assert-TpvTestLabContext.ps1') `
+        -InstalledServiceXml (Join-Path $env:ProgramData 'TPV ERP\Backend\TPVERPBackend.xml') -ApplyCliEnvironment | Out-Null
+    $bundle = $policy.Bundle
+}
 if ($Action -ne 'status' -and -not $Execute) { throw 'La operación requiere mantenimiento autorizado.' }
 if ($Action -eq 'receive' -and $RecoveryId -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') {
     throw 'El ID de recuperación autorizado no es válido.'

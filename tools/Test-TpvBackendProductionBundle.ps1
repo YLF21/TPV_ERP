@@ -114,6 +114,10 @@ try {
             Fail "el JAR contiene entradas ZIP duplicadas (ignorando mayusculas): $entryName"
         }
     }
+    if ($null -ne $zip.GetEntry('META-INF/tpv-test-bundle.properties') -or
+        $null -ne $zip.GetEntry('BOOT-INF/classes/META-INF/tpv-test-bundle.properties')) {
+        Fail 'el marcador TEST_ONLY impide cualquier promocion a produccion'
+    }
     $hasLib = ('BOOT-INF/lib/' -in $entryNames) -or
         (@($entryNames | Where-Object { $_ -like 'BOOT-INF/lib/*.jar' }).Count -gt 0)
     if ('BOOT-INF/classes/' -notin $entryNames -or -not $hasLib) {
@@ -145,7 +149,8 @@ try {
         if ($hasRecoveryCli) {
             $requiredTools += @('Invoke-TpvDisasterRecovery.ps1','Start-TpvDisasterRecoveryMaintenance.ps1')
         }
-        foreach ($toolName in $requiredTools) {
+        foreach ($toolName in @($requiredTools + @($tools.PSObject.Properties.Name) | Select-Object -Unique)) {
+            if ($toolName -notmatch '^[A-Za-z0-9_.-]+\.ps(?:1|m1)$') { Fail 'Nombre de herramienta no permitido en el manifiesto.' }
             $toolPath = Join-Path (Join-Path $resolvedBundle 'tools') $toolName
             Assert-NoReparsePath $toolPath 'Herramienta de mantenimiento'
             $property = $tools.PSObject.Properties[$toolName]

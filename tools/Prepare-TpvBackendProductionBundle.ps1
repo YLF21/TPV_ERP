@@ -46,9 +46,9 @@ $projectVersion = [string]$pom.project.version
 if ([string]::IsNullOrWhiteSpace($projectVersion)) {
     throw 'No se pudo resolver project.version del pom.xml.'
 }
-if ($ExpectedVersion -cne $projectVersion.Trim()) {
-    throw "ExpectedVersion debe coincidir con project.version ($($projectVersion.Trim())); el script no cambia el nombre del JAR Maven."
-}
+# Maven identifies the build artifact; the fiscal release profile identifies the
+# public system version. They may differ without changing the JAR contents.
+$projectVersion = $projectVersion.Trim()
 $expectedDeclaration = Join-Path $backend "src\main\resources\META-INF\fiscal\declaracion-responsable-$ExpectedVersion.pdf"
 
 if (-not [string]::IsNullOrWhiteSpace($DeclarationPdf) -and
@@ -110,7 +110,7 @@ if (-not $NoBuild) {
     finally { Pop-Location }
 }
 
-$targetJar = Join-Path $backend "target\tpv-erp-backend-$ExpectedVersion.jar"
+$targetJar = Join-Path $backend "target\tpv-erp-backend-$projectVersion.jar"
 if (-not (Test-Path -LiteralPath $targetJar -PathType Leaf)) {
     throw "No existe el fat JAR esperado: $targetJar"
 }
@@ -122,7 +122,7 @@ if (-not (Test-Path -LiteralPath $targetSidecar -PathType Leaf)) {
 $resolvedOutput = [IO.Path]::GetFullPath((Join-Path $root $OutputDirectory))
 if ([IO.Path]::GetPathRoot($resolvedOutput) -eq $resolvedOutput) { throw 'OutputDirectory no puede ser la raiz de una unidad.' }
 New-Item -ItemType Directory -Path $resolvedOutput -Force | Out-Null
-$outputJar = Join-Path $resolvedOutput (Split-Path -Leaf $targetJar)
+$outputJar = Join-Path $resolvedOutput "tpv-erp-backend-$ExpectedVersion.jar"
 $sourceHash = (Get-FileHash -LiteralPath $targetJar -Algorithm SHA256).Hash.ToUpperInvariant()
 if (Test-Path -LiteralPath $outputJar -PathType Leaf) {
     $existingHash = (Get-FileHash -LiteralPath $outputJar -Algorithm SHA256).Hash.ToUpperInvariant()
@@ -141,7 +141,8 @@ if (Test-Path -LiteralPath "$outputJar.sha256" -PathType Leaf) {
 
 $maintenanceNames = @('Invoke-TpvServerTransfer.ps1', 'Start-TpvServerTransferMaintenance.ps1',
     'Invoke-TpvDisasterRecovery.ps1', 'Start-TpvDisasterRecoveryMaintenance.ps1',
-    'Test-TpvBackendProductionBundle.ps1', 'Invoke-TpvBackupRestoreOffline.ps1', 'Test-TpvBackupRestoreOfflinePreflight.ps1')
+    'Test-TpvBackendProductionBundle.ps1', 'Invoke-TpvBackupRestoreOffline.ps1', 'Test-TpvBackupRestoreOfflinePreflight.ps1',
+    'Resolve-TpvBackendInstalledBundleVerifier.ps1')
 $maintenanceDirectory = Join-Path $resolvedOutput 'tools'
 New-Item -ItemType Directory -Path $maintenanceDirectory -Force | Out-Null
 $maintenanceHashes = [ordered]@{}

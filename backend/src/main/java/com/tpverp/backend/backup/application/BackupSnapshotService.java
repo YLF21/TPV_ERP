@@ -67,6 +67,7 @@ public class BackupSnapshotService {
                     values.put("installationId", installationId.toString());
                     values.put("applicationVersion", applicationVersion);
                     values.putAll(snapshotSummary(connection));
+                    com.tpverp.backend.verifactu.TestBundlePolicy.load().enrichSnapshot(connection, values);
                     enricher.enrich(connection, values);
                     // Keep the exporting transaction open until pg_dump has finished importing/reading it.
                     commands.dump(dump, snapshot);

@@ -974,7 +974,9 @@ export function App() {
   if (maintenance === "disaster") return <DisasterRecoveryMaintenanceScreen locale={locale} t={createTranslator(locale)} onExit={() => { setMaintenance(null); reactivateLogin(); }} />;
   return <>
     <AppContent locale={locale} setLocale={setLocale} recoveryEpoch={recoveryEpoch} onOpenMaintenance={() => setMaintenance("transfer")} onOpenDisasterRecovery={() => setMaintenance("disaster")} />
-    <Suspense fallback={null}><BackendConnectionRecovery locale={locale} onRecovered={reactivateLogin} onOpenMaintenance={window.tpvDesktop?.serverTransfer ? () => setMaintenance("transfer") : undefined} /></Suspense>
+    <Suspense fallback={null}><BackendConnectionRecovery locale={locale} onRecovered={reactivateLogin}
+      onOpenMaintenance={window.tpvDesktop?.serverTransfer ? () => setMaintenance("transfer") : undefined}
+      onOpenDisasterRecovery={window.tpvDesktop?.disasterRecovery ? () => setMaintenance("disaster") : undefined} /></Suspense>
   </>;
 }
 
