@@ -6,9 +6,9 @@ function New-TestOnlyContractBundle {
     New-Item -ItemType Directory -Path $directory | Out-Null
     $jar = Join-Path $directory 'tpv-erp-backend-0.1.0.jar'
     $commit = 'abcdef012345abcdef012345abcdef012345abcd'
-    $releaseId = 'tpv-erp-test-only-0.1.0-v278-' + $commit.Substring(0, 12)
+    $releaseId = 'tpv-erp-test-only-0.1.0-v279-' + $commit.Substring(0, 12)
     $canonical = "release.id=$releaseId`nsystem.version=0.1.0`ncapability=DUAL`n" +
-        "schema.version=V278`nrelease.sequence=35`nbuild.sequence=1`ncommit.hash=$commit`ndeclaration.hash=`n"
+        "schema.version=V279`nrelease.sequence=36`nbuild.sequence=1`ncommit.hash=$commit`ndeclaration.hash=`n"
     $sha = [Security.Cryptography.SHA256]::Create()
     try { $manifestHash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-', '') }
     finally { $sha.Dispose() }

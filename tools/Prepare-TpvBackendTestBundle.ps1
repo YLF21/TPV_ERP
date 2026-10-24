@@ -3,8 +3,8 @@ param(
     [string] $OutputDirectory,
     [string] $ExpectedVersion = '0.1.0',
     [string] $ExpectedReleaseId,
-    [string] $ExpectedSchemaVersion = 'V278',
-    [Nullable[long]] $ExpectedReleaseSequence = 35,
+    [string] $ExpectedSchemaVersion = 'V279',
+    [Nullable[long]] $ExpectedReleaseSequence = 36,
     [Nullable[long]] $ExpectedBuildSequence = 1
 )
 
@@ -14,12 +14,12 @@ Set-StrictMode -Version Latest
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $commit = (& git -C $root rev-parse --verify HEAD).Trim().ToLowerInvariant()
 if ($commit -notmatch '^[0-9a-f]{40}$') { throw 'No se pudo resolver el commit limpio de TEST_ONLY.' }
-$canonicalReleaseId = "tpv-erp-test-only-0.1.0-v278-$($commit.Substring(0, 12))"
+$canonicalReleaseId = "tpv-erp-test-only-0.1.0-v279-$($commit.Substring(0, 12))"
 if ([string]::IsNullOrWhiteSpace($ExpectedReleaseId)) { $ExpectedReleaseId = $canonicalReleaseId }
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { $OutputDirectory = "artifacts\backend-$ExpectedReleaseId" }
 if ($ExpectedVersion -cne '0.1.0' -or $ExpectedReleaseId -cne $canonicalReleaseId -or
-    $ExpectedSchemaVersion -cne 'V278' -or $ExpectedReleaseSequence -ne 35 -or $ExpectedBuildSequence -ne 1) {
-    throw 'La identidad TEST_ONLY debe coincidir con 0.1.0/V278/r35/b1 y el commit HEAD.'
+    $ExpectedSchemaVersion -cne 'V279' -or $ExpectedReleaseSequence -ne 36 -or $ExpectedBuildSequence -ne 1) {
+    throw 'La identidad TEST_ONLY debe coincidir con 0.1.0/V279/r36/b1 y el commit HEAD.'
 }
 
 function Assert-SafeExpectedSegment([string] $Value, [string] $Name) {

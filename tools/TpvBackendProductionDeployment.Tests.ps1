@@ -188,16 +188,16 @@ Describe 'Despliegue productivo backend Windows' {
         $defaults = & (Join-Path $PSScriptRoot 'Get-TpvBackendReleaseDefaults.ps1')
         [string]$pom.project.version | Should Be '0.1.0'
         $defaults.Version | Should Be '1.0.0'
-        $defaults.ReleaseId | Should Be 'tpv-erp-1.0.0-v278'
-        $defaults.SchemaVersion | Should Be V278
-        $defaults.ReleaseSequence | Should Be 36
+        $defaults.ReleaseId | Should Be 'tpv-erp-1.0.0-v279'
+        $defaults.SchemaVersion | Should Be V279
+        $defaults.ReleaseSequence | Should Be 37
         $defaults.BuildSequence | Should Be 1
     }
 
     It 'publica un JAR Maven 0.1.0 como release 1.0.0 y bloquea el build sin PDF legal' {
         # The PDF bytes and JAR in this isolated fixture are synthetic contract data.
-        $fixtureRoot = New-ContractBundle -ReleaseId 'tpv-erp-1.0.0-v278' `
-            -Version '1.0.0' -SchemaVersion V278 -ReleaseSequence 36
+        $fixtureRoot = New-ContractBundle -ReleaseId 'tpv-erp-1.0.0-v279' `
+            -Version '1.0.0' -SchemaVersion V279 -ReleaseSequence 37
         try {
             $backend = Join-Path $fixtureRoot 'backend'
             $target = Join-Path $backend 'target'
@@ -210,11 +210,11 @@ Describe 'Despliegue productivo backend Windows' {
                 -Destination (Join-Path $target 'tpv-erp-backend-0.1.0.jar.sha256')
             @'
 <project><version>0.1.0</version><profiles><profile><id>production-release</id><properties>
-<tpv.release.id>tpv-erp-1.0.0-v278</tpv.release.id><tpv.release.version>1.0.0</tpv.release.version>
-<tpv.release.sequence>36</tpv.release.sequence><tpv.release.build.sequence>1</tpv.release.build.sequence>
+<tpv.release.id>tpv-erp-1.0.0-v279</tpv.release.id><tpv.release.version>1.0.0</tpv.release.version>
+<tpv.release.sequence>37</tpv.release.sequence><tpv.release.build.sequence>1</tpv.release.build.sequence>
 </properties></profile></profiles></project>
 '@ | Set-Content -LiteralPath (Join-Path $backend 'pom.xml')
-            'schema.version=V278' | Set-Content -LiteralPath (Join-Path $resource 'tpv-erp-release.properties')
+            'schema.version=V279' | Set-Content -LiteralPath (Join-Path $resource 'tpv-erp-release.properties')
             "backend/target/`nartifacts/" | Set-Content -LiteralPath (Join-Path $fixtureRoot '.gitignore')
             foreach ($name in @('Prepare-TpvBackendProductionBundle.ps1', 'Get-TpvBackendReleaseDefaults.ps1',
                     'Invoke-TpvServerTransfer.ps1', 'Start-TpvServerTransferMaintenance.ps1',
@@ -237,8 +237,8 @@ Describe 'Despliegue productivo backend Windows' {
             (Test-Path -LiteralPath $outputJar -PathType Leaf) | Should Be $true
             (& (Join-Path $fixtureTools 'Test-TpvBackendProductionBundle.ps1') `
                 -BundleDirectory (Split-Path -Parent $outputJar) -ExpectedVersion '1.0.0' `
-                -ExpectedReleaseId 'tpv-erp-1.0.0-v278' -ExpectedSchemaVersion V278 `
-                -ExpectedReleaseSequence 36 -ExpectedBuildSequence 1 -AsObject).Status | Should Be 'PROMOTABLE'
+                -ExpectedReleaseId 'tpv-erp-1.0.0-v279' -ExpectedSchemaVersion V279 `
+                -ExpectedReleaseSequence 37 -ExpectedBuildSequence 1 -AsObject).Status | Should Be 'PROMOTABLE'
         }
         finally { Remove-ContractBundle $fixtureRoot }
     }
@@ -319,8 +319,8 @@ Describe 'Despliegue productivo backend Windows' {
         $manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\backend\src\main\resources\META-INF\tpv-erp-release.properties') -Raw
         $manifest | Should Match ([Regex]::Escape("schema.version=$($defaults.SchemaVersion)"))
         $defaults.Version | Should Be '1.0.0'
-        $defaults.ReleaseId | Should Be 'tpv-erp-1.0.0-v278'
-        $defaults.ReleaseSequence | Should Be 36
+        $defaults.ReleaseId | Should Be 'tpv-erp-1.0.0-v279'
+        $defaults.ReleaseSequence | Should Be 37
         $defaults.ReleaseSequence | Should BeGreaterThan 0
     }
 

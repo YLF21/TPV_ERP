@@ -20,10 +20,10 @@ class TestBundlePolicyTest {
         var properties = new Properties();
         properties.setProperty("purpose", "TEST_ONLY"); properties.setProperty("runtime", "SANDBOX");
         properties.setProperty("version", "0.1.0"); properties.setProperty("production.allowed", "false");
-        var identity = new FiscalReleaseManifest("tpv-erp-test-only-0.1.0-v278-aaaaaaaaaaaa", "0.1.0",
-                FiscalProductCapability.DUAL, "V278", 35, 1, "a".repeat(40), null, null);
+        var identity = new FiscalReleaseManifest("tpv-erp-test-only-0.1.0-v279-aaaaaaaaaaaa", "0.1.0",
+                FiscalProductCapability.DUAL, "V279", 36, 1, "a".repeat(40), null, null);
         return TestBundlePolicy.from(properties, new FiscalReleaseManifest(identity.releaseId(), "0.1.0",
-                FiscalProductCapability.DUAL, "V278", 35, 1, identity.commitHash(), null, identity.computedManifestHash()));
+                FiscalProductCapability.DUAL, "V279", 36, 1, identity.commitHash(), null, identity.computedManifestHash()));
     }
 
     @Test void rejectsRealEvenWithNoFiscalEvidenceWithoutWriting() throws Exception {

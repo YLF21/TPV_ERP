@@ -1,6 +1,21 @@
 # Backend 0.1 TEST_ONLY en VirtualBox
 
-Este canal sirve para ensayar el flujo completo en máquinas VirtualBox aisladas. La identidad del paquete es `tpv-erp-test-only-0.1.0-v278-<12 caracteres del commit>`, `capability=DUAL`, esquema V278, secuencia de release 35 y build 1. Su marcador embebido dice `purpose=TEST_ONLY`, `runtime=SANDBOX`, `version=0.1.0` y `production.allowed=false`. El verificador imprime `TEST_ONLY_VERIFIED / NO PROMOTABLE`. El canal productivo 1.0 y su verificador rechazan cualquier JAR con marcador TEST_ONLY, incluso si tuviera un PDF.
+Este canal sirve para ensayar el flujo completo en máquinas VirtualBox aisladas. La identidad del paquete es `tpv-erp-test-only-0.1.0-v279-<12 caracteres del commit>`, `capability=DUAL`, esquema V279, secuencia de release 36 y build 1. Su marcador embebido dice `purpose=TEST_ONLY`, `runtime=SANDBOX`, `version=0.1.0` y `production.allowed=false`. El verificador imprime `TEST_ONLY_VERIFIED / NO PROMOTABLE`. El canal productivo 1.0 y su verificador rechazan cualquier JAR con marcador TEST_ONLY, incluso si tuviera un PDF.
+
+V279 corrige el alta de instalaciones cuando los 30 dias atraviesan un cambio
+horario: la duracion sigue siendo las 720 horas transcurridas que calcula Java.
+La migracion no modifica fechas existentes; valida nuevas instalaciones y cambios
+efectivos de sus fechas. Conserva actualizaciones ajenas a esas fechas en filas
+historicas. No cambia el orden de arranque ni permite adoptar una base REAL
+desde el control temprano TEST_ONLY. Si un primer arranque anterior fallo tras
+Flyway, conservar esa base para diagnostico y usar una nueva base vacia del
+laboratorio; nunca cambiar manualmente su marcador a SANDBOX.
+
+La regresion PostgreSQL `InstallationDemoDurationPostgreSqlTest` requiere
+`TPV_DEMO_TEST_DB_URL`, `TPV_DEMO_TEST_DB_USER` y `TPV_DEMO_TEST_DB_PASSWORD`
+de una base desechable explicita. Crea un esquema aislado en una transaccion y
+revierte todas sus escrituras. Cubre el fallo original, zonas con DST y medias
+horas, conservacion de fechas historicas y rechazo de duraciones invalidas.
 
 ## Preparación del paquete
 
@@ -63,7 +78,7 @@ $args = @{
 }
 .\tools\Install-TpvBackendTestWindowsService.ps1 @args -Phase Register -Preflight
 .\tools\Install-TpvBackendTestWindowsService.ps1 @args -Phase Register
-$installedRelease = "C:\ProgramData\TPV ERP\Backend\releases\$($args.ExpectedReleaseId)-r35-b1"
+$installedRelease = "C:\ProgramData\TPV ERP\Backend\releases\$($args.ExpectedReleaseId)-r36-b1"
 .\tools\Set-TpvBackendTestWindowsAcl.ps1 `
   -BundleDirectory $installedRelease -ConfigurationFile $args.ConfigurationFile
 .\tools\Install-TpvBackendTestWindowsService.ps1 @args -Phase Start -Preflight

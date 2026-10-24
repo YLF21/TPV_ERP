@@ -213,8 +213,8 @@ try {
     if ($PSBoundParameters.ContainsKey('ExpectedReleaseId') -and $releaseId -cne $ExpectedReleaseId) { Fail "release.id esperado $ExpectedReleaseId y recibido $releaseId" }
     if ($version -cne '0.1.0' -or ($PSBoundParameters.ContainsKey('ExpectedVersion') -and $version -cne $ExpectedVersion)) { Fail 'version TEST_ONLY incorrecta' }
     if ($capability -cne 'DUAL') { Fail 'capability TEST_ONLY debe ser DUAL' }
-    if ($releaseId -cnotmatch '^tpv-erp-test-only-0\.1\.0-v278-[0-9a-f]{7,64}$') { Fail 'release.id TEST_ONLY incorrecto' }
-    if ($schema -cne 'V278') { Fail 'schema.version TEST_ONLY incorrecto' }
+    if ($releaseId -cnotmatch '^tpv-erp-test-only-0\.1\.0-v279-[0-9a-f]{7,64}$') { Fail 'release.id TEST_ONLY incorrecto' }
+    if ($schema -cne 'V279') { Fail 'schema.version TEST_ONLY incorrecto' }
     if ($PSBoundParameters.ContainsKey('ExpectedSchemaVersion') -and $schema -cne $ExpectedSchemaVersion) { Fail "schema.version esperado $ExpectedSchemaVersion y recibido $schema" }
     if ($releaseSequenceValue -notmatch '^[0-9]+$' -or $buildSequenceValue -notmatch '^[0-9]+$') {
         Fail 'release.sequence y build.sequence deben ser enteros no negativos'
@@ -234,7 +234,7 @@ try {
     if ($commitHash -notmatch '^[0-9a-f]{40}$' -or -not $releaseId.EndsWith($commitHash.Substring(0, 12))) {
         Fail 'commit.hash TEST_ONLY no coincide con release.id'
     }
-    if ($releaseSequence -ne 35 -or $buildSequence -ne 1) { Fail 'secuencias TEST_ONLY incorrectas' }
+    if ($releaseSequence -ne 36 -or $buildSequence -ne 1) { Fail 'secuencias TEST_ONLY incorrectas' }
     if ($manifestHash -notmatch '^[0-9A-Fa-f]{64}$') { Fail 'manifest.hash no es SHA-256' }
 
     $canonical = "release.id=$releaseId`n" +
