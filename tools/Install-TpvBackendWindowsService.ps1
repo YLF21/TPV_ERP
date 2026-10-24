@@ -114,9 +114,10 @@ function Register-TpvNewService([string] $Executable, [string] $XmlPath, [string
             Assert-TpvScmIdentity $Id $Executable 'LocalSystem' -Stopped -StartMode Disabled
             $registered = Get-CimInstance -ClassName Win32_Service -Filter "Name = '$Id'"
             $changed = Invoke-CimMethod -InputObject $registered -MethodName Change -Arguments @{
-                StartName=$Account; StartPassword=''; StartMode='Manual'
+                StartName=$Account; StartPassword=$null; StartMode='Manual'
             }
-            if ($null -eq $changed -or $changed.ReturnValue -ne 0) { throw "SCM no pudo asignar la cuenta virtual de $Id." }
+            if ($null -eq $changed) { throw "SCM no devolvio resultado al asignar la cuenta virtual de $Id." }
+            if ($changed.ReturnValue -ne 0) { throw "SCM no pudo asignar la cuenta virtual de ${Id}: ReturnValue=$($changed.ReturnValue)." }
         } else {
             & $Executable install --no-elevate
             if ($LASTEXITCODE -ne 0) { throw 'WinSW no pudo registrar el servicio.' }

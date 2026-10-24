@@ -135,7 +135,8 @@ Para crear una cuenta virtual nueva, WinSW 3 intenta resolver su SID antes de
 registrar el servicio. El instalador registra primero una definicion temporal
 LocalSystem **Disabled**, restaura inmediatamente el XML canonico con la cuenta
 virtual, y usa `Win32_Service.Change` para asignar `NT SERVICE\<servicio>`,
-contrasena vacia e inicio Manual. Verifica de nuevo ruta, cuenta, modo Manual y
+contrasena NULL (no cadena vacia) e inicio Manual, como exige
+`ChangeServiceConfigW` para cuentas virtuales. Verifica de nuevo ruta, cuenta, modo Manual y
 estado Stopped en SCM; nunca arranca el registro temporal. Ante un fallo,
 deshabilita y elimina exclusivamente ese nuevo registro. Si la eliminacion
 falla, informa del error y conserva el servicio deshabilitado para inspeccion.

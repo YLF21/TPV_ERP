@@ -345,8 +345,8 @@ Describe 'Despliegue productivo backend Windows' {
         $text | Should Not Match '(?i)Invoke-WebRequest|Start-BitsTransfer|DownloadFile'
         $installerAst = [System.Management.Automation.Language.Parser]::ParseFile($scriptPaths[2], [ref]$null, [ref]$null)
         @($installerAst.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -match '(?i)password|secretvalue' }).Count | Should Be 0
-        # SCM requires an explicitly empty password for a virtual service account.
-        $text | Should Match "StartPassword=''"
+        # ChangeServiceConfig requires NULL for a virtual service account.
+        $text | Should Match 'StartPassword=\$null'
         $text | Should Match 'WinSwSha256'
         $text | Should Match 'ConfigurationFile'
         $text | Should Match 'Preflight'

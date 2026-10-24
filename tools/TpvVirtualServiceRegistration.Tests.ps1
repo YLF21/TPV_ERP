@@ -40,7 +40,8 @@ foreach ($installer in @('Install-TpvBackendWindowsService.ps1', 'Install-TpvBac
                 $s=$global:tpvRegistrationTestState
                 switch($MethodName) {
                     'Change' {
-                        if ($Arguments.StartPassword -cne '' -or $Arguments.StartMode -cne 'Manual') { throw 'Wrong virtual-account change.' }
+                        if (-not $Arguments.ContainsKey('StartPassword') -or $null -ne $Arguments.StartPassword -or
+                            $Arguments.StartMode -cne 'Manual') { throw 'Virtual accounts require an explicit NULL password.' }
                         if ($s.ChangeExit -eq 0 -and -not $s.KeepWrongAccount) {
                             $s.Service.StartName=$Arguments.StartName
                             $s.Service.StartMode=$Arguments.StartMode
@@ -77,7 +78,8 @@ foreach ($installer in @('Install-TpvBackendWindowsService.ps1', 'Install-TpvBac
             ($s.Calls -join ',') | Should Be 'install'
             [IO.File]::ReadAllText($xmlPath) | Should Be $canonical
             Assert-MockCalled Invoke-CimMethod -Times 1 -Exactly -Scope It -ParameterFilter {
-                $MethodName -eq 'Change' -and $Arguments.StartName -eq 'NT SERVICE\TPVERPBackend' -and $Arguments.StartPassword -ceq ''
+                $MethodName -eq 'Change' -and $Arguments.StartName -eq 'NT SERVICE\TPVERPBackend' -and
+                    $Arguments.ContainsKey('StartPassword') -and $null -eq $Arguments.StartPassword
             }
         }
         It 'rolls back a failed account change without starting LocalSystem' {
