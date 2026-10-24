@@ -168,6 +168,8 @@ if ($ApplyCliEnvironment) {
         'TPV_DB_USERNAME' = 'spring.datasource.username'
         'TPV_DB_PASSWORD' = 'spring.datasource.password'
         'PGPASSWORD' = 'spring.datasource.password'
+        'TPV_PG_DUMP_COMMAND' = 'tpv.backup.pg-dump-command'
+        'TPV_PG_RESTORE_COMMAND' = 'tpv.backup.pg-restore-command'
         'TPV_LICENSE_SAAS_URL' = 'tpv.license.saas-url'
         'TPV_SYNC_CENTRAL_URL' = 'tpv.sync.central-url'
         'TPV_KEY_DIRECTORY' = 'tpv.installation.key-directory'
@@ -200,7 +202,8 @@ if ($ApplyCliEnvironment) {
     }
     foreach ($propertyName in @('tpv.installation.key-directory','tpv.backup.default-directory',
             'tpv.product-images.directory','tpv.document-templates.directory','tpv.verifactu.secret-directory',
-            'tpv.backup.restore-journal-path')) {
+            'tpv.backup.restore-journal-path','tpv.backup.pg-dump-command',
+            'tpv.backup.pg-restore-command')) {
         $path = [string]$values[$propertyName]
         if (-not [IO.Path]::IsPathRooted($path) -or [IO.Path]::GetPathRoot($path) -eq [IO.Path]::GetFullPath($path)) {
             throw "$propertyName debe ser una ruta absoluta de la VM."

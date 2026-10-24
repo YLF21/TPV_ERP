@@ -231,6 +231,8 @@ tpv.document-templates.directory=$operational/templates
 tpv.verifactu.secret-directory=$operational/secrets
 tpv.verifactu.export-job-directory=$operational/exports-fiscal
 tpv.backup.restore-journal-path=$operational/restore/journal.properties
+tpv.backup.pg-dump-command=$operational/pg_dump.exe
+tpv.backup.pg-restore-command=$operational/pg_restore.exe
 tpv.test-bundle.tls-reprovisioned=false
 tpv.verifactu.runtime-class=SANDBOX
 tpv.verifactu.endpoint-environment=TEST
@@ -255,10 +257,27 @@ tpv.verifactu.aeat-test-network-enabled=false
             $lab.AclPaths.RestoreJournalRoot | Should Be (Join-Path $directory 'restore')
             $env:TPV_DB_URL | Should Be 'jdbc:postgresql://127.0.0.1:5432/lab_tpv_a'
             $env:PGPASSWORD | Should Be 'lab_secret'
+            $env:TPV_PG_DUMP_COMMAND | Should Be "$operational/pg_dump.exe"
+            $env:TPV_PG_RESTORE_COMMAND | Should Be "$operational/pg_restore.exe"
             (Test-Path Env:PGHOSTADDR) | Should Be $false
             $env:TPV_LICENSE_SAAS_URL | Should Be 'https://10.77.23.20:58443'
             $env:TPV_TRANSFER_PUBLIC_HOST | Should Be '10.77.23.10'
             $env:SPRING_PROFILES_ACTIVE | Should Be 'lab-bundle'
+            $validConfig = Get-Content -LiteralPath $config -Raw
+            $validConfig.Replace("tpv.backup.pg-restore-command=$operational/pg_restore.exe", '') |
+                Set-Content -LiteralPath $config
+            $failure = ''
+            try { & (Join-Path $PSScriptRoot 'Assert-TpvTestLabContext.ps1') `
+                -InstalledServiceXml $xmlPath -ApplyCliEnvironment | Out-Null }
+            catch { $failure = $_.Exception.Message }
+            $failure | Should Match 'tpv.backup.pg-restore-command'
+            $validConfig.Replace("tpv.backup.pg-dump-command=$operational/pg_dump.exe",
+                'tpv.backup.pg-dump-command=pg_dump.exe') | Set-Content -LiteralPath $config
+            $failure = ''
+            try { & (Join-Path $PSScriptRoot 'Assert-TpvTestLabContext.ps1') `
+                -InstalledServiceXml $xmlPath -ApplyCliEnvironment | Out-Null }
+            catch { $failure = $_.Exception.Message }
+            $failure | Should Match 'tpv.backup.pg-dump-command'
         } finally {
             foreach ($entry in @(Get-ChildItem Env:)) {
                 if (-not $priorEnvironment.ContainsKey($entry.Name)) {
