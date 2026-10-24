@@ -318,9 +318,14 @@ try {
             [StringComparison]::OrdinalIgnoreCase)) { throw 'El JAR no pertenece a una release instalada.' }
     if (-not [string]::Equals($PSScriptRoot, (Join-Path $releaseDirectory 'tools'),
             [StringComparison]::OrdinalIgnoreCase)) { throw 'El asistente no pertenece a la release activa.' }
-    $verifier = Assert-PlainFile (Join-Path $PSScriptRoot 'Test-TpvBackendProductionBundle.ps1') 'El verificador de release'
+    $policyScript = Assert-PlainFile (Join-Path $PSScriptRoot 'Resolve-TpvBackendInstalledBundleVerifier.ps1') 'La politica de release instalada'
     $wrapper = Assert-PlainFile (Join-Path $PSScriptRoot 'Invoke-TpvServerTransfer.ps1') 'El ejecutor de traslado'
-    $unboundBundle = & $verifier -BundleDirectory $releaseDirectory -AsObject
+    $policy = & $policyScript -BundleDirectory $releaseDirectory -InstalledServiceXml $serviceXml
+    if ($policy.TestOnly) {
+        & (Join-Path $PSScriptRoot 'Assert-TpvTestLabContext.ps1') -InstalledServiceXml $serviceXml -ApplyCliEnvironment | Out-Null
+    }
+    $verifier = Assert-PlainFile $policy.Verifier 'El verificador de release'
+    $unboundBundle = $policy.Bundle
     $releaseId = [string]$unboundBundle.ReleaseId
     if ($releaseId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$') { throw 'release.id no es válido.' }
     $bundle = & $verifier -BundleDirectory $releaseDirectory -ExpectedReleaseId $releaseId -AsObject
@@ -343,6 +348,12 @@ try {
         }
     }
     Ensure-Environment 'TPV_KEY_DIRECTORY' 'Directorio de claves del servidor destino'
+    if ($policy.TestOnly) {
+        Ensure-Environment 'TPV_DB_URL' 'URL JDBC PostgreSQL local del laboratorio'
+        Ensure-Environment 'TPV_DB_USERNAME' 'Usuario PostgreSQL del laboratorio'
+        Ensure-Environment 'TPV_DB_PASSWORD' 'Contraseña PostgreSQL del laboratorio' -Secret
+        Ensure-Environment 'TPV_LICENSE_SAAS_URL' 'URL SaaS HTTPS local del laboratorio'
+    }
     if ($Action -in @('request', 'receive', 'activate', 'cancel')) {
         Ensure-Environment 'TPV_DB_URL' 'URL JDBC de PostgreSQL destino'
         Ensure-Environment 'TPV_DB_USERNAME' 'Usuario PostgreSQL destino'

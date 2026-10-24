@@ -14,7 +14,7 @@ import org.springframework.core.env.ConfigurableEnvironment;
 
 /** Recovery gets its own journal/protocol; no planned-transfer proof is accepted here. */
 public final class DisasterRecoveryEarlyGuard implements EnvironmentPostProcessor,Ordered {
-    @Override public int getOrder(){return ConfigDataEnvironmentPostProcessor.ORDER+1;}
+    @Override public int getOrder(){return ConfigDataEnvironmentPostProcessor.ORDER+2;}
     @Override public void postProcessEnvironment(ConfigurableEnvironment environment,SpringApplication app) {
         String configured=environment.getProperty("tpv.installation.key-directory");if(configured==null||configured.isBlank())return;
         Path keys=Path.of(configured).toAbsolutePath().normalize();

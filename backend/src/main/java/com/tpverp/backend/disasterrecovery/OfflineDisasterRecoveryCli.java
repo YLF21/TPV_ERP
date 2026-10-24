@@ -20,6 +20,7 @@ public final class OfflineDisasterRecoveryCli {
     private static final SecretProtector MACHINE=new WindowsMachineDpapiSecretProtector();
     private final Path directory,keys;
     private final Properties release=new Properties();
+    private final com.tpverp.backend.verifactu.TestBundlePolicy testPolicy = com.tpverp.backend.verifactu.TestBundlePolicy.load();
     private final RecoveryCentralClient central;
     private final java.util.function.Supplier<char[]> recoverySecret;
     private OfflineDisasterRecoveryCli(Path directory,java.util.function.Supplier<char[]> recoverySecret)throws Exception {
@@ -31,13 +32,15 @@ public final class OfflineDisasterRecoveryCli {
     public static void main(String[] arguments)throws Exception {
         execute(arguments,()->{
             var console=System.console();if(console==null)throw new IllegalStateException("Secure console required for recovery secret");
-            return console.readPassword("Clave de recuperación (no se mostrará): ");
+            return console.readPassword("Clave de recuperaciÃ³n (no se mostrarÃ¡): ");
         });
     }
     // Package-private dependency seam: production always obtains the secret from the secure console above.
     static void execute(String[] arguments,java.util.function.Supplier<char[]> recoverySecret)throws Exception {
         var args=parse(arguments);var cli=new OfflineDisasterRecoveryCli(Path.of(required(args,"directory")),recoverySecret);
-        String action=required(args,"action");if(!action.equals("status"))cli.requireStopped();
+        String action=required(args,"action");
+        cli.testPolicy.requireOfflineDatabase(true);
+        if(!action.equals("status"))cli.requireStopped();
         RecoverySecretHandoff.requireProtectedDirectory(cli.directory);RecoverySecretHandoff.requireProtectedDirectory(cli.keys);
         try(var channel=java.nio.channels.FileChannel.open(cli.directory.resolve("maintenance.lock"),StandardOpenOption.CREATE,StandardOpenOption.WRITE);var lock=channel.tryLock()) {
             if(lock==null)throw new IOException("Another recovery operation is running");
@@ -111,6 +114,7 @@ public final class OfflineDisasterRecoveryCli {
             brk=new BackupKeyStore(keys,MACHINE).loadForRestore(wrapped,secret);Arrays.fill(secret,'\0');secret=null;
             new BackupFileCrypto(1024*1024).decrypt(backup,archive,brk);
             var manifest=manifest(archive);validateManifest(manifest,installation,backupId);
+            testPolicy.requireBackup(manifest);
             material=RecoverySecretsCodec.open(new BackupArchiveService().readPortableCapsule(archive),brk,installation,backupId);
             DisasterRecoveryJournal.freeze(keys,id);
             ObjectNode state=JSON.createObjectNode().put("state","RECEIVING").put("recoveryId",id.toString()).put("installationId",installation.toString())
@@ -122,6 +126,7 @@ public final class OfflineDisasterRecoveryCli {
                 var latest=central.call(id,"inspect","",identity.privateKey());if(!Set.of("DOWNLOAD_AUTHORIZED","SUPPORT_REVIEW").contains(latest.path("state").asText()))throw new IOException("Recovery authorization changed");
                 if(!resumeSnapshot)restore(stage.resolve("database.backup"));
                 try(var db=database()) {
+                    testPolicy.requireDatabase(db, false);
                     BackupSnapshotService.verifyRestoredSnapshot(db,manifest);validateInstallation(db,installation);
                     db.setAutoCommit(false);cancelRestoredTransfers(db);
                     try(var statement=db.prepareStatement("insert into disaster_recovery(id,installation_id,backup_id,backup_sha256,state) values (?,?,?,?,'QUARANTINED')")) {
@@ -133,6 +138,7 @@ public final class OfflineDisasterRecoveryCli {
             archives.replaceTrees(stage.resolve("images"),Path.of(env("TPV_PRODUCT_IMAGE_DIRECTORY")),stage.resolve("templates"),Path.of(env("TPV_DOCUMENT_TEMPLATE_DIRECTORY")));
             boolean safe=false;long unresolved;
             try(var db=database()) {
+                testPolicy.requireDatabase(db, false);
                 db.setAutoCommit(false);maintenance(db,id);RecoveryLocalSecrets.install(db,material);repairCatalogue(db,manifest,descriptor,backup,digest);db.commit();
                 try{RecoveryLocalSecrets.verify(db,material);safe=true;}catch(Exception incomplete){state.put("validationCode","RECOVERY_SECRETS_OR_TLS_REQUIRE_REVIEW");}
                 unresolved=count(db,"select count(*) from payment_terminal_operation where status in ('PENDING','SENT','TIMEOUT','REVIEW_REQUIRED')");
@@ -148,6 +154,7 @@ public final class OfflineDisasterRecoveryCli {
         }finally{if(secret!=null)Arrays.fill(secret,'\0');if(brk!=null)Arrays.fill(brk,(byte)0);if(material!=null)material.values().forEach(value->Arrays.fill(value,(byte)0));Files.deleteIfExists(archive);Files.deleteIfExists(stage.resolve("database.backup"));}
     }
     private JsonNode activate()throws Exception {
+        testPolicy.requireOfflineDatabase(false);
         var state=journal();UUID id=UUID.fromString(state.path("recoveryId").asText());String digest=state.path("backupSha256").asText();
         if("COMPLETE".equals(state.path("state").asText()))return publicStatus(state);
         if(!Set.of("SUPPORT_REVIEW","ACTIVATING","ACTIVATED").contains(state.path("state").asText()))throw new IOException("Destination not ready");
@@ -256,7 +263,7 @@ public final class OfflineDisasterRecoveryCli {
     }
     private void restore(Path dump)throws Exception {
         var process=new ProcessBuilder(System.getenv().getOrDefault("TPV_PG_RESTORE_COMMAND","pg_restore"),"--exit-on-error","--single-transaction","--no-owner","--no-privileges","--no-password","--username="+env("TPV_DB_USERNAME"),"--dbname="+env("TPV_DB_URL").replaceFirst("^jdbc:",""),dump.toString());
-        process.environment().put("PGPASSWORD",env("TPV_DB_PASSWORD"));process.redirectErrorStream(true);var child=process.start();try(var input=child.getInputStream()){input.transferTo(OutputStream.nullOutputStream());}if(child.waitFor()!=0)throw new IOException("Recovery database restore failed; destination stays quarantined");
+        process.environment().put("PGPASSWORD",env("TPV_DB_PASSWORD"));testPolicy.restrictPostgresProcess(process);process.redirectErrorStream(true);var child=process.start();try(var input=child.getInputStream()){input.transferTo(OutputStream.nullOutputStream());}if(child.waitFor()!=0)throw new IOException("Recovery database restore failed; destination stays quarantined");
     }
     private static void requireEmptyDatabase()throws Exception {try(var db=database()){if(count(db,"select count(*) from information_schema.tables where table_schema not in ('pg_catalog','information_schema') and table_type='BASE TABLE'")!=0)throw new IOException("Recovery requires an empty destination database");}}
     private static boolean hasInstallationTable()throws Exception {try(var db=database();var statement=db.createStatement();var rows=statement.executeQuery("select to_regclass('instalacion')")){rows.next();return rows.getString(1)!=null;}}

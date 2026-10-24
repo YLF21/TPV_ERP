@@ -15,8 +15,27 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-$bundle = & (Join-Path $PSScriptRoot 'Test-TpvBackendProductionBundle.ps1') `
-    -BundleDirectory $BundleDirectory -ExpectedReleaseId $ExpectedReleaseId -AsObject
+$bundleRoot = (Resolve-Path -LiteralPath $BundleDirectory -ErrorAction Stop).Path
+$jars = @(Get-ChildItem -LiteralPath $bundleRoot -Filter '*.jar' -File |
+    Where-Object { $_.Name -notmatch '\.original\.jar$' })
+if ($jars.Count -ne 1) { throw 'Se requiere un unico JAR de bundle.' }
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [IO.Compression.ZipFile]::OpenRead($jars[0].FullName)
+try { $testOnly = ($null -ne $zip.GetEntry('META-INF/tpv-test-bundle.properties')) -or
+        ($null -ne $zip.GetEntry('BOOT-INF/classes/META-INF/tpv-test-bundle.properties')) }
+finally { $zip.Dispose() }
+if ($testOnly) {
+    $policy = & (Join-Path $PSScriptRoot 'Resolve-TpvBackendInstalledBundleVerifier.ps1') -BundleDirectory $bundleRoot
+    if (-not $policy.TestOnly -or $policy.Bundle.ReleaseId -cne $ExpectedReleaseId) {
+        throw 'La release TEST_ONLY instalada no coincide con ExpectedReleaseId.'
+    }
+    & (Join-Path $PSScriptRoot 'Assert-TpvTestLabContext.ps1') `
+        -InstalledServiceXml (Join-Path $env:ProgramData 'TPV ERP\Backend\TPVERPBackend.xml') -ApplyCliEnvironment | Out-Null
+    $bundle = $policy.Bundle
+} else {
+    $bundle = & (Join-Path $PSScriptRoot 'Test-TpvBackendProductionBundle.ps1') `
+        -BundleDirectory $bundleRoot -ExpectedReleaseId $ExpectedReleaseId -AsObject
+}
 $preflight = Join-Path $PSScriptRoot 'Test-TpvBackupRestoreOfflinePreflight.ps1'
 $preflightArgs = @{
     BackupFile = $BackupFile; RecoveryFile = $RecoveryFile
@@ -41,6 +60,11 @@ if ([string]::IsNullOrWhiteSpace($JournalFile)) {
         'C:\ProgramData\TPV ERP\restore\tpv-restore-journal.properties'
     } else { $env:TPV_BACKUP_RESTORE_JOURNAL_PATH }
 }
+if ($testOnly -and -not [string]::Equals([IO.Path]::GetFullPath($JournalFile),
+        [IO.Path]::GetFullPath($env:TPV_BACKUP_RESTORE_JOURNAL_PATH),
+        [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'El journal TEST_ONLY debe coincidir con la configuracion instalada.'
+}
 $resolvedJournal = [IO.Path]::GetFullPath($JournalFile)
 $cliArgs = @(
     '-Dloader.main=com.tpverp.backend.backup.application.OfflineRestoreCli',
@@ -63,5 +87,6 @@ if ($PSCmdlet.ShouldProcess($resolvedBackup, 'Ejecutar restauración offline Pos
     Write-Output 'Se solicitará la clave de recuperación en consola segura; no se acepta como parámetro ni se registra.'
     & $JavaExecutable @cliArgs
     if ($LASTEXITCODE -ne 0) { throw "La restauración offline terminó con código $LASTEXITCODE; conserve el journal para recuperación." }
-    Write-Output "Antes del arranque normal finalice con el mismo JAR verificado '$($bundle.Jar)' y la configuracion externa: --spring.profiles.active=prod --spring.main.web-application-type=none --tpv.restore-finalize=$resolvedJournal"
+    $profile = if ($testOnly) { 'lab-bundle' } else { 'prod' }
+    Write-Output "Antes del arranque normal finalice con el mismo JAR verificado '$($bundle.Jar)' y la configuracion externa: --spring.profiles.active=$profile --spring.main.web-application-type=none --tpv.restore-finalize=$resolvedJournal"
 }

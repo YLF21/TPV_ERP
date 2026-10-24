@@ -20,6 +20,38 @@ import org.springframework.mock.env.MockEnvironment;
 class FiscalRuntimeGuardInitializerTest {
 
     @Test
+    void firstSandboxBootAdoptsTheFreshFlywayRealLegacyMarkerWithNoFiscalEvidence() {
+        // V186 creates REAL, V219 labels it LEGACY-V216; the TEST early guard has
+        // already required an empty database before Flyway ran in this boot.
+        var jdbc = jdbc(marker("REAL", "DUAL", "LEGACY-V216", "V216", null, null, null, 0, 0));
+        when(jdbc.queryForList(anyString(), eq(String.class))).thenReturn(List.of("278"));
+        when(jdbc.queryForObject(anyString(), eq(Boolean.class))).thenReturn(false);
+        String release = "tpv-erp-test-only-0.1.0-v278-aaaaaaaaaaaa";
+
+        new FiscalRuntimeGuardInitializer(jdbc,
+                sandbox(release, "0.1.0", FiscalProductCapability.DUAL, 35, 1, "V278"))
+                .run(new DefaultApplicationArguments());
+
+        verify(jdbc).update(org.mockito.ArgumentMatchers.startsWith("update fiscal_runtime_guard"),
+                eq("SANDBOX"), eq("DUAL"), eq(release), eq("V278"),
+                org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(), eq(35L), eq(1L));
+        verify(jdbc).update(contains("insert into fiscal_runtime_release_audit"), any(Object[].class));
+    }
+
+    @Test
+    void realMarkerWithFiscalEvidenceCannotBeAdoptedBySandboxInitializer() {
+        var jdbc = jdbc(marker("REAL", "DUAL", "LEGACY-V216", "V216", null, null, null, 0, 0));
+        when(jdbc.queryForList(anyString(), eq(String.class))).thenReturn(List.of("278"));
+        when(jdbc.queryForObject(anyString(), eq(Boolean.class))).thenReturn(true);
+
+        assertThatThrownBy(() -> new FiscalRuntimeGuardInitializer(jdbc,
+                sandbox("tpv-erp-test-only-0.1.0-v278-aaaaaaaaaaaa", "0.1.0", FiscalProductCapability.DUAL, 35, 1, "V278"))
+                .run(new DefaultApplicationArguments())).hasMessageContaining("restauracion cruzada");
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
+    @Test
     void restartWithTheSameReleaseAndArtifactIsAllowedWithoutWriting() {
         var jdbc = jdbc(marker("SANDBOX", "DUAL", "tpv-erp-dev", "V231", null, null,
                 null, 1, 1));

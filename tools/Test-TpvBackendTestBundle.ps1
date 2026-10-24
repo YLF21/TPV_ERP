@@ -1,0 +1,274 @@
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)]
+    [string] $BundleDirectory,
+    [string] $ExpectedVersion,
+    [string] $ExpectedReleaseId,
+    [string] $ExpectedSchemaVersion,
+    [Nullable[long]] $ExpectedReleaseSequence,
+    [Nullable[long]] $ExpectedBuildSequence,
+    [switch] $AsObject
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+function Assert-SafeExpectedSegment([string] $Value, [string] $Name) {
+    if ([string]::IsNullOrWhiteSpace($Value) -or $Value -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' -or
+        $Value -in @('.', '..')) {
+        Fail "$Name debe ser un segmento seguro sin separadores de ruta"
+    }
+}
+
+function Assert-NoReparsePath([string] $Path, [string] $Description) {
+    $current = [IO.Path]::GetFullPath($Path)
+    while ($true) {
+        if (Test-Path -LiteralPath $current) {
+            $item = Get-Item -LiteralPath $current -Force
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                Fail "$Description contiene un reparse point: $current"
+            }
+        }
+        $parent = [IO.Path]::GetDirectoryName($current)
+        if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $current) { break }
+        $current = $parent
+    }
+}
+
+function Fail([string] $Message) {
+    throw "Bundle TEST_ONLY no verificable: $Message"
+}
+
+function Read-ZipText($Entry) {
+    $stream = $Entry.Open()
+    try {
+        $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $true)
+        try { return $reader.ReadToEnd() }
+        finally { $reader.Dispose() }
+    }
+    finally { $stream.Dispose() }
+}
+
+function Read-ZipBytes($Entry) {
+    $stream = $Entry.Open()
+    try {
+        $memory = [IO.MemoryStream]::new()
+        try {
+            $stream.CopyTo($memory)
+            return $memory.ToArray()
+        }
+        finally { $memory.Dispose() }
+    }
+    finally { $stream.Dispose() }
+}
+
+function Get-Sha256Bytes([byte[]] $Bytes) {
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash($Bytes))).Replace('-', '').ToUpperInvariant() }
+    finally { $sha.Dispose() }
+}
+
+function Get-Property([hashtable] $Properties, [string] $Name) {
+    if (-not $Properties.ContainsKey($Name)) { Fail "falta $Name en META-INF/tpv-erp-release.properties" }
+    $value = [string]$Properties[$Name]
+    if ([string]::IsNullOrWhiteSpace($value) -or $value.Contains('@')) { Fail "$Name esta vacio o sin filtrar" }
+    return $value.Trim()
+}
+
+foreach ($key in @('ExpectedVersion', 'ExpectedReleaseId', 'ExpectedSchemaVersion')) {
+    if ($PSBoundParameters.ContainsKey($key)) { Assert-SafeExpectedSegment $PSBoundParameters[$key] $key }
+}
+if (($null -ne $ExpectedReleaseSequence -and $ExpectedReleaseSequence -lt 0) -or
+    ($null -ne $ExpectedBuildSequence -and $ExpectedBuildSequence -lt 0)) {
+    Fail 'ExpectedReleaseSequence y ExpectedBuildSequence deben ser no negativos'
+}
+
+$resolvedBundle = (Resolve-Path -LiteralPath $BundleDirectory -ErrorAction Stop).Path
+if (-not (Test-Path -LiteralPath $resolvedBundle -PathType Container)) { Fail "BundleDirectory no es un directorio" }
+Assert-NoReparsePath $resolvedBundle 'BundleDirectory'
+
+$jars = @(Get-ChildItem -LiteralPath $resolvedBundle -File -Filter '*.jar' |
+    Where-Object { $_.Name -notmatch '\.original\.jar$' })
+if ($jars.Count -ne 1) { Fail "se esperaba exactamente un JAR (encontrados: $($jars.Count))" }
+$jar = $jars[0]
+$sidecarPath = "$($jar.FullName).sha256"
+if (-not (Test-Path -LiteralPath $sidecarPath -PathType Leaf)) { Fail "falta el sidecar SHA-256 exacto junto al JAR" }
+Assert-NoReparsePath $jar.FullName 'JAR'
+Assert-NoReparsePath $sidecarPath 'Sidecar SHA-256'
+
+$sidecar = (Get-Content -LiteralPath $sidecarPath -Raw).Trim()
+if ($sidecar -notmatch '^[0-9A-Fa-f]{64}(?:\s+\*?[^\r\n]+)?$') {
+    Fail "el sidecar no contiene un SHA-256 valido"
+}
+$declaredArtifactHash = $sidecar.Split([char[]]@(' ', "`t"), [StringSplitOptions]::RemoveEmptyEntries)[0].ToUpperInvariant()
+$actualArtifactHash = (Get-FileHash -LiteralPath $jar.FullName -Algorithm SHA256).Hash.ToUpperInvariant()
+if ($declaredArtifactHash -cne $actualArtifactHash) { Fail "el sidecar no coincide con el JAR" }
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [IO.Compression.ZipFile]::OpenRead($jar.FullName)
+try {
+    $entryNames = @($zip.Entries | ForEach-Object FullName)
+    $seenEntryNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($entryName in $entryNames) {
+        if (-not $seenEntryNames.Add($entryName)) {
+            Fail "el JAR contiene entradas ZIP duplicadas (ignorando mayusculas): $entryName"
+        }
+    }
+    $hasLib = ('BOOT-INF/lib/' -in $entryNames) -or
+        (@($entryNames | Where-Object { $_ -like 'BOOT-INF/lib/*.jar' }).Count -gt 0)
+    if ('BOOT-INF/classes/' -notin $entryNames -or -not $hasLib) {
+        Fail 'el JAR no parece un fat JAR Spring Boot (faltan BOOT-INF/classes o BOOT-INF/lib)'
+    }
+    $hasLauncher = ('org/springframework/boot/loader/JarLauncher.class' -in $entryNames) -or
+        ('org/springframework/boot/loader/launch/JarLauncher.class' -in $entryNames)
+    if (-not $hasLauncher) {
+        Fail 'el JAR no contiene el launcher Spring Boot'
+    }
+    foreach ($requiredEntry in @('org/springframework/boot/loader/launch/PropertiesLauncher.class',
+            'BOOT-INF/classes/com/tpverp/backend/backup/application/OfflineRestoreCli.class')) {
+        if ($requiredEntry -notin $entryNames) { Fail "falta la herramienta offline empaquetada: $requiredEntry" }
+    }
+
+    $hasTransferCli = 'BOOT-INF/classes/com/tpverp/backend/servertransfer/OfflineServerTransferCli.class' -in $entryNames
+    $hasRecoveryCli = 'BOOT-INF/classes/com/tpverp/backend/disasterrecovery/OfflineDisasterRecoveryCli.class' -in $entryNames
+    if ($hasTransferCli -or $hasRecoveryCli) {
+        $toolManifest = Join-Path $resolvedBundle 'maintenance-tools.sha256.json'
+        Assert-NoReparsePath $toolManifest 'Manifiesto de herramientas'
+        if (-not (Test-Path -LiteralPath $toolManifest -PathType Leaf) -or (Get-Item -LiteralPath $toolManifest).Length -gt 64KB) {
+            Fail 'Falta el manifiesto acotado de herramientas de traslado.'
+        }
+        $tools = Get-Content -LiteralPath $toolManifest -Raw | ConvertFrom-Json
+        $requiredTools = @('Test-TpvBackendTestBundle.ps1','Test-TpvBackendProductionBundle.ps1',
+            'Invoke-TpvBackupRestoreOffline.ps1','Test-TpvBackupRestoreOfflinePreflight.ps1',
+            'Resolve-TpvBackendInstalledBundleVerifier.ps1','Assert-TpvTestLabContext.ps1',
+            'Install-TpvBackendTestWindowsService.ps1','Install-TpvHttpsWindowsService.ps1',
+            'Set-TpvBackendWindowsAcl.ps1','Set-TpvBackendTestWindowsAcl.ps1','TpvServerPorts.psm1')
+        if ($hasTransferCli) {
+            $requiredTools += @('Invoke-TpvServerTransfer.ps1','Start-TpvServerTransferMaintenance.ps1')
+        }
+        if ($hasRecoveryCli) {
+            $requiredTools += @('Invoke-TpvDisasterRecovery.ps1','Start-TpvDisasterRecoveryMaintenance.ps1')
+        }
+        foreach ($toolName in @($requiredTools + @($tools.PSObject.Properties.Name) | Select-Object -Unique)) {
+            if ($toolName -notmatch '^[A-Za-z0-9_.-]+\.ps(?:1|m1)$') { Fail 'Nombre de herramienta no permitido en el manifiesto.' }
+            $toolPath = Join-Path (Join-Path $resolvedBundle 'tools') $toolName
+            Assert-NoReparsePath $toolPath 'Herramienta de mantenimiento'
+            $property = $tools.PSObject.Properties[$toolName]
+            if ($null -eq $property -or [string]$property.Value -notmatch '^[0-9A-Fa-f]{64}$' -or -not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
+                Fail "Falta la herramienta verificada: $toolName"
+            }
+            if ((Get-FileHash -LiteralPath $toolPath -Algorithm SHA256).Hash -cne ([string]$property.Value).ToUpperInvariant()) {
+                Fail "No coincide el hash de la herramienta: $toolName"
+            }
+        }
+    }
+
+    if ($null -ne $zip.GetEntry('BOOT-INF/classes/META-INF/tpv-test-bundle.properties')) {
+        Fail 'el marcador TEST_ONLY tiene una ubicacion alternativa no permitida'
+    }
+    $testEntry = $zip.GetEntry('META-INF/tpv-test-bundle.properties')
+    if ($null -eq $testEntry -or $testEntry.Length -gt 4096) { Fail 'falta el marcador TEST_ONLY acotado' }
+    $testProperties = @{}
+    foreach ($line in (Read-ZipText $testEntry) -split "`r?`n") {
+        if ($line -match '^\s*(#|$)') { continue }
+        if ($line -notmatch '^\s*([^=]+?)\s*=\s*(.*)$') { Fail 'marcador TEST_ONLY mal formado' }
+        $name = $matches[1].Trim()
+        if ($testProperties.ContainsKey($name)) { Fail "marcador TEST_ONLY duplicado: $name" }
+        $testProperties[$name] = $matches[2].Trim()
+    }
+    if ($testProperties.Count -ne 4 -or $testProperties['purpose'] -cne 'TEST_ONLY' -or
+        $testProperties['runtime'] -cne 'SANDBOX' -or $testProperties['version'] -cne '0.1.0' -or
+        $testProperties['production.allowed'] -cne 'false') {
+        Fail 'el marcador TEST_ONLY no declara el contrato cerrado de laboratorio'
+    }
+    $manifestEntry = $zip.GetEntry('META-INF/tpv-erp-release.properties')
+    if ($null -eq $manifestEntry) { Fail 'falta META-INF/tpv-erp-release.properties' }
+    if ($manifestEntry.Length -gt 64KB) { Fail 'el manifiesto supera el limite de 64 KiB' }
+    $properties = @{}
+    foreach ($line in (Read-ZipText $manifestEntry) -split "`r?`n") {
+        if ($line -match '^\s*(#|$)') { continue }
+        if ($line -notmatch '^\s*([^=]+?)\s*=\s*(.*)$') { Fail 'el manifiesto contiene una linea no valida' }
+        $propertyName = $matches[1].Trim()
+        if ([string]::IsNullOrWhiteSpace($propertyName)) { Fail 'el manifiesto contiene una clave vacia' }
+        if ($properties.ContainsKey($propertyName)) { Fail "el manifiesto contiene la clave duplicada $propertyName" }
+        $properties[$propertyName] = $matches[2].Trim()
+    }
+
+    $releaseId = Get-Property $properties 'release.id'
+    $version = Get-Property $properties 'system.version'
+    $capability = Get-Property $properties 'capability'
+    $schema = Get-Property $properties 'schema.version'
+    $releaseSequenceValue = Get-Property $properties 'release.sequence'
+    $buildSequenceValue = Get-Property $properties 'build.sequence'
+    $commitHash = Get-Property $properties 'commit.hash'
+    if (-not $properties.ContainsKey('declaration.hash') -or $properties['declaration.hash'] -cne '') {
+        Fail 'declaration.hash debe existir y estar vacio para TEST_ONLY'
+    }
+    $declarationHash = ''
+    $manifestHash = Get-Property $properties 'manifest.hash'
+
+    Assert-SafeExpectedSegment $releaseId 'release.id'
+    Assert-SafeExpectedSegment $version 'system.version'
+    Assert-SafeExpectedSegment $schema 'schema.version'
+    if ($PSBoundParameters.ContainsKey('ExpectedReleaseId') -and $releaseId -cne $ExpectedReleaseId) { Fail "release.id esperado $ExpectedReleaseId y recibido $releaseId" }
+    if ($version -cne '0.1.0' -or ($PSBoundParameters.ContainsKey('ExpectedVersion') -and $version -cne $ExpectedVersion)) { Fail 'version TEST_ONLY incorrecta' }
+    if ($capability -cne 'DUAL') { Fail 'capability TEST_ONLY debe ser DUAL' }
+    if ($releaseId -cnotmatch '^tpv-erp-test-only-0\.1\.0-v278-[0-9a-f]{7,64}$') { Fail 'release.id TEST_ONLY incorrecto' }
+    if ($schema -cne 'V278') { Fail 'schema.version TEST_ONLY incorrecto' }
+    if ($PSBoundParameters.ContainsKey('ExpectedSchemaVersion') -and $schema -cne $ExpectedSchemaVersion) { Fail "schema.version esperado $ExpectedSchemaVersion y recibido $schema" }
+    if ($releaseSequenceValue -notmatch '^[0-9]+$' -or $buildSequenceValue -notmatch '^[0-9]+$') {
+        Fail 'release.sequence y build.sequence deben ser enteros no negativos'
+    }
+    try {
+        $releaseSequence = [long]::Parse($releaseSequenceValue,
+            [Globalization.CultureInfo]::InvariantCulture)
+        $buildSequence = [long]::Parse($buildSequenceValue,
+            [Globalization.CultureInfo]::InvariantCulture)
+    } catch { Fail 'release.sequence o build.sequence exceden el rango permitido' }
+    if ($PSBoundParameters.ContainsKey('ExpectedReleaseSequence') -and $releaseSequence -ne $ExpectedReleaseSequence) {
+        Fail "release.sequence esperado $ExpectedReleaseSequence y recibido $releaseSequence"
+    }
+    if ($PSBoundParameters.ContainsKey('ExpectedBuildSequence') -and $buildSequence -ne $ExpectedBuildSequence) {
+        Fail "build.sequence esperado $ExpectedBuildSequence y recibido $buildSequence"
+    }
+    if ($commitHash -notmatch '^[0-9a-f]{40}$' -or -not $releaseId.EndsWith($commitHash.Substring(0, 12))) {
+        Fail 'commit.hash TEST_ONLY no coincide con release.id'
+    }
+    if ($releaseSequence -ne 35 -or $buildSequence -ne 1) { Fail 'secuencias TEST_ONLY incorrectas' }
+    if ($manifestHash -notmatch '^[0-9A-Fa-f]{64}$') { Fail 'manifest.hash no es SHA-256' }
+
+    $canonical = "release.id=$releaseId`n" +
+        "system.version=$version`n" +
+        "capability=$($capability.ToUpperInvariant())`n" +
+        "schema.version=$schema`n" +
+        "release.sequence=$releaseSequence`n" +
+        "build.sequence=$buildSequence`n" +
+        "commit.hash=$($commitHash.ToLowerInvariant())`n" +
+        "declaration.hash=`n"
+    $computedManifestHash = Get-Sha256Bytes ([Text.Encoding]::UTF8.GetBytes($canonical))
+    if ($manifestHash.ToUpperInvariant() -cne $computedManifestHash) { Fail 'manifest.hash no coincide con el contenido canonico' }
+
+    if (@($entryNames | Where-Object { $_ -match '(?i)^BOOT-INF/classes/META-INF/fiscal/declaracion-responsable-.*\.pdf$' }).Count -gt 0) {
+        Fail 'TEST_ONLY no incorpora declaracion responsable de producto'
+    }
+}
+finally { $zip.Dispose() }
+
+$result = [pscustomobject]@{
+    Status = 'TEST_ONLY_VERIFIED'
+    Jar = $jar.FullName
+    ArtifactSha256 = $actualArtifactHash
+    ReleaseId = $releaseId
+    Version = $version
+    Capability = $capability
+    SchemaVersion = $schema
+    ReleaseSequence = $releaseSequence
+    BuildSequence = $buildSequence
+    DeclarationSha256 = ''
+    ManifestSha256 = $manifestHash.ToUpperInvariant()
+}
+if ($AsObject) { $result } else {
+    Write-Host "TEST_ONLY_VERIFIED / NO PROMOTABLE: $($result.ReleaseId) / $($result.Version) / $($result.SchemaVersion)" -ForegroundColor Yellow
+    Write-Host "JAR: $($result.Jar)"
+    Write-Host "SHA-256: $($result.ArtifactSha256)"
+}

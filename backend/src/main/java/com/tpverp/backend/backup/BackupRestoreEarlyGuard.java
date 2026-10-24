@@ -16,7 +16,8 @@ public final class BackupRestoreEarlyGuard implements EnvironmentPostProcessor, 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment,
             SpringApplication application) {
-        if (!Arrays.asList(environment.getActiveProfiles()).contains("prod")) return;
+        if (!Arrays.asList(environment.getActiveProfiles()).contains("prod")
+                && !com.tpverp.backend.verifactu.TestBundlePolicy.load().testOnly()) return;
         Path journal = authorizedJournal(environment);
         String finalizeArgument = environment.getProperty("tpv.restore-finalize");
         boolean exists = Files.exists(journal, LinkOption.NOFOLLOW_LINKS);
@@ -44,7 +45,7 @@ public final class BackupRestoreEarlyGuard implements EnvironmentPostProcessor, 
             return;
         }
         if (!"FINALIZED".equals(phase)) {
-            throw new IllegalStateException("Existe un journal de restauración pendiente; producción no puede arrancar");
+            throw new IllegalStateException("Existe un journal de restauraciÃ³n pendiente; producciÃ³n no puede arrancar");
         }
     }
 
@@ -59,5 +60,5 @@ public final class BackupRestoreEarlyGuard implements EnvironmentPostProcessor, 
         return BackupRestoreJournalReader.normalize(raw);
     }
 
-    @Override public int getOrder() { return ConfigDataEnvironmentPostProcessor.ORDER + 1; }
+    @Override public int getOrder() { return ConfigDataEnvironmentPostProcessor.ORDER + 2; }
 }

@@ -12,7 +12,11 @@ param(
     [string] $BackupRoot = 'C:\ProgramData\TPV ERP\Backups',
     [string] $ProductImagesRoot = 'C:\ProgramData\TPV ERP\product-images',
     [string] $DocumentTemplatesRoot = 'C:\ProgramData\TPV ERP\document-templates',
-    [string] $RestoreJournalRoot = 'C:\ProgramData\TPV ERP\restore'
+    [string] $RestoreJournalRoot = 'C:\ProgramData\TPV ERP\restore',
+    [string] $KeyRoot = '',
+    [string] $FiscalSecretRoot = '',
+    [string] $FiscalExportRoot = '',
+    [switch] $SkipUnconfiguredOperationalRoot
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -105,11 +109,16 @@ Set-TreeAcl $InstallRoot $serviceSid ([Security.AccessControl.FileSystemRights]:
 Set-TreeAcl $immutable $serviceSid ([Security.AccessControl.FileSystemRights]::ReadAndExecute)
 Set-TreeAcl $ConfigurationFile $serviceSid ([Security.AccessControl.FileSystemRights]::Read) -RequireFile
 Set-TreeAcl $SecretRoot $serviceSid ([Security.AccessControl.FileSystemRights]::FullControl)
+$actualFiscalSecretRoot = if ($FiscalSecretRoot) { $FiscalSecretRoot } else { Join-Path $SecretRoot 'verifactu' }
+$actualFiscalExportRoot = if ($FiscalExportRoot) { $FiscalExportRoot } else { Join-Path $ExportsRoot 'fiscal' }
+if ($KeyRoot) { Set-TreeAcl $KeyRoot $serviceSid ([Security.AccessControl.FileSystemRights]::FullControl) }
 Set-TreeAcl $logs $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)
 Set-TreeAcl $ExportsRoot $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)
-Set-TreeAcl (Join-Path $SecretRoot 'verifactu') $serviceSid ([Security.AccessControl.FileSystemRights]::FullControl)
-Set-TreeAcl (Join-Path $ExportsRoot 'fiscal') $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)
-Set-TreeAcl $OperationalRoot $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)
+Set-TreeAcl $actualFiscalSecretRoot $serviceSid ([Security.AccessControl.FileSystemRights]::FullControl)
+Set-TreeAcl $actualFiscalExportRoot $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)
+if (-not $SkipUnconfiguredOperationalRoot) {
+    Set-TreeAcl $OperationalRoot $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)
+}
 Set-TreeAcl $BackupRoot $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)
 Set-TreeAcl $ProductImagesRoot $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)
 Set-TreeAcl $DocumentTemplatesRoot $serviceSid ([Security.AccessControl.FileSystemRights]::Modify)

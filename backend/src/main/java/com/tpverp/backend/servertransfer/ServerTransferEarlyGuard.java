@@ -18,7 +18,7 @@ import org.springframework.core.env.ConfigurableEnvironment;
 
 /** Runs under the actual Windows service identity, before any installation key is loaded. */
 public final class ServerTransferEarlyGuard implements EnvironmentPostProcessor,Ordered {
-    @Override public int getOrder(){return ConfigDataEnvironmentPostProcessor.ORDER+2;}
+    @Override public int getOrder(){return ConfigDataEnvironmentPostProcessor.ORDER+3;}
     @Override public void postProcessEnvironment(ConfigurableEnvironment environment,SpringApplication application) {
         String configured=environment.getProperty("tpv.installation.key-directory");
         if(configured==null || configured.isBlank())return;

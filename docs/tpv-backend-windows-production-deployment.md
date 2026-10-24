@@ -16,7 +16,7 @@ preflight no instala ni arranca servicios.
 
 El bundle debe contener un único fat JAR, su sidecar `JAR.sha256`,
 `META-INF/tpv-erp-release.properties` y el PDF legal versionado dentro del
-JAR en `META-INF/fiscal/declaracion-responsable-4.2.0.pdf`. El manifiesto debe
+JAR en `META-INF/fiscal/declaracion-responsable-1.0.0.pdf`. El manifiesto debe
 tener identidad/secuencias aprobadas para esa publicacion,
 `capability=VERIFACTU_ONLY`, un `schema.version`, un `commit.hash`,
 `declaration.hash` y un `manifest.hash` coherente. El verificador compara todos
@@ -54,9 +54,11 @@ preparado sin compilar:
 ```
 
 `ExpectedReleaseId` puede cambiar para una nueva identidad manteniendo la misma
-versión pública `4.2.0`. El nombre del JAR depende del `<version>` de
-`backend\pom.xml`; el preparador exige que `ExpectedVersion` coincida con ese
-`project.version` y no cambia el nombre del artefacto Maven.
+versión pública `1.0.0`. Maven compila el JAR con el `<version>` de
+`backend\pom.xml` (`0.1.0` para las pruebas actuales). El preparador lee ese nombre en
+`backend\target` y publica una copia llamada `tpv-erp-backend-1.0.0.jar`, de
+acuerdo con la versión pública del perfil `production-release`. El verificador
+comprueba el contenido, el PDF embebido y el SHA-256 de la copia publicada.
 
 Sin expectativas explicitas, el verificador comprueba la integridad e identidad
 del propio bundle, no su autorizacion operativa. El instalador y el CLI exigen
@@ -167,7 +169,8 @@ dependencias y no contactan AEAT.
 
 ## Pendientes de producción
 
-- Incorporar el PDF legal firmado/versionado de `4.2.0` bajo el recurso de
+- Completar y autorizar la declaración responsable de la primera versión de
+  despliegue `1.0.0`; incorporar su PDF versionado bajo el recurso de
   classpath esperado y reconstruir el fat JAR.
 - Ejecutar el build completo en checkout limpio y conservar la evidencia de
   hashes.
