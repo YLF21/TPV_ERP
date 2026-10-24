@@ -16,7 +16,7 @@ preflight no instala ni arranca servicios.
 
 El bundle debe contener un único fat JAR, su sidecar `JAR.sha256`,
 `META-INF/tpv-erp-release.properties` y el PDF legal versionado dentro del
-JAR en `META-INF/fiscal/declaracion-responsable-4.2.0.pdf`. El manifiesto debe
+JAR en `META-INF/fiscal/declaracion-responsable-1.0.0.pdf`. El manifiesto debe
 tener identidad/secuencias aprobadas para esa publicacion,
 `capability=VERIFACTU_ONLY`, un `schema.version`, un `commit.hash`,
 `declaration.hash` y un `manifest.hash` coherente. El verificador compara todos
@@ -54,9 +54,11 @@ preparado sin compilar:
 ```
 
 `ExpectedReleaseId` puede cambiar para una nueva identidad manteniendo la misma
-versión pública `4.2.0`. El nombre del JAR depende del `<version>` de
-`backend\pom.xml`; el preparador exige que `ExpectedVersion` coincida con ese
-`project.version` y no cambia el nombre del artefacto Maven.
+versión pública `1.0.0`. Maven compila el JAR con el `<version>` de
+`backend\pom.xml` (`0.1.0` para las pruebas actuales). El preparador lee ese nombre en
+`backend\target` y publica una copia llamada `tpv-erp-backend-1.0.0.jar`, de
+acuerdo con la versión pública del perfil `production-release`. El verificador
+comprueba el contenido, el PDF embebido y el SHA-256 de la copia publicada.
 
 Sin expectativas explicitas, el verificador comprueba la integridad e identidad
 del propio bundle, no su autorizacion operativa. El instalador y el CLI exigen
@@ -119,12 +121,31 @@ falla se restauran ambos y se intenta refrescar de nuevo; esto no es un rollback
 completo de todos los efectos externos, sino la conservación recuperable del
 XML, wrapper y bundles locales.
 
+Se exige WinSW **3.x**, con SHA-256 aprobado y version principal del ejecutable
+comprobados antes de cualquier cambio. WinSW 2 puede ignorar `username` y
+registrar LocalSystem, por lo que se rechaza incluso en preflight.
 WinSW v3 requiere `<serviceaccount><username>...</username></serviceaccount>`;
 la forma de cuenta está contrastada con la [documentación oficial de
 WinSW](https://github.com/winsw/winsw/blob/v3/docs/xml-config-file.md#service-account).
 En una instalación nueva se escribe la cuenta integrada solicitada y también
 `TPV_VERIFACTU_SERVICE_ACCOUNT` en el XML. En una actualización WinSW no cambia
 la cuenta con `refresh`: el script compara `StartName` y aborta si no coincide.
+
+Para crear una cuenta virtual nueva, WinSW 3 intenta resolver su SID antes de
+registrar el servicio. El instalador registra primero una definicion temporal
+LocalSystem **Disabled**, restaura inmediatamente el XML canonico con la cuenta
+virtual, y usa `Win32_Service.Change` para asignar `NT SERVICE\<servicio>`,
+contrasena NULL (no cadena vacia) e inicio Manual, como exige
+`ChangeServiceConfigW` para cuentas virtuales. Verifica de nuevo ruta, cuenta, modo Manual y
+estado Stopped en SCM; nunca arranca el registro temporal. Ante un fallo,
+deshabilita y elimina exclusivamente ese nuevo registro. Si la eliminacion
+falla, informa del error y conserva el servicio deshabilitado para inspeccion.
+El arranque vuelve a comprobar la identidad SCM antes de habilitar Automatic.
+Este procedimiento tambien se aplica al backend TEST_ONLY y al gateway HTTPS.
+En WinSW 3.0.0-alpha.11, la cuenta del XML tiene prioridad sobre `install --user`;
+no basta con cambiar el argumento de consola. Referencias:
+[implementacion oficial de WinSW](https://github.com/winsw/winsw/blob/v3.0.0-alpha.11/src/WinSW/Program.cs)
+y [Change de Win32_Service](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/change-method-in-class-win32-service).
 
 El XML activa explícitamente el perfil Spring `prod`. La ruta externa se pasa
 como una URI `file:///C:/...` obligatoria y como un único argumento citado (sin
@@ -167,7 +188,8 @@ dependencias y no contactan AEAT.
 
 ## Pendientes de producción
 
-- Incorporar el PDF legal firmado/versionado de `4.2.0` bajo el recurso de
+- Completar y autorizar la declaración responsable de la primera versión de
+  despliegue `1.0.0`; incorporar su PDF versionado bajo el recurso de
   classpath esperado y reconstruir el fat JAR.
 - Ejecutar el build completo en checkout limpio y conservar la evidencia de
   hashes.

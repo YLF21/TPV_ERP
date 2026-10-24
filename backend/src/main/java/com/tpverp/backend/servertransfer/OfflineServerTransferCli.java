@@ -29,6 +29,7 @@ public final class OfflineServerTransferCli {
     private static final SecretProtector PROTECTOR=new WindowsMachineDpapiSecretProtector();
     private final Path directory,keys;
     private final Properties release=new Properties();
+    private final com.tpverp.backend.verifactu.TestBundlePolicy testPolicy = com.tpverp.backend.verifactu.TestBundlePolicy.load();
     private OfflineServerTransferCli(Path directory) throws Exception {
         this.directory=safe(directory);this.keys=safe(Path.of(env("TPV_KEY_DIRECTORY")));
         try(var input=getClass().getResourceAsStream("/META-INF/tpv-erp-release.properties")) {
@@ -39,6 +40,7 @@ public final class OfflineServerTransferCli {
         var args=parse(arguments);
         var cli=new OfflineServerTransferCli(Path.of(required(args,"directory")));
         String action=required(args,"action");
+        cli.testPolicy.requireOfflineDatabase(true);
         if(Set.of("request","receive","activate").contains(action)) {
             serviceAccount("TPV_BACKEND_SERVICE_ACCOUNT");serviceAccount("TPV_TRANSFER_HTTPS_SERVICE_ACCOUNT");
         }
@@ -128,6 +130,7 @@ public final class OfflineServerTransferCli {
             if(initial)saveJournal(id,installation,"VALIDATING",backup,digest,capsuleHash,fingerprint);
             new BackupFileCrypto(1024*1024).decrypt(backup,archive,secret(secrets,"backup.brk"));
             var internal=readManifest(archive);validateInternal(internal,id,installation,fingerprint);
+            testPolicy.requireBackup(internal);
             validateTls(secrets);
             var archives=new BackupArchiveService(500_000,1024L*1024*1024,10L*1024*1024*1024);
             archives.extractToStaging(archive,staging.resolve("database.backup"),staging.resolve("images"),staging.resolve("templates"));
@@ -136,7 +139,7 @@ public final class OfflineServerTransferCli {
             requireCentral(inspect(id,installation,identity.privateKey()),id,installation,"SEALED",digest,capsuleHash,fingerprint);
             if(initial)restore(staging.resolve("database.backup"));
             saveJournal(id,installation,"DATABASE_RESTORED",backup,digest,capsuleHash,fingerprint);
-            try(var db=database()) {validateDatabase(db,internal,installation,secrets);}
+            try(var db=database()) {testPolicy.requireDatabase(db, false);validateDatabase(db,internal,installation,secrets);}
             installSecrets(secrets,id);
             archives.replaceTrees(staging.resolve("images"),Path.of(env("TPV_PRODUCT_IMAGE_DIRECTORY")),staging.resolve("templates"),Path.of(env("TPV_DOCUMENT_TEMPLATE_DIRECTORY")));
             try(var db=database()) {
@@ -152,6 +155,7 @@ public final class OfflineServerTransferCli {
         } finally {Arrays.fill(plain,(byte)0);if(secrets!=null)secrets.values().forEach(v->Arrays.fill(v,(byte)0));Files.deleteIfExists(archive);}
     }
     private Object activate() throws Exception {
+        testPolicy.requireOfflineDatabase(false);
         var state=journal();String phase=state.path("state").asText();
         if("ACTIVE".equals(phase))return state;
         if(!Set.of("RECEIVED","ACTIVATING").contains(phase))throw new IllegalStateException("Destination is not ready for activation");
@@ -318,6 +322,7 @@ public final class OfflineServerTransferCli {
         String url=env("TPV_DB_URL").replaceFirst("^jdbc:","");
         var process=new ProcessBuilder(System.getenv().getOrDefault("TPV_PG_RESTORE_COMMAND","pg_restore"),"--exit-on-error","--single-transaction","--no-owner","--no-privileges","--no-password","--username="+env("TPV_DB_USERNAME"),"--dbname="+url,dump.toAbsolutePath().toString());
         process.environment().put("PGPASSWORD",env("TPV_DB_PASSWORD"));process.redirectErrorStream(true);
+        testPolicy.restrictPostgresProcess(process);
         var child=process.start();try(var input=child.getInputStream()){input.transferTo(OutputStream.nullOutputStream());}
         if(child.waitFor()!=0)throw new IOException("pg_restore failed; destination remains blocked");
     }

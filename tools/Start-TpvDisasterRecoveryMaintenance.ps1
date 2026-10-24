@@ -8,6 +8,18 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+function ConvertFrom-TpvHttpJson([object] $Content) {
+    # Windows PowerShell may return vendor JSON media types as bytes instead of text.
+    if ($Content -is [byte[]]) {
+        $json = [Text.UTF8Encoding]::new($false, $true).GetString($Content)
+    } elseif ($Content -is [string]) {
+        $json = $Content
+    } else {
+        throw 'La respuesta HTTP no contiene JSON de texto o UTF-8.'
+    }
+    return ConvertFrom-Json -InputObject $json -ErrorAction Stop
+}
+
 function Assert-PlainFile([string] $Value, [string] $Description) {
     $full = [IO.Path]::GetFullPath($Value)
     if (-not [IO.Path]::IsPathRooted($full)) { throw "$Description debe tener ruta absoluta." }
@@ -335,9 +347,14 @@ try {
             [StringComparison]::OrdinalIgnoreCase)) { throw 'El JAR no pertenece a una release instalada.' }
     if (-not [string]::Equals($PSScriptRoot, (Join-Path $releaseDirectory 'tools'),
             [StringComparison]::OrdinalIgnoreCase)) { throw 'El asistente no pertenece a la release activa.' }
-    $verifier = Assert-PlainFile (Join-Path $PSScriptRoot 'Test-TpvBackendProductionBundle.ps1') 'El verificador de release'
+    $policyScript = Assert-PlainFile (Join-Path $PSScriptRoot 'Resolve-TpvBackendInstalledBundleVerifier.ps1') 'La politica de release instalada'
     $wrapper = Assert-PlainFile (Join-Path $PSScriptRoot 'Invoke-TpvDisasterRecovery.ps1') 'El ejecutor de recuperación'
-    $unboundBundle = & $verifier -BundleDirectory $releaseDirectory -AsObject
+    $policy = & $policyScript -BundleDirectory $releaseDirectory -InstalledServiceXml $serviceXml
+    if ($policy.TestOnly) {
+        & (Join-Path $PSScriptRoot 'Assert-TpvTestLabContext.ps1') -InstalledServiceXml $serviceXml -ApplyCliEnvironment | Out-Null
+    }
+    $verifier = Assert-PlainFile $policy.Verifier 'El verificador de release'
+    $unboundBundle = $policy.Bundle
     $releaseId = [string]$unboundBundle.ReleaseId
     if ($releaseId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$') { throw 'release.id no es válido.' }
     $bundle = & $verifier -BundleDirectory $releaseDirectory -ExpectedReleaseId $releaseId -AsObject
@@ -357,6 +374,11 @@ try {
     [Environment]::SetEnvironmentVariable('TPV_TRANSFER_HTTPS_SERVICE_ACCOUNT', $https.Account, 'Process')
     Ensure-Environment 'TPV_KEY_DIRECTORY' 'Directorio de claves del servidor destino'
     Ensure-Environment 'TPV_LICENSE_SAAS_URL' 'URL SaaS de licencias'
+    if ($policy.TestOnly -and $Action -eq 'status') {
+        Ensure-Environment 'TPV_DB_URL' 'URL JDBC PostgreSQL local del laboratorio'
+        Ensure-Environment 'TPV_DB_USERNAME' 'Usuario PostgreSQL del laboratorio'
+        Ensure-Environment 'TPV_DB_PASSWORD' 'Contraseña PostgreSQL del laboratorio' -Secret
+    }
     if ($Action -ne 'status') {
         Ensure-Environment 'TPV_DB_URL' 'URL JDBC de PostgreSQL destino'
         Ensure-Environment 'TPV_DB_USERNAME' 'Usuario PostgreSQL destino'
@@ -439,7 +461,7 @@ try {
         $readyNow = $false
         try {
             $response = Invoke-WebRequest -Uri "$($service.LocalUrl)/actuator/health/readiness" -UseBasicParsing -TimeoutSec 3
-            $health = $response.Content | ConvertFrom-Json -ErrorAction Stop
+            $health = ConvertFrom-TpvHttpJson -Content $response.Content
             $readyNow = $response.StatusCode -eq 200 -and $health.status -ceq 'UP'
         } catch { }
         if (-not $readyNow) { $result.state = 'ACTIVATED_SERVICE_UNREADY' }
@@ -467,7 +489,7 @@ try {
         for ($attempt = 0; $attempt -lt 45; $attempt++) {
             try {
                 $response = Invoke-WebRequest -Uri "$($service.LocalUrl)/actuator/health/readiness" -UseBasicParsing -TimeoutSec 3
-                $health = $response.Content | ConvertFrom-Json -ErrorAction Stop
+                $health = ConvertFrom-TpvHttpJson -Content $response.Content
                 if ($response.StatusCode -eq 200 -and $health.status -ceq 'UP') { $ready = $true; break }
             } catch { Start-Sleep -Seconds 2 }
         }

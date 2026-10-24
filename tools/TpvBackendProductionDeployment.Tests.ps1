@@ -12,30 +12,38 @@ function Remove-ContractBundle([string] $Directory) {
 }
 
 function New-ContractBundle {
-    param([string] $ReleaseId = 'tpv-erp-4.2.0', [switch] $WithTransfer, [switch] $WithRecovery)
+    param(
+        [string] $ReleaseId = 'tpv-erp-4.2.0',
+        [switch] $WithTransfer,
+        [switch] $WithRecovery,
+        [string] $Version = '4.2.0',
+        [string] $SchemaVersion = 'V234',
+        [long] $ReleaseSequence = 1,
+        [long] $BuildSequence = 1
+    )
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $directory = Join-Path ([IO.Path]::GetTempPath()) ('tpv-backend-contract-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $directory | Out-Null
-    $jar = Join-Path $directory 'tpv-erp-backend-4.2.0.jar'
+    $jar = Join-Path $directory "tpv-erp-backend-$Version.jar"
     $pdf = [Text.Encoding]::ASCII.GetBytes("%PDF-1.7`ncontract`n")
     $sha = [Security.Cryptography.SHA256]::Create()
     try { $declarationHash = ([BitConverter]::ToString($sha.ComputeHash($pdf))).Replace('-', '').ToUpperInvariant() }
     finally { $sha.Dispose() }
     $commit = 'abcdef1'
     $canonical = "release.id=$ReleaseId`n" +
-        "system.version=4.2.0`ncapability=VERIFACTU_ONLY`n" +
-        "schema.version=V234`nrelease.sequence=1`nbuild.sequence=1`n" +
+        "system.version=$Version`ncapability=VERIFACTU_ONLY`n" +
+        "schema.version=$SchemaVersion`nrelease.sequence=$ReleaseSequence`nbuild.sequence=$BuildSequence`n" +
         "commit.hash=$commit`ndeclaration.hash=$declarationHash`n"
     $sha = [Security.Cryptography.SHA256]::Create()
     try { $manifestHash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-', '').ToUpperInvariant() }
     finally { $sha.Dispose() }
     $manifest = @"
 release.id=$ReleaseId
-system.version=4.2.0
+system.version=$Version
 capability=VERIFACTU_ONLY
-schema.version=V234
-release.sequence=1
-build.sequence=1
+schema.version=$SchemaVersion
+release.sequence=$ReleaseSequence
+build.sequence=$BuildSequence
 commit.hash=$commit
 declaration.hash=$declarationHash
 manifest.hash=$manifestHash
@@ -65,7 +73,7 @@ manifest.hash=$manifestHash
         $stream = $entry.Open()
         try { $bytes = [Text.Encoding]::UTF8.GetBytes($manifest); $stream.Write($bytes, 0, $bytes.Length) }
         finally { $stream.Dispose() }
-        $entry = $archive.CreateEntry('BOOT-INF/classes/META-INF/fiscal/declaracion-responsable-4.2.0.pdf')
+        $entry = $archive.CreateEntry("BOOT-INF/classes/META-INF/fiscal/declaracion-responsable-$Version.pdf")
         $stream = $entry.Open()
         try { $stream.Write($pdf, 0, $pdf.Length) }
         finally { $stream.Dispose() }
@@ -168,13 +176,71 @@ Describe 'Despliegue productivo backend Windows' {
         $text | Should Match 'build\.sequence'
     }
 
-    It 'pasa el releaseId y la version esperados al perfil Maven sin cambiar project.version' {
+    It 'usa la version Maven como origen y la version publica como nombre del bundle' {
         $prepareText = Get-Content -LiteralPath $scriptPaths[1] -Raw
         $prepareText | Should Match 'tpv\.release\.id=\$ExpectedReleaseId'
         $prepareText | Should Match 'tpv\.release\.version=\$ExpectedVersion'
-        $prepareText | Should Match 'projectVersion'
-        $prepareText | Should Match 'ExpectedVersion debe coincidir con project.version'
+        $prepareText | Should Match 'target\\tpv-erp-backend-\$projectVersion\.jar'
+        $prepareText | Should Match 'tpv-erp-backend-\$ExpectedVersion\.jar'
+        $prepareText | Should Not Match 'ExpectedVersion debe coincidir con project.version'
         $prepareText | Should Not Match 'AllowDirtySource'
+        $pom = [xml](Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\backend\pom.xml') -Raw)
+        $defaults = & (Join-Path $PSScriptRoot 'Get-TpvBackendReleaseDefaults.ps1')
+        [string]$pom.project.version | Should Be '0.1.0'
+        $defaults.Version | Should Be '1.0.0'
+        $defaults.ReleaseId | Should Be 'tpv-erp-1.0.0-v279'
+        $defaults.SchemaVersion | Should Be V279
+        $defaults.ReleaseSequence | Should Be 37
+        $defaults.BuildSequence | Should Be 1
+    }
+
+    It 'publica un JAR Maven 0.1.0 como release 1.0.0 y bloquea el build sin PDF legal' {
+        # The PDF bytes and JAR in this isolated fixture are synthetic contract data.
+        $fixtureRoot = New-ContractBundle -ReleaseId 'tpv-erp-1.0.0-v279' `
+            -Version '1.0.0' -SchemaVersion V279 -ReleaseSequence 37
+        try {
+            $backend = Join-Path $fixtureRoot 'backend'
+            $target = Join-Path $backend 'target'
+            $resource = Join-Path $backend 'src/main/resources/META-INF'
+            $fixtureTools = Join-Path $fixtureRoot 'tools'
+            New-Item -ItemType Directory -Path $target, $resource, $fixtureTools -Force | Out-Null
+            Move-Item -LiteralPath (Join-Path $fixtureRoot 'tpv-erp-backend-1.0.0.jar') `
+                -Destination (Join-Path $target 'tpv-erp-backend-0.1.0.jar')
+            Move-Item -LiteralPath (Join-Path $fixtureRoot 'tpv-erp-backend-1.0.0.jar.sha256') `
+                -Destination (Join-Path $target 'tpv-erp-backend-0.1.0.jar.sha256')
+            @'
+<project><version>0.1.0</version><profiles><profile><id>production-release</id><properties>
+<tpv.release.id>tpv-erp-1.0.0-v279</tpv.release.id><tpv.release.version>1.0.0</tpv.release.version>
+<tpv.release.sequence>37</tpv.release.sequence><tpv.release.build.sequence>1</tpv.release.build.sequence>
+</properties></profile></profiles></project>
+'@ | Set-Content -LiteralPath (Join-Path $backend 'pom.xml')
+            'schema.version=V279' | Set-Content -LiteralPath (Join-Path $resource 'tpv-erp-release.properties')
+            "backend/target/`nartifacts/" | Set-Content -LiteralPath (Join-Path $fixtureRoot '.gitignore')
+            foreach ($name in @('Prepare-TpvBackendProductionBundle.ps1', 'Get-TpvBackendReleaseDefaults.ps1',
+                    'Invoke-TpvServerTransfer.ps1', 'Start-TpvServerTransferMaintenance.ps1',
+                    'Invoke-TpvDisasterRecovery.ps1', 'Start-TpvDisasterRecoveryMaintenance.ps1',
+                    'Test-TpvBackendProductionBundle.ps1', 'Invoke-TpvBackupRestoreOffline.ps1',
+                    'Test-TpvBackupRestoreOfflinePreflight.ps1',
+                    'Resolve-TpvBackendInstalledBundleVerifier.ps1')) {
+                Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $fixtureTools $name)
+            }
+            & git -C $fixtureRoot init -q
+            & git -C $fixtureRoot -c core.autocrlf=false add .
+            & git -C $fixtureRoot -c user.name=ContractTest -c user.email=contract@example.invalid commit -qm fixture
+            $prepare = Join-Path $fixtureTools 'Prepare-TpvBackendProductionBundle.ps1'
+            $pdfGateMessage = ''
+            try { & $prepare -OutputDirectory 'artifacts/checked' | Out-Null }
+            catch { $pdfGateMessage = $_.Exception.Message }
+            $pdfGateMessage | Should Match 'Falta el PDF legal de produccion'
+            & $prepare -OutputDirectory 'artifacts/checked' -NoBuild
+            $outputJar = Join-Path $fixtureRoot 'artifacts/checked/tpv-erp-backend-1.0.0.jar'
+            (Test-Path -LiteralPath $outputJar -PathType Leaf) | Should Be $true
+            (& (Join-Path $fixtureTools 'Test-TpvBackendProductionBundle.ps1') `
+                -BundleDirectory (Split-Path -Parent $outputJar) -ExpectedVersion '1.0.0' `
+                -ExpectedReleaseId 'tpv-erp-1.0.0-v279' -ExpectedSchemaVersion V279 `
+                -ExpectedReleaseSequence 37 -ExpectedBuildSequence 1 -AsObject).Status | Should Be 'PROMOTABLE'
+        }
+        finally { Remove-ContractBundle $fixtureRoot }
     }
 
     It 'verifica un releaseId alternativo conservando la version publica 4.2.0' {
@@ -190,6 +256,29 @@ Describe 'Despliegue productivo backend Windows' {
             $result.Version | Should Be '4.2.0'
         }
         finally { Remove-Item -LiteralPath $directory -Recurse -Force }
+    }
+
+    It 'rechaza un marcador TEST_ONLY incluso con PDF legal y manifiesto productivo' {
+        $directory = New-ContractBundle
+        try {
+            $jar = (Get-ChildItem -LiteralPath $directory -Filter '*.jar' -File | Select-Object -First 1).FullName
+            $archive = [IO.Compression.ZipFile]::Open($jar, [IO.Compression.ZipArchiveMode]::Update)
+            try {
+                $entry = $archive.CreateEntry('META-INF/tpv-test-bundle.properties')
+                $stream = $entry.Open()
+                try {
+                    $bytes = [Text.Encoding]::UTF8.GetBytes('purpose=TEST_ONLY')
+                    $stream.Write($bytes, 0, $bytes.Length)
+                } finally { $stream.Dispose() }
+            } finally { $archive.Dispose() }
+            (Get-FileHash -LiteralPath $jar -Algorithm SHA256).Hash |
+                Set-Content -LiteralPath "$jar.sha256" -NoNewline
+            $message = ''
+            try { & (Join-Path $PSScriptRoot 'Test-TpvBackendProductionBundle.ps1') `
+                -BundleDirectory $directory -AsObject | Out-Null }
+            catch { $message = $_.Exception.Message }
+            $message | Should Match 'marcador TEST_ONLY'
+        } finally { Remove-ContractBundle $directory }
     }
 
     It 'verifica realmente el hash canonico y las secuencias' {
@@ -229,7 +318,9 @@ Describe 'Despliegue productivo backend Windows' {
         $defaults = & (Join-Path $PSScriptRoot 'Get-TpvBackendReleaseDefaults.ps1')
         $manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\backend\src\main\resources\META-INF\tpv-erp-release.properties') -Raw
         $manifest | Should Match ([Regex]::Escape("schema.version=$($defaults.SchemaVersion)"))
-        $defaults.Version | Should Be '4.2.0'
+        $defaults.Version | Should Be '1.0.0'
+        $defaults.ReleaseId | Should Be 'tpv-erp-1.0.0-v279'
+        $defaults.ReleaseSequence | Should Be 37
         $defaults.ReleaseSequence | Should BeGreaterThan 0
     }
 
@@ -251,7 +342,11 @@ Describe 'Despliegue productivo backend Windows' {
 
     It 'no descarga ejecutables ni acepta secretos en el instalador' {
         $text = Get-Content -LiteralPath $scriptPaths[2] -Raw
-        $text | Should Not Match '(?i)Invoke-WebRequest|Start-BitsTransfer|DownloadFile|password'
+        $text | Should Not Match '(?i)Invoke-WebRequest|Start-BitsTransfer|DownloadFile'
+        $installerAst = [System.Management.Automation.Language.Parser]::ParseFile($scriptPaths[2], [ref]$null, [ref]$null)
+        @($installerAst.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -match '(?i)password|secretvalue' }).Count | Should Be 0
+        # ChangeServiceConfig requires NULL for a virtual service account.
+        $text | Should Match 'StartPassword=\$null'
         $text | Should Match 'WinSwSha256'
         $text | Should Match 'ConfigurationFile'
         $text | Should Match 'Preflight'

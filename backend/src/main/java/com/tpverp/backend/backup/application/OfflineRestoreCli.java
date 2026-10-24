@@ -31,6 +31,8 @@ public final class OfflineRestoreCli {
     private OfflineRestoreCli() { }
 
     public static void main(String[] arguments) throws Exception {
+        var testPolicy = com.tpverp.backend.verifactu.TestBundlePolicy.load();
+        testPolicy.requireOfflineDatabase(true);
         Map<String, String> args = parse(arguments);
         // Normalize every operator-supplied path before any filesystem operation.
         Path backup = required(args, "backup").toAbsolutePath().normalize();
@@ -90,13 +92,16 @@ public final class OfflineRestoreCli {
             int maxEntries = envInt("TPV_BACKUP_ARCHIVE_MAX_ENTRIES", 100_000);
             long maxEntryBytes = envLong("TPV_BACKUP_ARCHIVE_MAX_ENTRY_BYTES", 256L * 1024 * 1024);
             long maxTotalBytes = envLong("TPV_BACKUP_ARCHIVE_MAX_TOTAL_BYTES", 2L * 1024 * 1024 * 1024);
+            testPolicy.requireBackup(archive);
             BackupArchiveService archives = new BackupArchiveService(maxEntries, maxEntryBytes, maxTotalBytes);
             archives.extractToStaging(archive, dump, stagedImages, stagedTemplates);
             writeJournal(journal, id, "STAGED", backup, backupSha256, staging, null);
             Path safetyRoot = createSafetyBackup(images, templates, journal.toAbsolutePath().normalize().getParent(), id);
             runDump(safetyRoot.resolve("database-current.backup"));
             writeJournal(journal, id, "SAFETY_BACKED_UP", backup, backupSha256, staging, safetyRoot);
+            testPolicy.requireOfflineDatabase(true);
             runRestore(pgRestore, dump);
+            testPolicy.requireOfflineDatabase(false);
             if (!backupSha256.equalsIgnoreCase(sha256(immutableBackup))) throw new IllegalStateException("El backup cambió durante la restauración");
             writeJournal(journal, id, "DATABASE_RESTORED", backup, backupSha256, staging, safetyRoot);
             archives.replaceTrees(stagedImages, images, stagedTemplates, templates);
@@ -120,6 +125,7 @@ public final class OfflineRestoreCli {
                 "--no-password", "--username=" + System.getenv("TPV_DB_USERNAME"), "--dbname=" + url,
                 dump.toAbsolutePath().toString());
         process.redirectErrorStream(true);
+        com.tpverp.backend.verifactu.TestBundlePolicy.load().restrictPostgresProcess(process);
         Process child = process.start();
         readProcessOutput(child);
         if (child.waitFor() != 0) throw new IllegalStateException("pg_restore falló sin aplicar la promoción de ficheros");
@@ -131,6 +137,7 @@ public final class OfflineRestoreCli {
         ProcessBuilder process = new ProcessBuilder(command, "--format=custom", "--no-password",
                 "--username=" + System.getenv("TPV_DB_USERNAME"), "--file=" + target.toAbsolutePath(), "--dbname=" + url);
         process.redirectErrorStream(true);
+        com.tpverp.backend.verifactu.TestBundlePolicy.load().restrictPostgresProcess(process);
         Process child = process.start();
         readProcessOutput(child);
         if (child.waitFor() != 0) throw new IllegalStateException("No se pudo crear el safety backup de PostgreSQL");

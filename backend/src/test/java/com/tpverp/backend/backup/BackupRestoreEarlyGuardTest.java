@@ -2,6 +2,7 @@ package com.tpverp.backend.backup;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
+import com.tpverp.backend.verifactu.TestBundleEarlyGuard;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -68,8 +69,10 @@ class BackupRestoreEarlyGuardTest {
 
     @Test
     void runsAfterConfigDataAndMatchesProdProfileExactly() {
-        assertThat(new BackupRestoreEarlyGuard().getOrder())
-                .isEqualTo(ConfigDataEnvironmentPostProcessor.ORDER + 1);
+        int testBundleOrder = new TestBundleEarlyGuard().getOrder();
+        int restoreOrder = new BackupRestoreEarlyGuard().getOrder();
+        assertThat(testBundleOrder).isGreaterThan(ConfigDataEnvironmentPostProcessor.ORDER);
+        assertThat(restoreOrder).isGreaterThan(testBundleOrder);
         var environment = new MockEnvironment().withProperty("spring.profiles.active", "production");
         environment.setActiveProfiles("production");
         new BackupRestoreEarlyGuard().postProcessEnvironment(environment, new SpringApplication());

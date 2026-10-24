@@ -59,6 +59,7 @@ public final class PostgreSqlBackupCommands {
             ProcessBuilder builder = new ProcessBuilder(new ArrayList<>(command));
             builder.redirectErrorStream(true);
             builder.environment().put("PGPASSWORD", databasePassword);
+            com.tpverp.backend.verifactu.TestBundlePolicy.load().restrictPostgresProcess(builder);
             Process process = builder.start();
             String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             int exitCode = process.waitFor();

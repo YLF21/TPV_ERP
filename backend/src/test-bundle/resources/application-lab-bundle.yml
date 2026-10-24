@@ -1,0 +1,67 @@
+spring:
+  sql:
+    init:
+      mode: never
+  config:
+    activate:
+      on-profile: lab-bundle
+  datasource:
+    url: ${TPV_DB_URL}
+    username: ${TPV_DB_USERNAME}
+    password: ${TPV_DB_PASSWORD}
+
+# El escritorio integrado publica la interfaz y actua como proxy de la API.
+# El backend productivo no debe quedar expuesto directamente en la red local.
+server:
+  address: 127.0.0.1
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+logging:
+  level:
+    root: INFO
+    com.tpverp.backend: INFO
+
+tpv:
+  backup:
+    restore-journal-path: '${TPV_BACKUP_RESTORE_JOURNAL_PATH:C:\\ProgramData\\TPV ERP\\restore\\tpv-restore-journal.properties}'
+    # Production limits are explicit and independent from the 256 MiB
+    # development/default entry cap in application.yml.
+    archive:
+      max-entries: ${TPV_BACKUP_PROD_MAX_ENTRIES:500000}
+      max-entry-bytes: ${TPV_BACKUP_PROD_MAX_ENTRY_BYTES:1073741824}
+      max-total-bytes: ${TPV_BACKUP_PROD_MAX_TOTAL_BYTES:10737418240}
+  license:
+    saas-url: ${TPV_LICENSE_SAAS_URL}
+  sync:
+    central-url: ${TPV_SYNC_CENTRAL_URL:${TPV_LICENSE_SAAS_URL}}
+    worker-enabled: ${TPV_SYNC_WORKER_ENABLED:true}
+    worker-delay-ms: ${TPV_SYNC_WORKER_DELAY_MS:60000}
+  verifactu:
+    # TEST_ONLY: the embedded Java policy validates these effective values before startup.
+    endpoint-mode: TEST
+    endpoint-environment: TEST
+    runtime-class: SANDBOX
+    transport-mode: SIMULATED
+    product-capability: DUAL
+    dev-sandbox:
+      enabled: true
+    aeat-test-network-enabled: false
+    production-enabled: false
+    worker-enabled: false
+    producer-name: ${TPV_VERIFACTU_PRODUCER_NAME:TPV ERP TEST ONLY}
+    producer-tax-id: ${TPV_VERIFACTU_PRODUCER_TAX_ID:B00000000}
+    system-name: ${TPV_VERIFACTU_SYSTEM_NAME:TPV ERP TEST ONLY}
+    system-id: ${TPV_VERIFACTU_SYSTEM_ID:TPV-TEST-ONLY}
+    declaration-hash: ''
+    secret-directory: '${TPV_VERIFACTU_SECRET_DIRECTORY:C:\ProgramData\TPV ERP\secrets\verifactu}'
+    secret-acl-mode: ${TPV_VERIFACTU_SECRET_ACL_MODE:STRICT}
+    secret-service-account: '${TPV_VERIFACTU_SERVICE_ACCOUNT:NT SERVICE\TPVERPBackend}'
+    export-job-directory: '${TPV_VERIFACTU_EXPORT_JOB_DIRECTORY:C:\\ProgramData\\TPV ERP\\exports\\fiscal}'
+    export-job-single-instance: ${TPV_VERIFACTU_EXPORT_JOB_SINGLE_INSTANCE:true}
+    export-job-max-records: ${TPV_VERIFACTU_EXPORT_JOB_MAX_RECORDS:1000000}
+    export-job-max-xml-bytes: ${TPV_VERIFACTU_EXPORT_JOB_MAX_XML_BYTES:2000000000}

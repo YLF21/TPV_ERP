@@ -19,7 +19,7 @@ Prepare antes de la instalación:
 
 - Java 25 instalado en el servidor.
 - Un bundle backend validado y su `ExpectedReleaseId` aprobado.
-- WinSW proporcionado por el operador y el SHA-256 esperado de su ejecutable.
+- WinSW 3.x proporcionado por el operador y el SHA-256 esperado de su ejecutable.
 - Caddy proporcionado por el operador y el SHA-256 esperado de su ejecutable.
 - Un certificado TLS y su clave privada en formato PEM, proporcionados para el
   nombre público elegido.
@@ -33,6 +33,19 @@ El instalador verifica los hashes de WinSW y Caddy. El certificado, la clave,
 el JAR, la configuración Spring y los secretos no se incorporan al bundle de
 instalación conjunta. No incluya contraseñas, tokens ni claves en la línea de
 comandos ni en esta tabla de parámetros.
+
+Los XML de backend y HTTPS desactivan expresamente `autoRefresh`. En WinSW
+3.0.0-alpha.11, el refresco automático previo al arranque solicita control total
+del servicio y puede intentar restablecer el inicio manual del XML. La cuenta
+virtual conserva sus permisos: el instalador elevado aplica los cambios mediante
+`refresh` durante el registro o actualización. El preflight de arranque rechaza
+XML anteriores sin `<autoRefresh>false</autoRefresh>`; actualícelos mediante la
+fase `Register` del instalador aprobado antes de ejecutar `Start`. No conceda
+control total del servicio a su cuenta virtual para resolver este error.
+
+Referencias de WinSW 3.0.0-alpha.11:
+[AutoRefresh y DoRefresh](https://github.com/winsw/winsw/blob/v3.0.0-alpha.11/src/WinSW/Program.cs#L1003-L1064),
+[OpenService con acceso predeterminado All](https://github.com/winsw/winsw/blob/v3.0.0-alpha.11/src/WinSW.Core/Native/Service.cs#L154-L162).
 
 ## Orígenes y puertos
 

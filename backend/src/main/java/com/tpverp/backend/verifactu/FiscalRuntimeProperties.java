@@ -1,5 +1,7 @@
 package com.tpverp.backend.verifactu;
 
+import java.net.JarURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -206,9 +208,13 @@ public class FiscalRuntimeProperties {
     }
 
     private static String resolveArtifactHashFromCodeSource() {
+        return resolveArtifactHashFromCodeSource(FiscalRuntimeProperties.class
+                .getProtectionDomain().getCodeSource().getLocation());
+    }
+
+    static String resolveArtifactHashFromCodeSource(URL location) {
         try {
-            var source = Path.of(FiscalRuntimeProperties.class.getProtectionDomain()
-                    .getCodeSource().getLocation().toURI());
+            var source = physicalCodeSource(location);
             var sidecar = Files.isDirectory(source)
                     ? source.resolve("tpv-erp-release.sha256")
                     : Path.of(source.toString() + ".sha256");
@@ -230,6 +236,33 @@ public class FiscalRuntimeProperties {
         } catch (Exception exception) {
             throw new IllegalStateException("No se pudo verificar el SHA-256 del CodeSource", exception);
         }
+    }
+
+    private static Path physicalCodeSource(URL location) throws Exception {
+        if ("file".equals(location.getProtocol())) {
+            return Path.of(location.toURI());
+        }
+        if ("jar".equals(location.getProtocol())
+                && location.openConnection() instanceof JarURLConnection connection) {
+            var archiveUrl = connection.getJarFileURL();
+            if ("file".equals(archiveUrl.getProtocol())) {
+                return Path.of(archiveUrl.toURI());
+            }
+            if ("nested".equals(archiveUrl.getProtocol())
+                    && archiveUrl.getPath().endsWith("/!BOOT-INF/classes/")) {
+                // Boot owns this cached JarFile; never close it here. Its name
+                // is decoded and identifies the physical archive plus the entry.
+                var archiveName = connection.getJarFile().getName();
+                var classesSuffix = "!/BOOT-INF/classes/";
+                if (archiveName.endsWith(classesSuffix)) {
+                    // Remove only the known entry suffix. Splitting at the first
+                    // !/ could select a different file beside a directory ending !.
+                    return Path.of(archiveName.substring(0,
+                            archiveName.length() - classesSuffix.length()));
+                }
+            }
+        }
+        throw new IllegalStateException("El protocolo del CodeSource no permite verificar su SHA-256");
     }
 
     private static String codeSourceHash(Path source, Path sidecar) throws Exception {
