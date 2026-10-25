@@ -1,6 +1,6 @@
 # Backend 0.1 TEST_ONLY en VirtualBox
 
-Este canal sirve para ensayar el flujo completo en máquinas VirtualBox aisladas. La identidad del paquete es `tpv-erp-test-only-0.1.0-v279-<12 caracteres del commit>`, `capability=DUAL`, esquema V279, secuencia de release 36 y build 1. Su marcador embebido dice `purpose=TEST_ONLY`, `runtime=SANDBOX`, `version=0.1.0` y `production.allowed=false`. El verificador imprime `TEST_ONLY_VERIFIED / NO PROMOTABLE`. El canal productivo 1.0 y su verificador rechazan cualquier JAR con marcador TEST_ONLY, incluso si tuviera un PDF.
+Este canal sirve para ensayar el flujo completo en máquinas VirtualBox aisladas. La identidad del paquete es `tpv-erp-test-only-0.1.0-v279-<12 caracteres del commit>`, `capability=DUAL`, esquema V279 y build 1. El lector conserva compatibilidad con la secuencia histórica 36; el generador propone 37 y admite una secuencia explícita superior. Cada nueva release que actualice una instalación debe tener una secuencia estrictamente mayor que la instalada: incrementar solo el build o cambiar el commit no basta. Su marcador embebido dice `purpose=TEST_ONLY`, `runtime=SANDBOX`, `version=0.1.0` y `production.allowed=false`. El verificador imprime `TEST_ONLY_VERIFIED / NO PROMOTABLE`. El canal productivo 1.0 y su verificador rechazan cualquier JAR con marcador TEST_ONLY, incluso si tuviera un PDF.
 
 V279 corrige el alta de instalaciones cuando los 30 dias atraviesan un cambio
 horario: la duracion sigue siendo las 720 horas transcurridas que calcula Java.
@@ -71,6 +71,8 @@ En PowerShell elevado de A, con WinSW 3.x y Java 25 ya proporcionados y sus hash
 $args = @{
   BundleDirectory = 'D:\lab\backend-<release-id>'
   ExpectedReleaseId = '<release-id-verificado>'
+  ExpectedReleaseSequence = 37
+  ExpectedBuildSequence = 1
   WinSwExecutable = 'D:\lab\WinSW-x64.exe'
   WinSwSha256 = '<SHA256_DE_WINSW>'
   JavaExecutable = 'C:\Program Files\Java\jdk-25\bin\java.exe'
@@ -78,7 +80,7 @@ $args = @{
 }
 .\tools\Install-TpvBackendTestWindowsService.ps1 @args -Phase Register -Preflight
 .\tools\Install-TpvBackendTestWindowsService.ps1 @args -Phase Register
-$installedRelease = "C:\ProgramData\TPV ERP\Backend\releases\$($args.ExpectedReleaseId)-r36-b1"
+$installedRelease = "C:\ProgramData\TPV ERP\Backend\releases\$($args.ExpectedReleaseId)-r$($args.ExpectedReleaseSequence)-b$($args.ExpectedBuildSequence)"
 .\tools\Set-TpvBackendTestWindowsAcl.ps1 `
   -BundleDirectory $installedRelease -ConfigurationFile $args.ConfigurationFile
 .\tools\Install-TpvBackendTestWindowsService.ps1 @args -Phase Start -Preflight

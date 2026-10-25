@@ -1,14 +1,16 @@
 $ErrorActionPreference = 'Stop'
 
 function New-TestOnlyContractBundle {
+    param([long] $ReleaseSequence = 36, [long] $BuildSequence = 1)
     Add-Type -AssemblyName System.IO.Compression.FileSystem
+    Add-Type -AssemblyName System.IO.Compression
     $directory = Join-Path ([IO.Path]::GetTempPath()) ('tpv-test-bundle-contract-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $directory | Out-Null
     $jar = Join-Path $directory 'tpv-erp-backend-0.1.0.jar'
     $commit = 'abcdef012345abcdef012345abcdef012345abcd'
     $releaseId = 'tpv-erp-test-only-0.1.0-v279-' + $commit.Substring(0, 12)
     $canonical = "release.id=$releaseId`nsystem.version=0.1.0`ncapability=DUAL`n" +
-        "schema.version=V279`nrelease.sequence=36`nbuild.sequence=1`ncommit.hash=$commit`ndeclaration.hash=`n"
+        "schema.version=V279`nrelease.sequence=$ReleaseSequence`nbuild.sequence=$BuildSequence`ncommit.hash=$commit`ndeclaration.hash=`n"
     $sha = [Security.Cryptography.SHA256]::Create()
     try { $manifestHash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-', '') }
     finally { $sha.Dispose() }
@@ -56,8 +58,11 @@ Describe 'Actualizacion oficial TEST_ONLY de un servicio existente' {
         $old = [pscustomobject]@{Status='TEST_ONLY_VERIFIED';ReleaseId='tpv-erp-test-only-0.1.0-v279-73e0d66b47dd';
             ArtifactSha256=('A'*64);Version='0.1.0';SchemaVersion='V279';ReleaseSequence=36;BuildSequence=1}
         $new = [pscustomobject]@{Status='TEST_ONLY_VERIFIED';ReleaseId='tpv-erp-test-only-0.1.0-v279-abcdef012345';
-            ArtifactSha256=('B'*64);Version='0.1.0';SchemaVersion='V279';ReleaseSequence=36;BuildSequence=1}
+            ArtifactSha256=('B'*64);Version='0.1.0';SchemaVersion='V279';ReleaseSequence=37;BuildSequence=1}
         { Assert-TpvTestOnlyUpdateTransition $old $new } | Should Not Throw
+        $new.ReleaseSequence = 36
+        { Assert-TpvTestOnlyUpdateTransition $old $new } | Should Throw 'estrictamente mayor'
+        $new.ReleaseSequence = 37
         $new.Status = 'PRODUCTION_VERIFIED'
         { Assert-TpvTestOnlyUpdateTransition $old $new } | Should Throw 'TEST_ONLY'
     }
@@ -104,6 +109,39 @@ function Remove-TestOnlyContractBundle([string] $Directory) {
 }
 
 Describe 'Frontera del paquete TEST_ONLY' {
+    It 'lee r36 historica y r37 nueva conservando el pin exacto y la frontera de produccion' {
+        foreach ($sequence in @(36, 37)) {
+            $directory = New-TestOnlyContractBundle -ReleaseSequence $sequence
+            try {
+                $result = & (Join-Path $PSScriptRoot 'Test-TpvBackendTestBundle.ps1') -BundleDirectory $directory -AsObject
+                $result.ReleaseSequence | Should Be $sequence
+                & (Join-Path $PSScriptRoot 'Test-TpvBackendTestBundle.ps1') -BundleDirectory $directory -ExpectedReleaseSequence $sequence -AsObject | Out-Null
+                { & (Join-Path $PSScriptRoot 'Test-TpvBackendTestBundle.ps1') -BundleDirectory $directory -ExpectedReleaseSequence ($sequence + 1) -AsObject } |
+                    Should Throw 'release.sequence esperado'
+                { & (Join-Path $PSScriptRoot 'Test-TpvBackendProductionBundle.ps1') -BundleDirectory $directory -AsObject } |
+                    Should Throw 'TEST_ONLY'
+            } finally { Remove-TestOnlyContractBundle $directory }
+        }
+    }
+
+    It 'rechaza secuencias anteriores al contrato y otro build aun con hashes coherentes' {
+        foreach ($contract in @(@{ReleaseSequence=35;BuildSequence=1}, @{ReleaseSequence=37;BuildSequence=2})) {
+            $directory = New-TestOnlyContractBundle @contract
+            try {
+                { & (Join-Path $PSScriptRoot 'Test-TpvBackendTestBundle.ps1') -BundleDirectory $directory -AsObject } |
+                    Should Throw 'secuencias TEST_ONLY incorrectas'
+            } finally { Remove-TestOnlyContractBundle $directory }
+        }
+    }
+
+    It 'prepara por defecto la nueva secuencia sin ejecutar build ni git' {
+        $errors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Prepare-TpvBackendTestBundle.ps1'), [ref]$null, [ref]$errors)
+        @($errors).Count | Should Be 0
+        $parameter = $ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -ceq 'ExpectedReleaseSequence' }
+        $parameter.DefaultValue.Value | Should Be 37
+    }
+
     It 'verifica identidad TEST_ONLY y nunca la promociona' {
         $directory = New-TestOnlyContractBundle
         try {

@@ -84,10 +84,11 @@ function Assert-TpvTestOnlyUpdateTransition($Previous, $Candidate) {
     $newSchema = [int]([Regex]::Match([string]$Candidate.SchemaVersion, '^V([0-9]+)$').Groups[1].Value)
     if ([version]$Candidate.Version -lt [version]$Previous.Version -or
         $newSchema -lt $oldSchema -or
-        [long]$Candidate.ReleaseSequence -lt [long]$Previous.ReleaseSequence -or
-        ([long]$Candidate.ReleaseSequence -eq [long]$Previous.ReleaseSequence -and
-         [long]$Candidate.BuildSequence -lt [long]$Previous.BuildSequence)) {
+        [long]$Candidate.ReleaseSequence -lt [long]$Previous.ReleaseSequence) {
         throw 'Update no permite downgrade de version, esquema o secuencia.'
+    }
+    if ([long]$Candidate.ReleaseSequence -eq [long]$Previous.ReleaseSequence) {
+        throw 'Update exige releaseSequence estrictamente mayor para una release nueva.'
     }
 }
 
