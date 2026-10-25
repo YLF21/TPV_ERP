@@ -38,6 +38,62 @@ function New-TestOnlyContractBundle {
     return $directory
 }
 
+Describe 'Actualizacion oficial TEST_ONLY de un servicio existente' {
+    BeforeAll {
+        $installerPath = Join-Path $PSScriptRoot 'Install-TpvBackendTestWindowsService.ps1'
+        $tokens = $null
+        $errors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile($installerPath, [ref]$tokens, [ref]$errors)
+        if (@($errors).Count -ne 0) { throw 'El instalador TEST_ONLY no compila' }
+        $functionAst = $ast.Find({ param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -ceq 'Assert-TpvTestOnlyUpdateTransition' }, $true)
+        if ($null -eq $functionAst) { throw 'Falta la guarda de transicion TEST_ONLY' }
+        . ([scriptblock]::Create($functionAst.Extent.Text))
+    }
+
+    It 'acepta solo una release nueva verificada sin descenso de contrato' {
+        $old = [pscustomobject]@{Status='TEST_ONLY_VERIFIED';ReleaseId='tpv-erp-test-only-0.1.0-v279-73e0d66b47dd';
+            ArtifactSha256=('A'*64);Version='0.1.0';SchemaVersion='V279';ReleaseSequence=36;BuildSequence=1}
+        $new = [pscustomobject]@{Status='TEST_ONLY_VERIFIED';ReleaseId='tpv-erp-test-only-0.1.0-v279-abcdef012345';
+            ArtifactSha256=('B'*64);Version='0.1.0';SchemaVersion='V279';ReleaseSequence=36;BuildSequence=1}
+        { Assert-TpvTestOnlyUpdateTransition $old $new } | Should Not Throw
+        $new.Status = 'PRODUCTION_VERIFIED'
+        { Assert-TpvTestOnlyUpdateTransition $old $new } | Should Throw 'TEST_ONLY'
+    }
+
+    It 'rechaza reetiquetar una release inmutable o repetir su instalacion' {
+        $old = [pscustomobject]@{Status='TEST_ONLY_VERIFIED';ReleaseId='tpv-erp-test-only-0.1.0-v279-73e0d66b47dd';
+            ArtifactSha256=('A'*64);Version='0.1.0';SchemaVersion='V279';ReleaseSequence=36;BuildSequence=1}
+        $new = $old.PSObject.Copy()
+        $new.ArtifactSha256 = 'B'*64
+        { Assert-TpvTestOnlyUpdateTransition $old $new } | Should Throw 'otro hash'
+        $new.ArtifactSha256 = $old.ArtifactSha256
+        { Assert-TpvTestOnlyUpdateTransition $old $new } | Should Throw 'release nueva'
+    }
+
+    It 'rechaza downgrade de version, esquema o secuencia' {
+        $old = [pscustomobject]@{Status='TEST_ONLY_VERIFIED';ReleaseId='tpv-erp-test-only-0.1.0-v279-73e0d66b47dd';
+            ArtifactSha256=('A'*64);Version='0.1.0';SchemaVersion='V279';ReleaseSequence=36;BuildSequence=1}
+        $new = [pscustomobject]@{Status='TEST_ONLY_VERIFIED';ReleaseId='tpv-erp-test-only-0.1.0-v279-abcdef012345';
+            ArtifactSha256=('B'*64);Version='0.0.9';SchemaVersion='V279';ReleaseSequence=36;BuildSequence=1}
+        { Assert-TpvTestOnlyUpdateTransition $old $new } | Should Throw 'downgrade'
+        $new.Version='0.1.0';$new.SchemaVersion='V278'
+        { Assert-TpvTestOnlyUpdateTransition $old $new } | Should Throw 'downgrade'
+        $new.SchemaVersion='V279';$new.ReleaseSequence=35
+        { Assert-TpvTestOnlyUpdateTransition $old $new } | Should Throw 'downgrade'
+    }
+
+    It 'mantiene Register cerrado y Update detenido antes de mutar' {
+        $source = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Install-TpvBackendTestWindowsService.ps1') -Raw
+        $source | Should Match "ValidateSet\('Register', 'Update', 'Start'\)"
+        $source | Should Match 'if \(\$Phase -eq ''Register'' -and \$null -ne \$service\)'
+        $source | Should Match 'Assert-TpvScmIdentity \$ServiceName \$serviceExe \$expectedStartName -Stopped'
+        $source | Should Match 'Resolve-TpvBackendInstalledBundleVerifier.ps1'
+        $source | Should Not Match '& \$serviceExe stop'
+    }
+}
+
 function Remove-TestOnlyContractBundle([string] $Directory) {
     $full = (Resolve-Path -LiteralPath $Directory).Path
     if ([IO.Path]::GetDirectoryName($full) -cne [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\','/') -or

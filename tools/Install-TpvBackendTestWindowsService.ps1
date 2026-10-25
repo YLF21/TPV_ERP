@@ -19,7 +19,7 @@ param(
     [Nullable[long]] $ExpectedBuildSequence,
     [string] $SecretDirectory = 'C:\ProgramData\TPV ERP\secrets\verifactu',
     [string] $ExportDirectory = 'C:\ProgramData\TPV ERP\exports\fiscal',
-    [ValidateSet('Register', 'Start')] [string] $Phase = 'Register',
+    [ValidateSet('Register', 'Update', 'Start')] [string] $Phase = 'Register',
     [switch] $Preflight
 )
 
@@ -67,6 +67,27 @@ function Assert-TpvWinSwStartupPolicy([xml] $Definition) {
     $nodes = $Definition.SelectNodes('/service/autoRefresh')
     if ($nodes.Count -ne 1 -or $nodes[0].InnerText -cne 'false') {
         throw 'WinSW exige autoRefresh=false; vuelva a registrar con el instalador aprobado antes de arrancar.'
+    }
+}
+
+function Assert-TpvTestOnlyUpdateTransition($Previous, $Candidate) {
+    if ($Previous.Status -cne 'TEST_ONLY_VERIFIED' -or $Candidate.Status -cne 'TEST_ONLY_VERIFIED') {
+        throw 'Update exige releases TEST_ONLY verificadas antes y despues.'
+    }
+    if ($Previous.ReleaseId -ceq $Candidate.ReleaseId) {
+        if ($Previous.ArtifactSha256 -cne $Candidate.ArtifactSha256) {
+            throw 'La misma release inmutable tiene otro hash.'
+        }
+        throw 'Update exige una release nueva; la release actual ya esta instalada.'
+    }
+    $oldSchema = [int]([Regex]::Match([string]$Previous.SchemaVersion, '^V([0-9]+)$').Groups[1].Value)
+    $newSchema = [int]([Regex]::Match([string]$Candidate.SchemaVersion, '^V([0-9]+)$').Groups[1].Value)
+    if ([version]$Candidate.Version -lt [version]$Previous.Version -or
+        $newSchema -lt $oldSchema -or
+        [long]$Candidate.ReleaseSequence -lt [long]$Previous.ReleaseSequence -or
+        ([long]$Candidate.ReleaseSequence -eq [long]$Previous.ReleaseSequence -and
+         [long]$Candidate.BuildSequence -lt [long]$Previous.BuildSequence)) {
+        throw 'Update no permite downgrade de version, esquema o secuencia.'
     }
 }
 
@@ -447,6 +468,9 @@ $service = Get-CimInstance -ClassName Win32_Service -Filter "Name = '$ServiceNam
 if ($Phase -eq 'Register' -and $null -ne $service) {
     throw 'Ya existe TPVERPBackend; TEST_ONLY no modifica ni sustituye un servicio existente.'
 }
+if ($Phase -eq 'Update' -and $null -eq $service) {
+    throw 'Update exige un TPVERPBackend TEST_ONLY existente y detenido.'
+}
 $serviceExe = Join-Path $install "$ServiceName.exe"
 $serviceXml = Join-Path $install "$ServiceName.xml"
 $releaseDirectoryName = "$($bundleInfo.ReleaseId)-r$($bundleInfo.ReleaseSequence)-b$($bundleInfo.BuildSequence)"
@@ -467,6 +491,58 @@ if ($null -ne $service) {
     if (-not [StringComparer]::OrdinalIgnoreCase.Equals([string]$service.StartName, $expectedStartName)) {
         throw "El servicio $ServiceName usa '$($service.StartName)' y no la cuenta solicitada '$expectedStartName'; no se modifica una cuenta existente."
     }
+}
+
+if ($Phase -eq 'Update') {
+    Assert-TpvScmIdentity $ServiceName $serviceExe $expectedStartName -Stopped
+    $httpsService = Get-CimInstance -ClassName Win32_Service -Filter "Name = 'TPVERPHTTPS'"
+    if ($null -ne $httpsService -and $httpsService.State -cne 'Stopped') {
+        throw 'Update exige detener primero el gateway HTTPS existente.'
+    }
+    if ($service.StartMode -cnotin @('Manual', 'Auto')) {
+        throw 'Update exige un servicio detenido con inicio Manual o Automatico.'
+    }
+    [void](Assert-SafeRegularFile $serviceExe 'WinSW instalado')
+    [void](Assert-SafeRegularFile $serviceXml 'XML WinSW instalado')
+    if ((Get-FileHash -LiteralPath $serviceExe -Algorithm SHA256).Hash -cne $wrapperActualHash) {
+        throw 'Update no sustituye un WinSW instalado diferente del binario aprobado.'
+    }
+    $xmlSettings = [Xml.XmlReaderSettings]::new()
+    $xmlSettings.DtdProcessing = [Xml.DtdProcessing]::Prohibit
+    $xmlSettings.XmlResolver = $null
+    $xmlSettings.MaxCharactersInDocument = 65536
+    $xmlReader = [Xml.XmlReader]::Create($serviceXml, $xmlSettings)
+    try {
+        $previousXml = [Xml.XmlDocument]::new()
+        $previousXml.XmlResolver = $null
+        $previousXml.Load($xmlReader)
+    } finally { $xmlReader.Dispose() }
+    Assert-TpvWinSwStartupPolicy $previousXml
+    $oldJarMatches = [Regex]::Matches([string]$previousXml.service.arguments,
+        '(?i)(?:^|\s)-jar\s+"([^"\r\n]+\.jar)"(?=\s|$)')
+    if ($oldJarMatches.Count -ne 1) { throw 'Update exige un unico JAR anterior instalado.' }
+    $oldJar = Resolve-ExistingFile $oldJarMatches[0].Groups[1].Value 'JAR TEST_ONLY anterior'
+    $oldReleaseDirectory = [IO.Path]::GetDirectoryName($oldJar)
+    if (-not [string]::Equals([IO.Path]::GetDirectoryName($oldReleaseDirectory), $releasesRoot,
+            [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'La release anterior no pertenece al Backend instalado.'
+    }
+    $expectedOldArguments = "--enable-native-access=ALL-UNNAMED -jar `"$oldJar`" --spring.profiles.active=lab-bundle --server.address=$ListenAddress --server.port=$Port$publicUrlArgument `"--spring.config.additional-location=$configurationUri`""
+    $oldPublicEnvironment = @($previousXml.service.env | Where-Object { $_.name -ceq 'TPV_BACKEND_PUBLIC_URL' })
+    if ([string]$previousXml.service.id -cne $ServiceName -or
+        [string]$previousXml.service.executable -cne $java -or
+        [string]$previousXml.service.arguments -cne $expectedOldArguments -or
+        [string]$previousXml.service.workingdirectory -cne $install -or
+        [string]$previousXml.service.startmode -cne 'Manual' -or
+        [string]$previousXml.service.serviceaccount.username -cne $expectedStartName -or
+        ($PublicUrl -and ($oldPublicEnvironment.Count -ne 1 -or
+          [string]$oldPublicEnvironment[0].value -cne $PublicUrl))) {
+        throw 'La identidad, configuracion o XML anterior difiere del servicio TEST_ONLY aprobado.'
+    }
+    $previousPolicy = & (Join-Path $PSScriptRoot 'Resolve-TpvBackendInstalledBundleVerifier.ps1') `
+        -BundleDirectory $oldReleaseDirectory -InstalledServiceXml $serviceXml
+    if (-not $previousPolicy.TestOnly) { throw 'Update no admite un servicio de produccion.' }
+    Assert-TpvTestOnlyUpdateTransition $previousPolicy.Bundle $bundleInfo
 }
 
 if ($Phase -eq 'Start') {
@@ -500,6 +576,7 @@ if ($Phase -eq 'Start') {
 if ($Preflight) {
     Write-Host "Preflight fase ${Phase}: $($bundleInfo.ReleaseId), $($bundleInfo.SchemaVersion), cuenta $ServiceAccount, bind $ListenAddress`:$Port" -ForegroundColor Yellow
     if ($Phase -eq 'Register') { Write-Host 'El preflight de registro NO acredita ACL ni aptitud para arrancar; falta aplicar ACL y pasar -Phase Start -Preflight.' }
+    if ($Phase -eq 'Update') { Write-Host 'Update queda detenido: despues aplique ACL oficiales y ejecute -Phase Start -Preflight.' }
     if ($null -ne $service) { Write-Host "Servicio existente: $($service.State)" }
     Write-Host 'No se han creado directorios, copiado binarios, registrado ni detenido ningun servicio.'
     return
@@ -564,13 +641,12 @@ if ($PSCmdlet.ShouldProcess($install, "Instalar/actualizar $ServiceName con rele
     if ($destinationInfo.ArtifactSha256 -cne $bundleInfo.ArtifactSha256) {
         throw 'La verificacion del bundle destino no coincide con el bundle origen.'
     }
-    if ($null -ne $service -and $service.State -ne 'Stopped') {
-        & $serviceExe stop
-        if ($LASTEXITCODE -ne 0) { throw 'No se pudo detener el servicio anterior.' }
+    if ($Phase -eq 'Update') {
+        Assert-TpvScmIdentity $ServiceName $serviceExe $expectedStartName -Stopped
     }
 
-    $previousXml = if (Test-Path -LiteralPath $serviceXml -PathType Leaf) {
-        [IO.File]::ReadAllText($serviceXml, [Text.Encoding]::UTF8)
+    $previousXmlBytes = if (Test-Path -LiteralPath $serviceXml -PathType Leaf) {
+        [IO.File]::ReadAllBytes($serviceXml)
     } else { $null }
     $backupStamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
     $previousExePath = Join-Path $rollbackRoot "$backupStamp.exe"
@@ -578,8 +654,8 @@ if ($PSCmdlet.ShouldProcess($install, "Instalar/actualizar $ServiceName con rele
     $previousExe = if (Test-Path -LiteralPath $serviceExe -PathType Leaf) {
         Copy-Item -LiteralPath $serviceExe -Destination $previousExePath -Force -PassThru
     } else { $null }
-    if ($null -ne $previousXml) {
-        Set-Content -LiteralPath $previousXmlPath -Value $previousXml -Encoding UTF8
+    if ($null -ne $previousXmlBytes) {
+        [IO.File]::WriteAllBytes($previousXmlPath, $previousXmlBytes)
     }
 
     try {
@@ -630,20 +706,22 @@ if ($PSCmdlet.ShouldProcess($install, "Instalar/actualizar $ServiceName con rele
         if ($null -eq $service) {
             Register-TpvNewService $serviceExe $serviceXml $ServiceName $expectedStartName
         } else {
+            Assert-TpvScmIdentity $ServiceName $serviceExe $expectedStartName -Stopped
             & $serviceExe refresh
             if ($LASTEXITCODE -ne 0) { throw 'WinSW no pudo refrescar la configuracion del servicio.' }
             Assert-TpvScmIdentity $ServiceName $serviceExe $expectedStartName -Stopped -StartMode Manual
         }
     }
     catch {
-        if ($null -ne $previousXml) { Set-Content -LiteralPath $serviceXml -Value $previousXml -Encoding UTF8 }
+        if ($null -ne $previousXmlBytes) { [IO.File]::WriteAllBytes($serviceXml, $previousXmlBytes) }
         if ($null -ne $previousExe -and (Test-Path -LiteralPath $previousExePath -PathType Leaf)) {
             Copy-Item -LiteralPath $previousExePath -Destination $serviceExe -Force
         }
         if ($null -ne $service) { try { & $serviceExe refresh | Out-Null } catch { } }
         throw
     }
-    Write-Host "TEST_ONLY_VERIFIED / NO PROMOTABLE: servicio $ServiceName registrado sin arrancarlo. Release: $($bundleInfo.ReleaseId)" -ForegroundColor Yellow
+    $completedAction = if ($Phase -eq 'Update') { 'actualizado' } else { 'registrado' }
+    Write-Host "TEST_ONLY_VERIFIED / NO PROMOTABLE: servicio $ServiceName $completedAction sin arrancarlo. Release: $($bundleInfo.ReleaseId)" -ForegroundColor Yellow
     Write-Host "Rollback conservador: se conserva $releaseDirectory y la configuracion anterior en rollback."
 }
 } finally {

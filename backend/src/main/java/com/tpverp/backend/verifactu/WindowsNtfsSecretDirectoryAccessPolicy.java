@@ -1,6 +1,9 @@
 package com.tpverp.backend.verifactu;
 
 import com.sun.jna.platform.win32.Advapi32Util;
+import com.sun.jna.platform.win32.Advapi32;
+import com.sun.jna.platform.win32.Kernel32;
+import com.sun.jna.platform.win32.Win32Exception;
 import com.sun.jna.platform.win32.WinNT;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -38,7 +41,17 @@ final class WindowsNtfsSecretDirectoryAccessPolicy implements SecretDirectoryAcc
     }
 
     static WindowsNtfsSecretDirectoryAccessPolicy forCurrentAccount() {
-        return new WindowsNtfsSecretDirectoryAccessPolicy(Advapi32Util.getUserName());
+        // Resolve the process token SID, not an unqualified username: virtual service
+        // accounts must remain NT SERVICE\\<service>, even if a local namesake exists.
+        var token = new WinNT.HANDLEByReference();
+        if (!Advapi32.INSTANCE.OpenProcessToken(Kernel32.INSTANCE.GetCurrentProcess(), WinNT.TOKEN_QUERY, token)) {
+            throw new Win32Exception(Kernel32.INSTANCE.GetLastError());
+        }
+        try {
+            return new WindowsNtfsSecretDirectoryAccessPolicy(Advapi32Util.getTokenAccount(token.getValue()).fqn);
+        } finally {
+            Kernel32.INSTANCE.CloseHandle(token.getValue());
+        }
     }
 
     @Override
@@ -92,6 +105,25 @@ final class WindowsNtfsSecretDirectoryAccessPolicy implements SecretDirectoryAcc
         if (!daclIsProtected(path)) {
             throw failure("La ACL NTFS del secreto VERI*FACTU hereda permisos", null);
         }
+        verifyEntries(path, directory);
+    }
+
+    /** Only the inheritance-protection bit may differ from the canonical secret ACL. */
+    void verifyFileForInheritanceNormalization(Path path) {
+        verifyType(path, false);
+        verifyEntries(path, false);
+    }
+
+    boolean protectEquivalentInheritedFile(Path path) {
+        verifyFileForInheritanceNormalization(path);
+        if (daclIsProtected(path)) {
+            return false;
+        }
+        apply(path, false);
+        return true;
+    }
+
+    private void verifyEntries(Path path, boolean directory) {
         try {
             var actual = new HashSet<>(aclView(path).getAcl());
             var expected = new HashSet<>(expectedAcl(path, directory));

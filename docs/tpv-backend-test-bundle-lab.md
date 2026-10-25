@@ -92,6 +92,32 @@ El XML de WinSW debe declarar `--spring.profiles.active=lab-bundle` y el JAR ver
 
 Los accesos de APP VENTA y APP GESTIÓN en la VM apuntan al HTTPS de laboratorio. Ejecutar allí la copia, subida SaaS, solicitud, recepción y activación mediante las ventanas de mantenimiento. Las ventanas invocan los scripts incluidos en la release activa, elevan UAC, aplican las ACL y detienen/arrancan el servicio de verdad. Los scripts descubren el canal desde el JAR instalado; no aceptan un modo TEST indicado por la interfaz. La activación comprueba `/actuator/health/readiness` antes de informar éxito.
 
+## Actualización de una recuperación ya completada
+
+`Install-TpvBackendTestWindowsService.ps1 -Phase Update` admite una nueva release
+TEST_ONLY verificada sobre un servicio TEST_ONLY existente y detenido. Backend y
+HTTPS deben estar detenidos; se conservan la cuenta virtual, configuración,
+base de datos, identidad y perfil de escritorio. El instalador comprueba ambas
+releases, rechaza retrocesos y deja el servicio detenido en Manual con el XML
+anterior en `rollback`. `Register` sigue reservado a instalaciones nuevas.
+
+Si una recuperación anterior terminó en `COMPLETE` pero el arranque rechazó la
+herencia de permisos de sus claves, ejecutar desde la nueva release verificada
+`tools/Invoke-TpvDisasterRecovery.ps1 -Action protect-secrets -Execute`, con los
+argumentos habituales de bundle, release, Java y directorio de mantenimiento.
+El entorno debe identificar la base recuperada y la cuenta real del backend.
+La operación exige que el diario y la base coincidan en recuperación,
+instalación, copia y huella, y que ambos estén en `COMPLETE`.
+
+Esta operación valida primero las seis claves esperadas y su directorio:
+únicamente admite los permisos canónicos existentes del servicio, SYSTEM y
+Administradores. Protege la herencia sin reescribir el contenido ni cambiar su
+propietario. Rechaza archivos ausentes, enlaces y permisos distintos; no vuelve
+a autorizar ni activar la recuperación. Después se aplican las ACL oficiales
+de la nueva release y se ejecutan `-Phase Start -Preflight` y `-Phase Start`.
+Ante cualquier rechazo se conserva el estado detenido y la evidencia; no se
+debe sustituir esta comprobación por un arranque directo del servicio.
+
 ## Ensayo completado el 24 de octubre de 2026
 
 Se probó el flujo con datos sintéticos entre dos Windows independientes en

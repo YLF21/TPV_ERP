@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)] [ValidateSet('request','receive','activate','status')] [string] $Action,
+    [Parameter(Mandatory = $true)] [ValidateSet('request','receive','activate','status','protect-secrets')] [string] $Action,
     [Parameter(Mandatory = $true)] [string] $BundleDirectory,
     [Parameter(Mandatory = $true)] [string] $ExpectedReleaseId,
     [Parameter(Mandatory = $true)] [string] $MaintenanceDirectory,
@@ -34,6 +34,10 @@ if ($Action -in @('request','receive','activate')) {
             throw "Falta ${accountVariable}: indique la cuenta real del servicio instalado."
         }
     }
+}
+if ($Action -eq 'protect-secrets' -and
+    [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('TPV_BACKEND_SERVICE_ACCOUNT', 'Process'))) {
+    throw 'Falta TPV_BACKEND_SERVICE_ACCOUNT: indique la cuenta real del servicio instalado.'
 }
 if (@(Get-ChildItem Env: | Where-Object { $_.Name -like 'LOADER_*' }).Count -gt 0) { throw 'Retire variables LOADER_* del entorno de mantenimiento.' }
 if ((Get-FileHash -LiteralPath $bundle.Jar -Algorithm SHA256).Hash -cne $bundle.ArtifactSha256) { throw 'El JAR cambió tras verificar el bundle.' }
