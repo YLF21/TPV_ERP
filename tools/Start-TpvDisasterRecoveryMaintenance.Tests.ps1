@@ -56,3 +56,189 @@ Describe 'Recovery readiness HTTP JSON decoding on Windows PowerShell' {
         { ConvertFrom-TpvHttpJson -Content $null } | Should Throw
     }
 }
+
+Describe 'Disaster recovery HTTPS activation and availability' {
+    $tokens = $null
+    $errors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseFile(
+        (Join-Path $PSScriptRoot 'Start-TpvDisasterRecoveryMaintenance.ps1'), [ref]$tokens, [ref]$errors)
+    foreach ($name in @('ConvertFrom-TpvHttpJson', 'Assert-PlainFile', 'Assert-PlainDirectory',
+            'Read-InstalledHttpsService', 'Test-TpvSameHost', 'Test-TpvSameOrigin',
+            'Test-TpvLocalReadiness', 'Test-TpvHttpsHealthResponse', 'Test-TpvHttpsReadiness',
+            'Read-TpvRecoveryFirewallPortFilter', 'Read-TpvRecoveryFirewallApplicationFilter',
+            'Read-TpvRecoveryFirewallAddressFilter', 'Get-TpvRecoveryManagedRule',
+            'Get-TpvRecoveryExposure', 'Test-TpvRecoveryExposureReady',
+            'Enable-TpvRecoveryExposure', 'Test-TpvRecoveryServicesReady', 'Start-TpvRecoveryServices',
+            'Test-TpvAlreadyActivated', 'Assert-TpvActivationApproved')) {
+        $definition = $ast.Find({ param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name
+        }, $true)
+        Invoke-Expression $definition.Extent.Text
+    }
+    $backend = @{ LocalUrl = 'http://127.0.0.1:58442'; Java = 'C:\Java\bin\java.exe' }
+    $https = @{ PublicUrl = 'https://tpv.example.test:58443'; Program = 'C:\ProgramData\TPV ERP\HTTPS\caddy.exe' }
+
+    It 'uses only the installed HTTPS origin and rejects unexpected XML settings' {
+        $root = Join-Path $TestDrive 'TPV ERP\HTTPS'
+        New-Item -ItemType Directory -Path $root -Force | Out-Null
+        $xmlPath = Join-Path $root 'TPVERPHTTPS.xml'
+        $xml = '<service><id>TPVERPHTTPS</id><workingdirectory>' + $root +
+            '</workingdirectory><executable>' + (Join-Path $root 'caddy.exe') + '</executable>' +
+            '<serviceaccount><username>NT SERVICE\TPVERPHTTPS</username></serviceaccount>' +
+            '<env name="TPV_HTTPS_PUBLIC_URL" value="https://tpv.example.test:58443" />' +
+            '<env name="TPV_HTTPS_BACKEND_URL" value="http://127.0.0.1:58442" /></service>'
+        [IO.File]::WriteAllText($xmlPath, $xml)
+        (Read-InstalledHttpsService $TestDrive).PublicUrl | Should Be 'https://tpv.example.test:58443'
+        [IO.File]::WriteAllText($xmlPath, $xml.Replace('https://tpv.example.test:58443',
+            'https://tpv.example.test:58443/unexpected'))
+        { Read-InstalledHttpsService $TestDrive } | Should Throw
+        [IO.File]::WriteAllText($xmlPath, $xml.Replace('https://tpv.example.test:58443',
+            'https://[::1]:58443'))
+        (Read-InstalledHttpsService $TestDrive).PublicUrl | Should Match '^https://\[0000:'
+    }
+
+    It 'matches the official IPv6 loopback origin despite .NET expansion' {
+        (Test-TpvSameOrigin 'http://[0000:0000:0000:0000:0000:0000:0000:0001]:58442' 'http://[::1]:58442') | Should Be $true
+        (Test-TpvSameHost '::1' '0000:0000:0000:0000:0000:0000:0000:0001') | Should Be $true
+        (Test-TpvSameOrigin 'http://[::1]:58443' 'http://[::1]:58442') | Should Be $false
+    }
+
+    It 'requires HTTP 200 and UP through HTTPS, including chunked byte-style JSON' {
+        $plain = "HTTP/1.1 200 OK`r`nContent-Type: application/vnd.spring-boot.actuator.v3+json`r`nConnection: close`r`n`r`n{""status"":""UP""}"
+        (Test-TpvHttpsHealthResponse ([IO.StringReader]::new($plain))) | Should Be $true
+        $chunked = "HTTP/1.1 200 OK`r`nTransfer-Encoding: chunked`r`n`r`n9`r`n{""status""`r`n6`r`n:""UP""}`r`n0`r`n`r`n"
+        (Test-TpvHttpsHealthResponse ([IO.StringReader]::new($chunked))) | Should Be $true
+        (Test-TpvHttpsHealthResponse ([IO.StringReader]::new($plain.Replace('UP', 'DOWN')))) | Should Be $false
+        (Test-TpvHttpsHealthResponse ([IO.StringReader]::new($plain.Replace('200 OK', '503 DOWN')))) | Should Be $false
+    }
+
+    It 'does not claim availability when HTTPS or its TLS validation fails' {
+        Mock Get-Service { [pscustomobject]@{ Status = [ServiceProcess.ServiceControllerStatus]::Running } }
+        Mock Test-TpvLocalReadiness { $true }
+        Mock Test-TpvHttpsReadiness { $false }
+        Mock Test-TpvRecoveryExposureReady { $true }
+        (Test-TpvRecoveryServicesReady $backend $https) | Should Be $false
+        Mock Test-TpvHttpsReadiness { $true }
+        (Test-TpvRecoveryServicesReady $backend $https) | Should Be $true
+        Assert-MockCalled Test-TpvHttpsReadiness -Times 2
+    }
+
+    It 'starts backend before HTTPS after approved activation and accepts an already running backend' {
+        $script:started = @()
+        Mock Get-TpvRecoveryExposure { @{} }
+        Mock Enable-TpvRecoveryExposure { }
+        Mock Get-Service {
+            $state = if ($Name -in $script:started) { 'Running' } else { 'Stopped' }
+            $service = [pscustomobject]@{ Status = [ServiceProcess.ServiceControllerStatus]::$state }
+            $service | Add-Member -MemberType ScriptMethod -Name WaitForStatus -Value { param($status, $timeout) }
+            $service
+        }
+        Mock Start-Service { $script:started += $Name }
+        Mock Test-TpvLocalReadiness { $true }
+        Mock Test-TpvHttpsReadiness { $true }
+        Mock Test-TpvRecoveryExposureReady { $true }
+        Start-TpvRecoveryServices $backend $https
+        $script:started -join ',' | Should Be 'TPVERPBackend,TPVERPHTTPS'
+        Start-TpvRecoveryServices $backend $https
+        Assert-MockCalled Start-Service -Times 2
+    }
+
+    It 'does not start services when an installed firewall rule is absent or incompatible' {
+        Mock Get-TpvRecoveryExposure { throw 'Falta la regla instalada TPVERPHTTPS-LAN' }
+        Mock Start-Service { }
+        { Start-TpvRecoveryServices $backend $https } | Should Throw
+        Assert-MockCalled Start-Service -Times 0 -Scope It
+    }
+
+    It 'rejects a missing or redirected firewall rule without changing it' {
+        Mock Get-NetFirewallRule { $null }
+        Mock Set-NetFirewallRule { }
+        { Get-TpvRecoveryManagedRule 'TPVERPHTTPS-LAN' $https.Program 'TCP' 58443 } | Should Throw
+        Assert-MockCalled Set-NetFirewallRule -Times 0
+        Mock Get-NetFirewallRule { [pscustomobject]@{ Description = 'Other application'; Direction = 'Inbound'; Action = 'Allow'; Profile = 'Domain,Private' } }
+        Mock Read-TpvRecoveryFirewallPortFilter { [pscustomobject]@{ Protocol = 'TCP'; LocalPort = '58443' } }
+        Mock Read-TpvRecoveryFirewallApplicationFilter { [pscustomobject]@{ Program = 'C:\Other\caddy.exe' } }
+        Mock Read-TpvRecoveryFirewallAddressFilter { [pscustomobject]@{ RemoteAddress = 'LocalSubnet' } }
+        { Get-TpvRecoveryManagedRule 'TPVERPHTTPS-LAN' $https.Program 'TCP' 58443 } | Should Throw
+        Assert-MockCalled Set-NetFirewallRule -Times 0
+    }
+
+}
+
+Describe 'Recovery exposure completion and rollback' {
+    $tokens = $null
+    $errors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseFile(
+        (Join-Path $PSScriptRoot 'Start-TpvDisasterRecoveryMaintenance.ps1'), [ref]$tokens, [ref]$errors)
+    foreach ($name in @('Get-TpvRecoveryExposure', 'Test-TpvRecoveryExposureReady',
+            'Enable-TpvRecoveryExposure', 'Test-TpvAlreadyActivated', 'Assert-TpvActivationApproved')) {
+        $definition = $ast.Find({ param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name
+        }, $true)
+        Invoke-Expression $definition.Extent.Text
+    }
+    $backend = @{ LocalUrl = 'http://127.0.0.1:58442'; Java = 'C:\Java\bin\java.exe' }
+    $https = @{ PublicUrl = 'https://tpv.example.test:58443'; Program = 'C:\ProgramData\TPV ERP\HTTPS\caddy.exe' }
+
+    It 'requires enabled managed rules and Automatic services for COMPLETE readiness' {
+        $script:exposure = @{ Rules = @{ 'TPVERPHTTPS-LAN' = [pscustomobject]@{ Enabled = 'False' };
+                'TPVERPDiscovery-LAN' = [pscustomobject]@{ Enabled = 'True' } };
+            Services = @{ 'TPVERPBackend' = [pscustomobject]@{ StartType = 'Automatic' };
+                'TPVERPHTTPS' = [pscustomobject]@{ StartType = 'Manual' } } }
+        Mock Get-TpvRecoveryExposure { $script:exposure }
+        (Test-TpvRecoveryExposureReady $backend $https) | Should Be $false
+        $script:exposure.Rules['TPVERPHTTPS-LAN'].Enabled = 'True'
+        (Test-TpvRecoveryExposureReady $backend $https) | Should Be $false
+        $script:exposure.Services['TPVERPHTTPS'].StartType = 'Automatic'
+        (Test-TpvRecoveryExposureReady $backend $https) | Should Be $true
+    }
+
+    It 'enables only installed rules and services after readiness, rolling back its own partial change' {
+        $script:exposure = @{ Rules = @{ 'TPVERPHTTPS-LAN' = [pscustomobject]@{ Enabled = 'False' };
+                'TPVERPDiscovery-LAN' = [pscustomobject]@{ Enabled = 'False' } };
+            Services = @{ 'TPVERPBackend' = [pscustomobject]@{ StartType = 'Manual' };
+                'TPVERPHTTPS' = [pscustomobject]@{ StartType = 'Manual' } } }
+        Mock Get-TpvRecoveryExposure { $script:exposure }
+        $script:ruleChanges = @()
+        Mock Set-NetFirewallRule {
+            param($Name, $Enabled)
+            $script:ruleChanges += "$Name=$Enabled"
+            if ($Name -eq 'TPVERPDiscovery-LAN' -and $Enabled -eq 'True') { throw 'denied' }
+        }
+        Mock Set-Service { }
+        { Enable-TpvRecoveryExposure $backend $https } | Should Throw
+        $script:ruleChanges -join ',' | Should Be 'TPVERPHTTPS-LAN=True,TPVERPDiscovery-LAN=True,TPVERPHTTPS-LAN=False'
+        Assert-MockCalled Set-Service -Times 0 -Scope It
+    }
+
+    It 'restores only service and rule settings changed by a failed Automatic update' {
+        $script:exposure = @{ Rules = @{ 'TPVERPHTTPS-LAN' = [pscustomobject]@{ Enabled = 'False' };
+                'TPVERPDiscovery-LAN' = [pscustomobject]@{ Enabled = 'True' } };
+            Services = @{ 'TPVERPBackend' = [pscustomobject]@{ StartType = 'Manual' };
+                'TPVERPHTTPS' = [pscustomobject]@{ StartType = 'Manual' } } }
+        Mock Get-TpvRecoveryExposure { $script:exposure }
+        $script:serviceChanges = @()
+        $script:ruleChanges = @()
+        Mock Set-Service {
+            param($Name, $StartupType)
+            $script:serviceChanges += "$Name=$StartupType"
+            if ($Name -eq 'TPVERPHTTPS' -and $StartupType -eq 'Automatic') { throw 'denied' }
+        }
+        Mock Set-NetFirewallRule {
+            param($Name, $Enabled)
+            $script:ruleChanges += "$Name=$Enabled"
+        }
+        { Enable-TpvRecoveryExposure $backend $https } | Should Throw
+        $script:serviceChanges -join ',' | Should Be 'TPVERPBackend=Automatic,TPVERPHTTPS=Automatic,TPVERPBackend=Manual'
+        $script:ruleChanges -join ',' | Should Be 'TPVERPHTTPS-LAN=True,TPVERPHTTPS-LAN=False'
+    }
+
+    It 'allows availability retry for ACTIVATED and COMPLETE without a new activation' {
+        (Test-TpvAlreadyActivated 'ACTIVATED') | Should Be $true
+        (Test-TpvAlreadyActivated 'COMPLETE') | Should Be $true
+        (Test-TpvAlreadyActivated 'ACTIVATION_APPROVED') | Should Be $false
+        { Assert-TpvActivationApproved 'SUPPORT_REVIEW' } | Should Throw
+        { Assert-TpvActivationApproved 'ACTIVATED' } | Should Not Throw
+        { Assert-TpvActivationApproved 'COMPLETE' } | Should Not Throw
+    }
+}

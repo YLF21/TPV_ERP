@@ -57,7 +57,22 @@ SaaS ni modifica el historial central:
 6. Tras una revisión satisfactoria y la confirmación de retirada del equipo
    antiguo, soporte aprueba la activación única del destino. Se renuevan las
    credenciales, se invalidan las sesiones copiadas y se vuelve a vincular `001`.
-   El primer arranque completa las comprobaciones fiscales antes de operar.
+   El asistente arranca primero el backend y después el servicio HTTPS instalado;
+   comprueba que ambos sigan en ejecución, que la salud local responda `UP` y
+   que la URL pública instalada responda por TLS válido con salud `UP`. Después
+   habilita las dos reglas LAN preparadas por `Register` y fija el inicio
+   automático de ambos servicios. Rechaza reglas ausentes o ajenas sin crearlas
+   ni alterar otras reglas. El primer arranque completa las comprobaciones
+   fiscales antes de operar.
+
+Si la activación ya consta como `ACTIVATED` o `COMPLETE` pero falla el arranque o
+HTTPS, el estado visible es `ACTIVATED_SERVICE_UNREADY`. Tras corregir la causa
+operativa, repetir **Activar** solo reintenta la disponibilidad de los servicios:
+no vuelve a restaurar la copia, renovar credenciales ni consumir una aprobación
+nueva. **Estado** no presenta `COMPLETE` mientras falte una comprobación de
+salud, una regla LAN habilitada o el inicio automático. El nombre público usado
+para validar el certificado debe coincidir con la URL del servicio HTTPS
+instalado.
 
 La fecha de captura delimita los datos recuperados. Las operaciones posteriores
 que solo existieran en el disco averiado pueden haberse perdido. No se garantiza

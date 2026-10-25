@@ -64,7 +64,10 @@ export function DisasterRecoveryMaintenanceScreen({ locale: _locale, t, onExit }
         {(state === "DESTINATION_READY" || state === "DOWNLOAD_AUTHORIZED") && <button type="button" disabled={busy} onClick={() => void start("receive")}>{t("gestion.disaster.receive")}</button>}
         {state === "RECEIVING" && <button type="button" disabled={busy} onClick={() => void start("receive")}>{t("gestion.disaster.resumeReceive")}</button>}
         {state === "SUPPORT_REVIEW" && <button type="button" disabled={busy} onClick={() => void start("receive")}>{t("gestion.disaster.revalidateReceive")}</button>}
-        {state === "ACTIVATION_APPROVED" && <button type="button" className="primary" disabled={busy} onClick={() => void start("activate")}>{t("gestion.disaster.activate")}</button>}
+        {(state === "ACTIVATION_APPROVED" || state === "ACTIVATED_SERVICE_UNREADY") &&
+          <button type="button" className="primary" disabled={busy} onClick={() => void start("activate")}>
+            {t(state === "ACTIVATED_SERVICE_UNREADY" ? "gestion.disaster.retryStartup" : "gestion.disaster.activate")}
+          </button>}
       </div>
       {status?.destinationPublicKey && <details><summary>{t("gestion.disaster.technicalDetails")}</summary>
         <label>{t("gestion.transfer.publicKey")}<textarea readOnly value={status.destinationPublicKey} /></label>
