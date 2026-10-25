@@ -9,6 +9,27 @@ param(
     [ValidatePattern('^maintenance-result-[0-9a-f]{32}\.json$')] [string] $ResultFileName,
     [switch] $Execute
 )
+function Invoke-TpvRecoveryJava([string] $Executable, [string[]] $Arguments) {
+    $previousPreference = $ErrorActionPreference
+    $nativeExitCode = $null
+    $global:LASTEXITCODE = $null
+    try {
+        # Windows PowerShell 5.1 turns redirected native stderr into ErrorRecords.
+        # Preserve those diagnostics, but decide success from this invocation's exit code.
+        $ErrorActionPreference = 'Continue'
+        & $Executable @Arguments
+        $nativeExitCode = $global:LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
+    if ($null -eq $nativeExitCode) {
+        throw 'Java no devolvio un codigo de salida; conserve el journal y revise el diagnostico de arranque.'
+    }
+    if ($nativeExitCode -ne 0) {
+        throw "La recuperacion no se completo (codigo $nativeExitCode); conserve el journal y la cuarentena."
+    }
+}
+
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 try {
@@ -45,11 +66,11 @@ $directory = [IO.Path]::GetFullPath($MaintenanceDirectory)
 if (-not [IO.Path]::IsPathRooted($directory) -or -not (Test-Path -LiteralPath $directory -PathType Container)) {
     throw 'El directorio de recuperación protegido no está disponible.'
 }
-$cliArgs = @('-Dloader.main=com.tpverp.backend.disasterrecovery.OfflineDisasterRecoveryCli',
+$cliArgs = @('--enable-native-access=ALL-UNNAMED',
+    '-Dloader.main=com.tpverp.backend.disasterrecovery.OfflineDisasterRecoveryCli',
     '-Dloader.config.location=classpath:META-INF/tpv-erp-release.properties','-Dloader.path=',
     '-cp',$bundle.Jar,'org.springframework.boot.loader.launch.PropertiesLauncher',
     '--action',$Action,'--directory',$directory)
 if ($Action -eq 'receive') { $cliArgs += @('--recovery-id',$RecoveryId) }
 if ($ResultFileName) { $cliArgs += @('--result-file', $ResultFileName) }
-& $JavaExecutable @cliArgs
-if ($LASTEXITCODE -ne 0) { throw "La recuperación no se completó (código $LASTEXITCODE); conserve el journal y la cuarentena." }
+Invoke-TpvRecoveryJava -Executable $JavaExecutable -Arguments $cliArgs
