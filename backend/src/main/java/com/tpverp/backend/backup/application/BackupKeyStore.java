@@ -1,6 +1,7 @@
 package com.tpverp.backend.backup.application;
 
 import com.tpverp.backend.shared.crypto.SecretProtector;
+import com.tpverp.backend.verifactu.TransferSecretDirectory;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -32,7 +33,7 @@ public final class BackupKeyStore {
     @Deprecated
     public synchronized void initialize(char[] adminPassword, Path backupDirectory) {
         try {
-            Files.createDirectories(keyDirectory);
+            prepareKeyDirectory();
             Files.createDirectories(backupDirectory);
             Path protectedBrk = keyDirectory.resolve(PROTECTED_BRK_FILE);
             Path recovery = keyDirectory.resolve(RECOVERY_FILE);
@@ -65,7 +66,7 @@ public final class BackupKeyStore {
     /** Provisions the current v2 recovery package, independent of ADMIN. */
     public synchronized void initializeV2(char[] recoverySecret, Path backupDirectory) {
         try {
-            Files.createDirectories(keyDirectory);
+            prepareKeyDirectory();
             Files.createDirectories(backupDirectory);
             Path protectedBrk = keyDirectory.resolve(PROTECTED_BRK_FILE);
             Path recovery = keyDirectory.resolve(RECOVERY_FILE);
@@ -330,13 +331,28 @@ public final class BackupKeyStore {
         }
     }
 
-    private static void writeNewPairAtomically(
+    private void prepareKeyDirectory() throws Exception {
+        if (com.sun.jna.Platform.isWindows()) {
+            TransferSecretDirectory.forCurrentAccount(keyDirectory);
+        } else {
+            Files.createDirectories(keyDirectory);
+        }
+    }
+
+    private TransferSecretDirectory windowsKeyDirectory() {
+        return com.sun.jna.Platform.isWindows() ? TransferSecretDirectory.forCurrentAccount(keyDirectory) : null;
+    }
+
+    private void writeNewPairAtomically(
             Path protectedTarget,
             byte[] protectedValue,
             Path recoveryTarget,
             byte[] recoveryValue) throws Exception {
-        Path protectedTemp = Files.createTempFile(protectedTarget.getParent(), ".backup-brk-", ".tmp");
-        Path recoveryTemp = Files.createTempFile(recoveryTarget.getParent(), ".backup-recovery-", ".tmp");
+        var directory = windowsKeyDirectory();
+        Path protectedTemp = directory == null ? Files.createTempFile(protectedTarget.getParent(), ".backup-brk-", ".tmp")
+                : directory.createProtectedTemporary();
+        Path recoveryTemp = directory == null ? Files.createTempFile(recoveryTarget.getParent(), ".backup-recovery-", ".tmp")
+                : directory.createProtectedTemporary();
         boolean protectedInstalled = false;
         boolean recoveryInstalled = false;
         try {
@@ -344,8 +360,10 @@ public final class BackupKeyStore {
             Files.write(recoveryTemp, recoveryValue, StandardOpenOption.TRUNCATE_EXISTING);
             moveNew(protectedTemp, protectedTarget);
             protectedInstalled = true;
+            if (directory != null) directory.verifyFile(protectedTarget.getFileName().toString());
             moveNew(recoveryTemp, recoveryTarget);
             recoveryInstalled = true;
+            if (directory != null) directory.verifyFile(recoveryTarget.getFileName().toString());
         } finally {
             Files.deleteIfExists(protectedTemp);
             Files.deleteIfExists(recoveryTemp);
@@ -364,7 +382,12 @@ public final class BackupKeyStore {
         }
     }
 
-    private static void replaceAtomically(Path target, byte[] value) throws Exception {
+    private void replaceAtomically(Path target, byte[] value) throws Exception {
+        var directory = windowsKeyDirectory();
+        if (directory != null) {
+            directory.write(target.getFileName().toString(), value);
+            return;
+        }
         Path temporary = Files.createTempFile(target.getParent(), ".backup-recovery-", ".tmp");
         try {
             Files.write(temporary, value, StandardOpenOption.TRUNCATE_EXISTING);

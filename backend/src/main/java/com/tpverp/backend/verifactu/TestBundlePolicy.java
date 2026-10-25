@@ -47,7 +47,7 @@ public final class TestBundlePolicy {
         manifest.requireSelfConsistent();
         if (!manifest.releaseId().matches("tpv-erp-test-only-0\\.1\\.0-v279-[a-zA-Z0-9._-]+")
                 || !"0.1.0".equals(manifest.systemVersion()) || manifest.capability() != FiscalProductCapability.DUAL
-                || !"V279".equals(manifest.schemaVersion()) || manifest.releaseSequence() != 36
+                || !"V279".equals(manifest.schemaVersion()) || manifest.releaseSequence() < 36
                 || manifest.buildSequence() != 1 || manifest.commitHash() == null
                 || manifest.manifestHash() == null || manifest.declarationHash() != null
                 || manifest.commitHash().length() != 40

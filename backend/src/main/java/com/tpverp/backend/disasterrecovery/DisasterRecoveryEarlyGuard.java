@@ -37,16 +37,16 @@ public final class DisasterRecoveryEarlyGuard implements EnvironmentPostProcesso
             var material=state.path("secrets");
             for(var entry:Map.of("identity.private","installation-private.dpapi","backup.brk","backup-brk.dpapi").entrySet()) {
                 byte[] clear=material.path(entry.getKey()).binaryValue();if(clear==null||clear.length==0)throw new IllegalStateException("Recovery key material missing");
-                try{RecoverySecretHandoff.writeFile(keys.resolve(entry.getValue()),protector.protect(clear));}finally{Arrays.fill(clear,(byte)0);}
+                try{RecoverySecretHandoff.writeSecretFile(keys.resolve(entry.getValue()),protector.protect(clear));}finally{Arrays.fill(clear,(byte)0);}
             }
-            RecoverySecretHandoff.writeFile(keys.resolve("installation-public.der"),material.path("identity.public").binaryValue());
-            RecoverySecretHandoff.writeFile(keys.resolve("tpv-backup-recovery.key"),material.path("backup.recovery").binaryValue());
+            RecoverySecretHandoff.writeSecretFile(keys.resolve("installation-public.der"),material.path("identity.public").binaryValue());
+            RecoverySecretHandoff.writeSecretFile(keys.resolve("tpv-backup-recovery.key"),material.path("backup.recovery").binaryValue());
             // receive already authenticated this pair with the recovery passphrase and the backup.
             byte[] brk=material.path("backup.brk").binaryValue(),wrapped=material.path("backup.recovery").binaryValue();
             try{new com.tpverp.backend.backup.application.BackupKeyStore(keys,protector).recordVerifiedRecoveryMaterial(brk,wrapped);}
             finally{Arrays.fill(brk,(byte)0);Arrays.fill(wrapped,(byte)0);}
             byte[] token=TransferEnvelope.rsa(javax.crypto.Cipher.DECRYPT_MODE,destination).doFinal(Base64.getDecoder().decode(result.path("encryptedCredential").asText()));
-            try{RecoverySecretHandoff.writeFile(keys.resolve("saas-installation-token.dpapi"),protector.protect(token));}finally{Arrays.fill(token,(byte)0);}
+            try{RecoverySecretHandoff.writeSecretFile(keys.resolve("saas-installation-token.dpapi"),protector.protect(token));}finally{Arrays.fill(token,(byte)0);}
             Files.deleteIfExists(keys.resolve("saas-link-recovery-token.dpapi"));
             var identity=new InstallationIdentityStore(keys,protector).loadOrCreate();
             if(!MessageDigest.isEqual(identity.publicKey().getEncoded(),material.path("identity.public").binaryValue()))throw new IllegalStateException("Recovered identity verification failed");

@@ -234,7 +234,7 @@ try {
     if ($commitHash -notmatch '^[0-9a-f]{40}$' -or -not $releaseId.EndsWith($commitHash.Substring(0, 12))) {
         Fail 'commit.hash TEST_ONLY no coincide con release.id'
     }
-    if ($releaseSequence -ne 36 -or $buildSequence -ne 1) { Fail 'secuencias TEST_ONLY incorrectas' }
+    if ($releaseSequence -lt 36 -or $buildSequence -ne 1) { Fail 'secuencias TEST_ONLY incorrectas' }
     if ($manifestHash -notmatch '^[0-9A-Fa-f]{64}$') { Fail 'manifest.hash no es SHA-256' }
 
     $canonical = "release.id=$releaseId`n" +

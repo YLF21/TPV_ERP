@@ -1,6 +1,6 @@
 # Backend 0.1 TEST_ONLY en VirtualBox
 
-Este canal sirve para ensayar el flujo completo en máquinas VirtualBox aisladas. La identidad del paquete es `tpv-erp-test-only-0.1.0-v279-<12 caracteres del commit>`, `capability=DUAL`, esquema V279, secuencia de release 36 y build 1. Su marcador embebido dice `purpose=TEST_ONLY`, `runtime=SANDBOX`, `version=0.1.0` y `production.allowed=false`. El verificador imprime `TEST_ONLY_VERIFIED / NO PROMOTABLE`. El canal productivo 1.0 y su verificador rechazan cualquier JAR con marcador TEST_ONLY, incluso si tuviera un PDF.
+Este canal sirve para ensayar el flujo completo en máquinas VirtualBox aisladas. La identidad del paquete es `tpv-erp-test-only-0.1.0-v279-<12 caracteres del commit>`, `capability=DUAL`, esquema V279 y build 1. El lector conserva compatibilidad con la secuencia histórica 36; el generador propone 37 y admite una secuencia explícita superior. Cada nueva release que actualice una instalación debe tener una secuencia estrictamente mayor que la instalada: incrementar solo el build o cambiar el commit no basta. Su marcador embebido dice `purpose=TEST_ONLY`, `runtime=SANDBOX`, `version=0.1.0` y `production.allowed=false`. El verificador imprime `TEST_ONLY_VERIFIED / NO PROMOTABLE`. El canal productivo 1.0 y su verificador rechazan cualquier JAR con marcador TEST_ONLY, incluso si tuviera un PDF.
 
 V279 corrige el alta de instalaciones cuando los 30 dias atraviesan un cambio
 horario: la duracion sigue siendo las 720 horas transcurridas que calcula Java.
@@ -71,6 +71,8 @@ En PowerShell elevado de A, con WinSW 3.x y Java 25 ya proporcionados y sus hash
 $args = @{
   BundleDirectory = 'D:\lab\backend-<release-id>'
   ExpectedReleaseId = '<release-id-verificado>'
+  ExpectedReleaseSequence = 37
+  ExpectedBuildSequence = 1
   WinSwExecutable = 'D:\lab\WinSW-x64.exe'
   WinSwSha256 = '<SHA256_DE_WINSW>'
   JavaExecutable = 'C:\Program Files\Java\jdk-25\bin\java.exe'
@@ -78,7 +80,7 @@ $args = @{
 }
 .\tools\Install-TpvBackendTestWindowsService.ps1 @args -Phase Register -Preflight
 .\tools\Install-TpvBackendTestWindowsService.ps1 @args -Phase Register
-$installedRelease = "C:\ProgramData\TPV ERP\Backend\releases\$($args.ExpectedReleaseId)-r36-b1"
+$installedRelease = "C:\ProgramData\TPV ERP\Backend\releases\$($args.ExpectedReleaseId)-r$($args.ExpectedReleaseSequence)-b$($args.ExpectedBuildSequence)"
 .\tools\Set-TpvBackendTestWindowsAcl.ps1 `
   -BundleDirectory $installedRelease -ConfigurationFile $args.ConfigurationFile
 .\tools\Install-TpvBackendTestWindowsService.ps1 @args -Phase Start -Preflight
@@ -91,6 +93,32 @@ La ACL privada usa las rutas efectivas del fichero instalado: claves de instalac
 El XML de WinSW debe declarar `--spring.profiles.active=lab-bundle` y el JAR verificado. Para HTTPS, registrar el servicio real `TPVERPHTTPS` con `Install-TpvHttpsWindowsService.ps1` y un certificado de laboratorio, siguiendo sus dos fases de registro/inicio y sus verificaciones de hash/ACL. El asistente de recuperación requiere ese servicio HTTPS instalado y verifica su identidad. No crear XML de servicio a mano como sustituto de un servicio SCM.
 
 Los accesos de APP VENTA y APP GESTIÓN en la VM apuntan al HTTPS de laboratorio. Ejecutar allí la copia, subida SaaS, solicitud, recepción y activación mediante las ventanas de mantenimiento. Las ventanas invocan los scripts incluidos en la release activa, elevan UAC, aplican las ACL y detienen/arrancan el servicio de verdad. Los scripts descubren el canal desde el JAR instalado; no aceptan un modo TEST indicado por la interfaz. La activación comprueba `/actuator/health/readiness` antes de informar éxito.
+
+## Actualización de una recuperación ya completada
+
+`Install-TpvBackendTestWindowsService.ps1 -Phase Update` admite una nueva release
+TEST_ONLY verificada sobre un servicio TEST_ONLY existente y detenido. Backend y
+HTTPS deben estar detenidos; se conservan la cuenta virtual, configuración,
+base de datos, identidad y perfil de escritorio. El instalador comprueba ambas
+releases, rechaza retrocesos y deja el servicio detenido en Manual con el XML
+anterior en `rollback`. `Register` sigue reservado a instalaciones nuevas.
+
+Si una recuperación anterior terminó en `COMPLETE` pero el arranque rechazó la
+herencia de permisos de sus claves, ejecutar desde la nueva release verificada
+`tools/Invoke-TpvDisasterRecovery.ps1 -Action protect-secrets -Execute`, con los
+argumentos habituales de bundle, release, Java y directorio de mantenimiento.
+El entorno debe identificar la base recuperada y la cuenta real del backend.
+La operación exige que el diario y la base coincidan en recuperación,
+instalación, copia y huella, y que ambos estén en `COMPLETE`.
+
+Esta operación valida primero las seis claves esperadas y su directorio:
+únicamente admite los permisos canónicos existentes del servicio, SYSTEM y
+Administradores. Protege la herencia sin reescribir el contenido ni cambiar su
+propietario. Rechaza archivos ausentes, enlaces y permisos distintos; no vuelve
+a autorizar ni activar la recuperación. Después se aplican las ACL oficiales
+de la nueva release y se ejecutan `-Phase Start -Preflight` y `-Phase Start`.
+Ante cualquier rechazo se conserva el estado detenido y la evidencia; no se
+debe sustituir esta comprobación por un arranque directo del servicio.
 
 ## Ensayo completado el 24 de octubre de 2026
 

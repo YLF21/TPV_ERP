@@ -4,7 +4,7 @@ param(
     [string] $ExpectedVersion = '0.1.0',
     [string] $ExpectedReleaseId,
     [string] $ExpectedSchemaVersion = 'V279',
-    [Nullable[long]] $ExpectedReleaseSequence = 36,
+    [Nullable[long]] $ExpectedReleaseSequence = 37,
     [Nullable[long]] $ExpectedBuildSequence = 1
 )
 
@@ -18,8 +18,9 @@ $canonicalReleaseId = "tpv-erp-test-only-0.1.0-v279-$($commit.Substring(0, 12))"
 if ([string]::IsNullOrWhiteSpace($ExpectedReleaseId)) { $ExpectedReleaseId = $canonicalReleaseId }
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { $OutputDirectory = "artifacts\backend-$ExpectedReleaseId" }
 if ($ExpectedVersion -cne '0.1.0' -or $ExpectedReleaseId -cne $canonicalReleaseId -or
-    $ExpectedSchemaVersion -cne 'V279' -or $ExpectedReleaseSequence -ne 36 -or $ExpectedBuildSequence -ne 1) {
-    throw 'La identidad TEST_ONLY debe coincidir con 0.1.0/V279/r36/b1 y el commit HEAD.'
+    $ExpectedSchemaVersion -cne 'V279' -or $null -eq $ExpectedReleaseSequence -or
+    $ExpectedReleaseSequence -lt 36 -or $ExpectedBuildSequence -ne 1) {
+    throw 'La identidad TEST_ONLY debe coincidir con 0.1.0/V279, releaseSequence >= 36, b1 y el commit HEAD.'
 }
 
 function Assert-SafeExpectedSegment([string] $Value, [string] $Name) {

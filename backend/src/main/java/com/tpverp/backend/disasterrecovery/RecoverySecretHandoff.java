@@ -23,7 +23,7 @@ final class RecoverySecretHandoff {
     static void write(Path keys,ObjectNode value)throws Exception {
         requireProtectedDirectory(keys);
         byte[] clear=JSON.writeValueAsBytes(value);
-        try{writeFile(keys.resolve(FILE),new WindowsMachineDpapiSecretProtector().protect(clear));}
+        try{writeSecretFile(keys.resolve(FILE),new WindowsMachineDpapiSecretProtector().protect(clear));}
         finally{Arrays.fill(clear,(byte)0);}
     }
     static void requireProtectedDirectory(Path keys)throws Exception {
@@ -48,5 +48,12 @@ final class RecoverySecretHandoff {
             try(var channel=FileChannel.open(temporary,StandardOpenOption.WRITE)){var buffer=ByteBuffer.wrap(bytes);while(buffer.hasRemaining())channel.write(buffer);channel.force(true);}
             Files.move(temporary,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
         }finally{Files.deleteIfExists(temporary);}
+    }
+    static void writeSecretFile(Path target,byte[] bytes)throws Exception {
+        writeSecretFile(target,bytes,System.getenv().getOrDefault("TPV_BACKEND_SERVICE_ACCOUNT","NT SERVICE\\TPVERPBackend"));
+    }
+    static void writeSecretFile(Path target,byte[] bytes,String serviceAccount)throws Exception {
+        new com.tpverp.backend.verifactu.TransferSecretDirectory(target.getParent(),serviceAccount)
+                .write(target.getFileName().toString(),bytes);
     }
 }

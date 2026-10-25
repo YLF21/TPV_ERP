@@ -17,6 +17,24 @@ class BackupKeyStoreTest {
     private Path tempDir;
 
     @Test
+    @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.WINDOWS)
+    void nativeWindowsDpapiBackupKeysAndIntegritySealRetainProtectedAcls() throws Exception {
+        Path keys=tempDir.resolve("native-keys");
+        var store=new BackupKeyStore(keys,new com.tpverp.backend.shared.crypto.WindowsDpapiSecretProtector());
+        store.initializeV2("synthetic-test-recovery".toCharArray(),tempDir.resolve("native-backups"));
+        var directory=com.tpverp.backend.verifactu.TransferSecretDirectory.forCurrentAccount(keys);
+        for(String name:java.util.List.of("backup-brk.dpapi","tpv-backup-recovery.key","backup-recovery-integrity.dpapi")) {
+            directory.verifyFile(name);
+            assertThat(com.sun.jna.platform.win32.Advapi32Util.getFileSecurityDescriptor(keys.resolve(name).toFile(),false).Control
+                    & com.sun.jna.platform.win32.WinNT.SE_DACL_PROTECTED).isNotZero();
+        }
+        byte[] brk=store.loadForScheduledBackup();
+        byte[] wrapped=Files.readAllBytes(keys.resolve(BackupKeyStore.RECOVERY_FILE));
+        try{store.recordVerifiedRecoveryMaterial(brk,wrapped);directory.verifyFile("backup-recovery-integrity.dpapi");}
+        finally{Arrays.fill(brk,(byte)0);Arrays.fill(wrapped,(byte)0);}
+    }
+
+    @Test
     void createsMatchingMaterialAndRewrapsWithoutChangingBackupRootKey() throws Exception {
         Path keyDirectory = tempDir.resolve("keys");
         Path backupDirectory = tempDir.resolve("backups");

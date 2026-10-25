@@ -48,7 +48,8 @@ public final class OfflineDisasterRecoveryCli {
                 Object result=switch(action){
                     case "request"->cli.request();case "status"->cli.status();
                     case "receive"->cli.receive(UUID.fromString(required(args,"recovery-id")));
-                    case "activate"->cli.activate();default->throw new IllegalArgumentException("Unsupported recovery action");};
+                    case "activate"->cli.activate();case "protect-secrets"->cli.protectCompletedSecrets();
+                    default->throw new IllegalArgumentException("Unsupported recovery action");};
                 if(output==null)System.out.println(JSON.writeValueAsString(result));
                 else output.write(publicResult(result));
             }
@@ -88,6 +89,34 @@ public final class OfflineDisasterRecoveryCli {
             catch(Exception unavailable){state.put("centralUnavailable",true);}
         }
         return publicStatus(state);
+    }
+    /** Upgrade maintenance only: preserve the completed recovery and every secret byte. */
+    private JsonNode protectCompletedSecrets()throws Exception {
+        testPolicy.requireOfflineDatabase(false);
+        var state=journal();
+        try(var db=database()){verifyCompletedRecovery(db,state);}
+        com.tpverp.backend.verifactu.TransferSecretDirectory.normalizeInheritedFiles(keys,
+                env("TPV_BACKEND_SERVICE_ACCOUNT"),List.of("installation-private.dpapi",
+                "installation-public.der","backup-brk.dpapi","tpv-backup-recovery.key",
+                "backup-recovery-integrity.dpapi","saas-installation-token.dpapi"));
+        return publicStatus(state);
+    }
+    static void verifyCompletedRecovery(Connection db,JsonNode state)throws Exception {
+        if(!"COMPLETE".equals(state.path("state").asText()))throw new IOException("Recovery must be COMPLETE before protecting existing secrets");
+        UUID id=UUID.fromString(state.path("recoveryId").asText());
+        UUID installation=UUID.fromString(state.path("installationId").asText());
+        UUID backup=UUID.fromString(state.path("backupId").asText());
+        String digest=state.path("backupSha256").asText();
+        if(!digest.matches("[0-9a-f]{64}"))throw new IOException("Recovery digest invalid");
+        try(var query=db.prepareStatement("select state,installation_id,backup_id,backup_sha256 from disaster_recovery where id=?")) {
+            query.setObject(1,id);
+            try(var rows=query.executeQuery()) {
+                if(!rows.next()||!"COMPLETE".equals(rows.getString(1))
+                        ||!installation.equals(rows.getObject(2,UUID.class))||!backup.equals(rows.getObject(3,UUID.class))
+                        ||!digest.equals(rows.getString(4))||rows.next())throw new IOException("Completed recovery does not match its journal");
+            }
+        }
+        validateInstallation(db,installation);
     }
     private JsonNode receive(UUID id)throws Exception {
         var previous=journal();

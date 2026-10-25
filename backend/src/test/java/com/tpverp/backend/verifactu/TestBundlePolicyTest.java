@@ -17,13 +17,35 @@ class TestBundlePolicyTest {
     private static final String MARKER = "select runtime_class from fiscal_runtime_guard where id=1";
 
     static TestBundlePolicy policy() {
+        return policy(36);
+    }
+
+    private static TestBundlePolicy policy(long releaseSequence) {
         var properties = new Properties();
         properties.setProperty("purpose", "TEST_ONLY"); properties.setProperty("runtime", "SANDBOX");
         properties.setProperty("version", "0.1.0"); properties.setProperty("production.allowed", "false");
         var identity = new FiscalReleaseManifest("tpv-erp-test-only-0.1.0-v279-aaaaaaaaaaaa", "0.1.0",
-                FiscalProductCapability.DUAL, "V279", 36, 1, "a".repeat(40), null, null);
+                FiscalProductCapability.DUAL, "V279", releaseSequence, 1, "a".repeat(40), null, null);
         return TestBundlePolicy.from(properties, new FiscalReleaseManifest(identity.releaseId(), "0.1.0",
-                FiscalProductCapability.DUAL, "V279", 36, 1, identity.commitHash(), null, identity.computedManifestHash()));
+                FiscalProductCapability.DUAL, "V279", releaseSequence, 1, identity.commitHash(), null, identity.computedManifestHash()));
+    }
+
+    @Test void acceptsHistoricalAndAdvancedTestSequencesButNotEarlierOnes() {
+        for (long sequence : new long[]{36, 37, 38}) assertThat(policy(sequence).testOnly()).isTrue();
+        for (long sequence : new long[]{0, 35})
+            assertThatThrownBy(() -> policy(sequence)).hasMessageContaining("release identity mismatch");
+    }
+
+    @Test void newerTestReleaseStillRequiresSandboxAndAcceptsHistoricalSandboxMetadata() throws Exception {
+        var advanced = policy(37);
+        var historicalSnapshot = new LinkedHashMap<String, Object>();
+        policy(36).enrichSnapshot(database(10, "SANDBOX"), historicalSnapshot);
+        advanced.requireBackup(new ObjectMapper().valueToTree(historicalSnapshot));
+        advanced.requireRuntime(sandbox());
+        assertThatThrownBy(() -> advanced.requireDatabase(database(10, "REAL"), false))
+                .hasMessageContaining("non-SANDBOX");
+        assertThatThrownBy(() -> advanced.requireRuntime(sandbox().withProperty("tpv.verifactu.production-enabled", "true")))
+                .hasMessageContaining("production-enabled");
     }
 
     @Test void rejectsRealEvenWithNoFiscalEvidenceWithoutWriting() throws Exception {
