@@ -18,6 +18,31 @@ function Assert-PlainPath([string]$Target, [bool]$ExpectFile) {
   }
 }
 
+function Set-AdministratorOwnedAcl([string]$Target, [System.Security.AccessControl.FileSystemSecurity]$DesiredAcl) {
+  $isDirectory = $DesiredAcl -is [System.Security.AccessControl.DirectorySecurity]
+  Assert-PlainPath $Target (!$isDirectory)
+  # A protected parent can leave a new child with an empty DACL. Its owner can
+  # write the DACL, but cannot necessarily write the owner until access is granted.
+  # Use fresh descriptors: persisting an ACL clears its modified-section flags.
+  if ($isDirectory) {
+    $accessAcl = [System.Security.AccessControl.DirectorySecurity]::new()
+    $ownerAcl = [System.Security.AccessControl.DirectorySecurity]::new()
+  } else {
+    $accessAcl = [System.Security.AccessControl.FileSecurity]::new()
+    $ownerAcl = [System.Security.AccessControl.FileSecurity]::new()
+  }
+  $accessSection = [System.Security.AccessControl.AccessControlSections]::Access
+  $accessAcl.SetSecurityDescriptorSddlForm($DesiredAcl.GetSecurityDescriptorSddlForm($accessSection), $accessSection)
+  $ownerAcl.SetOwner($DesiredAcl.GetOwner([System.Security.Principal.SecurityIdentifier]))
+  if ($isDirectory) {
+    [System.IO.Directory]::SetAccessControl($Target, $accessAcl)
+    [System.IO.Directory]::SetAccessControl($Target, $ownerAcl)
+  } else {
+    [System.IO.File]::SetAccessControl($Target, $accessAcl)
+    [System.IO.File]::SetAccessControl($Target, $ownerAcl)
+  }
+}
+
 if ($BackendUrl.Length -gt 512) { throw 'URL demasiado larga' }
 $uri = [System.Uri]::new($BackendUrl)
 if (!$uri.IsAbsoluteUri -or $uri.UserInfo -or $uri.Query -or $uri.Fragment -or $uri.AbsolutePath -ne '/') { throw 'URL inválida' }
@@ -54,7 +79,7 @@ try {
   $backendSid = ([System.Security.Principal.NTAccount]::new('NT SERVICE\TPVERPBackend')).Translate([System.Security.Principal.SecurityIdentifier])
   $baseAcl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($backendSid,'ReadAndExecute','Allow'))
 } catch { }
-[System.IO.Directory]::SetAccessControl($base, $baseAcl)
+Set-AdministratorOwnedAcl $base $baseAcl
 [System.IO.Directory]::CreateDirectory($directory) | Out-Null
 $acl = [System.Security.AccessControl.DirectorySecurity]::new()
 $acl.SetAccessRuleProtection($true, $false)
@@ -63,7 +88,7 @@ foreach ($sid in @($admins,$system)) {
   $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($sid,'FullControl','ContainerInherit,ObjectInherit','None','Allow'))
 }
 $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($users,'ReadAndExecute','ContainerInherit,ObjectInherit','None','Allow'))
-[System.IO.Directory]::SetAccessControl($directory, $acl)
+Set-AdministratorOwnedAcl $directory $acl
 $staging = Join-Path $directory ([System.IO.Path]::GetRandomFileName())
 try {
   [System.IO.File]::WriteAllBytes($staging, $payload)
@@ -74,15 +99,16 @@ try {
     $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($sid,'FullControl','Allow'))
   }
   $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($users,'ReadAndExecute','Allow'))
-  [System.IO.File]::SetAccessControl($staging, $acl)
+  Set-AdministratorOwnedAcl $staging $acl
   Assert-PlainPath $target $true
   if ([System.IO.File]::Exists($target)) {
-    [System.IO.File]::SetAccessControl($target, $acl)
-    [System.IO.File]::Replace($staging, $target, $null)
+    Set-AdministratorOwnedAcl $target $acl
+    # Windows PowerShell 5.1 binds $null to an empty string for this overload.
+    [System.IO.File]::Replace($staging, $target, [NullString]::Value)
   } else {
     [System.IO.File]::Move($staging, $target)
   }
-  [System.IO.File]::SetAccessControl($target, $acl)
+  Set-AdministratorOwnedAcl $target $acl
 } finally {
   if ([System.IO.File]::Exists($staging)) { [System.IO.File]::Delete($staging) }
 }

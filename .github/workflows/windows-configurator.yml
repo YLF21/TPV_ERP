@@ -1,0 +1,27 @@
+name: Windows configurator
+
+on:
+  pull_request:
+    paths:
+      - frontend/tools/write-backend-config.ps1
+      - frontend/tools/test-write-backend-config.ps1
+      - .github/workflows/windows-configurator.yml
+  push:
+    branches: [main]
+    paths:
+      - frontend/tools/write-backend-config.ps1
+      - frontend/tools/test-write-backend-config.ps1
+      - .github/workflows/windows-configurator.yml
+
+permissions:
+  contents: read
+
+jobs:
+  permissions-regression:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Verify isolated ACL and overwrite cases on Windows PowerShell 5.1
+        shell: powershell
+        run: ./frontend/tools/test-write-backend-config.ps1
