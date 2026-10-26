@@ -69,10 +69,15 @@ class LicensingConfiguration {
     @Bean
     LicenseSaasCredentialStore licenseSaasCredentialStore(
             @Value("${tpv.installation.key-directory}") Path keyDirectory,
-            @Value("${tpv.installation.portable-secret-key:}") String portableSecretKey) {
-        return new LicenseSaasCredentialStore(
-                keyDirectory,
-                SecretProtectorFactory.portableOrWindowsDpapi(portableSecretKey));
+            @Value("${tpv.installation.portable-secret-key:}") String portableSecretKey,
+            @Value("${tpv.verifactu.secret-acl-mode:PORTABLE}") String aclMode,
+            @Value("${tpv.verifactu.secret-service-account:NT SERVICE\\TPVERPBackend}") String serviceAccount) {
+        var protector = SecretProtectorFactory.portableOrWindowsDpapi(portableSecretKey);
+        return switch (aclMode.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "STRICT" -> new LicenseSaasCredentialStore(keyDirectory, protector, serviceAccount);
+            case "PORTABLE" -> new LicenseSaasCredentialStore(keyDirectory, protector);
+            default -> throw new IllegalStateException("tpv.verifactu.secret-acl-mode debe ser PORTABLE o STRICT");
+        };
     }
 
     @Bean

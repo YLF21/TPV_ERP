@@ -1,6 +1,7 @@
 package com.tpverp.backend.licensing;
 
 import com.tpverp.backend.shared.crypto.SecretProtector;
+import com.tpverp.backend.verifactu.TransferSecretDirectory;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -8,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -19,14 +21,30 @@ public class LicenseSaasCredentialStore {
 
     private final Path directory;
     private final SecretProtector protector;
+    private final String serviceAccount;
 
+    /** Portable callers retain their existing filesystem contract. */
     public LicenseSaasCredentialStore(Path directory, SecretProtector protector) {
         this.directory = Objects.requireNonNull(directory, "directory").toAbsolutePath().normalize();
         this.protector = Objects.requireNonNull(protector, "protector");
+        this.serviceAccount = null;
+    }
+
+    /** Strict NTFS uses the configured runtime account, including maintenance run by an administrator. */
+    public LicenseSaasCredentialStore(Path directory, SecretProtector protector, String serviceAccount) {
+        this.directory = Objects.requireNonNull(directory, "directory").toAbsolutePath().normalize();
+        this.protector = Objects.requireNonNull(protector, "protector");
+        if (!com.sun.jna.Platform.isWindows()) {
+            throw new IllegalStateException("La ACL STRICT de credenciales SaaS requiere Windows y NTFS");
+        }
+        if (serviceAccount == null || serviceAccount.isBlank()) {
+            throw new IllegalArgumentException("La cuenta Windows del backend es obligatoria");
+        }
+        this.serviceAccount = serviceAccount.trim();
     }
 
     public synchronized void writeToken(String token) {
-        writeSecret(TOKEN_FILE, ".saas-token-", token, "Token SaaS obligatorio",
+        writeSecret(TOKEN_FILE, token, "Token SaaS obligatorio",
                 "No se pudo guardar el token SaaS");
     }
 
@@ -37,7 +55,7 @@ public class LicenseSaasCredentialStore {
     /**
      * Returns the durable one-time-link recovery credential, creating it before
      * any network request when none exists. The 32 random bytes provide 256 bits
-     * of entropy and are protected with the same machine-bound protector as the
+     * of entropy and are protected with the same configured protector as the
      * installation credential.
      */
     public synchronized String getOrCreateLinkRecoveryToken() {
@@ -50,7 +68,6 @@ public class LicenseSaasCredentialStore {
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(random);
         writeSecret(
                 LINK_RECOVERY_TOKEN_FILE,
-                ".saas-link-recovery-",
                 token,
                 "Token de recuperacion de enlace obligatorio",
                 "No se pudo guardar el token de recuperacion de enlace SaaS");
@@ -74,24 +91,32 @@ public class LicenseSaasCredentialStore {
 
     private void writeSecret(
             String fileName,
-            String temporaryPrefix,
             String value,
             String requiredMessage,
             String failureMessage) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(requiredMessage);
         }
-        Path target = directory.resolve(fileName);
-        Path temporary = null;
+        byte[] plaintext = value.trim().getBytes(StandardCharsets.UTF_8);
+        byte[] protectedToken = null;
         try {
-            Files.createDirectories(directory);
-            byte[] protectedToken = protector.protect(value.trim().getBytes(StandardCharsets.UTF_8));
-            temporary = Files.createTempFile(directory, temporaryPrefix, ".tmp");
-            Files.write(temporary, protectedToken);
-            moveAtomically(temporary, target);
-        } catch (IOException exception) {
-            deleteQuietly(temporary);
+            // The shared policy verifies an existing root and target, protects the
+            // empty temporary before writing, then verifies the atomic replacement.
+            // Its account is the runtime identity supplied by the installed configuration.
+            var secrets = serviceAccount == null ? null : secretDirectory();
+            protectedToken = protector.protect(plaintext);
+            if (secrets != null) {
+                secrets.write(fileName, protectedToken);
+            } else {
+                writePortable(fileName, protectedToken);
+            }
+        } catch (Exception exception) {
             throw new IllegalStateException(failureMessage, exception);
+        } finally {
+            Arrays.fill(plaintext, (byte) 0);
+            if (protectedToken != null) {
+                Arrays.fill(protectedToken, (byte) 0);
+            }
         }
     }
 
@@ -100,31 +125,38 @@ public class LicenseSaasCredentialStore {
         if (!Files.exists(target)) {
             return Optional.empty();
         }
+        byte[] token = null;
         try {
-            byte[] token = protector.unprotect(Files.readAllBytes(target));
+            token = protector.unprotect(Files.readAllBytes(target));
             String value = new String(token, StandardCharsets.UTF_8).trim();
             return value.isBlank() ? Optional.empty() : Optional.of(value);
         } catch (IOException exception) {
             throw new IllegalStateException(failureMessage, exception);
-        }
-    }
-
-    private static void moveAtomically(Path source, Path target) throws IOException {
-        try {
-            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE,
-                    StandardCopyOption.REPLACE_EXISTING);
-        } catch (java.nio.file.AtomicMoveNotSupportedException exception) {
-            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
-        }
-    }
-
-    private static void deleteQuietly(Path path) {
-        if (path != null) {
-            try {
-                Files.deleteIfExists(path);
-            } catch (IOException ignored) {
-                // Best effort cleanup for failed atomic writes.
+        } finally {
+            if (token != null) {
+                Arrays.fill(token, (byte) 0);
             }
+        }
+    }
+
+    private TransferSecretDirectory secretDirectory() {
+        return new TransferSecretDirectory(directory, serviceAccount);
+    }
+
+    private void writePortable(String fileName, byte[] bytes) throws IOException {
+        Files.createDirectories(directory);
+        Path temporary = Files.createTempFile(directory, ".saas-token-", ".tmp");
+        try {
+            Files.write(temporary, bytes);
+            Path target = directory.resolve(fileName);
+            try {
+                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException exception) {
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temporary);
         }
     }
 }
