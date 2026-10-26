@@ -20,10 +20,12 @@ public final class DisasterRecoveryStartupFinalizer implements ApplicationRunner
     private final FiscalRuntimeGuardInitializer runtime;
     private final BackupRestoreFinalizationCommitService finalizer;
     private final String saasUrl;
+    private final DisasterRecoveryLicenseReconciliation licenses;
     public DisasterRecoveryStartupFinalizer(@Value("${tpv.installation.key-directory}") Path keys,JdbcTemplate jdbc,
             org.springframework.transaction.PlatformTransactionManager manager,FiscalRuntimeGuardInitializer runtime,BackupRestoreFinalizationCommitService finalizer,
-            @Value("${tpv.license.saas-url:}") String saasUrl) {
+            @Value("${tpv.license.saas-url:}") String saasUrl,DisasterRecoveryLicenseReconciliation licenses) {
         this.keys=keys;this.jdbc=jdbc;transactions=new TransactionTemplate(manager);this.runtime=runtime;this.finalizer=finalizer;this.saasUrl=saasUrl;
+        this.licenses=licenses;
     }
     @Override public void run(ApplicationArguments arguments)throws Exception {
         if(!Files.exists(keys.resolve(RecoverySecretHandoff.FILE),LinkOption.NOFOLLOW_LINKS))return;
@@ -31,6 +33,8 @@ public final class DisasterRecoveryStartupFinalizer implements ApplicationRunner
         if(!"BOOTSTRAP_VERIFIED".equals(state.path("phase").asText()))throw new IllegalStateException("Recovery bootstrap not verified");
         var row=jdbc.queryForMap("select installation_id,backup_sha256,state from disaster_recovery where id=?",id);
         if(!state.path("installationId").asText().equals(row.get("installation_id").toString())||!digest.equals(row.get("backup_sha256"))||!java.util.Set.of("ACTIVE","COMPLETE").contains(row.get("state")))throw new IllegalStateException("Recovery database proof mismatch");
+        // The new installation credential invalidates the restored HMAC. Authenticate current authority before COMPLETE.
+        licenses.reconcile(state,false);
         runtime.run(new DefaultApplicationArguments(new String[0]));
         transactions.executeWithoutResult(tx->{
             jdbc.queryForObject("select set_config('tpv.recovery.maintenance_id',?,true)",String.class,id.toString());

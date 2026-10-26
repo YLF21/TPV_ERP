@@ -373,6 +373,39 @@ function Enable-TpvRecoveryExposure([hashtable] $Backend, [hashtable] $Https) {
     }
 }
 
+function Test-TpvRecoveryLicenseReady([string] $LocalUrl, [string] $ExpectedInstallationId) {
+    try {
+        if ($ExpectedInstallationId -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') { return $false }
+        $response = Invoke-WebRequest -UseBasicParsing -Uri ($LocalUrl.TrimEnd('/') + '/api/v1/installation/status') -TimeoutSec 5 -ErrorAction Stop
+        $status = ConvertFrom-TpvHttpJson -Content $response.Content
+        return $response.StatusCode -eq 200 -and $status.mode -ceq 'LICENSED' -and
+            ([string]$status.id) -ieq $ExpectedInstallationId
+    } catch { return $false }
+}
+
+function Prepare-TpvCompletedRecoveryLicense([string] $Wrapper, [hashtable] $Arguments,
+        [string] $PrivateDirectory, $Preflight) {
+    if ($Preflight.state -cne 'COMPLETE') { throw 'La reconciliación de licencia requiere una recuperación completada.' }
+    Ensure-Environment 'TPV_DB_URL' 'URL JDBC de PostgreSQL destino'
+    Ensure-Environment 'TPV_DB_USERNAME' 'Usuario PostgreSQL destino'
+    Ensure-Environment 'TPV_DB_PASSWORD' 'Contraseña PostgreSQL destino' -Secret
+    foreach ($name in @('TPVERPHTTPS', 'TPVERPBackend')) {
+        if ((Get-Service -Name $name -ErrorAction Stop).Status -ne [ServiceProcess.ServiceControllerStatus]::Stopped) {
+            Stop-Service -Name $name -ErrorAction Stop
+            (Get-Service -Name $name -ErrorAction Stop).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromMinutes(2))
+        }
+    }
+    $licenseArguments = $Arguments.Clone()
+    $licenseArguments.Action = 'reconcile-license'
+    $licenseArguments.Execute = $true
+    $licenseResult = $null
+    Invoke-TpvRecoveryResult $Wrapper $licenseArguments $PrivateDirectory ([ref]$licenseResult)
+    if ($licenseResult.state -cne 'COMPLETE' -or $licenseResult.recoveryId -cne $Preflight.recoveryId -or
+            $licenseResult.installationId -cne $Preflight.installationId) {
+        throw 'La preparación de licencia no coincide con la recuperación completada.'
+    }
+}
+
 function Test-TpvRecoveryServicesReady([hashtable] $Backend, [hashtable] $Https) {
     try {
         if ((Get-Service -Name 'TPVERPBackend' -ErrorAction Stop).Status -ne [ServiceProcess.ServiceControllerStatus]::Running -or
@@ -380,25 +413,46 @@ function Test-TpvRecoveryServicesReady([hashtable] $Backend, [hashtable] $Https)
             return $false
         }
         return (Test-TpvLocalReadiness $Backend.LocalUrl) -and
+            (Test-TpvRecoveryLicenseReady $Backend.LocalUrl $Backend.RecoveryInstallationId) -and
             (Test-TpvHttpsReadiness $Https.PublicUrl) -and
             (Test-TpvRecoveryExposureReady $Backend $Https)
     } catch { return $false }
 }
 
-function Start-TpvRecoveryServices([hashtable] $Backend, [hashtable] $Https) {
-    # Fail before starting anything if a firewall rule belongs to another program or scope.
-    Get-TpvRecoveryExposure $Backend $Https | Out-Null
+function Get-TpvRecoveryElapsedMilliseconds([Diagnostics.Stopwatch] $Clock) {
+    return $Clock.ElapsedMilliseconds
+}
+
+function Start-TpvRecoveryBackend([hashtable] $Backend) {
     if ((Get-Service -Name 'TPVERPBackend' -ErrorAction Stop).Status -ne [ServiceProcess.ServiceControllerStatus]::Running) {
         Start-Service -Name 'TPVERPBackend' -ErrorAction Stop
         (Get-Service -Name 'TPVERPBackend' -ErrorAction Stop).WaitForStatus(
             [ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromMinutes(2))
     }
     $backendReady = $false
-    for ($attempt = 0; $attempt -lt 45; $attempt++) {
-        if (Test-TpvLocalReadiness $Backend.LocalUrl) { $backendReady = $true; break }
-        Start-Sleep -Seconds 2
+    $readinessClock = [Diagnostics.Stopwatch]::StartNew()
+    while ((Get-TpvRecoveryElapsedMilliseconds $readinessClock) -lt 300000) {
+        if (Test-TpvLocalReadiness $Backend.LocalUrl) {
+            $backendReady = (Get-TpvRecoveryElapsedMilliseconds $readinessClock) -le 300000
+            break
+        }
+        $remainingMilliseconds = 300000 - (Get-TpvRecoveryElapsedMilliseconds $readinessClock)
+        if ($remainingMilliseconds -le 0) { break }
+        Start-Sleep -Milliseconds ([Math]::Min(2000, $remainingMilliseconds))
     }
-    if (-not $backendReady) { throw 'El servidor se activó, pero la disponibilidad local no confirmó UP.' }
+    $readinessClock.Stop()
+    if (-not $backendReady) {
+        throw 'El servidor se activó, pero la disponibilidad local no confirmó HTTP 200 y JSON UP en 300 segundos. Reintente activate sin volver a activar la licencia.'
+    }
+}
+
+function Start-TpvRecoveryServices([hashtable] $Backend, [hashtable] $Https) {
+    # Fail before starting anything if a firewall rule belongs to another program or scope.
+    Get-TpvRecoveryExposure $Backend $Https | Out-Null
+    Start-TpvRecoveryBackend $Backend
+    if (-not (Test-TpvRecoveryLicenseReady $Backend.LocalUrl $Backend.RecoveryInstallationId)) {
+        throw 'La recuperación sigue pendiente: SaaS no ha confirmado una licencia auténtica LICENSED. Reintente activate con conexión al SaaS; no vuelva a restaurar ni autorizar.'
+    }
     if ((Get-Service -Name 'TPVERPHTTPS' -ErrorAction Stop).Status -ne [ServiceProcess.ServiceControllerStatus]::Running) {
         Start-Service -Name 'TPVERPHTTPS' -ErrorAction Stop
         (Get-Service -Name 'TPVERPHTTPS' -ErrorAction Stop).WaitForStatus(
@@ -766,6 +820,18 @@ try {
     }
     $arguments = @{ Action = $Action; BundleDirectory = $releaseDirectory; ExpectedReleaseId = $releaseId
         JavaExecutable = $java; MaintenanceDirectory = $privateDirectory }
+    if ($alreadyActivated -and $preflightResult.state -ceq 'COMPLETE') {
+        $activationResult = $preflightResult
+        # An unavailable HTTP process is not evidence that its already authenticated license needs reconciliation.
+        Get-TpvRecoveryExposure $service $https | Out-Null
+        Start-TpvRecoveryBackend $service
+    }
+    if ($alreadyActivated -and $preflightResult.state -ceq 'COMPLETE' -and
+            -not (Test-TpvRecoveryLicenseReady $service.LocalUrl $preflightResult.installationId)) {
+        $activationResult = $preflightResult
+        # Upgrade of a previously completed recovery: prepare only its credential-bound license handoff.
+        Prepare-TpvCompletedRecoveryLicense $wrapper $arguments $privateDirectory $preflightResult
+    }
     if ($Action -eq 'receive') {
         $recoveryId = Read-Host 'ID de recuperación autorizado por soporte'
         if ($recoveryId -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') {
@@ -778,6 +844,9 @@ try {
     if ($alreadyActivated) { $result = $preflightResult }
     else { Invoke-TpvRecoveryResult $wrapper $arguments $privateDirectory ([ref]$result) }
     if ([string]::IsNullOrWhiteSpace([string]$result.state)) { throw 'La herramienta devolvió un estado inválido.' }
+    if ($result.state -cin @('ACTIVATED', 'COMPLETE')) {
+        $service.RecoveryInstallationId = [string]$result.installationId
+    }
     if ($Action -eq 'status' -and $result.state -ceq 'DESTINATION_READY' -and
             $null -eq $result.PSObject.Properties['destinationPublicKey']) {
         $requestPath = Join-Path $privateDirectory 'destination-request.json'

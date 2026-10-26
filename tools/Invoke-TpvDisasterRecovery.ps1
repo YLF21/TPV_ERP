@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)] [ValidateSet('request','receive','activate','status','protect-secrets')] [string] $Action,
+    [Parameter(Mandatory = $true)] [ValidateSet('request','receive','activate','status','protect-secrets','reconcile-license')] [string] $Action,
     [Parameter(Mandatory = $true)] [string] $BundleDirectory,
     [Parameter(Mandatory = $true)] [string] $ExpectedReleaseId,
     [Parameter(Mandatory = $true)] [string] $MaintenanceDirectory,
@@ -56,7 +56,7 @@ if ($Action -in @('request','receive','activate')) {
         }
     }
 }
-if ($Action -eq 'protect-secrets' -and
+if ($Action -in @('protect-secrets','reconcile-license') -and
     [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('TPV_BACKEND_SERVICE_ACCOUNT', 'Process'))) {
     throw 'Falta TPV_BACKEND_SERVICE_ACCOUNT: indique la cuenta real del servicio instalado.'
 }

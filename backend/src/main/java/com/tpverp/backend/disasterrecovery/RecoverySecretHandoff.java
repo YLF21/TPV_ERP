@@ -11,20 +11,32 @@ import java.util.Arrays;
 /** Machine DPAPI + protected key-directory ACL is the one-boot bridge to service-user DPAPI. */
 final class RecoverySecretHandoff {
     static final String FILE="disaster-recovery-destination.dpapi";
+    static final String LICENSE_FILE="disaster-recovery-license.dpapi";
     private static final ObjectMapper JSON=new ObjectMapper();
     private RecoverySecretHandoff(){}
     static ObjectNode read(Path keys) throws Exception {
+        return read(keys,FILE);
+    }
+    static ObjectNode read(Path keys,String name) throws Exception {
+        requireName(name);
         requireProtectedDirectory(keys);
-        var path=keys.resolve(FILE);
+        var path=keys.resolve(name);
         if(!Files.isRegularFile(path,LinkOption.NOFOLLOW_LINKS)||Files.size(path)>34L*1024*1024)throw new IllegalStateException("Transfer handoff missing or invalid");
         byte[] clear=new WindowsMachineDpapiSecretProtector().unprotect(Files.readAllBytes(path));
         try{return (ObjectNode)JSON.readTree(clear);}finally{Arrays.fill(clear,(byte)0);}
     }
     static void write(Path keys,ObjectNode value)throws Exception {
+        write(keys,FILE,value);
+    }
+    static void write(Path keys,String name,ObjectNode value)throws Exception {
+        requireName(name);
         requireProtectedDirectory(keys);
         byte[] clear=JSON.writeValueAsBytes(value);
-        try{writeSecretFile(keys.resolve(FILE),new WindowsMachineDpapiSecretProtector().protect(clear));}
+        try{writeSecretFile(keys.resolve(name),new WindowsMachineDpapiSecretProtector().protect(clear));}
         finally{Arrays.fill(clear,(byte)0);}
+    }
+    private static void requireName(String name) {
+        if(!FILE.equals(name)&&!LICENSE_FILE.equals(name))throw new IllegalArgumentException("Unknown recovery handoff");
     }
     static void requireProtectedDirectory(Path keys)throws Exception {
         Files.createDirectories(keys);

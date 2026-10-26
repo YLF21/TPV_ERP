@@ -125,7 +125,8 @@ class DisasterRecoveryDestinationPostgreSqlTest {
             var runtime=org.mockito.Mockito.mock(com.tpverp.backend.verifactu.FiscalRuntimeGuardInitializer.class);
             var fiscal=org.mockito.Mockito.mock(com.tpverp.backend.backup.BackupRestoreFinalizationCommitService.class);
             var finalizer=new DisasterRecoveryStartupFinalizer(keys,new org.springframework.jdbc.core.JdbcTemplate(dataSource),
-                new org.springframework.jdbc.datasource.DataSourceTransactionManager(dataSource),runtime,fiscal,System.getenv("TPV_LICENSE_SAAS_URL"));
+                new org.springframework.jdbc.datasource.DataSourceTransactionManager(dataSource),runtime,fiscal,System.getenv("TPV_LICENSE_SAAS_URL"),
+                org.mockito.Mockito.mock(DisasterRecoveryLicenseReconciliation.class));
             finalizer.run(new org.springframework.boot.DefaultApplicationArguments(new String[0]));
             org.mockito.Mockito.verify(runtime).run(org.mockito.ArgumentMatchers.any());
             org.mockito.Mockito.verify(fiscal).commit(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString());

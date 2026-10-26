@@ -49,6 +49,7 @@ public final class OfflineDisasterRecoveryCli {
                     case "request"->cli.request();case "status"->cli.status();
                     case "receive"->cli.receive(UUID.fromString(required(args,"recovery-id")));
                     case "activate"->cli.activate();case "protect-secrets"->cli.protectCompletedSecrets();
+                    case "reconcile-license"->cli.prepareCompletedLicenseReconciliation();
                     default->throw new IllegalArgumentException("Unsupported recovery action");};
                 if(output==null)System.out.println(JSON.writeValueAsString(result));
                 else output.write(publicResult(result));
@@ -65,7 +66,7 @@ public final class OfflineDisasterRecoveryCli {
     static byte[] publicResult(Object result)throws IOException {
         JsonNode source=JSON.valueToTree(result);
         var output=JSON.createObjectNode();
-        for(String name:List.of("state","transferId","recoveryId","destinationPublicKey","destinationKeyFingerprint"))
+        for(String name:List.of("state","transferId","recoveryId","installationId","destinationPublicKey","destinationKeyFingerprint"))
             if(source.hasNonNull(name))output.set(name,source.get(name));
         return JSON.writeValueAsBytes(output);
     }
@@ -99,6 +100,31 @@ public final class OfflineDisasterRecoveryCli {
                 env("TPV_BACKEND_SERVICE_ACCOUNT"),List.of("installation-private.dpapi",
                 "installation-public.der","backup-brk.dpapi","tpv-backup-recovery.key",
                 "backup-recovery-integrity.dpapi","saas-installation-token.dpapi"));
+        return publicStatus(state);
+    }
+    /** Official upgrade retry for a completed recovery. No restore, activation, token export or terminal mutation. */
+    private JsonNode prepareCompletedLicenseReconciliation()throws Exception {
+        testPolicy.requireOfflineDatabase(false);
+        var state=journal();
+        try(var db=database()){verifyCompletedRecovery(db,state);}
+        var identity=destination();
+        var remote=central.call(UUID.fromString(state.path("recoveryId").asText()),"inspect","",identity.privateKey());
+        if(!"ACTIVATED".equals(remote.path("state").asText()))throw new IOException("Recovery is not centrally activated");
+        for(String field:List.of("recoveryId","installationId","backupId","backupSha256","destinationKeyFingerprint"))
+            if(!state.hasNonNull(field)||!state.path(field).asText().equals(remote.path(field).asText()))
+                throw new IOException("Recovery license preparation proof mismatch");
+        if(!TransferEnvelope.fingerprint(identity.publicKey()).equals(state.path("destinationKeyFingerprint").asText()))
+            throw new IOException("Recovery license destination mismatch");
+        if(Files.exists(keys.resolve(RecoverySecretHandoff.LICENSE_FILE),LinkOption.NOFOLLOW_LINKS)) {
+            var previous=RecoverySecretHandoff.read(keys,RecoverySecretHandoff.LICENSE_FILE);
+            for(String field:List.of("recoveryId","installationId","backupId","backupSha256","destinationKeyFingerprint"))
+                if(!state.path(field).asText().equals(previous.path(field).asText()))
+                    throw new IOException("Another recovery owns the pending license reconciliation");
+        }
+        var pending=JSON.createObjectNode();
+        for(String field:List.of("recoveryId","installationId","backupId","backupSha256","destinationKeyFingerprint"))pending.set(field,state.get(field));
+        pending.put("phase","LICENSE_RECONCILIATION_PENDING");pending.put("destinationPrivate",identity.privateKey().getEncoded());
+        RecoverySecretHandoff.write(keys,RecoverySecretHandoff.LICENSE_FILE,pending);
         return publicStatus(state);
     }
     static void verifyCompletedRecovery(Connection db,JsonNode state)throws Exception {

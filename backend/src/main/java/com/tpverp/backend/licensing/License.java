@@ -328,6 +328,22 @@ public class License {
         formatVersion = LicenseSaasCacheAuthenticator.AUTHENTICATED_FORMAT_VERSION;
     }
 
+    /** Package-private: only the bound recovery reconciler may replace an unauthenticated snapshot. */
+    void applyRecoveredSaasSnapshot(RecoveredLicenseSnapshot authority, Instant now) {
+        validaDesde = normalized(authority.linkedAt());
+        importadaEn = normalized(authority.linkedAt());
+        validaHasta = normalized(authority.validUntil());
+        ultimaValidacionSaas = normalized(now);
+        estadoSaas = authority.status();
+        maxWindows = authority.maxWindows();
+        maxPda = authority.maxPda();
+        saasLicenseVersion = authority.licenseVersion();
+        commercialProfile = authority.commercialProfile();
+        verifactuActivationDate = authority.verifactuActivationDate();
+        verifactuPolicyVersion = authority.verifactuPolicyVersion();
+        verifactuPolicyUpdatedAt = normalized(authority.verifactuPolicyUpdatedAt());
+    }
+
     public void applySaasLicenseSnapshot(
             Instant validatedAt,
             LicenseSaasStatus status,
