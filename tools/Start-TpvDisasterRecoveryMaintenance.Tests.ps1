@@ -67,6 +67,7 @@ Describe 'Disaster recovery HTTPS activation and availability' {
             'Test-TpvLocalReadiness', 'Test-TpvHttpsHealthResponse', 'Test-TpvHttpsReadiness',
             'Read-TpvRecoveryFirewallPortFilter', 'Read-TpvRecoveryFirewallApplicationFilter',
             'Read-TpvRecoveryFirewallAddressFilter', 'Get-TpvRecoveryManagedRule',
+            'Resolve-TpvRecoveryPublicAddresses', 'Assert-TpvRecoveryNetworkProfiles',
             'Get-TpvRecoveryExposure', 'Test-TpvRecoveryExposureReady',
             'Enable-TpvRecoveryExposure', 'Test-TpvRecoveryServicesReady', 'Start-TpvRecoveryServices',
             'Test-TpvAlreadyActivated', 'Assert-TpvActivationApproved')) {
@@ -170,7 +171,7 @@ Describe 'Recovery exposure completion and rollback' {
     $errors = $null
     $ast = [Management.Automation.Language.Parser]::ParseFile(
         (Join-Path $PSScriptRoot 'Start-TpvDisasterRecoveryMaintenance.ps1'), [ref]$tokens, [ref]$errors)
-    foreach ($name in @('Get-TpvRecoveryExposure', 'Test-TpvRecoveryExposureReady',
+    foreach ($name in @('Resolve-TpvRecoveryPublicAddresses', 'Assert-TpvRecoveryNetworkProfiles', 'Get-TpvRecoveryExposure', 'Test-TpvRecoveryExposureReady',
             'Enable-TpvRecoveryExposure', 'Test-TpvAlreadyActivated', 'Assert-TpvActivationApproved')) {
         $definition = $ast.Find({ param($node)
             $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name
@@ -240,5 +241,134 @@ Describe 'Recovery exposure completion and rollback' {
         { Assert-TpvActivationApproved 'SUPPORT_REVIEW' } | Should Throw
         { Assert-TpvActivationApproved 'ACTIVATED' } | Should Not Throw
         { Assert-TpvActivationApproved 'COMPLETE' } | Should Not Throw
+    }
+}
+
+Describe 'Recovery availability requires active Windows network profiles matching installed LAN rules' {
+    $tokens = $null
+    $errors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseFile(
+        (Join-Path $PSScriptRoot 'Start-TpvDisasterRecoveryMaintenance.ps1'), [ref]$tokens, [ref]$errors)
+    foreach ($name in @('Get-TpvRecoveryManagedRule', 'Test-TpvLocalReadiness', 'Test-TpvHttpsReadiness',
+            'Resolve-TpvRecoveryPublicAddresses', 'Assert-TpvRecoveryNetworkProfiles', 'Get-TpvRecoveryExposure',
+            'Test-TpvRecoveryExposureReady', 'Enable-TpvRecoveryExposure',
+            'Test-TpvRecoveryServicesReady', 'Start-TpvRecoveryServices')) {
+        $definition = $ast.Find({ param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name
+        }, $true)
+        Invoke-Expression $definition.Extent.Text
+    }
+    $backend = @{ LocalUrl = 'http://127.0.0.1:58442'; Java = 'C:\Java\bin\java.exe' }
+    $https = @{ PublicUrl = 'https://tpv.example.test:58443'; Program = 'C:\ProgramData\TPV ERP\HTTPS\caddy.exe' }
+
+    BeforeEach {
+        Mock Resolve-TpvRecoveryPublicAddresses { @() }
+        Mock Get-NetAdapter { [pscustomobject]@{ ifIndex = 3; Status = 'Up' } }
+        Mock Get-NetIPAddress { [pscustomobject]@{ InterfaceIndex = 3; IPAddress = '10.77.23.50'; AddressState = 'Preferred' } }
+        Mock Get-NetConnectionProfile { [pscustomobject]@{ InterfaceIndex = 3; NetworkCategory = 'Private' } }
+        Mock Get-TpvRecoveryManagedRule { [pscustomobject]@{ Enabled = 'True' } }
+        Mock Get-Service { [pscustomobject]@{ Status = [ServiceProcess.ServiceControllerStatus]::Running; StartType = 'Automatic' } }
+        Mock Test-TpvLocalReadiness { $true }
+        Mock Test-TpvHttpsReadiness { $true }
+        Mock Start-Service { }
+        Mock Set-Service { }
+        Mock Set-NetFirewallRule { }
+    }
+
+    It 'accepts an active Private LAN with real service and exposure checks' {
+        { Assert-TpvRecoveryNetworkProfiles $https.PublicUrl } | Should Not Throw
+        (Test-TpvRecoveryServicesReady $backend $https) | Should Be $true
+    }
+
+    It 'accepts the DomainAuthenticated category returned by Windows' {
+        Mock Get-NetConnectionProfile { [pscustomobject]@{ InterfaceIndex = 3; NetworkCategory = 'DomainAuthenticated' } }
+        (Test-TpvRecoveryServicesReady $backend $https) | Should Be $true
+    }
+
+    It 'does not declare COMPLETE after an active LAN changes from Private to Public' {
+        (Test-TpvRecoveryServicesReady $backend $https) | Should Be $true
+        Mock Get-NetConnectionProfile { [pscustomobject]@{ InterfaceIndex = 3; NetworkCategory = 'Public' } }
+        (Test-TpvRecoveryServicesReady $backend $https) | Should Be $false
+        { Assert-TpvRecoveryNetworkProfiles $https.PublicUrl } | Should Throw 'Privada'
+    }
+
+    It 'rejects Public before starting services or changing exposure' {
+        Mock Get-NetConnectionProfile { [pscustomobject]@{ InterfaceIndex = 3; NetworkCategory = 'Public' } }
+        { Start-TpvRecoveryServices $backend $https } | Should Throw
+        { Enable-TpvRecoveryExposure $backend $https } | Should Throw
+        Assert-MockCalled Start-Service -Times 0 -Scope It
+        Assert-MockCalled Set-Service -Times 0 -Scope It
+        Assert-MockCalled Set-NetFirewallRule -Times 0 -Scope It
+    }
+
+    It 'fails closed without an active adapter even if an old Private profile remains' {
+        Mock Get-NetAdapter { [pscustomobject]@{ ifIndex = 3; Status = 'Disconnected' } }
+        (Test-TpvRecoveryServicesReady $backend $https) | Should Be $false
+        { Assert-TpvRecoveryNetworkProfiles $https.PublicUrl } | Should Throw 'interfaz'
+    }
+
+    It 'does not count loopback or tentative addresses as an active LAN' {
+        Mock Get-NetIPAddress {
+            [pscustomobject]@{ InterfaceIndex = 3; IPAddress = '127.0.0.1'; AddressState = 'Preferred' }
+            [pscustomobject]@{ InterfaceIndex = 3; IPAddress = '::1'; AddressState = 'Preferred' }
+            [pscustomobject]@{ InterfaceIndex = 3; IPAddress = '10.77.23.50'; AddressState = 'Tentative' }
+        }
+        (Test-TpvRecoveryServicesReady $backend $https) | Should Be $false
+    }
+
+    It 'fails closed when Windows has no profile for the active interface' {
+        Mock Get-NetConnectionProfile { [pscustomobject]@{ InterfaceIndex = 8; NetworkCategory = 'Private' } }
+        (Test-TpvRecoveryServicesReady $backend $https) | Should Be $false
+    }
+
+    It 'uses the HTTPS interface without rejecting unrelated public Wi-Fi or VPN interfaces' {
+        Mock Get-NetAdapter {
+            [pscustomobject]@{ ifIndex = 3; Status = 'Up' }
+            [pscustomobject]@{ ifIndex = 8; Status = 'Up' }
+        }
+        Mock Get-NetIPAddress {
+            [pscustomobject]@{ InterfaceIndex = 3; IPAddress = '10.77.23.50'; AddressState = 'Preferred' }
+            [pscustomobject]@{ InterfaceIndex = 8; IPAddress = '192.168.1.50'; AddressState = 'Preferred' }
+        }
+        Mock Get-NetConnectionProfile {
+            [pscustomobject]@{ InterfaceIndex = 3; NetworkCategory = 'Private' }
+            [pscustomobject]@{ InterfaceIndex = 8; NetworkCategory = 'Public' }
+        }
+        # Unresolved hostname: a valid Private LAN is sufficient despite public Wi-Fi.
+        (Test-TpvRecoveryServicesReady $backend $https) | Should Be $true
+        $privateHttps = @{ PublicUrl = 'https://10.77.23.50:58443'; Program = $https.Program }
+        (Test-TpvRecoveryServicesReady $backend $privateHttps) | Should Be $true
+        # A configured address on public Wi-Fi cannot borrow the other LAN's profile.
+        $publicHttps = @{ PublicUrl = 'https://192.168.1.50:58443'; Program = $https.Program }
+        (Test-TpvRecoveryServicesReady $backend $publicHttps) | Should Be $false
+        Mock Resolve-TpvRecoveryPublicAddresses { [Net.IPAddress]::Parse('192.168.1.50') }
+        (Test-TpvRecoveryServicesReady $backend $https) | Should Be $false
+    }
+
+    It 'requires a matching profile for the selected HTTPS interface' {
+        Mock Get-NetConnectionProfile { [pscustomobject]@{ InterfaceIndex = 8; NetworkCategory = 'Private' } }
+        { Assert-TpvRecoveryNetworkProfiles 'https://10.77.23.50:58443' } | Should Throw 'perfil'
+    }
+
+    It 'matches equivalent IPv6 addresses to their active interface' {
+        Mock Get-NetIPAddress { [pscustomobject]@{ InterfaceIndex = 3; IPAddress = '2001:db8::50'; AddressState = 'Preferred' } }
+        { Assert-TpvRecoveryNetworkProfiles 'https://[2001:0db8:0000:0000:0000:0000:0000:0050]:58443' } | Should Not Throw
+    }
+
+    It 'rejects a literal HTTPS address that is not on an active local interface' {
+        { Assert-TpvRecoveryNetworkProfiles 'https://10.77.23.99:58443' } | Should Throw 'interfaz local activa'
+    }
+
+    It 'fails closed on an unknown network category' {
+        Mock Get-NetConnectionProfile { [pscustomobject]@{ InterfaceIndex = 3; NetworkCategory = 'Unknown' } }
+        (Test-TpvRecoveryServicesReady $backend $https) | Should Be $false
+    }
+
+    It 'fails closed when Windows network inspection raises an error' {
+        Mock Get-NetConnectionProfile { throw 'CIM unavailable' }
+        (Test-TpvRecoveryServicesReady $backend $https) | Should Be $false
+        { Enable-TpvRecoveryExposure $backend $https } | Should Throw 'comprobar'
+        Assert-MockCalled Set-NetFirewallRule -Times 0 -Scope It
+        Assert-MockCalled Set-Service -Times 0 -Scope It
     }
 }

@@ -248,7 +248,72 @@ function Get-TpvRecoveryManagedRule([string] $Name, [string] $Program,
     return $rule
 }
 
+function Resolve-TpvRecoveryPublicAddresses([string] $HostName) {
+    try {
+        $lookup = [Net.Dns]::GetHostAddressesAsync($HostName)
+        if ($lookup.Wait(2000)) { return $lookup.Result }
+    } catch { }
+    return @()
+}
+
+function Assert-TpvRecoveryNetworkProfiles([string] $PublicUrl) {
+    try {
+        $adapters = @(Get-NetAdapter -IncludeHidden -ErrorAction Stop | Where-Object { $_.Status -eq 'Up' })
+        $addresses = @(Get-NetIPAddress -ErrorAction Stop)
+        $profiles = @(Get-NetConnectionProfile -ErrorAction Stop)
+    } catch {
+        throw 'No se pudo comprobar el perfil de la red activa de Windows. No se confirma la disponibilidad HTTPS en la red local.'
+    }
+    $localAddresses = @(foreach ($adapter in $adapters) {
+        foreach ($address in $addresses) {
+            $ip = $null
+            if ($address.InterfaceIndex -eq $adapter.ifIndex -and $address.AddressState -eq 'Preferred' -and
+                [Net.IPAddress]::TryParse([string]$address.IPAddress, [ref]$ip) -and
+                -not [Net.IPAddress]::IsLoopback($ip) -and
+                -not $ip.Equals([Net.IPAddress]::Any) -and -not $ip.Equals([Net.IPAddress]::IPv6Any)) {
+                [pscustomobject]@{ InterfaceIndex = $adapter.ifIndex; Address = $ip }
+            }
+        }
+    })
+    $activeInterfaces = @($localAddresses | Select-Object -ExpandProperty InterfaceIndex -Unique)
+    if ($activeInterfaces.Count -eq 0) {
+        throw 'No hay una interfaz de red activa con dirección válida fuera de loopback. No se confirma la disponibilidad HTTPS en la red local.'
+    }
+    $hostName = ([Uri]$PublicUrl).DnsSafeHost.Trim('[', ']')
+    $literal = $null
+    $isLiteral = [Net.IPAddress]::TryParse($hostName, [ref]$literal)
+    $publicAddresses = if ($isLiteral) { @($literal) } else { @(Resolve-TpvRecoveryPublicAddresses $hostName) }
+    $selectedInterfaces = @($localAddresses | Where-Object {
+        $address = $_.Address
+        @($publicAddresses | Where-Object { $_.Equals($address) }).Count -gt 0
+    } | Select-Object -ExpandProperty InterfaceIndex -Unique)
+    if ($isLiteral -and $selectedInterfaces.Count -eq 0) {
+        throw 'La dirección IP HTTPS instalada no pertenece a una interfaz local activa. Revise la dirección y la conexión de red antes de reintentar.'
+    }
+    if ($selectedInterfaces.Count -eq 0) {
+        # A hostname may be unresolved or map to a NAT address. Require a usable
+        # LAN profile, without rejecting unrelated public Wi-Fi/VPN adapters.
+        foreach ($index in $activeInterfaces) {
+            $matching = @($profiles | Where-Object { $_.InterfaceIndex -eq $index })
+            if ($matching.Count -eq 1 -and [string]$matching[0].NetworkCategory -cin @('Private', 'DomainAuthenticated')) { return }
+        }
+        throw 'No hay una red activa Privada o de dominio autenticado compatible con las reglas HTTPS instaladas. Revise la categoría de red en Windows y reintente; el asistente no la cambia ni abre acceso en redes públicas.'
+    }
+    foreach ($index in $selectedInterfaces) {
+        $matching = @($profiles | Where-Object { $_.InterfaceIndex -eq $index })
+        if ($matching.Count -ne 1) {
+            throw 'No se pudo identificar un único perfil de Windows para la interfaz HTTPS. Revise la conexión de red antes de reintentar.'
+        }
+        if ([string]$matching[0].NetworkCategory -cnotin @('Private', 'DomainAuthenticated')) {
+            throw 'La red activa de Windows debe ser Privada o de dominio autenticado para las reglas HTTPS instaladas. Revise la categoría de red en Windows y reintente; el asistente no la cambia ni abre acceso en redes públicas.'
+        }
+    }
+}
+
 function Get-TpvRecoveryExposure([hashtable] $Backend, [hashtable] $Https) {
+    # Enabled Domain/Private rules do not apply while NLA classifies the active
+    # interface as Public (for example after rebooting an unidentified network).
+    Assert-TpvRecoveryNetworkProfiles $Https.PublicUrl
     $httpsPort = ([Uri]$Https.PublicUrl).Port
     $rules = @{
         'TPVERPHTTPS-LAN' = Get-TpvRecoveryManagedRule 'TPVERPHTTPS-LAN' $Https.Program 'TCP' $httpsPort

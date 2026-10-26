@@ -67,10 +67,14 @@ SaaS ni modifica el historial central:
 
 Si la activación ya consta como `ACTIVATED` o `COMPLETE` pero falla el arranque o
 HTTPS, el estado visible es `ACTIVATED_SERVICE_UNREADY`. Tras corregir la causa
-operativa, repetir **Activar** solo reintenta la disponibilidad de los servicios:
+operativa, **Reintentar arranque** solo reintenta la disponibilidad de los servicios:
 no vuelve a restaurar la copia, renovar credenciales ni consumir una aprobación
 nueva. **Estado** no presenta `COMPLETE` mientras falte una comprobación de
-salud, una regla LAN habilitada o el inicio automático. El nombre público usado
+salud, una regla LAN habilitada, un perfil de red compatible o el inicio automático.
+Una regla limitada a redes privadas o de dominio no permite el acceso si Windows
+clasifica la interfaz HTTPS como pública, también después de reiniciar. El
+asistente comprueba esa condición sin cambiar la categoría de red ni abrir
+puertos en redes públicas. El nombre público usado
 para validar el certificado debe coincidir con la URL del servicio HTTPS
 instalado.
 
