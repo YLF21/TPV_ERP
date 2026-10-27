@@ -173,7 +173,8 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
   async function load() {
     let state = storage.read();
     const current = config.read();
-    const newInstallation = state === null && !current.configuration && !current.error;
+    // The server installer writes the connection address before linking any terminal.
+    const newInstallation = state === null && !current.error;
     let verifiedIdentity = null;
     let unavailable = false;
     if (state?.identity?.installationId && state?.link?.requestId
