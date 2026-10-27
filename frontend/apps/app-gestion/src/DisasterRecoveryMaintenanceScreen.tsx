@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { LocaleCode } from "@tpverp/app-common";
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import "./BackupManagementScreen.css";
 
 type State = "NONE" | "DESTINATION_READY" | "DOWNLOAD_AUTHORIZED" | "RECEIVING" | "RECEIVED_QUARANTINED" | "SUPPORT_REVIEW"
@@ -42,7 +43,8 @@ export function DisasterRecoveryMaintenanceScreen({ locale: _locale, t, onExit }
     <header className="gestion-dashboard-toolbar gestion-security-header"><div>
       <span className="gestion-eyebrow">{t("gestion.security.eyebrow")}</span>
       <h2>{t("gestion.disaster.title")}</h2><p>{t("gestion.disaster.subtitle")}</p>
-    </div><button type="button" onClick={onExit}>{t("common.close")}</button></header>
+    </div><WindowCloseButton aria-label={t("common.close")} title={t("common.close")} onClick={onExit} /></header>
+    <div className="gestion-transfer-maintenance-body">
     <p className="gestion-backups-feedback warning">{t("gestion.disaster.warning")}</p>
     <p className="gestion-backups-feedback warning">{t("gestion.disaster.dataLossWarning")}</p>
     {error && <p className="gestion-backups-feedback error" role="alert">{error}</p>}
@@ -74,5 +76,6 @@ export function DisasterRecoveryMaintenanceScreen({ locale: _locale, t, onExit }
       </details>}
       <p>{t("gestion.disaster.consoleHint")}</p>
     </section>
+    </div>
   </main>;
 }

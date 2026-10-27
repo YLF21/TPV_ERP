@@ -96,8 +96,9 @@ export function TicketBackupRecoveryPanel({ credentials, ticketId, companyId, ca
   const canApprove = state?.state === "SUPPORT_REVIEW" && !expired && state.blockingReasons.length === 0
     && sourceRetired && externalReview && !!note.trim();
   return <section className="support-backup-recovery" aria-label={f("title")}>
-    <h4>{f("title")}</h4><p>{f("scope")}</p>
+    <header className="support-backup-recovery-header"><h4>{f("title")}</h4><p>{f("scope")}</p></header>
     {error && <p role="alert" className="support-technical-pending">{error}</p>}
+    <div className="support-backup-recovery-card">
     <label>{f("installation")}<select className="control-input" value={installationId} disabled={busy || blocked}
       onChange={event => { setInstallationId(event.target.value); setBackups([]); setBackupId(""); setState(null);
         setRecoveryIdInput(""); setSourceRetired(false); setExternalReview(false);
@@ -108,6 +109,7 @@ export function TicketBackupRecoveryPanel({ credentials, ticketId, companyId, ca
       </option>)}
     </select></label>
     {uuid.test(installationId) && <div className="support-backup-recovery-list"><strong>{f("availableBackups")}</strong>
+      <div className="support-backup-recovery-list-items">
       {backups.length === 0 && <p>{f("noBackups")}</p>}
       {backups.map(item => <label key={item.backupId}><input type="radio" name={`backup-${ticketId}`} value={item.backupId}
         checked={backupId === item.backupId} disabled={busy || blocked} onChange={() => {
@@ -116,17 +118,20 @@ export function TicketBackupRecoveryPanel({ credentials, ticketId, companyId, ca
         }} />
         #{item.sequenceNumber} · {new Date(item.capturedAt).toLocaleString()} · {(item.sizeBytes / 1048576).toFixed(1)} MB
       </label>)}
+      </div>
     </div>}
-    {selected && <p>{f("selectedBackup")} #{selected.sequenceNumber} · {selected.applicationVersion}</p>}
+    {selected && <p className="support-backup-recovery-selection">{f("selectedBackup")} #{selected.sequenceNumber} · {selected.applicationVersion}</p>}
+    </div>
+    <div className="support-backup-recovery-card">
     <label>{f("destinationRequest")}<input type="file" accept=".json,application/json" disabled={busy || blocked}
       onChange={event => void importRequest(event)} /></label>
-    {requestKey && <p role="status">{f("requestLoaded")}{fingerprint ? ` · ${fingerprint}` : ""}</p>}
+    {requestKey && <p role="status" className="support-backup-recovery-loaded">{f("requestLoaded")}{fingerprint ? ` · ${fingerprint}` : ""}</p>}
     <details><summary>{f("technicalDetails")}</summary>
       <label>{f("destinationPublicKey")}<textarea readOnly value={requestKey} /></label>
     </details>
     <label>{f("note")}<textarea className="control-input" value={note} maxLength={4000} disabled={busy || blocked}
       onChange={event => setNote(event.target.value)} /></label>
-    <div className="ticket-actions"><button type="button" disabled={busy || blocked || !selected || !requestKey || !note.trim()}
+    <div className="ticket-actions"><button className="support-backup-recovery-primary" type="button" disabled={busy || blocked || !selected || !requestKey || !note.trim()}
       onClick={() => void run(async () => {
         const next = await workspaceApi.createBackupRecovery(credentials, ticketId, {
           requestId: createRequestId.current, installationId, backupId: selected!.backupId,
@@ -135,6 +140,9 @@ export function TicketBackupRecoveryPanel({ credentials, ticketId, companyId, ca
         setState(next); setRecoveryIdInput(next.recoveryId); setSourceRetired(false); setExternalReview(false);
         createRequestId.current = crypto.randomUUID();
       })}>{f("authorizeDownload")}</button></div>
+    </div>
+    <div className="support-backup-recovery-card">
+    <div className="support-backup-recovery-lookup">
     <label>{f("recoveryId")}<input className="control-input" value={recoveryIdInput} disabled={busy || blocked}
       onChange={event => {
         const nextId = event.target.value;
@@ -144,8 +152,9 @@ export function TicketBackupRecoveryPanel({ credentials, ticketId, companyId, ca
         }
       }} /></label>
     <button type="button" disabled={busy || blocked || !uuid.test(recoveryIdInput)} onClick={() => void refreshRecovery()}>{f("refreshRecovery")}</button>
+    </div>
     {state && <div className="support-backup-recovery-state"><p><strong>{f("state")}: {f(`state.${state.state}`)}</strong></p>
-      <p>{f("recoveryId")}: {state.recoveryId}</p>
+      <p>{f("recoveryId")}: <span className="support-backup-recovery-id">{state.recoveryId}</span></p>
       <p>{f("authorizedBackup")}: {state.backupDescriptor ? `#${state.backupDescriptor.sequenceNumber} · ` : ""}{state.backupId}</p>
       <p>{f("sequenceFloor")}: {state.sequenceFloor}</p>
       <p>{f("expiresAt")}: {new Date(state.expiresAt).toLocaleString()}</p>
@@ -167,7 +176,7 @@ export function TicketBackupRecoveryPanel({ credentials, ticketId, companyId, ca
         onChange={event => setSourceRetired(event.target.checked)} />{f("sourceRetired")}</label>}
       {state.state === "SUPPORT_REVIEW" && <label><input type="checkbox" checked={externalReview} disabled={busy || blocked}
         onChange={event => setExternalReview(event.target.checked)} />{f("externalReviewConfirmed")}</label>}
-      {state.state === "SUPPORT_REVIEW" && <button type="button" disabled={busy || blocked || !canApprove}
+      {state.state === "SUPPORT_REVIEW" && <button className="support-backup-recovery-primary" type="button" disabled={busy || blocked || !canApprove}
         onClick={() => void run(async () => setState(await workspaceApi.approveBackupRecovery(credentials, ticketId,
           state.recoveryId, { expectedVersion: state.version, note: note.trim(), sourceRetiredConfirmed: true })))}>{f("approve")}</button>}
       {expired && !(["ACTIVATED", "CANCELLED"] as string[]).includes(state.state) && <button type="button"
@@ -180,5 +189,6 @@ export function TicketBackupRecoveryPanel({ credentials, ticketId, companyId, ca
         onClick={() => void run(async () => setState(await workspaceApi.cancelBackupRecovery(credentials, ticketId,
           state.recoveryId, { expectedVersion: state.version, note: note.trim() })))}>{f("cancel")}</button>}
     </div>}
+    </div>
   </section>;
 }
