@@ -57,7 +57,39 @@ SaaS ni modifica el historial central:
 6. Tras una revisión satisfactoria y la confirmación de retirada del equipo
    antiguo, soporte aprueba la activación única del destino. Se renuevan las
    credenciales, se invalidan las sesiones copiadas y se vuelve a vincular `001`.
-   El primer arranque completa las comprobaciones fiscales antes de operar.
+   El asistente arranca primero el backend y después el servicio HTTPS instalado;
+   comprueba que ambos sigan en ejecución, que la salud local responda `UP` y
+   que la URL pública instalada responda por TLS válido con salud `UP`. Después
+   habilita las dos reglas LAN preparadas por `Register` y fija el inicio
+   automático de ambos servicios. Rechaza reglas ausentes o ajenas sin crearlas
+   ni alterar otras reglas. El primer arranque completa las comprobaciones
+   fiscales antes de operar.
+
+Si la activación ya consta como `ACTIVATED` o `COMPLETE` pero falla el arranque,
+la licencia o HTTPS, el estado visible es `ACTIVATED_SERVICE_UNREADY`.
+**Reintentar arranque** espera hasta cinco minutos con un reloj monotónico a que
+el backend confirme HTTP 200 y JSON `UP`. No vuelve a restaurar la copia, renovar
+credenciales ni consumir una aprobación nueva. **Estado** no presenta `COMPLETE`
+mientras falte una licencia auténtica `LICENSED` de esa instalación, una
+comprobación de salud, una regla LAN habilitada, un perfil de red compatible o
+el inicio automático.
+
+La rotación de la credencial SaaS requiere reconciliar el caché de licencia de la
+copia. El destino solicita a SaaS un resumen completo autorizado con la clave del
+destino y la credencial activada vigente; solo los datos autoritativos de SaaS
+pueden quedar autenticados con la nueva credencial. Una recuperación completada
+por una versión anterior puede preparar esa reconciliación desde el mismo
+reintento de mantenimiento, sin repetir la finalización fiscal ni modificar el
+vínculo físico `001`. Una falta de conexión o una identidad incompatible deja el
+procedimiento pendiente. Este cambio exige actualizar conjuntamente SaaS y el
+backend local. La consulta tiene un plazo total de 30 segundos y un máximo de
+64 KiB, incluyendo la recepción del cuerpo.
+Una regla limitada a redes privadas o de dominio no permite el acceso si Windows
+clasifica la interfaz HTTPS como pública, también después de reiniciar. El
+asistente comprueba esa condición sin cambiar la categoría de red ni abrir
+puertos en redes públicas. El nombre público usado
+para validar el certificado debe coincidir con la URL del servicio HTTPS
+instalado.
 
 La fecha de captura delimita los datos recuperados. Las operaciones posteriores
 que solo existieran en el disco averiado pueden haberse perdido. No se garantiza

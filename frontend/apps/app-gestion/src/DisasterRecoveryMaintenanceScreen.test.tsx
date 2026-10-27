@@ -13,6 +13,7 @@ describe("DisasterRecoveryMaintenanceScreen", () => {
       const t = createTranslator(locale);
       for (const key of ["gestion.disaster.entry", "gestion.disaster.state.RECEIVED_QUARANTINED",
         "gestion.disaster.step.SUPPORT_REVIEW", "gestion.disaster.activate",
+        "gestion.disaster.retryStartup",
         "gestion.disaster.dataLossWarning", "gestion.disaster.centralEvidenceWarning",
         "gestion.disaster.resumeReceive", "gestion.disaster.revalidateReceive"])
         expect(t(key)).not.toBe(key);
@@ -32,6 +33,17 @@ describe("DisasterRecoveryMaintenanceScreen", () => {
     expect(screen.queryByRole("button", { name: "Activar servidor recuperado" })).not.toBeInTheDocument();
   });
 
+  it("does not offer activation while the received recovery is quarantined", async () => {
+    Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { disasterRecovery: {
+      readStatus: vi.fn().mockResolvedValue({ ok: true, state: "RECEIVED_QUARANTINED", recoveryId: "recovery-1" }),
+      startMaintenance: vi.fn()
+    } } });
+    render(<DisasterRecoveryMaintenanceScreen locale="es" t={createTranslator("es")} onExit={() => {}} />);
+    expect(await screen.findByText("Copia recibida en cuarentena")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Activar servidor recuperado" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reintentar arranque" })).not.toBeInTheDocument();
+  });
+
   it("starts activation only from an approved local state", async () => {
     const startMaintenance = vi.fn().mockResolvedValue({ ok: true, started: true });
     Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { disasterRecovery: {
@@ -39,6 +51,16 @@ describe("DisasterRecoveryMaintenanceScreen", () => {
     } } });
     render(<DisasterRecoveryMaintenanceScreen locale="es" t={createTranslator("es")} onExit={() => {}} />);
     fireEvent.click(await screen.findByRole("button", { name: "Activar servidor recuperado" }));
+    expect(startMaintenance).toHaveBeenCalledWith({ action: "activate" });
+  });
+
+  it("retries server startup from the activated but unready state", async () => {
+    const startMaintenance = vi.fn().mockResolvedValue({ ok: true, started: true });
+    Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { disasterRecovery: {
+      readStatus: vi.fn().mockResolvedValue({ ok: true, state: "ACTIVATED_SERVICE_UNREADY" }), startMaintenance
+    } } });
+    render(<DisasterRecoveryMaintenanceScreen locale="es" t={createTranslator("es")} onExit={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Reintentar arranque" }));
     expect(startMaintenance).toHaveBeenCalledWith({ action: "activate" });
   });
 

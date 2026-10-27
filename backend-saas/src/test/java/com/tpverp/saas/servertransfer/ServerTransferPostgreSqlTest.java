@@ -54,6 +54,14 @@ class ServerTransferPostgreSqlTest {
         assertThat(installation.isActive()).isTrue();assertThat(installation.hasTokenHash(tokens.hash(token))).isTrue();
         assertThat(installation.hasTokenHash(tokens.hash(site.token()))).isFalse();assertThat(installation.getInstallationId()).isEqualTo(site.id());
         assertThat(installation.isCurrentPairing(UUID.randomUUID())).isFalse();
+        assertThat(installation.hasLinkRecoveryTokenHash(site.recoveryHash())).isTrue();
+        assertThat(jdbc.queryForObject("select link_recovery_token_hash from saas_installation where installation_id=?",
+                String.class,site.id())).isEqualTo(site.recoveryHash());
+        assertThat(jdbc.queryForObject("select link_recovery_invalidated from saas_installation where installation_id=?",
+                Boolean.class,site.id())).isTrue();
+        assertThat(jdbc.queryForObject("select token_hash from saas_installation where installation_id=?",String.class,site.id()))
+                .isEqualTo(jdbc.queryForObject("select activated_token_hash from saas_server_transfer where id=?",
+                        String.class,request.transferId()));
         assertThat(service.status(request.transferId(),site.id(),site.token()).state()).isEqualTo("ACTIVATED");
         assertThatThrownBy(()->service.cancel(request.transferId(),site.id(),site.token())).hasMessageContaining("401");
     }
@@ -131,8 +139,9 @@ class ServerTransferPostgreSqlTest {
         var company=companies.saveAndFlush(new SaasCompany(UUID.randomUUID(),"Transfer test",validCif("B"+NUMBER.getAndIncrement()+"0"),TaxpayerType.SOCIEDAD,TaxRegime.IVA,Instant.now()));
         var store=stores.saveAndFlush(new SaasStore(UUID.randomUUID(),company,"001","Store","Atlantic/Canary",Instant.now()));
         var license=licenses.saveAndFlush(new SaasLicense(UUID.randomUUID(),company,"TRANSFER-"+UUID.randomUUID(),Instant.now().plusSeconds(86400),1,1,Instant.now()));
-        String token=tokens.newToken();var installation=installations.saveAndFlush(new SaasInstallation(UUID.randomUUID(),company,store,license,UUID.randomUUID(),"TRANSFER-TEST",null,tokens.hash(token),Instant.now()));
-        return new Site(installation.getInstallationId(),token);
+        String token=tokens.newToken(),recoveryHash=tokens.hash(tokens.newToken());
+        var installation=installations.saveAndFlush(new SaasInstallation(UUID.randomUUID(),company,store,license,UUID.randomUUID(),"TRANSFER-TEST",null,tokens.hash(token),recoveryHash,Instant.now()));
+        return new Site(installation.getInstallationId(),token,recoveryHash);
     }
-    record Site(UUID id,String token){}
+    record Site(UUID id,String token,String recoveryHash){}
 }

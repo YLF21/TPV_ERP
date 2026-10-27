@@ -248,7 +248,7 @@ public class SaasInstallation {
 
     /** A transferred server must not be recoverable using the retired host's pairing secret. */
     public void invalidateLinkRecovery() {
-        linkRecoveryTokenHash = null;
+        // V33 freezes the original hash; authorization is revoked through this flag.
         linkRecoveryInvalidated = true;
     }
 

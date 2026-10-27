@@ -68,6 +68,19 @@ public class DisasterRecoveryService {
     }
     public State inspect(UUID id,Proof proof) {var row=locked(id);proof(row,"inspect","",proof.destinationProof(),true);return state(row);}
 
+    /** Read-only entitlement recovery. Neither a consumed grant nor its credential is renewed here. */
+    SaasInstallation requireActivatedLicenseCredential(UUID id, Proof request, String token) {
+        var row=locked(id);
+        proof(row,"license","",request.destinationProof(),true);
+        if(!"ACTIVATED".equals(row.state()))throw conflict("RECOVERY_NOT_ACTIVATED");
+        var installation=lock(row.installation());
+        String issued=jdbc.queryForObject("select activated_token_hash from saas_disaster_recovery where id=?",String.class,id);
+        if(!installation.isActive() || !installation.hasTokenHash(issued))throw conflict("RECOVERY_ACTIVATION_SUPERSEDED");
+        if(token==null || token.isBlank() || !installation.hasTokenHash(tokens.hash(token)))
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"RECOVERY_CREDENTIAL_INVALID");
+        return installation;
+    }
+
     /** Keyset pages allow arbitrary installation histories without holding all payloads in memory. */
     public JsonNode evidence(UUID id,UUID after,Proof proof) {
         var row=locked(id);proof(row,"evidence",after==null?"":after.toString(),proof.destinationProof(),false);

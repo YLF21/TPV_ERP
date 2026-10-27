@@ -105,14 +105,378 @@ function Read-InstalledHttpsService([string] $ProgramDataRoot) {
         $document.XmlResolver = $null
         $document.Load($reader)
     } finally { $reader.Dispose() }
+    $caddy = Join-Path $httpsRoot 'caddy.exe'
     if ([string]$document.service.id -cne 'TPVERPHTTPS' -or
             [string]$document.service.serviceaccount.username -cne 'NT SERVICE\TPVERPHTTPS' -or
+            -not [string]::Equals([string]$document.service.executable, $caddy,
+                [StringComparison]::OrdinalIgnoreCase) -or
             -not [string]::Equals([string]$document.service.workingdirectory, $httpsRoot,
                 [StringComparison]::OrdinalIgnoreCase)) {
         throw 'El servicio HTTPS instalado no tiene identidad o directorio esperado.'
     }
+    $publicSettings = @($document.service.env | Where-Object { $_.name -ceq 'TPV_HTTPS_PUBLIC_URL' })
+    $backendSettings = @($document.service.env | Where-Object { $_.name -ceq 'TPV_HTTPS_BACKEND_URL' })
+    $publicUri = $null
+    $publicText = if ($publicSettings.Count -eq 1) { [string]$publicSettings[0].value } else { '' }
+    $ipv6Authority = $publicText -cmatch '^https://\[[0-9A-Fa-f:.]+\](?::[0-9]{1,5})?$'
+    if ($publicSettings.Count -ne 1 -or $backendSettings.Count -ne 1 -or
+            -not [Uri]::TryCreate($publicText, [UriKind]::Absolute, [ref]$publicUri) -or
+            $publicUri.Scheme -cne 'https' -or -not [string]::IsNullOrEmpty($publicUri.UserInfo) -or
+            $publicUri.AbsolutePath -cne '/' -or -not [string]::IsNullOrEmpty($publicUri.Query) -or
+            -not [string]::IsNullOrEmpty($publicUri.Fragment) -or
+            ($publicText -cne $publicUri.GetLeftPart([UriPartial]::Authority) -and
+                -not ($publicUri.HostNameType -eq [UriHostNameType]::IPv6 -and $ipv6Authority))) {
+        throw 'El servicio HTTPS no declara una URL pública instalada válida.'
+    }
     Assert-PlainDirectory $httpsRoot 'La instalación HTTPS' | Out-Null
-    return @{ Account = 'NT SERVICE\TPVERPHTTPS'; TlsDirectory = (Join-Path $httpsRoot 'tls') }
+    return @{ Account = 'NT SERVICE\TPVERPHTTPS'; TlsDirectory = (Join-Path $httpsRoot 'tls');
+        Program = $caddy; PublicUrl = $publicUri.GetLeftPart([UriPartial]::Authority);
+        BackendUrl = [string]$backendSettings[0].value }
+}
+
+function Test-TpvSameHost([string] $Left, [string] $Right) {
+    $leftIp = $null
+    $rightIp = $null
+    if ([Net.IPAddress]::TryParse($Left.Trim('[', ']'), [ref]$leftIp) -and
+            [Net.IPAddress]::TryParse($Right.Trim('[', ']'), [ref]$rightIp)) {
+        return $leftIp.Equals($rightIp)
+    }
+    return [string]::Equals($Left, $Right, [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Test-TpvSameOrigin([string] $Left, [string] $Right) {
+    $leftUri = $null
+    $rightUri = $null
+    if (-not [Uri]::TryCreate($Left, [UriKind]::Absolute, [ref]$leftUri) -or
+            -not [Uri]::TryCreate($Right, [UriKind]::Absolute, [ref]$rightUri)) { return $false }
+    return $leftUri.Scheme -ceq $rightUri.Scheme -and $leftUri.Port -eq $rightUri.Port -and
+        (Test-TpvSameHost $leftUri.DnsSafeHost $rightUri.DnsSafeHost) -and
+        [string]::IsNullOrEmpty($leftUri.UserInfo) -and [string]::IsNullOrEmpty($rightUri.UserInfo) -and
+        $leftUri.AbsolutePath -ceq '/' -and $rightUri.AbsolutePath -ceq '/' -and
+        [string]::IsNullOrEmpty($leftUri.Query) -and [string]::IsNullOrEmpty($rightUri.Query) -and
+        [string]::IsNullOrEmpty($leftUri.Fragment) -and [string]::IsNullOrEmpty($rightUri.Fragment)
+}
+
+function Test-TpvLocalReadiness([string] $LocalUrl) {
+    try {
+        $response = Invoke-WebRequest -Uri "$LocalUrl/actuator/health/readiness" -UseBasicParsing -TimeoutSec 3
+        $health = ConvertFrom-TpvHttpJson -Content $response.Content
+        return $response.StatusCode -eq 200 -and $health.status -ceq 'UP'
+    } catch { return $false }
+}
+
+function Test-TpvHttpsHealthResponse([IO.TextReader] $Reader) {
+    $buffer = New-Object char[] 1024
+    $wire = [Text.StringBuilder]::new()
+    while ($wire.Length -le 16384) {
+        $read = $Reader.Read($buffer, 0, $buffer.Length)
+        if ($read -eq 0) { break }
+        [void]$wire.Append($buffer, 0, $read)
+    }
+    if ($wire.Length -gt 16384) { return $false }
+    $message = $wire.ToString()
+    $separator = $message.IndexOf("`r`n`r`n", [StringComparison]::Ordinal)
+    if ($separator -lt 0) { return $false }
+    $headers = $message.Substring(0, $separator)
+    if ($headers -notmatch '^HTTP/1\.[01] 200(?: |\r\n)') { return $false }
+    $body = $message.Substring($separator + 4)
+    if ($headers -match '(?im)^Transfer-Encoding:\s*chunked\s*$') {
+        $decoded = [Text.StringBuilder]::new()
+        $offset = 0
+        while ($true) {
+            $lineEnd = $body.IndexOf("`r`n", $offset, [StringComparison]::Ordinal)
+            if ($lineEnd -lt 0) { return $false }
+            $sizeText = $body.Substring($offset, $lineEnd - $offset)
+            if ($sizeText -notmatch '^[0-9a-fA-F]{1,5}$') { return $false }
+            $size = [Convert]::ToInt32($sizeText, 16)
+            if ($size -eq 0) { break }
+            $offset = $lineEnd + 2
+            if ($size -gt 8192 -or $offset + $size + 2 -gt $body.Length -or
+                    $body.Substring($offset + $size, 2) -cne "`r`n") { return $false }
+            [void]$decoded.Append($body, $offset, $size)
+            $offset += $size + 2
+        }
+        $body = $decoded.ToString()
+    }
+    if ($body.Length -gt 8192) { return $false }
+    try { return (ConvertFrom-TpvHttpJson -Content $body).status -ceq 'UP' }
+    catch { return $false }
+}
+
+function Test-TpvHttpsReadiness([string] $PublicUrl) {
+    $uri = [Uri]$PublicUrl
+    $client = [Net.Sockets.TcpClient]::new()
+    $ssl = $null
+    try {
+        if (-not $client.ConnectAsync('127.0.0.1', $uri.Port).Wait(2000)) { return $false }
+        # SNI uses the installed public host. SslStream's default policy validates chain and name.
+        $ssl = [Net.Security.SslStream]::new($client.GetStream(), $false)
+        $ssl.ReadTimeout = 3000
+        $ssl.WriteTimeout = 3000
+        if (-not $ssl.AuthenticateAsClientAsync($uri.DnsSafeHost.Trim('[', ']')).Wait(5000)) { return $false }
+        $request = [Text.Encoding]::ASCII.GetBytes("GET /actuator/health/readiness HTTP/1.1`r`nHost: $($uri.Authority)`r`nConnection: close`r`n`r`n")
+        $ssl.Write($request, 0, $request.Length)
+        $reader = [IO.StreamReader]::new($ssl)
+        try { return Test-TpvHttpsHealthResponse $reader }
+        finally { $reader.Dispose() }
+    } catch { return $false }
+    finally { if ($null -ne $ssl) { $ssl.Dispose() }; $client.Dispose() }
+}
+
+function Read-TpvRecoveryFirewallPortFilter($Rule) { return $Rule | Get-NetFirewallPortFilter -ErrorAction Stop }
+function Read-TpvRecoveryFirewallApplicationFilter($Rule) { return $Rule | Get-NetFirewallApplicationFilter -ErrorAction Stop }
+function Read-TpvRecoveryFirewallAddressFilter($Rule) { return $Rule | Get-NetFirewallAddressFilter -ErrorAction Stop }
+
+function Get-TpvRecoveryManagedRule([string] $Name, [string] $Program,
+        [string] $Protocol, [int] $Port) {
+    $rules = @(Get-NetFirewallRule -Name $Name -ErrorAction SilentlyContinue | Where-Object { $null -ne $_ })
+    if ($rules.Count -ne 1) { throw "Falta la regla instalada $Name o está duplicada." }
+    $rule = $rules[0]
+    $ports = @(Read-TpvRecoveryFirewallPortFilter $rule)
+    $applications = @(Read-TpvRecoveryFirewallApplicationFilter $rule)
+    $addresses = @(Read-TpvRecoveryFirewallAddressFilter $rule)
+    if ($ports.Count -ne 1 -or $applications.Count -ne 1 -or $addresses.Count -ne 1 -or
+            [string]$rule.Description -cne 'TPV ERP server installer managed' -or
+            [string]$rule.Direction -ne 'Inbound' -or [string]$rule.Action -ne 'Allow' -or
+            [string]$ports[0].Protocol -ne $Protocol -or
+            [string]$ports[0].LocalPort -ne [string]$Port -or
+            -not [StringComparer]::OrdinalIgnoreCase.Equals([string]$applications[0].Program, $Program) -or
+            [string]$addresses[0].RemoteAddress -ne 'LocalSubnet' -or
+            ((@(([string]$rule.Profile).Split(',') | ForEach-Object { $_.Trim() } | Sort-Object) -join ',') -ne 'Domain,Private')) {
+        throw "La regla instalada $Name tiene otra configuración; no se modifica."
+    }
+    return $rule
+}
+
+function Resolve-TpvRecoveryPublicAddresses([string] $HostName) {
+    try {
+        $lookup = [Net.Dns]::GetHostAddressesAsync($HostName)
+        if ($lookup.Wait(2000)) { return $lookup.Result }
+    } catch { }
+    return @()
+}
+
+function Assert-TpvRecoveryNetworkProfiles([string] $PublicUrl) {
+    try {
+        $adapters = @(Get-NetAdapter -IncludeHidden -ErrorAction Stop | Where-Object { $_.Status -eq 'Up' })
+        $addresses = @(Get-NetIPAddress -ErrorAction Stop)
+        $profiles = @(Get-NetConnectionProfile -ErrorAction Stop)
+    } catch {
+        throw 'No se pudo comprobar el perfil de la red activa de Windows. No se confirma la disponibilidad HTTPS en la red local.'
+    }
+    $localAddresses = @(foreach ($adapter in $adapters) {
+        foreach ($address in $addresses) {
+            $ip = $null
+            if ($address.InterfaceIndex -eq $adapter.ifIndex -and $address.AddressState -eq 'Preferred' -and
+                [Net.IPAddress]::TryParse([string]$address.IPAddress, [ref]$ip) -and
+                -not [Net.IPAddress]::IsLoopback($ip) -and
+                -not $ip.Equals([Net.IPAddress]::Any) -and -not $ip.Equals([Net.IPAddress]::IPv6Any)) {
+                [pscustomobject]@{ InterfaceIndex = $adapter.ifIndex; Address = $ip }
+            }
+        }
+    })
+    $activeInterfaces = @($localAddresses | Select-Object -ExpandProperty InterfaceIndex -Unique)
+    if ($activeInterfaces.Count -eq 0) {
+        throw 'No hay una interfaz de red activa con dirección válida fuera de loopback. No se confirma la disponibilidad HTTPS en la red local.'
+    }
+    $hostName = ([Uri]$PublicUrl).DnsSafeHost.Trim('[', ']')
+    $literal = $null
+    $isLiteral = [Net.IPAddress]::TryParse($hostName, [ref]$literal)
+    $publicAddresses = if ($isLiteral) { @($literal) } else { @(Resolve-TpvRecoveryPublicAddresses $hostName) }
+    $selectedInterfaces = @($localAddresses | Where-Object {
+        $address = $_.Address
+        @($publicAddresses | Where-Object { $_.Equals($address) }).Count -gt 0
+    } | Select-Object -ExpandProperty InterfaceIndex -Unique)
+    if ($isLiteral -and $selectedInterfaces.Count -eq 0) {
+        throw 'La dirección IP HTTPS instalada no pertenece a una interfaz local activa. Revise la dirección y la conexión de red antes de reintentar.'
+    }
+    if ($selectedInterfaces.Count -eq 0) {
+        # A hostname may be unresolved or map to a NAT address. Require a usable
+        # LAN profile, without rejecting unrelated public Wi-Fi/VPN adapters.
+        foreach ($index in $activeInterfaces) {
+            $matching = @($profiles | Where-Object { $_.InterfaceIndex -eq $index })
+            if ($matching.Count -eq 1 -and [string]$matching[0].NetworkCategory -cin @('Private', 'DomainAuthenticated')) { return }
+        }
+        throw 'No hay una red activa Privada o de dominio autenticado compatible con las reglas HTTPS instaladas. Revise la categoría de red en Windows y reintente; el asistente no la cambia ni abre acceso en redes públicas.'
+    }
+    foreach ($index in $selectedInterfaces) {
+        $matching = @($profiles | Where-Object { $_.InterfaceIndex -eq $index })
+        if ($matching.Count -ne 1) {
+            throw 'No se pudo identificar un único perfil de Windows para la interfaz HTTPS. Revise la conexión de red antes de reintentar.'
+        }
+        if ([string]$matching[0].NetworkCategory -cnotin @('Private', 'DomainAuthenticated')) {
+            throw 'La red activa de Windows debe ser Privada o de dominio autenticado para las reglas HTTPS instaladas. Revise la categoría de red en Windows y reintente; el asistente no la cambia ni abre acceso en redes públicas.'
+        }
+    }
+}
+
+function Get-TpvRecoveryExposure([hashtable] $Backend, [hashtable] $Https) {
+    # Enabled Domain/Private rules do not apply while NLA classifies the active
+    # interface as Public (for example after rebooting an unidentified network).
+    Assert-TpvRecoveryNetworkProfiles $Https.PublicUrl
+    $httpsPort = ([Uri]$Https.PublicUrl).Port
+    $rules = @{
+        'TPVERPHTTPS-LAN' = Get-TpvRecoveryManagedRule 'TPVERPHTTPS-LAN' $Https.Program 'TCP' $httpsPort
+        'TPVERPDiscovery-LAN' = Get-TpvRecoveryManagedRule 'TPVERPDiscovery-LAN' $Backend.Java 'UDP' 5353
+    }
+    $services = @{
+        'TPVERPBackend' = Get-Service -Name 'TPVERPBackend' -ErrorAction Stop
+        'TPVERPHTTPS' = Get-Service -Name 'TPVERPHTTPS' -ErrorAction Stop
+    }
+    foreach ($name in $services.Keys) {
+        if ([string]$services[$name].StartType -notin @('Manual', 'Automatic')) {
+            throw "El inicio del servicio $name no corresponde a la instalación recuperable."
+        }
+    }
+    return @{ Rules = $rules; Services = $services }
+}
+
+function Test-TpvRecoveryExposureReady([hashtable] $Backend, [hashtable] $Https) {
+    try {
+        $exposure = Get-TpvRecoveryExposure $Backend $Https
+        foreach ($name in $exposure.Rules.Keys) {
+            if ([string]$exposure.Rules[$name].Enabled -ne 'True') { return $false }
+        }
+        foreach ($name in $exposure.Services.Keys) {
+            if ([string]$exposure.Services[$name].StartType -ne 'Automatic') { return $false }
+        }
+        return $true
+    } catch { return $false }
+}
+
+function Enable-TpvRecoveryExposure([hashtable] $Backend, [hashtable] $Https) {
+    # Validate both installed rules and both start modes before the first change.
+    $exposure = Get-TpvRecoveryExposure $Backend $Https
+    $changedRules = @()
+    $changedServices = @()
+    try {
+        foreach ($name in @('TPVERPHTTPS-LAN', 'TPVERPDiscovery-LAN')) {
+            if ([string]$exposure.Rules[$name].Enabled -ne 'True') {
+                Set-NetFirewallRule -Name $name -Enabled True -ErrorAction Stop | Out-Null
+                $changedRules += $name
+            }
+        }
+        foreach ($name in @('TPVERPBackend', 'TPVERPHTTPS')) {
+            if ([string]$exposure.Services[$name].StartType -ne 'Automatic') {
+                Set-Service -Name $name -StartupType Automatic -ErrorAction Stop
+                $changedServices += $name
+            }
+        }
+    } catch {
+        foreach ($name in $changedServices) {
+            try { Set-Service -Name $name -StartupType Manual -ErrorAction Stop } catch { }
+        }
+        foreach ($name in $changedRules) {
+            try { Set-NetFirewallRule -Name $name -Enabled False -ErrorAction Stop | Out-Null } catch { }
+        }
+        throw
+    }
+}
+
+function Test-TpvRecoveryLicenseReady([string] $LocalUrl, [string] $ExpectedInstallationId) {
+    try {
+        if ($ExpectedInstallationId -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') { return $false }
+        $response = Invoke-WebRequest -UseBasicParsing -Uri ($LocalUrl.TrimEnd('/') + '/api/v1/installation/status') -TimeoutSec 5 -ErrorAction Stop
+        $status = ConvertFrom-TpvHttpJson -Content $response.Content
+        return $response.StatusCode -eq 200 -and $status.mode -ceq 'LICENSED' -and
+            ([string]$status.id) -ieq $ExpectedInstallationId
+    } catch { return $false }
+}
+
+function Prepare-TpvCompletedRecoveryLicense([string] $Wrapper, [hashtable] $Arguments,
+        [string] $PrivateDirectory, $Preflight) {
+    if ($Preflight.state -cne 'COMPLETE') { throw 'La reconciliación de licencia requiere una recuperación completada.' }
+    Ensure-Environment 'TPV_DB_URL' 'URL JDBC de PostgreSQL destino'
+    Ensure-Environment 'TPV_DB_USERNAME' 'Usuario PostgreSQL destino'
+    Ensure-Environment 'TPV_DB_PASSWORD' 'Contraseña PostgreSQL destino' -Secret
+    foreach ($name in @('TPVERPHTTPS', 'TPVERPBackend')) {
+        if ((Get-Service -Name $name -ErrorAction Stop).Status -ne [ServiceProcess.ServiceControllerStatus]::Stopped) {
+            Stop-Service -Name $name -ErrorAction Stop
+            (Get-Service -Name $name -ErrorAction Stop).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromMinutes(2))
+        }
+    }
+    $licenseArguments = $Arguments.Clone()
+    $licenseArguments.Action = 'reconcile-license'
+    $licenseArguments.Execute = $true
+    $licenseResult = $null
+    Invoke-TpvRecoveryResult $Wrapper $licenseArguments $PrivateDirectory ([ref]$licenseResult)
+    if ($licenseResult.state -cne 'COMPLETE' -or $licenseResult.recoveryId -cne $Preflight.recoveryId -or
+            $licenseResult.installationId -cne $Preflight.installationId) {
+        throw 'La preparación de licencia no coincide con la recuperación completada.'
+    }
+}
+
+function Test-TpvRecoveryServicesReady([hashtable] $Backend, [hashtable] $Https) {
+    try {
+        if ((Get-Service -Name 'TPVERPBackend' -ErrorAction Stop).Status -ne [ServiceProcess.ServiceControllerStatus]::Running -or
+                (Get-Service -Name 'TPVERPHTTPS' -ErrorAction Stop).Status -ne [ServiceProcess.ServiceControllerStatus]::Running) {
+            return $false
+        }
+        return (Test-TpvLocalReadiness $Backend.LocalUrl) -and
+            (Test-TpvRecoveryLicenseReady $Backend.LocalUrl $Backend.RecoveryInstallationId) -and
+            (Test-TpvHttpsReadiness $Https.PublicUrl) -and
+            (Test-TpvRecoveryExposureReady $Backend $Https)
+    } catch { return $false }
+}
+
+function Get-TpvRecoveryElapsedMilliseconds([Diagnostics.Stopwatch] $Clock) {
+    return $Clock.ElapsedMilliseconds
+}
+
+function Start-TpvRecoveryBackend([hashtable] $Backend) {
+    if ((Get-Service -Name 'TPVERPBackend' -ErrorAction Stop).Status -ne [ServiceProcess.ServiceControllerStatus]::Running) {
+        Start-Service -Name 'TPVERPBackend' -ErrorAction Stop
+        (Get-Service -Name 'TPVERPBackend' -ErrorAction Stop).WaitForStatus(
+            [ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromMinutes(2))
+    }
+    $backendReady = $false
+    $readinessClock = [Diagnostics.Stopwatch]::StartNew()
+    while ((Get-TpvRecoveryElapsedMilliseconds $readinessClock) -lt 300000) {
+        if (Test-TpvLocalReadiness $Backend.LocalUrl) {
+            $backendReady = (Get-TpvRecoveryElapsedMilliseconds $readinessClock) -le 300000
+            break
+        }
+        $remainingMilliseconds = 300000 - (Get-TpvRecoveryElapsedMilliseconds $readinessClock)
+        if ($remainingMilliseconds -le 0) { break }
+        Start-Sleep -Milliseconds ([Math]::Min(2000, $remainingMilliseconds))
+    }
+    $readinessClock.Stop()
+    if (-not $backendReady) {
+        throw 'El servidor se activó, pero la disponibilidad local no confirmó HTTP 200 y JSON UP en 300 segundos. Reintente activate sin volver a activar la licencia.'
+    }
+}
+
+function Start-TpvRecoveryServices([hashtable] $Backend, [hashtable] $Https) {
+    # Fail before starting anything if a firewall rule belongs to another program or scope.
+    Get-TpvRecoveryExposure $Backend $Https | Out-Null
+    Start-TpvRecoveryBackend $Backend
+    if (-not (Test-TpvRecoveryLicenseReady $Backend.LocalUrl $Backend.RecoveryInstallationId)) {
+        throw 'La recuperación sigue pendiente: SaaS no ha confirmado una licencia auténtica LICENSED. Reintente activate con conexión al SaaS; no vuelva a restaurar ni autorizar.'
+    }
+    if ((Get-Service -Name 'TPVERPHTTPS' -ErrorAction Stop).Status -ne [ServiceProcess.ServiceControllerStatus]::Running) {
+        Start-Service -Name 'TPVERPHTTPS' -ErrorAction Stop
+        (Get-Service -Name 'TPVERPHTTPS' -ErrorAction Stop).WaitForStatus(
+            [ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromMinutes(2))
+    }
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        if ((Get-Service -Name 'TPVERPHTTPS' -ErrorAction Stop).Status -eq [ServiceProcess.ServiceControllerStatus]::Running -and
+                (Test-TpvHttpsReadiness $Https.PublicUrl)) {
+            Enable-TpvRecoveryExposure $Backend $Https
+            if (Test-TpvRecoveryServicesReady $Backend $Https) { return }
+        }
+        Start-Sleep -Seconds 2
+    }
+    throw 'El servidor se activó, pero HTTPS no confirmó disponibilidad TLS para la URL pública instalada.'
+}
+
+function Test-TpvAlreadyActivated([string] $State) {
+    return $State -cin @('ACTIVATED', 'COMPLETE')
+}
+
+function Assert-TpvActivationApproved([string] $State) {
+    if (-not (Test-TpvAlreadyActivated $State)) {
+        throw 'Soporte aún no ha aprobado la activación; la cuarentena continúa.'
+    }
 }
 
 function Resolve-ServiceSid([string] $ServiceAccount) {
@@ -322,6 +686,25 @@ function Publish-RecoveryStatus([string] $Directory, [object] $Result, [string] 
     Move-Item -LiteralPath $temp -Destination $target -Force
 }
 
+function Invoke-TpvRecoveryResult([string] $Wrapper, [hashtable] $Arguments,
+        [string] $PrivateDirectory, [ref] $Result) {
+    # Java reads the password from the inherited console; never pipeline this invocation.
+    $resultName = 'maintenance-result-' + [guid]::NewGuid().ToString('N') + '.json'
+    $resultPath = Join-Path $PrivateDirectory $resultName
+    $Arguments.ResultFileName = $resultName
+    try {
+        & $Wrapper @Arguments
+        Assert-PlainFile $resultPath 'El resultado privado de mantenimiento' | Out-Null
+        if ((Get-Item -LiteralPath $resultPath).Length -gt 32768) { throw 'El resultado de mantenimiento excede el límite.' }
+        $Result.Value = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    } finally {
+        if (Test-Path -LiteralPath $resultPath) {
+            Assert-PlainFile $resultPath 'El resultado privado de mantenimiento' | Out-Null
+            Remove-Item -LiteralPath $resultPath -Force
+        }
+    }
+}
+
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'La recuperación solo funciona en Windows.' }
 if ($env:ProgramData -notmatch '^[A-Za-z]:\\ProgramData\\?$') { throw 'ProgramData no tiene una ruta instalada válida.' }
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -339,6 +722,9 @@ try {
     $serviceXml = Assert-PlainFile (Join-Path $installRoot 'TPVERPBackend.xml') 'El XML del servicio'
     $service = Read-InstalledService $serviceXml
     $https = Read-InstalledHttpsService $env:ProgramData
+    if (-not (Test-TpvSameOrigin $https.BackendUrl $service.LocalUrl)) {
+        throw 'El servicio HTTPS instalado apunta a otro backend interno.'
+    }
     $java = Assert-PlainFile $service.Java 'Java instalado'
     $jar = Assert-PlainFile $service.Jar 'El JAR instalado'
     $releasesRoot = Assert-PlainDirectory (Join-Path $installRoot 'releases') 'Las releases instaladas'
@@ -374,12 +760,22 @@ try {
     [Environment]::SetEnvironmentVariable('TPV_TRANSFER_HTTPS_SERVICE_ACCOUNT', $https.Account, 'Process')
     Ensure-Environment 'TPV_KEY_DIRECTORY' 'Directorio de claves del servidor destino'
     Ensure-Environment 'TPV_LICENSE_SAAS_URL' 'URL SaaS de licencias'
+    $alreadyActivated = $false
+    $preflightResult = $null
+    if ($Action -eq 'activate' -and (Test-Path -LiteralPath $privateDirectory -PathType Container)) {
+        Assert-PlainDirectory $privateDirectory 'El destino de recuperación' | Out-Null
+        $preflightArguments = @{ Action = 'status'; BundleDirectory = $releaseDirectory;
+            ExpectedReleaseId = $releaseId; JavaExecutable = $java;
+            MaintenanceDirectory = $privateDirectory }
+        Invoke-TpvRecoveryResult $wrapper $preflightArguments $privateDirectory ([ref]$preflightResult)
+        $alreadyActivated = Test-TpvAlreadyActivated ([string]$preflightResult.state)
+    }
     if ($policy.TestOnly -and $Action -eq 'status') {
         Ensure-Environment 'TPV_DB_URL' 'URL JDBC PostgreSQL local del laboratorio'
         Ensure-Environment 'TPV_DB_USERNAME' 'Usuario PostgreSQL del laboratorio'
         Ensure-Environment 'TPV_DB_PASSWORD' 'Contraseña PostgreSQL del laboratorio' -Secret
     }
-    if ($Action -ne 'status') {
+    if ($Action -ne 'status' -and -not $alreadyActivated) {
         Ensure-Environment 'TPV_DB_URL' 'URL JDBC de PostgreSQL destino'
         Ensure-Environment 'TPV_DB_USERNAME' 'Usuario PostgreSQL destino'
         Ensure-Environment 'TPV_DB_PASSWORD' 'Contraseña PostgreSQL destino' -Secret
@@ -388,12 +784,17 @@ try {
         Ensure-Environment 'TPV_DOCUMENT_TEMPLATE_DIRECTORY' 'Directorio de plantillas destino'
         Ensure-Environment 'TPV_VERIFACTU_SECRET_DIRECTORY' 'Directorio de secretos VeriFactu destino'
         Ensure-Environment 'TPV_TRANSFER_PUBLIC_HOST' 'Nombre público HTTPS del destino'
+        $recoveryHost = [Environment]::GetEnvironmentVariable('TPV_TRANSFER_PUBLIC_HOST', 'Process')
+        $installedHost = ([Uri]$https.PublicUrl).DnsSafeHost
+        if (-not (Test-TpvSameHost $recoveryHost $installedHost)) {
+            throw 'El nombre público de recuperación difiere del servicio HTTPS instalado.'
+        }
         Prepare-SecretRoot ([Environment]::GetEnvironmentVariable('TPV_VERIFACTU_SECRET_DIRECTORY', 'Process')) $service.ServiceAccount
         Ensure-KeyDirectory ([Environment]::GetEnvironmentVariable('TPV_KEY_DIRECTORY', 'Process')) $service.ServiceAccount $Action | Out-Null
     }
     $tlsDirectory = Join-Path $env:ProgramData 'TPV ERP\HTTPS\tls'
     [Environment]::SetEnvironmentVariable('TPV_TRANSFER_TLS_DIRECTORY', $tlsDirectory, 'Process')
-    if ($Action -ne 'status') {
+    if ($Action -ne 'status' -and -not $alreadyActivated) {
         Prepare-SecretRoot $tlsDirectory $https.Account -ServiceReadOnly
         $tlsPrivateKey = Join-Path $tlsDirectory 'private-key.pem'
         if (Test-Path -LiteralPath $tlsPrivateKey) {
@@ -410,7 +811,7 @@ try {
     Prepare-SecretRoot $privateDirectory $service.ServiceAccount
     Ensure-PublicDirectory $publicDirectory
 
-    if ($Action -ne 'status') {
+    if ($Action -in @('request', 'receive') -or ($Action -eq 'activate' -and -not $alreadyActivated)) {
         $backend = Get-Service -Name 'TPVERPBackend' -ErrorAction Stop
         if ($backend.Status -ne [ServiceProcess.ServiceControllerStatus]::Stopped) {
             Stop-Service -Name 'TPVERPBackend' -ErrorAction Stop
@@ -419,6 +820,18 @@ try {
     }
     $arguments = @{ Action = $Action; BundleDirectory = $releaseDirectory; ExpectedReleaseId = $releaseId
         JavaExecutable = $java; MaintenanceDirectory = $privateDirectory }
+    if ($alreadyActivated -and $preflightResult.state -ceq 'COMPLETE') {
+        $activationResult = $preflightResult
+        # An unavailable HTTP process is not evidence that its already authenticated license needs reconciliation.
+        Get-TpvRecoveryExposure $service $https | Out-Null
+        Start-TpvRecoveryBackend $service
+    }
+    if ($alreadyActivated -and $preflightResult.state -ceq 'COMPLETE' -and
+            -not (Test-TpvRecoveryLicenseReady $service.LocalUrl $preflightResult.installationId)) {
+        $activationResult = $preflightResult
+        # Upgrade of a previously completed recovery: prepare only its credential-bound license handoff.
+        Prepare-TpvCompletedRecoveryLicense $wrapper $arguments $privateDirectory $preflightResult
+    }
     if ($Action -eq 'receive') {
         $recoveryId = Read-Host 'ID de recuperación autorizado por soporte'
         if ($recoveryId -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') {
@@ -427,22 +840,13 @@ try {
         $arguments.RecoveryId = $recoveryId
     }
     if ($Action -ne 'status') { $arguments.Execute = $true }
-    # Do not capture/pipeline this invocation: Java readPassword requires inherited console handles.
-    $resultName = 'maintenance-result-' + [guid]::NewGuid().ToString('N') + '.json'
-    $resultPath = Join-Path $privateDirectory $resultName
-    $arguments.ResultFileName = $resultName
-    try {
-        & $wrapper @arguments
-        Assert-PlainFile $resultPath 'El resultado privado de mantenimiento' | Out-Null
-        if ((Get-Item -LiteralPath $resultPath).Length -gt 32768) { throw 'El resultado de mantenimiento excede el límite.' }
-        $result = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
-    } finally {
-        if (Test-Path -LiteralPath $resultPath) {
-            Assert-PlainFile $resultPath 'El resultado privado de mantenimiento' | Out-Null
-            Remove-Item -LiteralPath $resultPath -Force
-        }
-    }
+    $result = $null
+    if ($alreadyActivated) { $result = $preflightResult }
+    else { Invoke-TpvRecoveryResult $wrapper $arguments $privateDirectory ([ref]$result) }
     if ([string]::IsNullOrWhiteSpace([string]$result.state)) { throw 'La herramienta devolvió un estado inválido.' }
+    if ($result.state -cin @('ACTIVATED', 'COMPLETE')) {
+        $service.RecoveryInstallationId = [string]$result.installationId
+    }
     if ($Action -eq 'status' -and $result.state -ceq 'DESTINATION_READY' -and
             $null -eq $result.PSObject.Properties['destinationPublicKey']) {
         $requestPath = Join-Path $privateDirectory 'destination-request.json'
@@ -458,13 +862,7 @@ try {
         }
     }
     if ($Action -eq 'status' -and $result.state -cin @('ACTIVATED', 'COMPLETE')) {
-        $readyNow = $false
-        try {
-            $response = Invoke-WebRequest -Uri "$($service.LocalUrl)/actuator/health/readiness" -UseBasicParsing -TimeoutSec 3
-            $health = ConvertFrom-TpvHttpJson -Content $response.Content
-            $readyNow = $response.StatusCode -eq 200 -and $health.status -ceq 'UP'
-        } catch { }
-        if (-not $readyNow) { $result.state = 'ACTIVATED_SERVICE_UNREADY' }
+        if (-not (Test-TpvRecoveryServicesReady $service $https)) { $result.state = 'ACTIVATED_SERVICE_UNREADY' }
     }
     if ($Action -eq 'request' -and $result.state -ceq 'DESTINATION_READY') {
         $request = [ordered]@{ state = 'DESTINATION_READY'; destinationPublicKey = [string]$result.destinationPublicKey
@@ -481,19 +879,9 @@ try {
     }
     Write-Host "Estado de recuperación: $($result.state)" -ForegroundColor Green
     if ($Action -eq 'activate') {
-        if ($result.state -cne 'ACTIVATED') { throw 'Soporte aún no ha aprobado la activación; la cuarentena continúa.' }
+        Assert-TpvActivationApproved ([string]$result.state)
         $activationResult = $result
-        Start-Service -Name 'TPVERPBackend' -ErrorAction Stop
-        (Get-Service -Name 'TPVERPBackend').WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromMinutes(2))
-        $ready = $false
-        for ($attempt = 0; $attempt -lt 45; $attempt++) {
-            try {
-                $response = Invoke-WebRequest -Uri "$($service.LocalUrl)/actuator/health/readiness" -UseBasicParsing -TimeoutSec 3
-                $health = ConvertFrom-TpvHttpJson -Content $response.Content
-                if ($response.StatusCode -eq 200 -and $health.status -ceq 'UP') { $ready = $true; break }
-            } catch { Start-Sleep -Seconds 2 }
-        }
-        if (-not $ready) { throw 'El servidor se activó, pero la disponibilidad local no confirmó UP.' }
+        Start-TpvRecoveryServices $service $https
     }
     Publish-RecoveryStatus $publicDirectory $result $Action
 } catch {
