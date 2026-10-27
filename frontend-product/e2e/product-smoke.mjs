@@ -14,8 +14,8 @@ const navigationRoutes = ["inicio", "solucion", "apps", "ventajas", "contacto"];
 const marketingUrl = (language, route, search = "") => new URL(`${marketingHref(language, route)}${search}`, base).href;
 const currentLanguage = async page => (await page.locator("html").getAttribute("lang")) === "zh-CN" ? "zh" : await page.locator("html").getAttribute("lang");
 
-async function waitForMarketingRoute(page, language, route) {
-  await page.waitForFunction(pathname => location.pathname === pathname && location.hash === "", marketingHref(language, route));
+async function waitForMarketingRoute(page, language, route, hash = "") {
+  await page.waitForFunction(({ pathname, hash }) => location.pathname === pathname && location.hash === hash, { pathname: marketingHref(language, route), hash });
 }
 const tourLanguages = [
   { language: "es", htmlLanguage: "es", actions: "Qué puedes hacer", example: "En la práctica", benefit: "Qué te aporta", delivery: "Cómo se utiliza", previous: "Anterior", next: "Siguiente", demo: "Solicitar demo", close: "Cerrar recorrido" },
@@ -25,6 +25,8 @@ const tourLanguages = [
 
 // Use the same reachable language controls as visitors, never a control behind a modal.
 async function chooseLanguage(page, language) {
+  const hash = new URL(page.url()).hash;
+  const expectedHash = hash.startsWith("#/producto/") ? "" : hash;
   const desktopSelector = page.locator(".mk-header-actions select");
   if (await desktopSelector.isVisible()) {
     await desktopSelector.selectOption(language);
@@ -34,7 +36,7 @@ async function chooseLanguage(page, language) {
     await page.locator("#mk-navigation .mk-language-selector.is-mobile select").selectOption(language);
     await page.keyboard.press("Escape");
   }
-  await page.waitForFunction(({ language, htmlLanguage }) => document.documentElement.lang === htmlLanguage && location.pathname.startsWith(`/${language}/producto/`) && location.hash === "", { language, htmlLanguage: language === "zh" ? "zh-CN" : language });
+  await page.waitForFunction(({ language, htmlLanguage, hash }) => document.documentElement.lang === htmlLanguage && location.pathname.startsWith(`/${language}/producto/`) && location.hash === hash, { language, htmlLanguage: language === "zh" ? "zh-CN" : language, hash: expectedHash });
 }
 
 async function assertAccessibleRoutes(page) {
@@ -162,7 +164,7 @@ async function assertCompactMarketingPages(page) {
     { width: 1440, height: 900 }
   ];
   const requiredByRoute = {
-    inicio: ".mk-hero-copy h1, .mk-lead, .mk-hero-copy .mk-actions a, .mk-checks li, .mk-app-strip article strong, .mk-app-strip article small, .mk-intro h2, .mk-intro > p, .mk-intro > a, .mk-home-sector-preview article p, .mk-home-sector-preview article h3, .mk-home-sector-preview article small",
+    inicio: ".mk-hero-copy h1, .mk-lead, .mk-hero-copy .mk-actions a, .mk-checks li, .mk-app-strip article strong, .mk-app-strip article small, .mk-intro h2, .mk-intro > p, .mk-intro > a, .mk-home-sector-preview article > p, .mk-home-sector-preview article > h3, .mk-home-sector-preview article > small, .mk-home-sector-preview summary",
     apps: ".mk-page-heading h1, .mk-page-heading-support > p, .mk-app-explorer-tabs button, .mk-app-explorer-intro h2, .mk-app-explorer-intro p, .mk-app-explorer-facts dt, .mk-app-explorer-facts dd, .mk-app-explorer-description, .mk-app-explorer-sections button, .mk-app-explorer-content h3, .mk-app-explorer-content h4, .mk-app-explorer-content p, .mk-app-explorer-scope, .mk-app-explorer-actions > *, .mk-guide-start h2, .mk-guide-start h3, .mk-guide-start p",
     ventajas: ".mk-page-heading h1, .mk-page-heading-support > p, .mk-comparison [role=rowheader], .mk-comparison [role=cell], .mk-note",
     contacto: ".mk-contact-story > h1, .mk-contact-story > p, .mk-wechat-content h2, .mk-wechat-account-line, .mk-wechat-body, .mk-wechat-id, .mk-wechat-copy, .mk-wechat-hint, .mk-wechat-qr-trigger, .mk-contact-product, .mk-contact-trust strong, .mk-contact-trust small, .mk-contact-form-tag, .mk-contact-form h2, .mk-contact-form > p, .mk-delivery-status p, .mk-contact-selection legend, .mk-contact-package, .mk-contact-app-choice, .mk-contact-fields label, .mk-contact-form > label:not(.mk-contact-honeypot), .mk-contact-submit, .mk-contact-talk, .mk-contact-form > small"
@@ -211,6 +213,7 @@ async function assertCompactMarketingPages(page) {
             const bounds = card.getBoundingClientRect();
             const outside = [...card.querySelectorAll("h2, h3, h4, p, strong, small, li, input:not([type=checkbox]), textarea, button, a")].filter(child => {
               if (child.closest(".mk-contact-honeypot") || child.classList.contains("mk-visually-hidden")) return false;
+              if (!child.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false;
               const rect = child.getBoundingClientRect();
               return rect.width > 0 && rect.height > 0 && (rect.left < bounds.left - tolerance || rect.right > bounds.right + tolerance || rect.top < bounds.top - tolerance || rect.bottom > bounds.bottom + tolerance);
             }).map(describe);
@@ -234,6 +237,21 @@ async function assertCompactMarketingPages(page) {
         if (route === "inicio") {
           assert.equal(await main.locator(".mk-app-strip article").count(), 4);
           assert.equal(await main.locator(".mk-home-sector-preview article").count(), 4);
+          for (const disclosure of await main.locator(".mk-home-sector-preview details").all()) {
+            await disclosure.locator("summary").click();
+            assert.equal(await disclosure.evaluate(element => element.open), true);
+            const outside = await disclosure.evaluate(element => {
+              const bounds = element.closest("article").getBoundingClientRect();
+              return [...element.querySelectorAll("p, li, strong, a")].filter(child => {
+                const rect = child.getBoundingClientRect();
+                return !child.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
+                  || rect.left < bounds.left - 2 || rect.right > bounds.right + 2
+                  || rect.top < bounds.top - 2 || rect.bottom > bounds.bottom + 2;
+              }).map(child => child.tagName.toLowerCase());
+            });
+            assert.deepEqual(outside, [], `${context} expanded sector text and actions fit their card`);
+            await disclosure.locator("summary").click();
+          }
           await assertReachableControl(main.locator(".mk-hero .mk-primary"), viewport, `${context} demo`);
         } else if (route === "apps") {
           assert.equal(await main.locator(".mk-app-explorer-tabs [role=tab]").count(), 4);
@@ -308,14 +326,13 @@ async function assertTourContent(tour, locale, app, step) {
   const preview = tour.getByTestId("tour-step-preview");
   assert.equal(await preview.getAttribute("data-step"), String(step), `${context} media must follow the selected step`);
   const mediaKind = await preview.getAttribute("data-media-kind");
-  assert.ok(["application-overview", "step-capture"].includes(mediaKind), `${context} must declare what kind of image is shown`);
-  if (mediaKind === "application-overview") {
-    assert.match(await preview.locator("figcaption").innerText(), {
-      es: /vista general de referencia, no de este paso/i,
-      en: /general reference screen, not this step/i,
-      zh: /参考总览，并非当前步骤截图/
-    }[locale.language], `${context} must not present a general screenshot as a newly captured operation`);
-  }
+  assert.equal(mediaKind, "step-capture", `${context} must show its reviewed step capture without an overview fallback`);
+  assert.equal(await preview.locator("img").getAttribute("src"), `/marketing/steps/${app}-${step + 1}.webp`, `${context} must select its own published frame`);
+  assert.match(await preview.locator("figcaption").innerText(), {
+    es: /Interfaz real en español.*Datos de demostración/i,
+    en: /Real interface in Spanish.*Demonstration data/i,
+    zh: /真实界面（西班牙语）.*演示数据/
+  }[locale.language], `${context} must disclose the interface language and demonstration data`);
   const original = preview.locator("a");
   assert.equal(await original.getAttribute("href"), await preview.locator("img").getAttribute("src"));
   assert.equal(await original.getAttribute("target"), "_blank");
@@ -365,7 +382,7 @@ async function assertTourLayout(tour, viewport, mobile, context) {
       if (!region) return { selector, missing: true };
       const rect = region.getBoundingClientRect();
       const bounds = { left: rect.left + region.clientLeft, top: rect.top + region.clientTop, right: rect.left + region.clientLeft + region.clientWidth, bottom: rect.top + region.clientTop + region.clientHeight };
-      const allowVerticalScroll = region === dialog;
+      const allowVerticalScroll = region === dialog || selector === ".mk-tour-stage";
       const outside = rect => rect.left < bounds.left - tolerance || rect.right > bounds.right + tolerance || (!allowVerticalScroll && (rect.top < bounds.top - tolerance || rect.bottom > bounds.bottom + tolerance));
       const clipped = [];
       for (const child of region.querySelectorAll("*")) {
@@ -453,7 +470,7 @@ async function assertResponsiveHome(page, viewport) {
     assert.equal(region.contained, true, `${context} ${region.selector} must fit inside the hero rather than being clipped`);
   }
   const demo = page.locator(".mk-hero .mk-actions .mk-primary");
-  assert.equal(await demo.getAttribute("href"), marketingHref(await currentLanguage(page), "contacto"), `${context} must retain the localized, shareable demo contact action`);
+  assert.equal(await demo.getAttribute("href"), `${marketingHref(await currentLanguage(page), "contacto")}#mk-demo-form`, `${context} must retain the localized, shareable demo contact action`);
   await demo.scrollIntoViewIfNeeded();
   const action = await demo.boundingBox();
   assert.ok(action && action.x >= -1 && action.y >= -1 && action.x + action.width <= viewport.width + 1 && action.y + action.height <= viewport.height + 1, `${context} demo action must be reachable with natural vertical scrolling (${JSON.stringify(action)})`);
@@ -785,9 +802,10 @@ try {
       assert.equal(apiRequests.length, requestsBeforePreparation, "Reading the guide must not submit a request");
       await implementation.locator("summary").press("Enter");
       const demo = explorer.locator(".mk-app-explorer-demo");
-      assert.equal(await demo.getAttribute("href"), `${marketingHref(locale.language, "contacto")}?apps=${app}`, "Application demos must expose a shareable product choice");
+      assert.equal(await demo.getAttribute("href"), `${marketingHref(locale.language, "contacto")}?apps=${app}#mk-demo-form`, "Application demos must expose a shareable product choice");
       await demo.click();
-      await waitForMarketingRoute(page, locale.language, "contacto");
+      await waitForMarketingRoute(page, locale.language, "contacto", "#mk-demo-form");
+      await page.waitForFunction(() => document.activeElement?.id === "mk-demo-form");
       assert.equal(await page.evaluate(() => new URLSearchParams(location.search).get("apps")), app);
       await productCheckbox(app).waitFor({ state: "visible" });
       assert.deepEqual(await selectedProducts(), [app], "The application demo link must initialize the requested selection");
@@ -819,7 +837,7 @@ try {
     assert.equal(await tour.getAttribute("data-active-app"), app);
     const image = tour.locator(".mk-tour-preview img");
     const source = await image.getAttribute("src");
-    assert.equal(source, `/marketing/tour-${app}.png`, `${app} must show its own interface`);
+    assert.equal(source, `/marketing/steps/${app}-1.webp`, `${app} must show its own first step`);
     tourImages.add(source);
     await image.evaluate(image => image.decode());
     assert.ok(await image.getAttribute("alt"), `${app} preview must have descriptive alternative text`);
@@ -849,7 +867,7 @@ try {
         await expandedTour.locator('.mk-tour-tabs [role="tab"]').nth(index).click();
         assert.match(await expandedTour.locator(".mk-tour-step-count").innerText(), /1 \/ 3/, "Selecting an application must reset its walkthrough to the first step");
         await expandedTour.locator(".mk-tour-preview img").evaluate(image => image.decode());
-        assert.equal(await expandedTour.locator(".mk-tour-preview img").getAttribute("src"), `/marketing/tour-${app}.png`);
+        assert.equal(await expandedTour.locator(".mk-tour-preview img").getAttribute("src"), `/marketing/steps/${app}-1.webp`);
         for (let step = 0; step < 3; step++) {
           await expandedTour.locator(".mk-tour-progress button").nth(step).click();
           const details = await assertTourContent(expandedTour, locale, app, step);
@@ -901,7 +919,7 @@ try {
   assert.match(await tour.locator(".mk-tour-step-count").innerText(), /2 \/ 3/);
   await tour.locator('.mk-tour-tabs [role="tab"]').nth(2).click();
   assert.equal(await tour.getAttribute("data-active-app"), "pda");
-  assert.equal(await tour.locator(".mk-tour-preview img").getAttribute("src"), "/marketing/tour-pda.png", "Switching tabs must also update the preview");
+  assert.equal(await tour.locator(".mk-tour-preview img").getAttribute("src"), "/marketing/steps/pda-1.webp", "Switching tabs must also update the preview");
   await tour.locator(".mk-tour-preview img").evaluate(image => image.decode());
   assert.match(await tour.locator(".mk-tour-step-count").innerText(), /1 \/ 3/);
   for (const [language, note] of [["en", "Real interface"], ["zh", "真实界面"], ["es", "Interfaz real"]]) {
@@ -910,7 +928,7 @@ try {
     await page.getByTestId("guide-app-pda").click();
     await tourTriggers.first().click();
     assert.ok((await tour.locator(".mk-tour-preview figcaption").innerText()).includes(note), "Preview label must follow the website language");
-    assert.equal(await tour.locator(".mk-tour-preview img").getAttribute("src"), "/marketing/tour-pda.png", "The selected application must open its own preview in each language");
+    assert.equal(await tour.locator(".mk-tour-preview img").getAttribute("src"), "/marketing/steps/pda-1.webp", "The selected application must open its own preview in each language");
   }
   await tour.locator(".mk-tour-progress button").last().click();
   await tour.locator(".mk-tour-actions .is-primary").click();
@@ -970,7 +988,8 @@ try {
   await chooseLanguage(page, "es");
   await downloadTrigger.click();
   await downloadCenter.locator('[data-testid="download-card-pda"] .mk-download-request').click();
-  await waitForMarketingRoute(page, "es", "contacto");
+  await waitForMarketingRoute(page, "es", "contacto", "#mk-demo-form");
+  await page.waitForFunction(() => document.activeElement?.id === "mk-demo-form");
   assert.equal(await page.evaluate(() => new URLSearchParams(location.search).get("apps")), "pda");
   await productCheckbox("pda").waitFor({ state: "visible" });
   assert.deepEqual(await selectedProducts(), ["pda"], "Assisted delivery must carry the selected product to Contact");
@@ -1040,7 +1059,7 @@ try {
   await page.locator(".mk-contact-submit").click();
   await page.locator(".mk-contact-prepared").waitFor({ state: "visible" });
   assert.equal(await page.locator('input[name="name"]').inputValue(), "", "Successful requests reset the form");
-  assert.deepEqual(await selectedProducts(), ["pda"], "Successful requests must reset product selection to the initial application");
+  assert.deepEqual(await selectedProducts(), ["pda"], "Successful requests preserve the latest application preference");
 
   await page.locator('input[name="name"]').fill("Ana López");
   await page.locator('input[name="company"]').fill("Comercio Sur");
@@ -1057,7 +1076,7 @@ try {
   await page.locator(".mk-contact-prepared").waitFor({ state: "visible" });
   assert.deepEqual(apiPayloads.at(-1).products, ["APP_VENTA", "APP_PDA"], "Every chosen application must reach the API in canonical order");
   assert.equal(apiPayloads.at(-1).product, "APP_VENTA", "The legacy primary product must remain compatible with the first chosen application");
-  assert.deepEqual(await selectedProducts(), ["pda"], "A multi-product success must restore the initial choice");
+  assert.deepEqual(await selectedProducts(), ["venta", "pda"], "A multi-product success preserves the visitor's latest choice");
 
   await fullPackage.check();
   assert.deepEqual(await selectedProducts(), productOrder, "The complete package must select all four applications");
@@ -1075,15 +1094,15 @@ try {
   await page.locator(".mk-contact-submit").click();
   await page.locator(".mk-contact-prepared").waitFor({ state: "visible" });
   assert.deepEqual(apiPayloads.at(-1).products, ["APP_VENTA", "APP_GESTION", "APP_PDA", "APP_SAAS"], "A complete-package request must submit all four products");
-  assert.deepEqual(await selectedProducts(), ["pda"], "A complete-package success must restore the initial choice");
-  assert.equal(await fullPackage.isChecked(), false);
+  assert.deepEqual(await selectedProducts(), productOrder, "A complete-package success preserves the latest complete-package choice");
+  assert.equal(await fullPackage.isChecked(), true);
 
   demoApiStatus = 503;
   await page.locator('input[name="name"]').fill("Luis Pérez");
   await page.locator('input[name="company"]').fill("Tienda Norte");
   await page.locator('input[name="email"]').fill("luis@example.com");
   await page.locator('input[name="privacyAccepted"]').check();
-  await productCheckbox("pda").uncheck();
+  await fullPackage.uncheck();
   const requestsBeforeEmptySelection = apiRequests.length;
   await page.locator(".mk-contact-submit").click();
   await page.locator('.mk-contact-selection-error[role="alert"]').waitFor({ state: "visible" });
@@ -1106,11 +1125,38 @@ try {
   await page.locator(".mk-contact-prepared").waitFor({ state: "visible" });
   assert.equal(apiIdempotencyKeys.at(-1), failedRequestKey, "A manual retry after whitespace or reversible application edits must reuse the normalized request key");
   assert.match(await page.locator(".mk-demo-receipt").innerText(), /7b3dbe84-8d67-48db-bc48-f355d7ad7f82/, "Success must expose the validated receipt reference");
+  const confirmedReceipt = page.getByTestId("demo-receipt");
+  assert.equal(await confirmedReceipt.locator("time").getAttribute("datetime"), "2026-10-03T12:00:00Z");
+  assert.match(await confirmedReceipt.innerText(), /esPOS Gestión, esPOS PDA/, "The receipt retains the exact applications sent");
+  const requestsBeforeReceiptCopy = apiRequests.length;
+  // Stub the clipboard here; this test must not write to the user's real clipboard.
+  await page.evaluate(() => {
+    window.__receiptCopied = "";
+    window.__receiptReject = false;
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async value => {
+      if (window.__receiptReject) throw new Error("Receipt clipboard denied");
+      window.__receiptCopied = value;
+    } } });
+  });
+  await confirmedReceipt.locator("button").click();
+  await page.waitForFunction(() => window.__receiptCopied.includes("7b3dbe84-8d67-48db-bc48-f355d7ad7f82"));
+  const copiedReceipt = await page.evaluate(() => window.__receiptCopied);
+  assert.match(copiedReceipt, /esPOS Gestión, esPOS PDA/);
+  assert.doesNotMatch(copiedReceipt, /Luis|@/, "The copied receipt must not include contact details");
+  await page.evaluate(() => { window.__receiptReject = true; });
+  await confirmedReceipt.locator("button").click();
+  const manualReceipt = confirmedReceipt.locator("textarea[readonly]");
+  await manualReceipt.waitFor({ state: "visible" });
+  assert.equal(await manualReceipt.inputValue(), copiedReceipt);
+  assert.ok(await manualReceipt.evaluate(element => element === document.activeElement && element.selectionStart === 0 && element.selectionEnd === element.value.length));
+  assert.equal(apiRequests.length, requestsBeforeReceiptCopy, "Copying or selecting a receipt cannot submit another request");
+  await page.evaluate(() => { window.__receiptReject = false; });
 
   for (const [field, maximum] of Object.entries({ name: 160, company: 200, email: 160, phone: 40, message: 2000 })) {
     assert.equal(await page.locator(`[name="${field}"]`).getAttribute("maxlength"), String(maximum), `${field} must match its backend length limit`);
   }
   await page.locator('input[name="name"]').fill("   ");
+  assert.equal(await page.getByTestId("demo-receipt").count(), 0, "Editing starts a new draft without a stale confirmation");
   await page.locator('input[name="company"]').fill("  Comercio Demo  ");
   await page.locator('input[name="email"]').fill("carla@example.com");
   await page.locator('input[name="privacyAccepted"]').check();
@@ -1176,7 +1222,7 @@ try {
     await mobileTour.locator('.mk-tour-tabs [role="tab"]').nth(index).click();
     const image = mobileTour.locator(".mk-tour-preview img");
     await image.evaluate(image => image.decode());
-    assert.equal(await image.getAttribute("src"), `/marketing/tour-${app}.png`);
+    assert.equal(await image.getAttribute("src"), `/marketing/steps/${app}-1.webp`);
     assert.ok(await mobileTour.locator(".mk-tour-context").evaluate(element => element.scrollHeight <= element.clientHeight + 1), `${app} mobile preview must not clip its contents`);
   }
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Mobile product tour must not overflow horizontally");
@@ -1195,7 +1241,7 @@ try {
       for (const [index, app] of productOrder.entries()) {
         await responsiveTour.locator('.mk-tour-tabs [role="tab"]').nth(index).click();
         await responsiveTour.locator(".mk-tour-preview img").evaluate(image => image.decode());
-        assert.equal(await responsiveTour.locator(".mk-tour-preview img").getAttribute("src"), `/marketing/tour-${app}.png`);
+        assert.equal(await responsiveTour.locator(".mk-tour-preview img").getAttribute("src"), `/marketing/steps/${app}-1.webp`);
         for (let step = 0; step < 3; step++) {
           await responsiveTour.locator(".mk-tour-progress button").nth(step).click();
           const context = `${viewport.width}x${viewport.height}/${locale.language}/${app}/step ${step + 1}`;

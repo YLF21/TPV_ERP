@@ -26,11 +26,12 @@ test("application actions have distinct demo and preparation destinations", asyn
 
   try {
     assert.equal(server.httpServer, null);
-    const [{ ApplicationExplorer }, { ImplementationJourney, implementationJourneyId, openImplementationJourney }, { getMarketingContent }, { getApplicationGuides }] = await Promise.all([
+    const [{ ApplicationExplorer }, { ImplementationJourney, implementationJourneyId, openImplementationJourney }, { getMarketingContent }, { getApplicationGuides }, { getApplicationPreviewAlts }] = await Promise.all([
       server.ssrLoadModule("/src/ApplicationExplorer.tsx"),
       server.ssrLoadModule("/src/ImplementationJourney.tsx"),
       server.ssrLoadModule("/src/marketingI18n.ts"),
-      server.ssrLoadModule("/src/applicationGuides.ts")
+      server.ssrLoadModule("/src/applicationGuides.ts"),
+      server.ssrLoadModule("/src/applicationPreviewContent.ts")
     ]);
     let actionCount = 0;
     const onAction = () => { actionCount += 1; };
@@ -44,14 +45,14 @@ test("application actions have distinct demo and preparation destinations", asyn
             name: marketing.apps.items[index][0],
             label: marketing.apps.items[index][1],
             description: marketing.apps.items[index][2],
-            previewAlt: marketing.tour.previewAlts[index]
+            previewAlt: getApplicationPreviewAlts(language)[id]
           };
           const markup = renderToStaticMarkup(createElement(Fragment, null,
             createElement(ApplicationExplorer, { language, applications: [application], onOpenTour: onAction, onRequestDemo: onAction }),
             createElement(ImplementationJourney, { language })
           ));
           const anchors = [...markup.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)];
-          const contact = anchors.filter(anchor => anchor[1].includes(`href="/${language}/producto/contacto/?apps=${id}"`));
+          const contact = anchors.filter(anchor => anchor[1].includes(`href="/${language}/producto/contacto/?apps=${id}#mk-demo-form"`));
           assert.equal(contact.length, 1, "Do not duplicate differently named actions to the contact form");
           assert.ok(contact[0][2].includes(escapeHtml(getApplicationGuides(language).demoAction)));
           const preparation = anchors.filter(anchor => anchor[1].includes('data-testid="guide-preparation-action"'));

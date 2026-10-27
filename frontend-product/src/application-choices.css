@@ -1,11 +1,14 @@
 .mk-application-chooser {
   min-width: 0;
   margin: 0 0 18px;
+  scroll-margin-top: 84px;
   border: 1px solid var(--mk-line);
   border-radius: 16px;
   color: var(--mk-ink);
   background: white;
 }
+
+.mk-home-page > .mk-application-chooser { margin-top: 18px; }
 
 .mk-application-chooser > summary {
   display: flex;

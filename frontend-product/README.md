@@ -755,3 +755,286 @@ con el paso. El ejemplo comercial por sí solo no acredita lo mostrado en la ima
 la existencia y dimensiones de los archivos, la distinción de procedencia y el
 enlace al original mediante contratos de datos y SSR. No ejecuta un navegador ni
 certifica la geometría o la interacción real en móvil y escritorio.
+
+## Entrega por fases: casos, ecosistema y confirmación
+
+Esta entrega incorpora tres fases independientes en ES/EN/ZH:
+
+1. **Casos sectoriales:** `SectorCases.tsx` reutiliza la explicación y todas las
+   capacidades de los cuatro sectores existentes. Conserva el resumen visible y
+   añade un desplegable cerrado con aplicaciones orientativas y un enlace real a
+   Contacto que mantiene su selección. No constituye una oferta ni un testimonio.
+2. **Caso transversal:** `ConnectedScenario.tsx` añade a Solución un ejemplo
+   ficticio con un mismo producto controlado por stock y sin otros movimientos:
+   10 unidades, venta de 2, consulta y recuento de 8, y consulta central cuando la
+   información se recibe y procesa. Conserva los límites de conexión y permisos.
+3. **Confirmación útil:** `DemoRequestReceipt.tsx` muestra referencia, fecha de
+   recepción y aplicaciones realmente enviadas. Permite copiar únicamente esos
+   datos, con selección manual si falla el portapapeles. La selección confirmada
+   se conserva aparte de las casillas restablecidas; una nueva edición invalida
+   la confirmación visible. No se guardan datos personales en el navegador ni se
+   envía otro formulario, correo o mensaje por copiar el resumen.
+
+Se reutilizan los estilos existentes; el único ajuste de cuadrícula evita que
+abrir un caso estire las tarjetas vecinas. Se elimina texto sin consumidores en
+el código, no explicaciones visibles, para conservar los presupuestos de carga.
+La compatibilidad SaaS habla de estado de sincronización e información recibida,
+no de una hora de última actualización que la interfaz no garantiza.
+
+`npm run test:marketing-phases` comprueba contenido y enlaces sectoriales, los
+cuatro pasos del caso y el resumen de confirmación mediante datos, código y SSR.
+La integración se cubre también con las pruebas de accesibilidad, información,
+SEO y coherencia editorial. El E2E incorpora comprobaciones de copia y selección
+manual para ejecutarlas cuando exista acceso autorizado al navegador; no se
+consideran ejecutadas por comprobar su sintaxis.
+
+Las siguientes fases quedaban separadas de esa entrega; la primera se desarrolla
+en la sección de ayudas de importación y decisión que aparece a continuación:
+
+- Ayudas prácticas de importación y preguntas de decisión en la comparativa.
+- Seguimiento comercial: responsables, notas y próxima acción en la bandeja SaaS
+  implementados en la fase siguiente, documentada en `frontend-saas/README.md`.
+- Consolidación de estilos, margen de carga e hidratación si la validación visual
+  permite confirmar su comportamiento; no se cambian sin esa comprobación.
+- Capturas específicas y revisión en móvil/escritorio, pendientes del acceso y
+  las imágenes reales. Las doce referencias de capturas siguen sin completarse.
+- Preparación pública, dominio e información corporativa y de privacidad,
+  pendientes de datos y decisiones reales del responsable. La indexación no se
+  activa y no se inventan condiciones, clientes, resultados ni certificaciones.
+
+No se modifican el backend, los permisos administrativos ni las migraciones en
+esas tres fases. El seguimiento comercial se desarrolla posteriormente en el
+portal interno SaaS y requiere la migración V82; véase `frontend-saas/README.md`.
+
+## Ayudas de importación y decisión: fase siguiente
+
+La página Apps incorpora `ProductImportHelp`: un desplegable cerrado con dos
+pasos para preparar el Excel y revisar los cambios. Reutiliza los estilos
+adaptables de información de servicio, sin nuevas reglas de CSS ni dependencias
+de Excel en el navegador. Está disponible en ES/EN/ZH.
+
+`public/guides/espos-product-import-sample.xlsx` es una muestra descargable de
+catálogo y precios, generada con el runtime de hojas de cálculo. La primera hoja,
+`Datos`, empieza en A1 con las columnas reconocidas por el importador:
+Código, Nombre, Precio de compra y Precio de venta. Contiene tres productos
+ficticios, códigos de texto y precios numéricos, sin fórmulas. `Guia`, situada
+después, contiene instrucciones en español, inglés y chino. No es una migración
+completa ni incluye existencias, clientes o historial; los precios de muestra no
+son tarifas de esPOS. No se han aplicado esos productos a ninguna base de datos.
+
+El formato se contrastó con `SharedExcelImportDialog`,
+`ProductExcelImportReadService`, `ProductExcelImportPreviewService` y
+`ProductExcelImportApplyService` del proyecto: solo se lee la primera hoja; las
+altas requieren identidad, nombre, familia e impuesto activo válidos, incluidos
+los valores configurados cuando proceda. La vista previa no modifica productos,
+aunque puede registrar auditoría. Crear o actualizar requiere permisos y
+confirmación explícita. La muestra no inventa familias, UUID ni tipos impositivos.
+
+Ventajas conserva la tabla de capacidades y añade `ComparisonDecisionHelp`,
+también cerrado al entrar. Plantea cuatro preguntas prácticas sobre el servicio
+de tienda, la consulta central, el dispositivo de almacén y el alcance acordado.
+Reutiliza los límites de conexión, requisitos Android y avisos de licencias y
+copias ya existentes. Los enlaces a Contacto mantienen las aplicaciones
+orientativas seleccionadas; no constituyen un pedido, una reserva ni un cálculo
+de ahorro. No se añaden puntuaciones de competidores ni condiciones comerciales.
+
+`npm run test:decision-help` comprueba el contenido y los enlaces localizados
+mediante SSR, así como la estructura OOXML del archivo descargable: hoja inicial,
+cabeceras, tres ejemplos, tipos de celda y ausencia de fórmulas y enlaces externos.
+Las ayudas se incorporan a la revisión editorial de los diecisiete almacenes de
+texto. Las comprobaciones no realizan una importación real ni sustituyen las
+pruebas de interacción y geometría en navegador, cuyo acceso sigue bloqueado.
+
+La revisión con subagentes separó el contrato del importador, las preguntas de
+decisión y el margen de carga. Se retira copia sin consumidores y se comparte el
+texto alternativo de las capturas generales entre el explorador y el recorrido,
+conservando su procedencia y la identificación de datos de demostración. Los
+presupuestos de rendimiento permanecen sin cambios.
+
+Validación de esta fase: 261 comprobaciones, 260 aprobadas, ninguna fallida y
+una omitida por la restricción de enlaces del entorno Windows. Compilación de
+19 documentos HTML y presupuesto de carga aprobados: JS 466.350 bytes sin
+comprimir / 144.992 gzip, CSS 114.707 / 19.905 gzip. El margen del límite total
+de JS gzip es de solo 8 bytes: cualquier ampliación posterior requiere revisar
+la carga; no debe aumentarse el presupuesto para ocultar una regresión.
+Permanece el aviso conocido de la imagen JPEG de Contacto (340.134 bytes),
+por debajo del límite obligatorio de 400.000 bytes.
+
+## Revisión técnica y editorial de la web para clientes · 2026-10-27
+
+Se revisaron las cinco páginas en ES/EN/ZH, sus contenidos, enlaces, formulario,
+recorridos y reglas de accesibilidad/carga, con tres subagentes. El acceso al
+navegador continúa bloqueado por la revisión automática: esta es una revisión
+de código, contenido y contratos SSR, no una auditoría visual ni una prueba de
+interacción real en móvil y escritorio. No se usaron capturas antiguas como
+evidencia de la presentación actual de la web.
+
+Correcciones verificadas:
+
+- Contacto comunica la selección manual al estado de preferencias de la página.
+  Al salir y volver por la navegación se conservan las apps elegidas. Un enlace
+  con otra selección explícita sigue pudiendo reemplazarlas; el recibo mantiene
+  las apps realmente enviadas, sin guardar datos personales en almacenamiento.
+- Los errores de campo se conservan como códigos saneados y se traducen al
+  renderizar. Cambiar idioma actualiza los mensajes sin reiniciar el formulario
+  ni borrar los valores introducidos.
+- La acción de una descarga sin instalador publicado indica que se solicita una
+  demo, que es lo que realmente registra el formulario. Se conservan los enlaces
+  configurados de instaladores y las modalidades web de PDA y SaaS.
+- Tres colores de textos pequeños se oscurecen: estado asistido y etiquetas de
+  plataforma/entrega (4,79:1 sobre blanco), y textos de confianza de Contacto
+  (5,78:1 sobre la superficie clara definida). Son cálculos de los colores CSS;
+  el contraste sobre la fotografía requiere comprobación visual. No se cambia
+  la composición ni se añaden reglas, secciones o dependencias.
+
+`e2e/contact-continuity.contract.test.mjs` comprueba los contratos de selección,
+la traducción de códigos y el CTA real de las descargas. Validación completa:
+264 comprobaciones, 263 aprobadas, ninguna fallida y una omitida por enlaces en
+Windows. Compilación de 19 HTML y presupuesto de rendimiento aprobados: JS
+466.074 / 144.976 gzip bytes; CSS 114.707 / 19.895 gzip bytes. El margen total de
+JS gzip es de solo 24 bytes; antes de ampliar funcionalidades conviene reducir
+la carga, sin subir el presupuesto para ocultar regresiones. Persiste el aviso
+del JPEG de Contacto (340.134 bytes, bajo el límite obligatorio).
+
+Prioridades de contenido y publicación que siguen pendientes:
+
+- Completar las doce capturas reales por paso; las vistas generales actuales
+  están identificadas como referencia y las específicas permanecen en `null`.
+- Explicar primero el valor para el comercio y después términos como servicio
+  de tienda; enlazar la duda de Excel con la ayuda práctica existente.
+- Antes de publicar instaladores, revisar URLs, versión, firma y SHA-256 reales
+  para que la información de entrega coincida con los archivos disponibles.
+- Identificación corporativa y aviso de privacidad aprobado, aplazados por el
+  usuario. No se inventan esos datos ni condiciones, precios, SLA o testimonios.
+
+## Elección desde Inicio y capturas por paso · 2026-10-27
+
+El usuario confirmó que el acceso al navegador ya estaba habilitado. Se comprobó
+ese acceso y se capturaron las interfaces actuales mediante Cua; el bloqueo
+descrito en revisiones anteriores ya no impide esta fase.
+
+Inicio reutiliza el selector de aplicaciones de Apps, cerrado inicialmente para
+mantener la presentación compacta. La acción secundaria del bloque principal
+«¿Qué aplicaciones necesito?» lleva directamente al selector. Sus cuatro casos
+explican tareas, aplicaciones y requisitos; al pasar a Contacto conservan la
+combinación elegida. Se mantiene la solicitud de demo como acción principal.
+
+El recorrido tiene doce capturas distintas, tres por aplicación:
+
+- Venta: cobro parcial, consulta de stock mediante F5 y estado operativo local.
+- Gestión: existencias por almacén, correspondencia de columnas de la muestra
+  Excel y configuración de roles y permisos.
+- PDA: diferencia de inventario, comprobación de un documento confirmado y
+  preparación de una reposición entre almacenes.
+- SaaS: documentos recibidos de tiendas, sincronización y conversación de
+  soporte del portal cliente.
+
+Son componentes y estilos reales del proyecto, con respuestas de API simuladas
+en servidores de captura aislados. No se utilizó una base de clientes ni se
+confirmaron cobros, importaciones, inventarios o transferencias reales. Los
+recorridos indican en ES/EN/ZH que las interfaces están en español y los datos
+son de demostración. No se presentan como una sesión interactiva.
+
+Los maestros JPEG conservan los bytes devueltos por Cua y se guardan fuera de
+`public/`, en `assets/marketing-sources/tour-steps/`. Los WebP publicados mantienen
+las dimensiones de cada captura; no añaden elementos ni recrean pantallas. El
+manifiesto `assets/marketing-sources/tour-step-captures.json` documenta estados,
+componentes, dimensiones y SHA-256. No se importa al JavaScript del cliente.
+`scripts/optimize-tour-step-images.mjs` permite regenerar o comprobar las
+derivadas con un módulo Sharp instalado de confianza; la compilación normal no
+necesita Sharp. Se conserva la carga de una sola imagen del paso activo y su
+enlace para ampliarla, y las cuatro imágenes generales del explorador.
+
+La inspección permitió corregir dos detalles en componentes compartidos: las
+cinco métricas de sincronización se reparten en tres columnas (una en móvil),
+y el permiso de consulta de cuentas pendientes usa las traducciones oficiales
+del backend en español, inglés y chino.
+
+Las doce derivadas ocupan 511.674 bytes. Se retiraron tres derivados de
+`hero-ecosystem-865` sin consumidores (251.608 bytes); su maestro PNG permanece
+conservado. Los derivados de Contacto mantienen sus bytes y hashes anteriores.
+El ejemplo de cobro en ES/EN/ZH coincide con la captura parcial (total 2,50,
+cobrado 1,00, falta 1,50 antes de finalizar), diferenciándolo expresamente de
+una deuda de cliente autorizada.
+
+Validación final: 269 comprobaciones de la web, 268 aprobadas y una omitida
+por enlaces en Windows, ninguna fallida; 12 pruebas existentes de componentes
+compartidos aprobadas. Ambos optimizadores aprobaron `--check`. Compilación de
+19 HTML y presupuestos sin ampliar: 3.391.259 bytes totales; JavaScript
+465.239 / 144.816 gzip; CSS 114.784 / 19.916 gzip. Permanece el aviso conocido
+del JPEG de Contacto (340.134 bytes, bajo el límite obligatorio).
+
+Comprobación real con Cua: Inicio y recorrido en escritorio de 1600 × 1000,
+móvil de 390 × 844 y pantalla estrecha de 320 × 740. Se verificaron las doce
+rutas de imágenes, una imagen activa por paso, enlaces para ampliar y ausencia
+de desbordamiento horizontal en el recorrido. Elegir Gestión + PDA desde Inicio
+dejó ambas marcadas en Contacto, sin enviar el formulario. Las capturas de
+verificación están en `output/product-tour-capture-20261027/` del repositorio.
+El script E2E de navegador se actualizó y pasó la comprobación de sintaxis; no
+se ejecutó un navegador CLI alternativo. Los tres servidores de captura
+temporales se cerraron tras la revisión; la web local permanece en el puerto
+4190 y los servicios SaaS existentes se conservaron.
+
+## Acceso a la demo y navegación del recorrido · 2026-10-27
+
+Esta fase se realizó con subagentes separados para el acceso a Contacto, el
+recorrido y la carga. Los enlaces explícitos de demo apuntan ahora al encabezado
+`#mk-demo-form`, conservando idioma, selección de aplicaciones y parámetros de
+la URL. Se incluyen las solicitudes desde Inicio, Solución, Apps, Ventajas,
+las ayudas de elección, el último paso del recorrido y las tarjetas de entrega.
+Los enlaces nativos conservan ese destino para abrirlos en otra pestaña.
+
+La página coordina el foco después de montar Contacto y de cerrar una ventana:
+se enfoca el h2 del formulario con `tabIndex=-1` y se desplaza de forma inmediata.
+No se enfoca un campo ni se abre el teclado. Una nueva petición desde Contacto
+también activa el destino, aunque la ruta no cambie. El acceso general a Contacto
+mantiene la presentación y WeChat. Cambiar solo el idioma conserva el fragmento,
+los valores y la selección, sin volver a orientar el foco. Atrás recupera la
+entrada explícita a la demo. El margen del destino es de 12 px, complementando
+el espacio de la cabecera ya configurado en el contenedor.
+
+El recorrido utiliza cuatro filas: cabecera, aplicaciones, contenido desplazable
+y controles. Solo se desplaza el contenido; cierre y avance permanecen a la
+vista. Las tarjetas conservan su altura natural mediante filas `max-content`,
+evitando solapamientos al apilar la explicación y la captura en móvil. El pie
+muestra tres pasos numerados con sus nombres accesibles completos; en pantalla
+horizontal baja aprovecha una sola fila de controles.
+
+Avanzar, retroceder o elegir un paso monta su contenido desde el principio y
+enfoca el título, descrito por el contador de paso. Cambiar de aplicación conserva
+el foco de su pestaña y vuelve al primer paso. El foco programático del título
+queda fuera del orden de Tab, pero permite seguir de forma nativa al enlace de
+ampliación; la trampa del diálogo mantiene el cierre y el recorrido circular en
+sus extremos. Escape devuelve el foco al control que abrió la ventana.
+
+Para mantener la carga se retiraron seis familias CSS sin consumidores y se
+compartieron el overlay de las ventanas y la utilidad de navegación de pestañas.
+La configuración sin instaladores publicados permite excluir del bundle sus
+ramas inaccesibles; las configuraciones con instaladores mantienen validación
+de URL, checksum y versión. Se comprueban configuraciones vacías, válidas,
+inválidas y con espacios en ES/EN/ZH. No se modificaron archivos de entorno ni
+presupuestos.
+
+Comprobación Cua en escritorio 1440 × 900, móvil 390 × 844 y 320 × 740 y
+horizontal 740 × 390: el destino de demo está visible y enfocado; la elección
+PDA llega al formulario, una petición de Gestión desde Contacto reemplaza la
+selección y la demo final de SaaS conserva SaaS. Se comprobaron los cambios de
+idioma y Atrás con datos ficticios que después se retiraron. No se enviaron
+solicitudes. El paso siguiente vuelve a `scrollTop=0`, su título queda dentro de
+la vista, Tab alcanza la ampliación y los controles mantienen su área visible.
+Las siete capturas actuales se guardan en
+`output/marketing-mobile-navigation-20261027/` del repositorio.
+
+Compilación de 19 HTML y presupuesto aprobados: 3.389.344 bytes totales,
+JavaScript 465.181 / 144.900 gzip y CSS 111.763 / 19.408 gzip. Persiste el aviso
+conocido del JPEG de Contacto, bajo el límite obligatorio. El script E2E de
+navegador conserva los contratos de enlaces y del nuevo contenedor desplazable;
+pasó la comprobación de sintaxis y no se ejecutó mediante un navegador CLI.
+
+Validación completa de esta fase en Windows: 304 comprobaciones, 303 aprobadas,
+ninguna fallida y una omitida por enlaces. Se ejecutaron con
+`--test-concurrency=1` para evitar que varias cargas SSR compitieran por la misma
+caché de Vite. El resultado final está en
+`output/marketing-mobile-navigation-20261027/tests-final.tap`. Los nuevos
+contratos cubren el destino de demo, la navegación del recorrido, el orden de
+teclado, el overlay compartido y las configuraciones de publicación de descargas.

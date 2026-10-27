@@ -10,7 +10,6 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
     sections: { overview: "Qué resuelve", workflow: "Así se utiliza", setup: "Qué necesitas", questions: "Dudas frecuentes" },
     audienceLabel: "Pensada para",
     tasksLabel: "En tu día a día",
-    connectionLabel: "Conexión y datos",
     worksWithLabel: "Cómo se conecta",
     requirementsLabel: "Antes de empezar",
     exampleNote: "Ejemplo ilustrativo: no es una operación ni un caso de cliente real.",
@@ -34,7 +33,6 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "Consulta la operación", body: "Finaliza y localiza la venta registrada para su seguimiento." }
         ],
         requirements: ["Equipo Windows de 64 bits compatible.", "Instalación de tienda y terminal configurados.", "Usuario autorizado y periféricos revisados."],
-        connection: "Necesita acceso al servicio local de la tienda. La sincronización central y los servicios externos requieren internet; no todas las funciones son offline.",
         worksWith: "Gestión mantiene catálogo y consulta la actividad; SaaS muestra la información recibida de las tiendas vinculadas.",
         questions: [
           { question: "¿Sirve con cualquier terminal de tarjeta?", answer: "No automáticamente. Hay que confirmar proveedor, integración, servicio y configuración del terminal antes de utilizar pagos reales." },
@@ -55,7 +53,6 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "Registra la operación", body: "Prepara el documento o movimiento correspondiente y comprueba su resultado." }
         ],
         requirements: ["Equipo Windows de 64 bits compatible.", "Acceso al servicio de tienda configurado.", "Cuenta con permisos para las tareas previstas."],
-        connection: "La aplicación de escritorio necesita acceso al servicio de tienda. La información central depende de internet y de la sincronización configurada.",
         worksWith: "Mantiene la base operativa usada por Venta y permite autorizar dispositivos PDA y revisar sus tareas de almacén.",
         questions: [
           { question: "¿Puedo importar mi Excel directamente?", answer: "La importación requiere revisar estructura, campos y datos. El alcance de una migración se valida con una muestra antes de aplicarla." },
@@ -76,7 +73,6 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "Revisa y confirma", body: "Comprueba las diferencias antes de aplicar el inventario con tu autorización." }
         ],
         requirements: ["Dispositivo Android con navegador compatible.", "Dispositivo vinculado y aprobado desde Gestión.", "Red y acceso al servicio de tienda disponibles."],
-        connection: "Es una aplicación web conectada al servicio de la tienda. Necesita red y permisos; no se ofrece como APK público ni como almacén completamente offline.",
         worksWith: "Gestión autoriza el dispositivo y comparte los almacenes y movimientos disponibles. La PDA no sustituye a la caja de Venta.",
         questions: [
           { question: "¿Necesito descargar una APK?", answer: "No. El acceso web se configura durante la implantación y se utiliza desde el dispositivo autorizado." },
@@ -97,7 +93,6 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "Comprueba la actualidad", body: "Revisa la sincronización antes de interpretar el dato o consultar al equipo." }
         ],
         requirements: ["Navegador compatible y conexión a internet.", "Organización y cuenta cliente habilitadas.", "Tiendas vinculadas y permisos de consulta."],
-        connection: "Los datos centrales reflejan lo recibido por sincronización. Si una tienda se desconecta, su información puede quedar desactualizada; no se garantiza actualización instantánea.",
         worksWith: "Recibe información de la instalación de tienda. Complementa Venta y Gestión: no reemplaza su operativa local ni es el panel interno de esPOS.",
         questions: [
           { question: "¿Es el acceso de administración interna?", answer: "No. Es el portal autorizado de tu organización, separado de las herramientas internas del proveedor." },
@@ -122,7 +117,6 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
     sections: { overview: "What it solves", workflow: "How it works", setup: "What you need", questions: "Common questions" },
     audienceLabel: "Designed for",
     tasksLabel: "Your everyday tasks",
-    connectionLabel: "Connection and data",
     worksWithLabel: "How it connects",
     requirementsLabel: "Before you start",
     exampleNote: "Illustrative example: not an actual transaction or customer case.",
@@ -146,7 +140,6 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "Find the transaction", body: "Finish and locate the recorded sale for follow-up." }
         ],
         requirements: ["A compatible 64-bit Windows computer.", "A configured store installation and terminal.", "An authorised user and checked peripherals."],
-        connection: "Needs access to the local store service. Central synchronisation and external services need internet access; not every feature works offline.",
         worksWith: "Management maintains the catalogue and reviews activity; SaaS shows information received from linked stores.",
         questions: [
           { question: "Does it work with every card terminal?", answer: "Not automatically. The provider, integration, service and terminal configuration must be confirmed before taking real payments." },
@@ -167,7 +160,6 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "Record the operation", body: "Prepare the relevant document or movement and check its result." }
         ],
         requirements: ["A compatible 64-bit Windows computer.", "Configured access to the store service.", "An account authorised for the intended tasks."],
-        connection: "The desktop app needs access to the store service. Central information depends on internet access and the configured synchronisation.",
         worksWith: "Maintains the operational data used by Sales and lets you authorise PDA devices and review their warehouse tasks.",
         questions: [
           { question: "Can I import my Excel file directly?", answer: "Importing requires checking the structure, fields and data. Migration scope is validated with a sample before applying it." },
@@ -188,7 +180,6 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "Review and confirm", body: "Check differences before applying the stock count with your authorisation." }
         ],
         requirements: ["An Android device with a compatible browser.", "A device linked and approved in Management.", "Network access to the store service."],
-        connection: "A web app connected to the store service. It needs network access and permissions; it is not a public APK or a fully offline warehouse app.",
         worksWith: "Management authorises the device and provides access to available warehouses and movements. PDA does not replace Sales at checkout.",
         questions: [
           { question: "Do I need to download an APK?", answer: "No. Web access is configured during setup and used from the authorised device." },
@@ -209,7 +200,6 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "Check data freshness", body: "Review synchronisation before interpreting the data or contacting the team." }
         ],
         requirements: ["A compatible browser and internet connection.", "An enabled organisation and customer account.", "Linked stores and viewing permissions."],
-        connection: "Central data reflects information received through synchronisation. If a store disconnects, its information may become outdated; instant updates are not guaranteed.",
         worksWith: "Receives information from the store installation. Complements Sales and Management without replacing local operation or exposing esPOS's internal administration panel.",
         questions: [
           { question: "Is this the internal administrator login?", answer: "No. It is your organisation's authorised customer portal, separate from the provider's internal tools." },
@@ -234,7 +224,6 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
     sections: { overview: "解决什么问题", workflow: "如何使用", setup: "使用条件", questions: "常见问题" },
     audienceLabel: "适用团队",
     tasksLabel: "日常工作",
-    connectionLabel: "连接与数据",
     worksWithLabel: "应用间如何配合",
     requirementsLabel: "开始前请确认",
     exampleNote: "以下仅为使用场景示例，并非真实交易或客户案例。",
@@ -258,7 +247,6 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "查询交易", body: "完成销售后，查找已登记的交易以便后续跟进。" }
         ],
         requirements: ["兼容的 64 位 Windows 电脑。", "已配置的门店安装环境与收银终端。", "授权用户及已检查的外设。"],
-        connection: "需要能够访问门店本地服务。中央同步及外部服务需要互联网连接，并非所有功能均可离线使用。",
         worksWith: "管理应用维护商品资料并查看业务活动；SaaS 展示从已关联门店接收到的信息。",
         questions: [
           { question: "可以直接连接任何刷卡终端吗？", answer: "不能默认兼容。使用真实支付前，需要确认服务商、集成、相关服务及终端配置。" },
@@ -279,7 +267,6 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "登记操作", body: "准备相应单据或库存变动，并核对操作结果。" }
         ],
         requirements: ["兼容的 64 位 Windows 电脑。", "已配置的门店服务访问环境。", "具备所需操作权限的账户。"],
-        connection: "桌面应用需要能够访问门店服务。中央数据的可用性取决于互联网连接及已配置的同步机制。",
         worksWith: "维护销售应用使用的业务数据，也可授权 PDA 设备并查看其仓库作业。",
         questions: [
           { question: "现有 Excel 文件能直接导入吗？", answer: "需要先检查表格结构、字段和数据。正式迁移前，会通过样本确认迁移范围。" },
@@ -300,7 +287,6 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "复核并确认", body: "先检查差异，再根据账户权限确认盘点结果。" }
         ],
         requirements: ["配备兼容浏览器的 Android 设备。", "已在管理应用中绑定并批准的设备。", "可用网络及门店服务访问环境。"],
-        connection: "这是连接门店服务的网页应用，需要网络和操作权限；不提供公开 APK，也不是完全离线的仓库应用。",
         worksWith: "管理应用负责授权设备并提供可访问的仓库和库存变动。PDA 不替代销售应用的收银工作。",
         questions: [
           { question: "需要下载 APK 吗？", answer: "不需要。部署时配置网页访问方式，通过已授权设备使用。" },
@@ -321,7 +307,6 @@ const content: Record<MarketingLanguage, ApplicationGuideContent> = {
           { title: "核对数据时效", body: "判断数据或联系团队前，先检查同步状态。" }
         ],
         requirements: ["兼容浏览器及互联网连接。", "已开通的组织与客户账户。", "已关联门店及相应查询权限。"],
-        connection: "中央数据反映通过同步实际接收到的信息。门店断网后，相关信息可能过时，不保证即时更新。",
         worksWith: "接收门店安装环境的数据，补充销售与管理应用的功能；不替代门店本地作业，也不是 esPOS 内部管理后台。",
         questions: [
           { question: "这是内部管理员的登录入口吗？", answer: "不是。这是面向您所属组织的授权客户门户，与服务商内部工具分开。" },

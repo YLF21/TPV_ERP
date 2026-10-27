@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, Check, CloudArrowUp, Desktop, DeviceMobile, DownloadSimple, ShieldCheck, X } from "@phosphor-icons/react";
-import { useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { MarketingLanguage } from "./marketingI18n";
 import { getMarketingUiContent } from "./marketingUiI18n";
 import { getRovingTabIndex } from "./marketingAccessibility";
@@ -11,6 +11,9 @@ import { CompatibilityChecklist } from "./CompatibilityChecklist";
 import { TourStepPreview } from "./TourStepPreview";
 import { getTourExamples } from "./tourExamples";
 
+// Builds without published URLs need no installer actions; configured builds
+// retain the same URL validation before exposing any download or checksum.
+const hasPublishedDownloads = Boolean(import.meta.env.VITE_DOWNLOAD_VENTA_URL || import.meta.env.VITE_DOWNLOAD_GESTION_URL);
 const downloadUrls: Partial<Record<AppId, string>> = {
   venta: import.meta.env.VITE_DOWNLOAD_VENTA_URL,
   gestion: import.meta.env.VITE_DOWNLOAD_GESTION_URL
@@ -37,7 +40,7 @@ function DownloadCenterModal({ copy, language, onClose, onRequestSetup }: { copy
   const { dialogRef, closeRef } = useModalDialog(onClose);
   const deliveryIcons = [Desktop, Desktop, DeviceMobile, CloudArrowUp];
 
-  return <MarketingModalLayer><div className="mk-product-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); onClose(); } }}>
+  return <MarketingModalLayer onClose={onClose}>
     <section ref={dialogRef} className="mk-download-dialog" data-testid="download-center" role="dialog" tabIndex={-1} aria-modal="true" aria-labelledby="mk-download-title">
       <header className="mk-product-dialog-header">
         <div><p className="mk-kicker">{copy.downloads.kicker}</p><h2 id="mk-download-title">{copy.downloads.title}</h2><p>{copy.downloads.body}</p></div>
@@ -45,8 +48,8 @@ function DownloadCenterModal({ copy, language, onClose, onRequestSetup }: { copy
       </header>
       <div className="mk-download-grid">
         {appMeta.map(({ id, icon: AppIcon }, index) => {
-          const url = safeDownloadUrl(downloadUrls[id]);
-          const checksumUrl = safeDownloadUrl(checksumUrls[id]);
+          const url = hasPublishedDownloads ? safeDownloadUrl(downloadUrls[id]) : null;
+          const checksumUrl = url ? safeDownloadUrl(checksumUrls[id]) : null;
           const DeliveryIcon = deliveryIcons[index];
           const [platform, delivery, detail] = copy.downloads.items[index];
           return <article key={id} data-testid={`download-card-${id}`} data-delivery-status={url ? "available" : id === "venta" || id === "gestion" ? "unpublished" : "restricted"}>
@@ -54,14 +57,14 @@ function DownloadCenterModal({ copy, language, onClose, onRequestSetup }: { copy
             <h3>{copy.apps.items[index][0]}</h3>
             <p>{detail}</p>
             <dl><div><dt>{copy.downloads.platform}</dt><dd><DeliveryIcon weight="bold" /> {platform}</dd></div><div><dt>{copy.downloads.delivery}</dt><dd>{delivery}</dd></div>{index < 2 && <div><dt>{copy.downloads.requirementsLabel}</dt><dd>{copy.downloads.requirements[index][1]}</dd></div>}{url && downloadVersion && <div><dt>{copy.downloads.publishedLabel}</dt><dd>{downloadVersion}</dd></div>}</dl>
-            {url ? <div className="mk-download-actions"><MarketingLink className="mk-download-primary" href={url} target="_blank" rel="noreferrer"><DownloadSimple weight="bold" /> {copy.downloads.downloadNow}</MarketingLink>{checksumUrl && <MarketingLink className="mk-download-checksum" href={checksumUrl} target="_blank" rel="noreferrer" title={copy.downloads.checksumHelp}>SHA-256 <ArrowRight /></MarketingLink>}</div> : <button className="mk-download-request" type="button" onClick={() => onRequestSetup(id)}>{copy.downloads.requestSetup} <ArrowRight /></button>}
+            {url ? <div className="mk-download-actions"><MarketingLink className="mk-download-primary" href={url} target="_blank" rel="noreferrer"><DownloadSimple weight="bold" /> {copy.downloads.downloadNow}</MarketingLink>{checksumUrl && <MarketingLink className="mk-download-checksum" href={checksumUrl} target="_blank" rel="noreferrer" title={copy.downloads.checksumHelp}>SHA-256 <ArrowRight /></MarketingLink>}</div> : <button className="mk-download-request" type="button" onClick={() => onRequestSetup(id)}>{copy.common.demo} <ArrowRight /></button>}
           </article>;
         })}
       </div>
       <p className="mk-download-safety"><ShieldCheck weight="fill" /> {copy.downloads.safety}</p>
       <CompatibilityChecklist language={language} />
     </section>
-  </div></MarketingModalLayer>;
+  </MarketingModalLayer>;
 }
 
 function ProductTourModal({ copy, language, initialApp, onClose, onRequestDemo }: { copy: MarketingCopy; language: MarketingLanguage; initialApp: AppId; onClose: () => void; onRequestDemo: (app: AppId) => void }) {
@@ -71,6 +74,8 @@ function ProductTourModal({ copy, language, initialApp, onClose, onRequestDemo }
   const ui = getMarketingUiContent(language);
   const tabId = useId();
   const appTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const stepTitleRef = useRef<HTMLHeadingElement | null>(null);
+  const focusStep = useRef(false);
   const appIndex = appMeta.findIndex((app) => app.id === activeApp);
   const { icon: AppIcon, number } = appMeta[appIndex];
   const [name, label, description, bullets, audience, scope] = copy.apps.items[appIndex];
@@ -78,7 +83,22 @@ function ProductTourModal({ copy, language, initialApp, onClose, onRequestDemo }
   const details = examples.stepDetails[appIndex][step];
   const [platform, delivery] = copy.downloads.items[appIndex];
 
+  useLayoutEffect(() => {
+    if (focusStep.current) {
+      stepTitleRef.current?.focus({ preventScroll: true });
+      focusStep.current = false;
+    }
+  }, [activeApp, step]);
+
+  function selectStep(next: number) {
+    const target = Math.max(0, Math.min(2, next));
+    if (target === step) return;
+    focusStep.current = true;
+    setStep(target);
+  }
+
   function selectApp(app: AppId) {
+    focusStep.current = false;
     setActiveApp(app);
     setStep(0);
   }
@@ -91,7 +111,7 @@ function ProductTourModal({ copy, language, initialApp, onClose, onRequestDemo }
     appTabRefs.current[nextIndex]?.focus({ preventScroll: true });
   }
 
-  return <MarketingModalLayer><div className="mk-product-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); onClose(); } }}>
+  return <MarketingModalLayer onClose={onClose}>
     <section ref={dialogRef} className="mk-tour-dialog" data-testid="product-tour" data-active-app={activeApp} role="dialog" tabIndex={-1} aria-modal="true" aria-labelledby="mk-tour-title">
       <header className="mk-product-dialog-header">
         <div><p className="mk-kicker">{copy.tour.kicker}</p><h2 id="mk-tour-title">{copy.tour.title}</h2><p>{copy.tour.body}</p></div>
@@ -101,18 +121,18 @@ function ProductTourModal({ copy, language, initialApp, onClose, onRequestDemo }
         const TabIcon = app.icon;
         return <button ref={(element) => { appTabRefs.current[index] = element; }} id={`${tabId}-app-${app.id}`} key={app.id} type="button" role="tab" tabIndex={activeApp === app.id ? 0 : -1} aria-selected={activeApp === app.id} aria-controls="mk-tour-panel" onKeyDown={(event) => handleAppTabKey(event, index)} onClick={() => selectApp(app.id)}><TabIcon weight="duotone" aria-hidden="true" />{copy.apps.items[index][0]}</button>;
       })}</div>
-      <div id="mk-tour-panel" className="mk-tour-stage" role="tabpanel" aria-labelledby={`${tabId}-app-${activeApp}`} tabIndex={0} onKeyDown={(event) => {
+      <div key={`${activeApp}-${step}`} id="mk-tour-panel" className="mk-tour-stage" role="tabpanel" aria-labelledby={`${tabId}-app-${activeApp}`} tabIndex={0} onKeyDown={(event) => {
         if (event.altKey || event.ctrlKey || event.metaKey) return;
-        if (event.key === "ArrowLeft") { event.preventDefault(); setStep((current) => Math.max(0, current - 1)); }
-        if (event.key === "ArrowRight") { event.preventDefault(); setStep((current) => Math.min(2, current + 1)); }
+        if (event.key === "ArrowLeft") { event.preventDefault(); selectStep(step - 1); }
+        if (event.key === "ArrowRight") { event.preventDefault(); selectStep(step + 1); }
       }}>
         <div className="mk-tour-editorial" aria-live="polite">
           <div className="mk-tour-step-meta">
             <AppIcon weight="duotone" aria-hidden="true" />
-            <div><p className="mk-tour-product-label">{label}</p><p className="mk-tour-step-count">{copy.tour.step} {step + 1} / 3</p></div>
+            <div><p className="mk-tour-product-label">{label}</p><p id="mk-tour-step-count" className="mk-tour-step-count">{copy.tour.step} {step + 1} / 3</p></div>
             <span aria-hidden="true">{number}</span>
           </div>
-          <h3>{bullets[step]}</h3>
+          <h3 ref={stepTitleRef} tabIndex={-1} aria-describedby="mk-tour-step-count">{bullets[step]}</h3>
           <p>{examples.stepBodies[appIndex][step]}</p>
           <div className="mk-tour-details">
             <section className="mk-tour-capabilities" aria-labelledby="mk-tour-actions-label">
@@ -132,17 +152,17 @@ function ProductTourModal({ copy, language, initialApp, onClose, onRequestDemo }
         </aside>
       </div>
       <footer className="mk-tour-footer">
-        <div className="mk-tour-progress" role="group" aria-label={ui.tourSteps}>{bullets.map((bullet, index) => <button key={bullet} type="button" className={index === step ? "is-active" : ""} aria-current={index === step ? "step" : undefined} onClick={() => setStep(index)}><span>0{index + 1}</span>{bullet}</button>)}</div>
-        <div className="mk-tour-actions"><button type="button" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step === 0}><ArrowLeft /> {copy.tour.previous}</button>{step < 2 ? <button className="is-primary" type="button" onClick={() => setStep((current) => current + 1)}>{copy.tour.next} <ArrowRight /></button> : <button className="is-primary" type="button" onClick={() => onRequestDemo(activeApp)}>{copy.tour.requestDemo} <ArrowRight /></button>}</div>
+        <div className="mk-tour-progress" role="group" aria-label={ui.tourSteps}>{bullets.map((bullet, index) => <button key={bullet} type="button" className={index === step ? "is-active" : ""} aria-current={index === step ? "step" : undefined} aria-label={`${copy.tour.step} ${index + 1} / 3: ${bullet}`} title={bullet} onClick={() => selectStep(index)}><span>0{index + 1}</span><span className="mk-tour-progress-label">{bullet}</span></button>)}</div>
+        <div className="mk-tour-actions"><button type="button" onClick={() => selectStep(step - 1)} disabled={step === 0}><ArrowLeft /> {copy.tour.previous}</button>{step < 2 ? <button className="is-primary" type="button" onClick={() => selectStep(step + 1)}>{copy.tour.next} <ArrowRight /></button> : <button className="is-primary" type="button" onClick={() => onRequestDemo(activeApp)}>{copy.tour.requestDemo} <ArrowRight /></button>}</div>
       </footer>
     </section>
-  </div></MarketingModalLayer>;
+  </MarketingModalLayer>;
 }
 
 function WechatQrModal({ copy, onClose }: { copy: MarketingCopy; onClose: () => void }) {
   const { dialogRef, closeRef } = useModalDialog(onClose);
 
-  return <MarketingModalLayer><div className="mk-product-overlay mk-wechat-qr-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); onClose(); } }}>
+  return <MarketingModalLayer onClose={onClose} className="mk-product-overlay mk-wechat-qr-overlay">
     <section ref={dialogRef} className="mk-wechat-qr-dialog" role="dialog" tabIndex={-1} aria-modal="true" aria-labelledby="mk-wechat-qr-title" aria-describedby="mk-wechat-qr-hint">
       <header className="mk-product-dialog-header">
         <div><h2 id="mk-wechat-qr-title">{copy.contact.wechat.qrTitle}</h2><p id="mk-wechat-qr-hint">{copy.contact.wechat.qrHint}</p></div>
@@ -150,14 +170,14 @@ function WechatQrModal({ copy, onClose }: { copy: MarketingCopy; onClose: () => 
       </header>
       <img className="mk-wechat-qr-full" src={marketingContact.wechatQr} alt={copy.contact.wechat.qrAlt} width={888} height={1131} decoding="async" />
     </section>
-  </div></MarketingModalLayer>;
+  </MarketingModalLayer>;
 }
 
 function ContactFaqModal({ copy, onClose }: { copy: MarketingCopy; onClose: () => void }) {
   const [activeFaq, setActiveFaq] = useState(0);
   const { dialogRef, closeRef } = useModalDialog(onClose);
 
-  return <MarketingModalLayer><div className="mk-faq-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); onClose(); } }}>
+  return <MarketingModalLayer onClose={onClose} className="mk-faq-overlay">
     <section ref={dialogRef} className="mk-faq-dialog" role="dialog" tabIndex={-1} aria-modal="true" aria-labelledby="mk-faq-title">
       <header><div><p className="mk-kicker">{copy.contact.faqLabel}</p><h2 id="mk-faq-title">{copy.contact.faqTitle}</h2><p>{copy.contact.faqHint}</p></div><button ref={closeRef} type="button" onClick={onClose} aria-label={copy.contact.faqClose}><X weight="bold" aria-hidden="true" /></button></header>
       <div className="mk-faq-layout">
@@ -165,7 +185,7 @@ function ContactFaqModal({ copy, onClose }: { copy: MarketingCopy; onClose: () =
         <article id="mk-faq-answer" className="mk-faq-answer" aria-live="polite"><span>0{activeFaq + 1}</span><h3>{copy.contact.faqItems[activeFaq][0]}</h3><p>{copy.contact.faqItems[activeFaq][1]}</p></article>
       </div>
     </section>
-  </div></MarketingModalLayer>;
+  </MarketingModalLayer>;
 }
 
 

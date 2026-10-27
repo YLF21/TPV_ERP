@@ -14,7 +14,8 @@ const expectations = {
     documents: /facturas y albaranes de venta/i,
     authorisedTicket: /cobro unificado tambi[eé]n permite tickets pendientes/i,
     notCollected: /saldo pendiente no cuenta como dinero cobrado/i,
-    fullExample: /recibe el total en efectivo.*cambio/i,
+    partialExample: /total 2,50.*1,00.*1,50.*antes de finalizar/i,
+    noAutomaticDebt: /no es deuda automática/i,
     fullWorkflow: /cobra el total/i,
     distinguish: /distingue el dinero cobrado.*pendiente/i
   },
@@ -24,7 +25,8 @@ const expectations = {
     documents: /sales invoices and delivery notes/i,
     authorisedTicket: /unified checkout also allows pending receipts/i,
     notCollected: /outstanding amount is not money collected/i,
-    fullExample: /take the full amount in cash.*change/i,
+    partialExample: /total 2\.50.*1\.00.*1\.50.*before completion/i,
+    noAutomaticDebt: /no debt is created automatically/i,
     fullWorkflow: /collect the full amount/i,
     distinguish: /distinguish money collected.*still owes/i
   },
@@ -34,14 +36,15 @@ const expectations = {
     documents: /销售发票和送货单/,
     authorisedTicket: /统一收款流程也支持待收款小票/,
     notCollected: /待收金额不计为已收款/,
-    fullExample: /收取全部应付现金.*应找零/,
+    partialExample: /总额 2\.50.*1\.00.*完成销售前.*1\.50/,
+    noAutomaticDebt: /不会自动成为客户欠款/,
     fullWorkflow: /收取全额/,
     distinguish: /区分实际收到的款项.*尚未支付/
   }
 };
 
 for (const [language, expected] of Object.entries(expectations)) {
-  test(`${language}: distinguish the fully paid example from authorised customer receivables`, () => {
+  test(`${language}: distinguish a checkout remainder from authorised customer receivables`, () => {
     const marketing = getMarketingContent(language);
     const salesGuide = getApplicationGuides(language).apps.venta;
     const paymentStep = getTourExamples(language).stepDetails[0][0];
@@ -50,7 +53,11 @@ for (const [language, expected] of Object.entries(expectations)) {
     for (const field of ["documents", "authorisedTicket", "customer", "authorisation", "notCollected"]) {
       assert.match(answer, expected[field], `${language}: receivables FAQ must explain ${field}`);
     }
-    assert.match(paymentStep.example, expected.fullExample, "The cash example must explain full payment and change, not an unspecified unpaid balance");
+    assert.match(paymentStep.example, expected.partialExample, "The example matches the captured 2.50 total, 1.00 entered cash and 1.50 remainder before completion");
+    assert.match(paymentStep.example, expected.noAutomaticDebt, "An amount left during checkout is not automatically a customer receivable");
+    assert.match(paymentStep.example, expected.customer);
+    assert.match(paymentStep.example, expected.authorisation);
+    assert.doesNotMatch(paymentStep.example, /cobrado completo|fully paid|全额付清/i);
     assert.match(salesGuide.workflow[1].body, expected.fullWorkflow);
     assert.match(paymentStep.benefit, expected.distinguish);
 

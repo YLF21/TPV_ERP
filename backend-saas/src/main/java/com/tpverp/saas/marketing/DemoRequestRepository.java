@@ -19,7 +19,9 @@ public class DemoRequestRepository {
     private static final String COLUMNS = """
             id, product, products, contact_name, company_name, email, phone, message, locale,
             landing_path, referrer, utm_source, utm_medium, utm_campaign,
-            privacy_accepted_at, status, created_at
+            privacy_accepted_at, status, created_at,
+            (select u.username from saas_admin_user u where u.id = assignee_user_id) as assignee_username,
+            next_action, next_action_at, follow_up_version
             """;
     private static final RowMapper<DemoRequestView> MAPPER = (rs, rowNum) -> new DemoRequestView(
             rs.getObject("id", UUID.class), DemoProduct.valueOf(rs.getString("product")), readProducts(rs),
@@ -27,7 +29,9 @@ public class DemoRequestRepository {
             rs.getString("phone"), rs.getString("message"), rs.getString("locale"),
             rs.getString("landing_path"), rs.getString("referrer"), rs.getString("utm_source"),
             rs.getString("utm_medium"), rs.getString("utm_campaign"), rs.getString("status"),
-            rs.getTimestamp("privacy_accepted_at").toInstant(), rs.getTimestamp("created_at").toInstant());
+            rs.getTimestamp("privacy_accepted_at").toInstant(), rs.getTimestamp("created_at").toInstant(),
+            rs.getString("assignee_username"), rs.getString("next_action"),
+            instant(rs, "next_action_at"), rs.getLong("follow_up_version"));
 
     private final JdbcTemplate jdbc;
 
@@ -142,5 +146,10 @@ public class DemoRequestRepository {
         } finally {
             products.free();
         }
+    }
+
+    private static java.time.Instant instant(ResultSet rs, String column) throws SQLException {
+        Timestamp value = rs.getTimestamp(column);
+        return value == null ? null : value.toInstant();
     }
 }

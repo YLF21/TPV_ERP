@@ -28,7 +28,7 @@ const tourExamples = {
             "Elige efectivo entre los medios habilitados y comprueba el cambio.",
             "Gestiona el saldo pendiente de un cliente solo con las autorizaciones requeridas."
           ],
-          example: "Ejemplo orientativo: añade pan y agua, recibe el total en efectivo y comprueba el cambio antes de finalizar; el ticket queda cobrado completo.",
+          example: "Ejemplo orientativo: total 2,50; efectivo indicado 1,00; faltan 1,50 antes de finalizar. No es deuda automática: dejarlo pendiente exige cliente identificado y autorización.",
           benefit: "Distingue el dinero cobrado del saldo que queda pendiente de un cliente."
         },
         {
@@ -154,7 +154,7 @@ const tourExamples = {
             "Choose cash from the enabled methods and check the change.",
             "Manage a customer's outstanding amount only with the required authorisations."
           ],
-          example: "Illustrative example: add bread and water, take the full amount in cash and check the change before completing the sale; the receipt is fully paid.",
+          example: "Illustrative example: total 2.50, cash entered 1.00 and 1.50 left before completion. No debt is created automatically: leaving it pending needs an identified customer and authorisation.",
           benefit: "Distinguish money collected from the amount a customer still owes."
         },
         {
@@ -280,7 +280,7 @@ const tourExamples = {
             "从已启用的方式中选择现金，并检查找零。",
             "仅在取得所需授权后处理指定客户的待收金额。"
           ],
-          example: "示例情境：添加面包和水，收取全部应付现金，并在完成销售前核对应找零金额；此小票已全额付清。",
+          example: "示例情境：总额 2.50，现金录入 1.00，完成销售前还需收取 1.50。余额不会自动成为客户欠款；挂账需要已识别客户及相应授权。",
           benefit: "区分实际收到的款项与客户尚未支付的金额。"
         },
         {

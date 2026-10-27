@@ -8,7 +8,6 @@ export type ApplicationGuide = {
   tasks: readonly GuideItem[];
   workflow: readonly GuideItem[];
   requirements: readonly string[];
-  connection: string;
   worksWith: string;
   questions: readonly { question: string; answer: string }[];
 };
@@ -19,7 +18,6 @@ export type ApplicationGuideContent = {
   sections: Record<GuideSection, string>;
   audienceLabel: string;
   tasksLabel: string;
-  connectionLabel: string;
   worksWithLabel: string;
   requirementsLabel: string;
   exampleNote: string;

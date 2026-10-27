@@ -53,7 +53,7 @@ export function MarketingDialogFeedback({ language, failed = false, onClose, onR
   const copy = getMarketingDialogFeedbackContent(language);
   const { dialogRef, closeRef } = useModalDialog(onClose);
   const id = useId();
-  return <MarketingModalLayer><div className="mk-product-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); onClose(); } }}>
+  return <MarketingModalLayer onClose={onClose}>
     <section ref={dialogRef} className="mk-download-dialog" data-testid={failed ? "marketing-dialog-error" : "marketing-dialog-loading"} role="dialog" tabIndex={-1} aria-modal="true" aria-labelledby={`${id}-title`} aria-describedby={`${id}-body`} aria-busy={!failed}>
       <header className="mk-product-dialog-header">
         <div><h2 id={`${id}-title`}>{failed ? copy.errorTitle : copy.loadingTitle}</h2><p id={`${id}-body`} role={failed ? "alert" : "status"}>{failed ? copy.errorBody : copy.loadingBody}</p></div>
@@ -61,7 +61,7 @@ export function MarketingDialogFeedback({ language, failed = false, onClose, onR
       </header>
       {failed && <div className="mk-actions"><button className="mk-primary" type="button" onClick={onRetry}>{copy.retry}</button><button className="mk-secondary" type="button" onClick={onClose}>{copy.close}</button></div>}
     </section>
-  </div></MarketingModalLayer>;
+  </MarketingModalLayer>;
 }
 
 export function MarketingDialogLoader(props: MarketingDialogProps) {

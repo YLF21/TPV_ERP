@@ -7,7 +7,6 @@ const content = {
     common: {
       download: "Centro de descargas",
       demo: "Solicitar demostración",
-      exploreSolution: "Ver cómo funciona",
       seeApps: "Ver aplicaciones",
       compareOptions: "Comparar opciones",
       demoHint: "Demo adaptada a tu negocio y sin compromiso",
@@ -81,11 +80,9 @@ const content = {
       close: "Cerrar centro de descargas",
       platform: "Plataforma",
       delivery: "Modalidad de entrega",
-      version: "Versión publicada",
       available: "Descarga disponible",
       assisted: "Entrega asistida",
       downloadNow: "Descargar instalador",
-      requestSetup: "Solicitar instalación",
       requirementsLabel: "Requisitos de instalación",
       requirements: [
         ["esPOS Venta", "Windows 64 bits, puesto compatible y acceso al servicio de la tienda configurado."],
@@ -105,11 +102,8 @@ const content = {
       kicker: "Recorrido de producto",
       title: "Conoce cada aplicación, paso a paso",
       body: "Explora tres capacidades clave y descubre qué equipo utiliza cada herramienta.",
-      viewTour: "Ver recorrido",
       close: "Cerrar recorrido",
-      chooseApp: "Selecciona una aplicación",
       step: "Paso",
-      progress: "Pasos del recorrido",
       previous: "Anterior",
       next: "Siguiente",
       requestDemo: "Solicitar demo",
@@ -117,13 +111,6 @@ const content = {
       exampleLabel: "En la práctica",
       benefitLabel: "Qué te aporta",
       deliveryLabel: "Cómo se utiliza",
-      previewNote: "Interfaz real en español · Datos de demostración",
-      previewAlts: [
-        "esPOS Venta: ticket con productos y total de venta de demostración",
-        "esPOS Gestión: panel de ventas e informes con datos de demostración",
-        "esPOS PDA: herramientas de almacén en un dispositivo móvil de demostración",
-        "esPOS SaaS: panel central de tiendas con datos de demostración"
-      ],
     },
     advantagesPage: {
       kicker: "Ventajas",
@@ -146,22 +133,15 @@ const content = {
     },
     growth: {
       proof: {
-        kicker: "Un ecosistema preparado para tu operativa",
         title: "Capacidades claras antes de tomar una decisión",
         metrics: [
           ["4", "aplicaciones conectadas"],
           ["3", "idiomas disponibles"],
           ["Local + nube", "servicio de tienda y consulta central"]
-        ],
-        testimonialQuote: "Escenario ilustrativo: el equipo de caja vende con rapidez, almacén actualiza existencias y dirección consulta el negocio sin pedir los mismos datos dos veces.",
-        testimonialAuthor: "Ejemplo de uso de esPOS",
-        testimonialRole: "Escenario orientativo, no testimonio de un cliente real"
+        ]
       },
       sectors: {
-        kicker: "Pensado para tu sector",
         title: "Una base común, adaptada a cada forma de vender",
-        body: "Elige un tipo de negocio para ver cómo esPOS conecta las tareas que más importan en su día a día.",
-        selectorLabel: "Selecciona tu tipo de negocio",
         items: [
           ["retail", "Comercio minorista", "Vende con agilidad y conserva el control", "Conecta mostrador, catálogo, clientes y caja para que cada operación deje la información preparada para la gestión.", ["Cobros y devoluciones ágiles", "Promociones y fidelización", "Cierre de caja trazable"]],
           ["grocery", "Alimentación", "Existencias registradas para coordinar el día a día", "Coordina venta, recepción, inventarios y reposición entre tienda y almacén con una visión compartida.", ["Consulta rápida de producto", "Inventarios desde PDA", "Existencias por tienda y almacén"]],
@@ -212,7 +192,6 @@ const content = {
       submit: "Quiero una demo",
       submitting: "Enviando solicitud…",
       success: "Solicitud registrada. Conserva la referencia para consultar su seguimiento con nuestro equipo.",
-      error: "No hemos podido enviar la solicitud. Revisa la conexión e inténtalo de nuevo.",
       delivery: {
         checking: "Comprobando el servicio de solicitudes…",
         available: "El formulario está disponible para enviar tu solicitud.",
@@ -255,7 +234,6 @@ const content = {
     common: {
       download: "Download centre",
       demo: "Request a demo",
-      exploreSolution: "See how it works",
       seeApps: "Explore the apps",
       compareOptions: "Compare options",
       demoHint: "A tailored, no-obligation demo for your business",
@@ -329,11 +307,9 @@ const content = {
       close: "Close download centre",
       platform: "Platform",
       delivery: "Delivery method",
-      version: "Published version",
       available: "Download available",
       assisted: "Assisted delivery",
       downloadNow: "Download installer",
-      requestSetup: "Request installation",
       requirementsLabel: "Installation requirements",
       requirements: [
         ["esPOS Sales", "64-bit Windows, a compatible terminal and access to the configured store service."],
@@ -353,11 +329,8 @@ const content = {
       kicker: "Product tour",
       title: "Explore every app, step by step",
       body: "Review three key capabilities and see which team uses each tool.",
-      viewTour: "View tour",
       close: "Close tour",
-      chooseApp: "Choose an application",
       step: "Step",
-      progress: "Tour steps",
       previous: "Previous",
       next: "Next",
       requestDemo: "Request a demo",
@@ -365,13 +338,6 @@ const content = {
       exampleLabel: "In practice",
       benefitLabel: "How it helps",
       deliveryLabel: "How to use it",
-      previewNote: "Real interface in Spanish · Demo data",
-      previewAlts: [
-        "esPOS Sales: receipt with products and a demo sale total",
-        "esPOS Management: sales dashboard and reports with demo data",
-        "esPOS PDA: warehouse tools on a demo mobile device",
-        "esPOS SaaS: central store dashboard with demo data"
-      ],
     },
     advantagesPage: {
       kicker: "Benefits",
@@ -394,22 +360,15 @@ const content = {
     },
     growth: {
       proof: {
-        kicker: "An ecosystem built around your operation",
         title: "Clear capabilities before you make a decision",
         metrics: [
           ["4", "connected applications"],
           ["3", "available languages"],
           ["Local + cloud", "store service and central view"]
-        ],
-        testimonialQuote: "Illustrative scenario: checkout keeps sales moving, the warehouse updates stock, and management sees the business without asking teams for the same information twice.",
-        testimonialAuthor: "esPOS usage example",
-        testimonialRole: "Illustrative scenario, not a real customer testimonial"
+        ]
       },
       sectors: {
-        kicker: "Designed for your industry",
         title: "One shared foundation, adapted to the way you sell",
-        body: "Choose a business type to see how esPOS connects the tasks that matter most in its daily operation.",
-        selectorLabel: "Select your business type",
         items: [
           ["retail", "Retail", "Sell quickly and stay in control", "Connect the counter, catalogue, customers and checkout so every operation leaves information ready for management.", ["Fast payments and returns", "Promotions and loyalty", "Traceable cash closing"]],
           ["grocery", "Grocery", "Recorded stock to coordinate daily work", "Coordinate sales, receiving, counts and replenishment across store and warehouse with one shared view.", ["Fast product lookup", "PDA inventory counts", "Stock by store and warehouse"]],
@@ -460,7 +419,6 @@ const content = {
       submit: "Request my demo",
       submitting: "Sending request…",
       success: "Request registered. Keep the reference to ask our team about its progress.",
-      error: "We could not send your request. Check your connection and try again.",
       delivery: {
         checking: "Checking the request service…",
         available: "The form is available to send your request.",
@@ -503,7 +461,6 @@ const content = {
     common: {
       download: "下载中心",
       demo: "申请演示",
-      exploreSolution: "了解运行方式",
       seeApps: "查看应用",
       compareOptions: "比较方案",
       demoHint: "根据您的业务定制，无需承诺",
@@ -577,11 +534,9 @@ const content = {
       close: "关闭下载中心",
       platform: "平台",
       delivery: "交付方式",
-      version: "已发布版本",
       available: "可下载",
       assisted: "协助交付",
       downloadNow: "下载安装程序",
-      requestSetup: "申请安装",
       requirementsLabel: "安装要求",
       requirements: [
         ["esPOS 销售", "64 位 Windows、兼容终端，以及连接已配置门店服务的条件。"],
@@ -601,11 +556,8 @@ const content = {
       kicker: "产品导览",
       title: "逐步了解每款应用",
       body: "查看三项关键能力，并了解每款工具适合哪个团队。",
-      viewTour: "查看导览",
       close: "关闭导览",
-      chooseApp: "选择应用",
       step: "步骤",
-      progress: "导览步骤",
       previous: "上一步",
       next: "下一步",
       requestDemo: "申请演示",
@@ -613,13 +565,6 @@ const content = {
       exampleLabel: "实际场景",
       benefitLabel: "带来的帮助",
       deliveryLabel: "使用方式",
-      previewNote: "真实西班牙语界面 · 演示数据",
-      previewAlts: [
-        "esPOS 销售：包含商品与销售总额的演示小票",
-        "esPOS 管理：使用演示数据的销售与报表仪表盘",
-        "esPOS PDA：移动设备上的仓库工具演示",
-        "esPOS SaaS：使用演示数据的门店中央仪表盘"
-      ],
     },
     advantagesPage: {
       kicker: "优势",
@@ -642,22 +587,15 @@ const content = {
     },
     growth: {
       proof: {
-        kicker: "围绕实际运营打造的生态系统",
         title: "做出决定前，先清楚了解产品能力",
         metrics: [
           ["4", "款互联应用"],
           ["3", "种可用语言"],
           ["本地 + 云端", "门店服务与中央查询"]
-        ],
-        testimonialQuote: "示例场景：收银团队保持销售节奏，仓库及时更新库存，管理层无需重复索取相同数据即可了解业务。",
-        testimonialAuthor: "esPOS 使用示例",
-        testimonialRole: "仅为说明性场景，并非真实客户评价"
+        ]
       },
       sectors: {
-        kicker: "为您的行业而设计",
         title: "共享同一基础，适配不同销售方式",
-        body: "选择一种业务类型，了解 esPOS 如何连接日常运营中最重要的任务。",
-        selectorLabel: "选择您的业务类型",
         items: [
           ["retail", "零售门店", "快速销售，同时保持全面掌控", "连接柜台、商品目录、客户与收银，让每次操作都为后续管理准备好准确信息。", ["快速收款与退货", "促销与会员管理", "可追溯的收银结算"]],
           ["grocery", "食品零售", "用已登记库存信息协调日常业务", "通过共享视图协调门店与仓库之间的销售、收货、盘点和补货。", ["快速查询商品", "通过 PDA 盘点", "按门店和仓库查看库存"]],
@@ -708,7 +646,6 @@ const content = {
       submit: "申请演示",
       submitting: "正在发送申请…",
       success: "申请已登记。请保留参考编号，以便向团队查询处理进度。",
-      error: "申请发送失败。请检查网络后重试。",
       delivery: {
         checking: "正在检查申请服务…",
         available: "表单可用，您可以发送申请。",

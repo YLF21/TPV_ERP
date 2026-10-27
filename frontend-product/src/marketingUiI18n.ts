@@ -6,7 +6,6 @@ const uiContent = {
     primaryNavigation: "Navegación principal",
     openMenu: "Abrir menú",
     closeMenu: "Cerrar menú",
-    closeDialog: "Cerrar ventana",
     tourApplications: "Aplicaciones del recorrido",
     tourSteps: "Pasos del recorrido"
   },
@@ -15,7 +14,6 @@ const uiContent = {
     primaryNavigation: "Main navigation",
     openMenu: "Open menu",
     closeMenu: "Close menu",
-    closeDialog: "Close dialog",
     tourApplications: "Tour applications",
     tourSteps: "Tour steps"
   },
@@ -24,7 +22,6 @@ const uiContent = {
     primaryNavigation: "主导航",
     openMenu: "打开菜单",
     closeMenu: "关闭菜单",
-    closeDialog: "关闭对话框",
     tourApplications: "导览应用",
     tourSteps: "导览步骤"
   }

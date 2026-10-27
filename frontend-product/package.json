@@ -15,6 +15,8 @@
     "test:editorial": "node --test e2e/editorial-consistency.contract.test.mjs",
     "test:clarity": "node --experimental-transform-types --test e2e/receivables-copy.contract.test.mjs e2e/comparison-status.contract.test.mjs e2e/application-actions.contract.test.mjs",
     "test:tour": "node --test e2e/tour-step-media.contract.test.mjs",
+    "test:marketing-phases": "node --test e2e/sector-cases.contract.test.mjs e2e/connected-scenario.contract.test.mjs e2e/demo-receipt.contract.test.mjs",
+    "test:decision-help": "node --test e2e/product-import-help.contract.test.mjs e2e/comparison-decision.contract.test.mjs",
     "test:a11y": "node --test e2e/marketing-accessibility.test.mjs",
     "test:seo": "node --test e2e/seo.contract.test.mjs",
     "test:campaign": "node --experimental-transform-types --test e2e/marketing-campaign.test.mjs",

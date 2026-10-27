@@ -92,14 +92,15 @@ test("application choice, consultation scope and connectivity contracts (no brow
 
   try {
     assert.equal(server.httpServer, null, "The SSR loader must not create a listening server");
-    const [{ default: MarketingPage }, { ApplicationChooser }, { getApplicationChoices, applicationChoiceScenarios }, { getConnectionContent }, { getMarketingContent }, { ApplicationExplorer }, campaign] = await Promise.all([
+    const [{ default: MarketingPage }, { ApplicationChooser }, { getApplicationChoices, applicationChoiceScenarios }, { getConnectionContent }, { getMarketingContent }, { ApplicationExplorer }, campaign, { getApplicationPreviewAlts }] = await Promise.all([
       server.ssrLoadModule("/src/MarketingPage.tsx"),
       server.ssrLoadModule("/src/ApplicationChooser.tsx"),
       server.ssrLoadModule("/src/applicationChoices.ts"),
       server.ssrLoadModule("/src/connectionContent.ts"),
       server.ssrLoadModule("/src/marketingI18n.ts"),
       server.ssrLoadModule("/src/ApplicationExplorer.tsx"),
-      server.ssrLoadModule("/src/marketingCampaign.ts")
+      server.ssrLoadModule("/src/marketingCampaign.ts"),
+      server.ssrLoadModule("/src/applicationPreviewContent.ts")
     ]);
     const onAction = () => { actionCount += 1; };
     const renderPage = (language, route, search = "") => {
@@ -112,7 +113,7 @@ test("application choice, consultation scope and connectivity contracts (no brow
     const applicationProps = (language, id) => {
       const marketing = getMarketingContent(language);
       const index = applicationIds.indexOf(id);
-      return { id, name: marketing.apps.items[index][0], label: marketing.apps.items[index][1], description: marketing.apps.items[index][2], previewAlt: marketing.tour.previewAlts[index] };
+      return { id, name: marketing.apps.items[index][0], label: marketing.apps.items[index][1], description: marketing.apps.items[index][2], previewAlt: getApplicationPreviewAlts(language)[id] };
     };
 
     await suite.test("four orientative choices preserve the application combinations and dependencies", () => {
@@ -171,7 +172,7 @@ test("application choice, consultation scope and connectivity contracts (no brow
           const link = tags(markup, "a").find(tag => tag["data-testid"] === `application-choice-${choice.id}`);
           assert.ok(link);
           const search = campaign.marketingContactSearch(choice.applications);
-          assert.equal(link.href, `/${language}/producto/contacto/${search}`);
+          assert.equal(link.href, `/${language}/producto/contacto/${search}#mk-demo-form`);
           assert.deepEqual(campaign.parseRequestedApplications(new URL(link.href, "http://ssr.invalid").search), choice.applications);
           for (const value of Object.values(copy.scenarios[choice.id])) requireText(markup, value);
         }

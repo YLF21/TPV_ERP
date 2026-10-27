@@ -35,9 +35,9 @@ export default function App() {
 
   function changeLanguage(value: MarketingLanguage) {
     setLanguage(value);
-    const { route } = readMarketingLocation(window.location);
+    const { route, legacy } = readMarketingLocation(window.location);
     // The URL is shareable and takes precedence over a previously stored preference.
-    navigateMarketing(`${marketingHref(value, route)}${window.location.search}`, true);
+    navigateMarketing(`${marketingHref(value, route)}${window.location.search}${legacy ? "" : window.location.hash}`, true);
     try {
       localStorage.setItem("tpv-product-language", value);
     } catch {
