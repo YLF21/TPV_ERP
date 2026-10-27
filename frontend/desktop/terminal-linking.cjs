@@ -173,6 +173,7 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
   async function load() {
     let state = storage.read();
     const current = config.read();
+    const newInstallation = state === null && !current.configuration && !current.error;
     let verifiedIdentity = null;
     let unavailable = false;
     if (state?.identity?.installationId && state?.link?.requestId
@@ -212,7 +213,7 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
     return { configuration: current.configuration && { ...current.configuration,
       ...(known()?.installationId ? { installationId: known().installationId } : {}) }, configurationError: current.error,
       link: state?.link || null, identity: verifiedIdentity, linkedIdentity: linkedIdentity(state),
-      deviceName, restartRequired: needsRestart, connectionUnavailable: unavailable,
+      deviceName, restartRequired: needsRestart, connectionUnavailable: unavailable, newInstallation,
       ...(unavailable && !needsRestart && displayContext(state) ? { displayContext: displayContext(state) } : {}),
       ...(state?.identity && !state.identity.installationId ? { legacyIdentity: {
         terminalId: state.identity.terminalId, terminalCode: state.identity.terminalCode,

@@ -49,7 +49,7 @@ declare global {
       backendConnection?: {
         load: () => Promise<BackendConnectionResult<{ configuration?: { backendUrl: string; installationId?: string };
           link?: TerminalLinkState; identity?: TerminalContext | null; deviceName: string; configurationError?: string;
-          restartRequired?: boolean; connectionUnavailable: boolean; displayContext?: TerminalDisplayContext;
+          restartRequired?: boolean; connectionUnavailable: boolean; newInstallation?: boolean; displayContext?: TerminalDisplayContext;
           pendingRequest?: { code: string; name: string; backendUrl: string;
             mode: "SERVER_ADMIN" | "SERVER_EXISTING" | "WORKSTATION" | "LEGACY_POS" };
           linkedIdentity?: { installationId: string; bindingId: string; terminalId: string; terminalCode: string; terminalName?: string; storeName: string; companyName?: string };
@@ -79,7 +79,7 @@ declare global {
       closeApplication: () => Promise<void>;
       terminalIdentity?: {
         load: () => Promise<DesktopResult & { identity?: TerminalContext | null;
-          connectionUnavailable?: boolean; displayContext?: TerminalDisplayContext }>;
+          connectionUnavailable?: boolean; newInstallation?: boolean; displayContext?: TerminalDisplayContext }>;
         save: (identity: TerminalContext) => Promise<DesktopResult>;
       };
       salesDocuments?: {

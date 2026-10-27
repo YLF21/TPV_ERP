@@ -26,6 +26,23 @@ test('challenge signature and URL security', () => {
   assert.throws(() => candidateUrl('https://user:pass@example.test'), /credenciales/);
 });
 
+test.each([
+  ['new installation', null, { configuration: null }, true],
+  ['configured backend without a verified identity', null, { configuration: { backendUrl: 'https://backend.example' } }, false],
+  ['unreadable configuration', null, { configuration: null, error: 'invalid configuration' }, false],
+  ['legacy identity', { identity: { terminalId: 'legacy', terminalCode: '001', storeName: 'Store' } }, { configuration: null }, false],
+  ['pending link', { pending: { installationId: 'installation-a', code: '001', name: 'Server' } }, { configuration: null }, false],
+  ['released link', { link: { status: 'RELEASED' } }, { configuration: null }, false],
+  ['unknown storage result', undefined, { configuration: null }, false],
+])('reports first installation independently of server availability: %s', async (_label, state, configuration, expected) => {
+  const bridge = createTerminalLinking({
+    storage: { read: () => state, write: () => { throw new Error('Unexpected write'); } },
+    config: { read: () => configuration },
+    request: async () => { throw new Error('Unexpected network request'); },
+  });
+  assert.equal((await bridge.load()).newInstallation, expected);
+});
+
 test('proof is durable before POST, refresh uses proof and pins installation', async () => {
   let state = null;
   let committed = null;
@@ -389,6 +406,7 @@ test.each(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREA
     const bridge = cachedLinkedBridge(async () => { throw Object.assign(new Error('transport failed'), { code }); });
     const loaded = await bridge.load();
     assert.equal(loaded.connectionUnavailable, true);
+    assert.equal(loaded.newInstallation, false);
     assert.equal(loaded.identity, null);
     assert.equal(loaded.link, null);
     assert.deepEqual(loaded.displayContext, { companyName: 'Empresa Real SL', storeName: 'Store',

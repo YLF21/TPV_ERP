@@ -4,6 +4,7 @@ export type TerminalIdentityLoadResult = {
   ok: boolean;
   identity?: TerminalContext | null;
   connectionUnavailable?: boolean;
+  newInstallation?: boolean;
   displayContext?: Pick<TerminalContext, "companyName" | "storeName" | "storeInternalCode" | "terminalCode" | "terminalName"> | null;
 };
 

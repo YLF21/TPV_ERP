@@ -14,13 +14,14 @@ type InstallationStatus = { organizationProvisioned?: boolean; initialAdminPassw
 type SetupStage = "pairing" | "manual" | "password" | "complete";
 type InstallationSession = { token: string; password: string; needsPairing: boolean };
 
-export function ServerTerminalSetupScreen({ locale, onLocaleChange, onOrganizationReady, onConfigureConnection, onRecoverFromBackup }: {
+export function ServerTerminalSetupScreen({ locale, onLocaleChange, onOrganizationReady, onConfigureConnection, onRecoverFromBackup, newInstallation = false }: {
   locale: LocaleCode; onLocaleChange?: (locale: LocaleCode) => void;
-  onOrganizationReady: () => void; onConfigureConnection: () => void; onRecoverFromBackup?: () => void;
+  onOrganizationReady: () => void; onConfigureConnection: () => void; onRecoverFromBackup?: () => void; newInstallation?: boolean;
 }) {
   const t = createTranslator(locale);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [backendAddress, setBackendAddress] = useState<string | null>(null);
+  const [organizationProvisioned, setOrganizationProvisioned] = useState<boolean | null>(null);
   const [stage, setStage] = useState<SetupStage>("pairing");
   const [pairingCode, setPairingCode] = useState("");
   const [password, setPassword] = useState("");
@@ -91,6 +92,7 @@ export function ServerTerminalSetupScreen({ locale, onLocaleChange, onOrganizati
       throw caught;
     }
     if (!active(id)) return null;
+    setOrganizationProvisioned(status.organizationProvisioned !== false);
     const address = await loadBackendAddress();
     if (!active(id)) return null;
     setBackendOnline(true); setBackendAddress(address);
@@ -245,9 +247,11 @@ export function ServerTerminalSetupScreen({ locale, onLocaleChange, onOrganizati
           <div className={`server-setup-connection ${backendOnline === true ? "online" : backendOnline === false ? "offline" : "checking"}`}>
             {backendOnline === true && <div><span>{t("gestion.serverSetup.server")}</span><code>{backendAddress ?? t("gestion.serverSetup.addressUnavailable")}</code></div>}
             <strong role="status" aria-live="polite">{t(backendOnline === null ? "login.backendChecking" : backendOnline ? "login.backendOnline" : "gestion.serverSetup.offline")}</strong>
-            {backendOnline === false && <button type="button" className="login-retry-button" disabled={busy} onClick={() => void refresh(lifecycle.current)}>{t("login.backendRetry")}</button>}
-            {stage !== "password" && <button type="button" className="login-secondary-action" disabled={busy && backendOnline !== null} onClick={onConfigureConnection}>{t("terminalLink.title")}</button>}
-            {onRecoverFromBackup && window.tpvDesktop?.disasterRecovery && <button type="button" className="login-secondary-action" onClick={onRecoverFromBackup}>{t("gestion.disaster.entry")}</button>}
+            {backendOnline === false && <button type="button" className="login-retry-button" disabled={busy} onClick={() => void refresh(lifecycle.current)}>{t("connectionRecovery.retryAction")}</button>}
+            {stage !== "password" && <button type="button" className="login-secondary-action" disabled={busy && backendOnline !== null} onClick={onConfigureConnection}>{t("connectionRecovery.configureAction")}</button>}
+            {newInstallation && stage === "pairing" && organizationProvisioned !== true
+              && (backendOnline === false || organizationProvisioned === false)
+              && onRecoverFromBackup && window.tpvDesktop?.disasterRecovery && <button type="button" className="login-secondary-action" disabled={busy} onClick={onRecoverFromBackup}>{t("gestion.disaster.entry")}</button>}
           </div>
           {waiting && <section className="server-setup-wait" role="status" aria-live="polite"><strong>{t("gestion.serverSetup.waitTitle")}</strong><span>{t("gestion.serverSetup.waitDescription")}</span></section>}
           {showFields && <>
