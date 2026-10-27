@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { LocaleCode, UserSession } from "@tpverp/app-common";
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import {
   loadBackupConfiguration, loadBackupDetail, loadBackupHistory, retryBackupCloudUpload, runBackup, saveBackupConfiguration,
   type BackupConfiguration, type BackupHistory, type BackupItem
@@ -152,7 +153,7 @@ export function BackupManagementScreen({ session, locale, t, onTransferServer }:
         <button type="button" onClick={() => void refresh()} disabled={loading || busy}>{t("common.refresh")}</button>
         {session.permissions.includes("ADMIN") && onTransferServer && <button type="button" onClick={onTransferServer}>{t("gestion.transfer.navigation")}</button>}
         <button type="button" onClick={() => setShowConfig(value => !value)}>{t("gestion.backups.configuration")}</button>
-        <button type="button" className="primary" onClick={() => void createBackup()} disabled={busy || !config.configured}>{t("gestion.backups.create")}</button>
+        <button type="button" className="primary gestion-backups-create" onClick={() => void createBackup()} disabled={busy || !config.configured}>{t("gestion.backups.create")}</button>
       </div>
     </header>
     {error && <p className="gestion-backups-feedback error" role="alert">{error}</p>}
@@ -177,6 +178,7 @@ export function BackupManagementScreen({ session, locale, t, onTransferServer }:
       <button type="submit" className="primary" disabled={busy}>{t("common.save")}</button>
     </form>}
     <div className="gestion-backups-history">
+      <div className="gestion-backups-history-scroll" tabIndex={0} role="region" aria-label={t("gestion.backups.title")}>
         <table><thead><tr>
           <th>{t("gestion.backups.id")}</th><th>{t("gestion.backups.date")}</th><th>{t("gestion.backups.hour")}</th><th>{t("gestion.backups.size")}</th><th>{t("gestion.backups.result")}</th><th aria-label={t("gestion.backups.detail")}></th>
         </tr></thead><tbody>
@@ -186,11 +188,13 @@ export function BackupManagementScreen({ session, locale, t, onTransferServer }:
           {!loading && !history?.items.length && <tr><td colSpan={6}>{t("gestion.backups.empty")}</td></tr>}
           {loading && <tr><td colSpan={6}>{t("common.loading")}</td></tr>}
         </tbody></table>
-        <footer className="gestion-backups-pager"><span>{t("gestion.backups.page")} {page + 1}</span><button type="button" disabled={page === 0 || loading} onClick={() => setPage(page - 1)}>‹</button><button type="button" disabled={loading || !history || (page + 1) * history.size >= history.total} onClick={() => setPage(page + 1)}>›</button></footer>
+      </div>
+      <footer className="gestion-backups-pager"><span>{t("gestion.backups.page")} {page + 1}</span><button type="button" disabled={page === 0 || loading} onClick={() => setPage(page - 1)}>‹</button><button type="button" disabled={loading || !history || (page + 1) * history.size >= history.total} onClick={() => setPage(page + 1)}>›</button></footer>
     </div>
     {selected && <dialog ref={detailDialog} className="gestion-backups-dialog" onClose={() => setSelected(null)} aria-label={t("gestion.backups.detail")}>
       <div className="gestion-backups-detail">
-        <header><h3>{t("gestion.backups.detail")} · {selected.sequenceNumber ?? "—"}</h3><button type="button" onClick={() => detailDialog.current?.close()}>{t("common.close")}</button></header>
+        <header><h3>{t("gestion.backups.detail")} · {selected.sequenceNumber ?? "—"}</h3><WindowCloseButton aria-label={t("common.close")} title={t("common.close")} onClick={() => detailDialog.current?.close()} /></header>
+        <div className="gestion-backups-detail-body">
           <dl><div><dt>{t("gestion.backups.id")}</dt><dd>{selected.sequenceNumber ?? "—"}</dd></div><div><dt>{t("gestion.backups.result")}</dt><dd>{t(`gestion.backups.result.${selected.result}`)}</dd></div><div><dt>{t("gestion.backups.availability")}</dt><dd>{t(selected.available ? "gestion.backups.available" : "gestion.backups.unavailable")}</dd></div><div><dt>{t("gestion.backups.origin")}</dt><dd>{t(`gestion.backups.origin.${selected.origin}`)}</dd></div><div><dt>{t("gestion.backups.phase")}</dt><dd>{selected.phase ? t(`gestion.backups.phase.${selected.phase}`) : "—"}</dd></div><div><dt>{t("gestion.backups.started")}</dt><dd>{date(selected.startedAt)}</dd></div><div><dt>{t("gestion.backups.finished")}</dt><dd>{date(selected.finishedAt)}</dd></div><div><dt>{t("gestion.backups.duration")}</dt><dd>{duration}</dd></div><div><dt>{t("gestion.backups.size")}</dt><dd>{size(selected.sizeBytes)}</dd></div><div><dt>{t("gestion.backups.verified")}</dt><dd>{date(selected.metadata?.verifiedAt)}</dd></div><div><dt>{t("gestion.backups.version")}</dt><dd>{selectedManifest?.applicationVersion || "—"}</dd></div><div><dt>{t("gestion.backups.installation")}</dt><dd>{selectedManifest?.installationId || "—"}</dd></div><div><dt>{t("gestion.backups.captured")}</dt><dd>{date(selectedManifest?.capturedAt)}</dd></div>{selected.cloud && <><div><dt>{t("gestion.backups.cloudStatus")}</dt><dd>{t(`gestion.backups.cloud.${selected.cloud.state}`)}</dd></div><div><dt>{t("gestion.backups.cloudAttempts")}</dt><dd>{selected.cloud.attempts}</dd></div><div><dt>{t("gestion.backups.cloudUploadedAt")}</dt><dd>{date(selected.cloud.uploadedAt)}</dd></div><div><dt>{t("gestion.backups.cloudNextAttempt")}</dt><dd>{date(selected.cloud.nextAttemptAt)}</dd></div></>}</dl>
           {selected.cloud?.state === "FAILED" && <button type="button" disabled={!!retryingCloudId || !selected.available} onClick={() => void retryCloudUpload(selected)}>{t("gestion.backups.cloudRetry")}</button>}
           {selected.cloud?.errorReason && <details><summary>{t("gestion.backups.cloudErrorDetail")}</summary><p>{selected.cloud.errorReason}</p></details>}
@@ -208,6 +212,7 @@ export function BackupManagementScreen({ session, locale, t, onTransferServer }:
             <DocumentCounters title={t("gestion.backups.documentCounters")} counters={selectedManifest.documentCounters} t={t} />
             <details className="gestion-backups-manifest"><summary>{t("gestion.backups.tableCounts")}</summary><ManifestTable title="" values={selectedManifest.tableCounts} t={t} /></details>
           </>}
+        </div>
       </div>
     </dialog>}
   </section>;
@@ -219,16 +224,16 @@ function ManifestTable({ title, values, t, prefix }: { title: string; values?: R
 
 function DocumentList({ title, documents, t, date }: { title: string; documents?: NonNullable<import("./backupApi").BackupManifest["lastDocuments"]>; t: (key: string) => string; date: (value?: string | null) => string }) {
   return <section className="gestion-backups-manifest"><h4>{title}</h4>
-    <table><thead><tr><th>{t("gestion.backups.documentType")}</th><th>{t("gestion.backups.documentNumber")}</th><th>{t("gestion.backups.documentDate")}</th></tr></thead><tbody>
+    <div className="gestion-backups-table-scroll" tabIndex={0} role="region" aria-label={title}><table><thead><tr><th>{t("gestion.backups.documentType")}</th><th>{t("gestion.backups.documentNumber")}</th><th>{t("gestion.backups.documentDate")}</th></tr></thead><tbody>
       {(documents ?? []).map((document, index) => <tr key={`${document.documentId ?? index}-${document.type}`}><td>{t(`gestion.backups.documentType.${document.type}`)}{document.storeCode ? ` · ${document.storeCode}` : ""}</td><td>{document.number || "—"}</td><td>{date(document.confirmedAt ?? document.date)}</td></tr>)}
-    </tbody></table>
+    </tbody></table></div>
   </section>;
 }
 
 function DocumentCounters({ title, counters, t }: { title: string; counters?: Array<{ storeId: string; type: string; period: string; lastSequence: number }>; t: (key: string) => string }) {
   return <section className="gestion-backups-manifest"><h4>{title}</h4>
-    <table><thead><tr><th>{t("gestion.backups.counterStore")}</th><th>{t("gestion.backups.documentType")}</th><th>{t("gestion.backups.counterPeriod")}</th><th>{t("gestion.backups.counterSequence")}</th></tr></thead><tbody>
+    <div className="gestion-backups-table-scroll" tabIndex={0} role="region" aria-label={title}><table><thead><tr><th>{t("gestion.backups.counterStore")}</th><th>{t("gestion.backups.documentType")}</th><th>{t("gestion.backups.counterPeriod")}</th><th>{t("gestion.backups.counterSequence")}</th></tr></thead><tbody>
       {(counters ?? []).map((counter, index) => <tr key={`${counter.storeId}-${counter.type}-${counter.period}-${index}`}><td>{counter.storeId}</td><td>{t(`gestion.backups.documentType.${counter.type}`)}</td><td>{counter.period}</td><td>{counter.lastSequence}</td></tr>)}
-    </tbody></table>
+    </tbody></table></div>
   </section>;
 }

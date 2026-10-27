@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { LocaleCode } from "@tpverp/app-common";
+import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import "./BackupManagementScreen.css";
 
 type Action = "request" | "receive" | "activate" | "status" | "cancel";
@@ -38,7 +39,8 @@ export function ServerTransferMaintenanceScreen({ locale: _locale, t, onExit }: 
 
   const state = status?.state;
   return <main className="gestion-workspace gestion-backups-workspace gestion-transfer-maintenance">
-    <header className="gestion-dashboard-toolbar gestion-security-header"><div><span className="gestion-eyebrow">{t("gestion.security.eyebrow")}</span><h2>{t("gestion.transfer.maintenanceTitle")}</h2><p>{t("gestion.transfer.maintenanceSubtitle")}</p></div><button type="button" onClick={onExit}>{t("common.close")}</button></header>
+    <header className="gestion-dashboard-toolbar gestion-security-header"><div><span className="gestion-eyebrow">{t("gestion.security.eyebrow")}</span><h2>{t("gestion.transfer.maintenanceTitle")}</h2><p>{t("gestion.transfer.maintenanceSubtitle")}</p></div><WindowCloseButton aria-label={t("common.close")} title={t("common.close")} onClick={onExit} /></header>
+    <div className="gestion-transfer-maintenance-body">
     <p className="gestion-backups-feedback warning">{t("gestion.transfer.maintenanceWarning")}</p>
     {error && <p className="gestion-backups-feedback error" role="alert">{error}</p>}
     {notice && <p className="gestion-backups-feedback" role="status">{notice}</p>}
@@ -58,5 +60,6 @@ export function ServerTransferMaintenanceScreen({ locale: _locale, t, onExit }: 
       {status?.destinationPublicKey && <label>{t("gestion.transfer.publicKey")}<textarea readOnly value={status.destinationPublicKey} /></label>}
       {status?.destinationProof && <label>{t("gestion.transfer.proof")}<textarea readOnly value={status.destinationProof} /></label>}
     </section>
+    </div>
   </main>;
 }
