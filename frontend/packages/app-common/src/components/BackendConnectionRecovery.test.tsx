@@ -81,26 +81,26 @@ describe("BackendConnectionRecovery", () => {
   });
 
   it.each([
-    ["es", "Recuperar desde copia"],
-    ["en", "Recover from backup"],
-    ["zh", "从备份恢复"],
-  ] as const)("offers keyboard access to backup recovery in %s", async (locale, label) => {
+    ["es", "REINTENTAR CONEXIÓN", "CONFIGURAR CONEXIÓN"],
+    ["en", "RETRY CONNECTION", "CONFIGURE CONNECTION"],
+    ["zh", "重试连接", "配置连接"],
+  ] as const)("offers only retry and configure with keyboard access in %s", async (locale, retryLabel, configureLabel) => {
     status.mockResolvedValue(offline);
-    const onOpenDisasterRecovery = vi.fn();
-    const onOpenMaintenance = vi.fn();
-    render(<BackendConnectionRecovery locale={locale} onOpenMaintenance={onOpenMaintenance}
-      onOpenDisasterRecovery={onOpenDisasterRecovery} />);
-    const retryButton = await screen.findByRole("button", { name: locale === "es" ? "Reintentar" : locale === "en" ? "Retry" : "重试" });
-    const recoveryButton = screen.getByRole("button", { name: label });
+    const onConfigureConnection = vi.fn();
+    render(<BackendConnectionRecovery locale={locale} onConfigureConnection={onConfigureConnection} />);
+    const retryButton = await screen.findByRole("button", { name: retryLabel });
+    const configureButton = screen.getByRole("button", { name: configureLabel });
+    expect(screen.getAllByRole("button")).toHaveLength(2);
     const user = userEvent.setup();
     await waitFor(() => expect(retryButton).toHaveFocus());
     expect(document.getElementById("root")?.inert).toBe(true);
     await user.tab();
+    expect(configureButton).toHaveFocus();
     await user.tab();
-    expect(recoveryButton).toHaveFocus();
+    expect(retryButton).toHaveFocus();
+    await user.tab();
     await user.keyboard("{Enter}");
-    expect(onOpenDisasterRecovery).toHaveBeenCalledOnce();
-    expect(onOpenMaintenance).not.toHaveBeenCalled();
+    expect(onConfigureConnection).toHaveBeenCalledOnce();
     expect(retry).not.toHaveBeenCalled();
   });
 

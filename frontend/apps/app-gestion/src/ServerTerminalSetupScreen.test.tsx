@@ -74,10 +74,41 @@ describe("ServerTerminalSetupScreen", () => {
     Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { disasterRecovery: {
       readStatus: vi.fn(), startMaintenance: vi.fn()
     } } });
-    render(<ServerTerminalSetupScreen locale="es" onOrganizationReady={() => {}}
+    render(<ServerTerminalSetupScreen locale="es" newInstallation onOrganizationReady={() => {}}
       onConfigureConnection={() => {}} onRecoverFromBackup={onRecoverFromBackup} />);
     fireEvent.click(await screen.findByRole("button", { name: "Recuperar desde copia" }));
     expect(onRecoverFromBackup).toHaveBeenCalledOnce();
+  });
+
+  it("shows only uppercase connection actions when an existing installation is offline", async () => {
+    backend({ "GET /auth/login": () => Promise.reject(new TypeError("offline")) });
+    window.tpvDesktop = { disasterRecovery: { readStatus: vi.fn(), startMaintenance: vi.fn() } } as unknown as Window["tpvDesktop"];
+    render(<ServerTerminalSetupScreen locale="es" onOrganizationReady={() => {}}
+      onConfigureConnection={() => {}} onRecoverFromBackup={vi.fn()} />);
+    expect(await screen.findByRole("button", { name: "REINTENTAR CONEXIÓN" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "CONFIGURAR CONEXIÓN" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Recuperar desde copia" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button")).toHaveLength(2);
+  });
+
+  it("keeps recovery available on an empty new machine while the backend is offline", async () => {
+    backend({ "GET /auth/login": () => Promise.reject(new TypeError("offline")) });
+    const onRecoverFromBackup = vi.fn();
+    window.tpvDesktop = { disasterRecovery: { readStatus: vi.fn(), startMaintenance: vi.fn() } } as unknown as Window["tpvDesktop"];
+    render(<ServerTerminalSetupScreen locale="es" newInstallation onOrganizationReady={() => {}}
+      onConfigureConnection={() => {}} onRecoverFromBackup={onRecoverFromBackup} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Recuperar desde copia" }));
+    expect(onRecoverFromBackup).toHaveBeenCalledOnce();
+  });
+
+  it("does not offer recovery when the backend already contains an organization", async () => {
+    backend({ "GET /installation/status": () => response({ organizationProvisioned: true, initialAdminPasswordChangeRequired: false }) });
+    const onOrganizationReady = vi.fn();
+    window.tpvDesktop = { disasterRecovery: { readStatus: vi.fn(), startMaintenance: vi.fn() } } as unknown as Window["tpvDesktop"];
+    render(<ServerTerminalSetupScreen locale="es" newInstallation onOrganizationReady={onOrganizationReady}
+      onConfigureConnection={() => {}} onRecoverFromBackup={vi.fn()} />);
+    await waitFor(() => expect(onOrganizationReady).toHaveBeenCalledOnce());
+    expect(screen.queryByRole("button", { name: "Recuperar desde copia" })).not.toBeInTheDocument();
   });
 
   it("translates the existing error and keeps the code without checking the backend again", async () => {
@@ -149,12 +180,12 @@ describe("ServerTerminalSetupScreen", () => {
     let online = false;
     backend({ "GET /auth/login": () => new Response(null, { status: online ? 200 : 503 }) });
     const view = setup();
-    await screen.findByRole("button", { name: "Reintentar conexion" });
+    await screen.findByRole("button", { name: "REINTENTAR CONEXIÓN" });
     expect(screen.queryByLabelText("Código de emparejamiento")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "CONFIGURAR CONEXIÓN" }));
     expect(view.onConfigureConnection).toHaveBeenCalledOnce();
     online = true;
-    fireEvent.click(screen.getByRole("button", { name: "Reintentar conexion" }));
+    fireEvent.click(screen.getByRole("button", { name: "REINTENTAR CONEXIÓN" }));
     expect(await screen.findByText("LOCAL")).toBeInTheDocument();
     expect(await screen.findByLabelText("Código de emparejamiento")).toBeInTheDocument();
   });

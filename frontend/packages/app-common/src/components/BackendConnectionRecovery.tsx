@@ -8,8 +8,8 @@ import "./BackendConnectionRecovery.css";
 type RecoveryState = "CONNECTED" | "OFFLINE" | "CHECKING";
 type RecoveryResult = { ok: boolean; state: RecoveryState; backendIp?: string; errorCode?: string };
 
-export function BackendConnectionRecovery({ locale, onRecovered, onOpenMaintenance, onOpenDisasterRecovery }: {
-  locale: LocaleCode; onRecovered?: () => void; onOpenMaintenance?: () => void; onOpenDisasterRecovery?: () => void;
+export function BackendConnectionRecovery({ locale, onRecovered, onConfigureConnection }: {
+  locale: LocaleCode; onRecovered?: () => void; onConfigureConnection?: () => void;
 }) {
   const bridge = window.tpvDesktop?.connectionRecovery;
   const [visible, setVisible] = useState(false);
@@ -144,11 +144,12 @@ export function BackendConnectionRecovery({ locale, onRecovered, onOpenMaintenan
         {closeError && <p className="backend-recovery-error" role="alert">{t("connectionRecovery.closeError")}</p>}
         <div className="backend-recovery-actions">
           <button ref={retryButton} type="button" className="backend-recovery-retry" disabled={busy !== null}
-            onClick={() => void retry()}>{busy === "retry" ? t("connectionRecovery.retrying") : t("connectionRecovery.retry")}</button>
-          {onOpenMaintenance && <button type="button" disabled={busy !== null} onClick={onOpenMaintenance}>{t("gestion.transfer.maintenanceTitle")}</button>}
-          {onOpenDisasterRecovery && <button type="button" disabled={busy !== null} onClick={onOpenDisasterRecovery}>{t("gestion.disaster.entry")}</button>}
-          <button ref={closeButton} type="button" className="backend-recovery-close" disabled={busy !== null}
-            onClick={() => void close()}>{busy === "close" ? t("connectionRecovery.closing") : t("connectionRecovery.close")}</button>
+            onClick={() => void retry()}>{busy === "retry" ? t(onConfigureConnection ? "connectionRecovery.checkingAction" : "connectionRecovery.retrying") : t(onConfigureConnection ? "connectionRecovery.retryAction" : "connectionRecovery.retry")}</button>
+          {onConfigureConnection
+            ? <button ref={closeButton} type="button" className="backend-recovery-close" disabled={busy !== null}
+                onClick={onConfigureConnection}>{t("connectionRecovery.configureAction")}</button>
+            : <button ref={closeButton} type="button" className="backend-recovery-close" disabled={busy !== null}
+                onClick={() => void close()}>{busy === "close" ? t("connectionRecovery.closing") : t("connectionRecovery.close")}</button>}
         </div>
       </div>
     </div>,

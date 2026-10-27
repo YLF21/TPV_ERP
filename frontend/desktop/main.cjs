@@ -302,6 +302,7 @@ async function readTerminalIdentity() {
     try {
       const loaded = await backendConnection.load();
       return { ok: true, identity: loaded.identity || null,
+        newInstallation: loaded.newInstallation === true,
         connectionUnavailable: loaded.connectionUnavailable,
         ...(loaded.displayContext ? { displayContext: loaded.displayContext } : {}) };
     }

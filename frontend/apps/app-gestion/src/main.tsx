@@ -9,7 +9,7 @@ import {
   createTranslator,
   devTerminalContext,
   gestionGroupLockedEvent,
-  loadTerminalIdentity,
+  resolveTerminalIdentity,
   userCanManageWarehouses,
   visibleSalesReports,
   visibleStockViewsForSession,
@@ -198,14 +198,18 @@ type StockSelection = {
   warehouseOperation?: import("./WarehouseOperationsScreen").WarehouseOperationMode;
 };
 
-function AppContent({ locale, setLocale, recoveryEpoch, onOpenMaintenance, onOpenDisasterRecovery }: { locale: LocaleCode; setLocale: (locale: LocaleCode) => void; recoveryEpoch: number; onOpenMaintenance: () => void; onOpenDisasterRecovery: () => void }) {
+function AppContent({ locale, setLocale, recoveryEpoch, newInstallation, onNewInstallation, configureConnection, onConfigureConnection, onCloseConnection, onOpenMaintenance, onOpenDisasterRecovery }: {
+  locale: LocaleCode; setLocale: (locale: LocaleCode) => void; recoveryEpoch: number;
+  newInstallation: boolean | undefined; onNewInstallation: (value: boolean) => void;
+  configureConnection: boolean; onConfigureConnection: () => void; onCloseConnection: () => void;
+  onOpenMaintenance: () => void; onOpenDisasterRecovery: () => void;
+}) {
   const [session, setSession] = useState<UserSession | null>(null);
   const [module, setModule] = useState<GestionModule>("dashboard");
   const [salesReport, setSalesReport] = useState("salesReport.dailySales");
   const [stockSelection, setStockSelection] = useState<StockSelection>({ key: "stock.current", view: "stock.current" });
   const [terminalContext, setTerminalContext] = useState<TerminalContext | null | undefined>(undefined);
   useTerminalStoreCode(terminalContext, setTerminalContext);
-  const [setupMode, setSetupMode] = useState<"organization" | "connection">("organization");
   const [logoutError, setLogoutError] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
 
@@ -213,11 +217,17 @@ function AppContent({ locale, setLocale, recoveryEpoch, onOpenMaintenance, onOpe
     let cancelled = false;
     async function loadIdentity() {
       if (recoveryEpoch > 0 && terminalContext) return;
-      const identity = await loadTerminalIdentity(
-        window.tpvDesktop?.terminalIdentity,
-        import.meta.env.DEV ? devTerminalContext : null
-      );
-      if (!cancelled) setTerminalContext(identity);
+      try {
+        const result = window.tpvDesktop?.terminalIdentity
+          ? await window.tpvDesktop.terminalIdentity.load()
+          : { ok: true, identity: import.meta.env.DEV ? devTerminalContext : null, newInstallation: false };
+        if (!cancelled) {
+          setTerminalContext(resolveTerminalIdentity(result));
+          onNewInstallation(result.ok && result.newInstallation === true);
+        }
+      } catch {
+        if (!cancelled) { setTerminalContext(null); onNewInstallation(false); }
+      }
     }
     void loadIdentity();
     return () => { cancelled = true; };
@@ -227,12 +237,16 @@ function AppContent({ locale, setLocale, recoveryEpoch, onOpenMaintenance, onOpe
     return null;
   }
 
+  if (configureConnection && window.tpvDesktop?.backendConnection) {
+    return <TerminalConnectionScreen locale={locale} onLocaleChange={setLocale} identity={terminalContext}
+      onReady={(identity) => { setTerminalContext(identity); onNewInstallation(false); onCloseConnection(); }}
+      onBack={onCloseConnection} />;
+  }
+
   if (terminalContext === null) {
-    return setupMode === "connection" && window.tpvDesktop?.backendConnection
-      ? <TerminalConnectionScreen locale={locale} onLocaleChange={setLocale} identity={null} onReady={setTerminalContext}
-          onBack={() => setSetupMode("organization")} />
-      : <ServerTerminalSetupScreen locale={locale} onLocaleChange={setLocale} onOrganizationReady={() => setSetupMode("connection")}
-          onConfigureConnection={() => setSetupMode("connection")} onRecoverFromBackup={onOpenDisasterRecovery} />;
+    return <ServerTerminalSetupScreen locale={locale} onLocaleChange={setLocale} onOrganizationReady={onConfigureConnection}
+      onConfigureConnection={onConfigureConnection} newInstallation={newInstallation === true}
+      onRecoverFromBackup={newInstallation === true ? onOpenDisasterRecovery : undefined} />;
   }
 
   if (!session) {
@@ -969,14 +983,22 @@ export function App() {
   const [locale, setLocale] = useState<LocaleCode>("es");
   const [recoveryEpoch, setRecoveryEpoch] = useState(0);
   const [maintenance, setMaintenance] = useState<"transfer" | "disaster" | null>(null);
+  const [newInstallation, setNewInstallation] = useState<boolean>();
+  const [configureConnection, setConfigureConnection] = useState(false);
   const reactivateLogin = useCallback(() => setRecoveryEpoch((epoch) => epoch + 1), []);
   if (maintenance === "transfer") return <ServerTransferMaintenanceScreen locale={locale} t={createTranslator(locale)} onExit={() => setMaintenance(null)} />;
   if (maintenance === "disaster") return <DisasterRecoveryMaintenanceScreen locale={locale} t={createTranslator(locale)} onExit={() => { setMaintenance(null); reactivateLogin(); }} />;
   return <>
-    <AppContent locale={locale} setLocale={setLocale} recoveryEpoch={recoveryEpoch} onOpenMaintenance={() => setMaintenance("transfer")} onOpenDisasterRecovery={() => setMaintenance("disaster")} />
-    <Suspense fallback={null}><BackendConnectionRecovery locale={locale} onRecovered={reactivateLogin}
-      onOpenMaintenance={window.tpvDesktop?.serverTransfer ? () => setMaintenance("transfer") : undefined}
-      onOpenDisasterRecovery={window.tpvDesktop?.disasterRecovery ? () => setMaintenance("disaster") : undefined} /></Suspense>
+    <AppContent locale={locale} setLocale={setLocale} recoveryEpoch={recoveryEpoch}
+      newInstallation={newInstallation} onNewInstallation={setNewInstallation}
+      configureConnection={configureConnection} onConfigureConnection={() => setConfigureConnection(true)}
+      onCloseConnection={() => { setConfigureConnection(false); if (newInstallation === false) reactivateLogin(); }}
+      onOpenMaintenance={() => setMaintenance("transfer")}
+      onOpenDisasterRecovery={() => { if (newInstallation === true) setMaintenance("disaster"); }} />
+    {newInstallation === false && !configureConnection && <Suspense fallback={null}>
+      <BackendConnectionRecovery locale={locale} onRecovered={reactivateLogin}
+        onConfigureConnection={window.tpvDesktop?.backendConnection ? () => setConfigureConnection(true) : undefined} />
+    </Suspense>}
   </>;
 }
 

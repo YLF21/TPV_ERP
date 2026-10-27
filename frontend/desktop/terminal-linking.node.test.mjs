@@ -1,6 +1,9 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { createTerminalLinking, verifyBootstrap, candidateUrl } = require('./terminal-linking.cjs');
@@ -24,6 +27,45 @@ test('challenge signature and URL security', () => {
   assert.throws(() => verifyBootstrap({ ...value, installationId: 'other' }, 'nonce'), /firma/);
   assert.throws(() => candidateUrl('http://192.168.1.10:8080'), /HTTPS/);
   assert.throws(() => candidateUrl('https://user:pass@example.test'), /credenciales/);
+});
+
+test.each([
+  ['new installation', null, { configuration: null }, true],
+  ['installer-provided address without linked identity', null, { configuration: { backendUrl: 'http://127.0.0.1:8080' } }, true],
+  ['unreadable configuration', null, { configuration: null, error: 'invalid configuration' }, false],
+  ['legacy identity', { identity: { terminalId: 'legacy', terminalCode: '001', storeName: 'Store' } }, { configuration: null }, false],
+  ['pending link', { pending: { installationId: 'installation-a', code: '001', name: 'Server' } }, { configuration: null }, false],
+  ['released link', { link: { status: 'RELEASED' } }, { configuration: null }, false],
+  ['unknown storage result', undefined, { configuration: null }, false],
+])('reports first installation independently of server availability: %s', async (_label, state, configuration, expected) => {
+  const bridge = createTerminalLinking({
+    storage: { read: () => state, write: () => { throw new Error('Unexpected write'); } },
+    config: { read: () => configuration },
+    request: async () => { throw new Error('Unexpected network request'); },
+  });
+  assert.equal((await bridge.load()).newInstallation, expected);
+});
+
+test('keeps recovery available with the connection file written by the server installer', async () => {
+  const { createLinkingConfig } = require('./linking-config.cjs');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tpv-fresh-server-'));
+  try {
+    const configPath = path.join(directory, 'backend-config.json');
+    fs.writeFileSync(configPath, JSON.stringify({ backendUrl: 'http://127.0.0.1:8080', allowedHosts: ['127.0.0.1'] }));
+    const config = createLinkingConfig({ configPath, packaged: true });
+    const bridge = createTerminalLinking({
+      storage: { read: () => null, write: () => { throw new Error('Unexpected write'); } }, config,
+      request: async () => { throw new Error('Recovery entry must not depend on a live backend'); },
+    });
+    const loaded = await bridge.load();
+    assert.deepEqual(loaded.configuration, { backendUrl: 'http://127.0.0.1:8080' });
+    assert.equal(loaded.identity, null);
+    assert.equal(loaded.newInstallation, true);
+  } finally {
+    assert.equal(path.dirname(path.resolve(directory)), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(directory).startsWith('tpv-fresh-server-'));
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('proof is durable before POST, refresh uses proof and pins installation', async () => {
@@ -389,6 +431,7 @@ test.each(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREA
     const bridge = cachedLinkedBridge(async () => { throw Object.assign(new Error('transport failed'), { code }); });
     const loaded = await bridge.load();
     assert.equal(loaded.connectionUnavailable, true);
+    assert.equal(loaded.newInstallation, false);
     assert.equal(loaded.identity, null);
     assert.equal(loaded.link, null);
     assert.deepEqual(loaded.displayContext, { companyName: 'Empresa Real SL', storeName: 'Store',
