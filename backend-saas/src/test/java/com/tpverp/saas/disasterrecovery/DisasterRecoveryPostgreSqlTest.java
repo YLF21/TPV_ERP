@@ -60,6 +60,16 @@ class DisasterRecoveryPostgreSqlTest {
         assertThatThrownBy(()->service.cancel(site.ticket(),state.recoveryId(),new Review(activated.status().version(),"Undo",true))).hasMessageContaining("ALREADY_ACTIVATED");
         service.acknowledge(state.recoveryId(),proof(state,"acknowledge",""));
         assertThat(service.activate(state.recoveryId(),proof(state,"activate",""))).isEqualTo(activated);
+        var installation=installations.findByInstallationId(site.logical()).orElseThrow();
+        assertThat(installation.hasLinkRecoveryTokenHash(site.recoveryHash())).isTrue();
+        assertThat(installation.isCurrentPairing(UUID.randomUUID())).isFalse();
+        assertThat(jdbc.queryForObject("select link_recovery_token_hash from saas_installation where id=?",
+                String.class,site.central())).isEqualTo(site.recoveryHash());
+        assertThat(jdbc.queryForObject("select link_recovery_invalidated from saas_installation where id=?",
+                Boolean.class,site.central())).isTrue();
+        assertThat(jdbc.queryForObject("select token_hash from saas_installation where id=?",String.class,site.central()))
+                .isEqualTo(jdbc.queryForObject("select activated_token_hash from saas_disaster_recovery where id=?",
+                        String.class,state.recoveryId()));
     }
     @Test void mvcConverterAcceptsReceiptAndReturnsEvidenceAsJsonObject()throws Exception {
         var site=site();var state=authorize(site);
@@ -186,9 +196,10 @@ class DisasterRecoveryPostgreSqlTest {
         var company=companies.saveAndFlush(new SaasCompany(UUID.randomUUID(),"Recovery test",validCif("B"+java.util.concurrent.ThreadLocalRandom.current().nextInt(1000000,9999999)+"0"),TaxpayerType.SOCIEDAD,TaxRegime.IVA,Instant.now()));
         var store=stores.saveAndFlush(new SaasStore(UUID.randomUUID(),company,"001","Store","Atlantic/Canary",Instant.now()));
         var license=licenses.saveAndFlush(new SaasLicense(UUID.randomUUID(),company,"REC-"+UUID.randomUUID(),Instant.now().plusSeconds(86400),1,1,Instant.now()));
-        String token=tokens.newToken();var installation=installations.saveAndFlush(new SaasInstallation(UUID.randomUUID(),company,store,license,UUID.randomUUID(),"RECOVERY-TEST",null,tokens.hash(token),Instant.now()));
+        String token=tokens.newToken(),recoveryHash=tokens.hash(tokens.newToken());
+        var installation=installations.saveAndFlush(new SaasInstallation(UUID.randomUUID(),company,store,license,UUID.randomUUID(),"RECOVERY-TEST",null,tokens.hash(token),recoveryHash,Instant.now()));
         UUID ticket=UUID.randomUUID();jdbc.update("insert into saas_support_ticket(id,company_id,title,status,priority,created_by,created_at,updated_at) values (?,?,'Recovery','ABIERTO','NORMAL','admin',now(),now())",ticket,company.getId());
-        return new Site(installation.getInstallationId(),installation.getId(),company.getId(),store.getId(),ticket,token);
+        return new Site(installation.getInstallationId(),installation.getId(),company.getId(),store.getId(),ticket,token,recoveryHash);
     }
     private static Proof proof(State state,String action,String context)throws Exception {
         String text="TPV-RECOVERY-V1\n"+state.recoveryId()+"\n"+action+"\n"+(action.equals("inspect")?"":state.backupSha256())+"\n"+context;
@@ -196,5 +207,5 @@ class DisasterRecoveryPostgreSqlTest {
         return new Proof(Base64.getEncoder().encodeToString(signature.sign()));
     }
     private static String basic(String user){return "Basic "+Base64.getEncoder().encodeToString((user+":admin").getBytes(StandardCharsets.UTF_8));}
-    private record Site(UUID logical,UUID central,UUID company,UUID store,UUID ticket,String token) { }
+    private record Site(UUID logical,UUID central,UUID company,UUID store,UUID ticket,String token,String recoveryHash) { }
 }
