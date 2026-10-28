@@ -88,9 +88,12 @@ test("trilingual editorial consistency and compact information contracts (no bro
 
   try {
     assert.equal(server.httpServer, null);
-    const [marketing, ui, guides, choices, connection, compatibility, implementation, support, dialogFeedback, comparison, tourMedia, tourExamples, seo, routes, { productBrand }, { marketingContact }, { CompatibilityChecklist }, { SupportInformation }, { ApplicationExplorer }, { default: MarketingPage }] = await Promise.all([
+    const [marketing, ui, guides, choices, connection, compatibility, implementation, support, dialogFeedback, comparison, tourMedia, tourExamples, sectors, connected, receipts, decisions, imports, previews, seo, routes, { productBrand }, { marketingContact }, { CompatibilityChecklist }, { SupportInformation }, { ApplicationExplorer }, { default: MarketingPage }] = await Promise.all([
       "/src/marketingI18n.ts", "/src/marketingUiI18n.ts", "/src/applicationGuides.ts", "/src/applicationChoices.ts",
       "/src/connectionContent.ts", "/src/compatibilityContent.ts", "/src/implementationContent.ts", "/src/supportContent.ts", "/src/MarketingDialogLoader.tsx", "/src/AdvantagesComparison.tsx", "/src/tourStepMedia.ts", "/src/tourExamples.ts",
+      "/src/sectorCaseContent.ts", "/src/connectedScenarioContent.ts", "/src/demoReceiptContent.ts",
+      "/src/comparisonDecisionContent.ts", "/src/productImportHelpContent.ts",
+      "/src/applicationPreviewContent.ts",
       "/src/seo.ts", "/src/marketingRoutes.ts", "/src/brand.ts", "/src/contact.ts",
       "/src/CompatibilityChecklist.tsx", "/src/SupportInformation.tsx", "/src/ApplicationExplorer.tsx", "/src/MarketingPage.tsx"
     ].map(path => server.ssrLoadModule(path)));
@@ -100,7 +103,9 @@ test("trilingual editorial consistency and compact information contracts (no bro
       connection: connection.getConnectionContent, compatibility: compatibility.getCompatibilityContent,
       implementation: implementation.getImplementationJourney, support: support.getSupportContent,
       dialogFeedback: dialogFeedback.getMarketingDialogFeedbackContent, comparison: comparison.getComparisonPresentation,
-      tourMedia: tourMedia.getTourStepMediaContent, tourExamples: tourExamples.getTourExamples
+      tourMedia: tourMedia.getTourStepMediaContent, tourExamples: tourExamples.getTourExamples,
+      sectors: sectors.getSectorCaseContent, connected: connected.getConnectedScenario, receipts: receipts.getDemoReceiptContent,
+      decisions: decisions.getComparisonDecisionContent, imports: imports.getProductImportHelp
     };
     const onAction = () => { actions += 1; };
 
@@ -113,9 +118,9 @@ test("trilingual editorial consistency and compact information contracts (no bro
       }
     });
 
-    await suite.test("all twelve text stores have complete matching ES/EN/ZH structures and consistent public copy", () => {
+    await suite.test("all seventeen text stores have complete matching ES/EN/ZH structures and consistent public copy", () => {
       assert.equal(productBrand.name, "esPOS");
-      assert.equal(Object.keys(stores).length, 12);
+      assert.equal(Object.keys(stores).length, 17);
       for (const [name, getContent] of Object.entries(stores)) {
         const reference = shape(getContent("es"));
         const spanishEntries = new Map(stringEntries(getContent("es")));
@@ -199,7 +204,7 @@ test("trilingual editorial consistency and compact information contracts (no bro
         const connectionCopy = connection.getConnectionContent(language);
         for (const [index, id] of applicationIds.entries()) {
           const app = marketingCopy.apps.items[index];
-          const markup = renderToStaticMarkup(createElement(ApplicationExplorer, { language, applications: [{ id, name: app[0], label: app[1], description: app[2], previewAlt: marketingCopy.tour.previewAlts[index] }], onOpenTour: onAction, onRequestDemo: onAction }));
+          const markup = renderToStaticMarkup(createElement(ApplicationExplorer, { language, applications: [{ id, name: app[0], label: app[1], description: app[2], previewAlt: previews.getApplicationPreviewAlts(language)[id] }], onOpenTour: onAction, onRequestDemo: onAction }));
           assert.equal(occurrences(markup, connectionCopy.apps[id]), 1);
           const summaryIndex = markup.indexOf('data-testid="application-connection-summary"');
           const detailIndex = markup.indexOf('data-testid="guide-content-panel"');

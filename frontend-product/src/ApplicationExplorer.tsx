@@ -8,6 +8,7 @@ import type { ApplicationId, GuideSection } from "./applicationGuideTypes";
 import type { MarketingLanguage } from "./marketingI18n";
 import { marketingHref } from "./marketingRoutes";
 import { marketingContactSearch } from "./marketingCampaign";
+import { getRovingTabIndex } from "./marketingAccessibility";
 import "./application-guides.css";
 import "./connection-summary.css";
 
@@ -37,15 +38,8 @@ const previewDimensions = {
 };
 
 function nextTabIndex(event: KeyboardEvent<HTMLButtonElement>, current: number, count: number) {
-  let next: number;
-  switch (event.key) {
-    case "ArrowRight": next = (current + 1) % count; break;
-    case "ArrowLeft": next = (current - 1 + count) % count; break;
-    case "Home": next = 0; break;
-    case "End": next = count - 1; break;
-    default: return null;
-  }
-  event.preventDefault();
+  const next = getRovingTabIndex(event.key, current, count);
+  if (next !== null) event.preventDefault();
   return next;
 }
 
@@ -66,7 +60,7 @@ export function ApplicationExplorer({ language, applications, onOpenTour, onRequ
   if (!application) return null;
 
   const guide = copy.apps[application.id];
-  const demoHref = `${marketingHref(language, "contacto")}${marketingContactSearch([application.id])}`;
+  const demoHref = `${marketingHref(language, "contacto")}${marketingContactSearch([application.id])}#mk-demo-form`;
   const ApplicationIcon = applicationIcons[application.id];
   const applicationTabId = (id: ApplicationId) => `${instanceId}-application-tab-${id}`;
   const applicationPanelId = `${instanceId}-application-panel`;

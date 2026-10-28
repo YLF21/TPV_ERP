@@ -1,0 +1,337 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-27",
+  "method": "cua-repl",
+  "sourceInterfaceLanguage": "es",
+  "data": "synthetic",
+  "generator": {
+    "script": "scripts/optimize-tour-step-images.mjs",
+    "tool": "sharp",
+    "version": "0.35.5",
+    "encoderVersions": {
+      "vips": "8.18.7",
+      "webp": "1.6.0"
+    },
+    "transform": {
+      "resize": false,
+      "crop": false,
+      "colourspace": "srgb",
+      "metadata": "stripped"
+    },
+    "webp": {
+      "quality": 90,
+      "effort": 6,
+      "smartSubsample": true
+    }
+  },
+  "captures": [
+    {
+      "application": "venta",
+      "step": 0,
+      "source": {
+        "path": "assets/marketing-sources/tour-steps/venta-1.jpg",
+        "width": 994,
+        "height": 560,
+        "bytes": 57025,
+        "sha256": "66508e88f0d44d16e908c851bcec8117222c33c9cd744f47698ca4e8d10862fa",
+        "format": "jpeg"
+      },
+      "output": {
+        "path": "public/marketing/steps/venta-1.webp",
+        "url": "/marketing/steps/venta-1.webp",
+        "width": 994,
+        "height": 560,
+        "bytes": 33688,
+        "sha256": "d90e8f0f4666c3d1190ebe200a3ceaf08333c41291a5ba26e64a4f1401c473e5",
+        "format": "webp"
+      },
+      "scenario": "Cobro parcial de demostración: total de 2,50, importe cobrado de 1,00 y saldo restante de 1,50, diferenciados antes de finalizar.",
+      "sourceComponents": [
+        "frontend/packages/app-common/src/components/SalePaymentCheckout.tsx"
+      ]
+    },
+    {
+      "application": "venta",
+      "step": 1,
+      "source": {
+        "path": "assets/marketing-sources/tour-steps/venta-2.jpg",
+        "width": 620,
+        "height": 482,
+        "bytes": 29336,
+        "sha256": "1734ca0cda2d96af155beef58bd47c2e1de5e67bfbfd31b0d5e47a5bb5f5fbce",
+        "format": "jpeg"
+      },
+      "output": {
+        "path": "public/marketing/steps/venta-2.webp",
+        "url": "/marketing/steps/venta-2.webp",
+        "width": 620,
+        "height": 482,
+        "bytes": 20410,
+        "sha256": "f798f530cf075ead3fafc2efde1e41d542250c79d1a768f496c68e999fd76edc",
+        "format": "webp"
+      },
+      "scenario": "Consulta de existencias desde el flujo de mostrador y sus controles de teclado.",
+      "sourceComponents": [
+        "frontend/packages/app-common/src/components/SaleScreen.tsx",
+        "frontend/packages/app-common/src/components/SaleProductConsultationDialog.tsx"
+      ]
+    },
+    {
+      "application": "venta",
+      "step": 2,
+      "source": {
+        "path": "assets/marketing-sources/tour-steps/venta-3.jpg",
+        "width": 1884,
+        "height": 658,
+        "bytes": 77101,
+        "sha256": "672681aa5d28a4b4b4b629a15c4673a376deffd45c070b969ca8090f33e9c74c",
+        "format": "jpeg"
+      },
+      "output": {
+        "path": "public/marketing/steps/venta-3.webp",
+        "url": "/marketing/steps/venta-3.webp",
+        "width": 1884,
+        "height": 658,
+        "bytes": 48468,
+        "sha256": "3084f32edf8c6eb30652017c49d87449da3257b92b8cac3257213243a0154fc2",
+        "format": "webp"
+      },
+      "scenario": "Consulta del estado operativo local y de las entregas a servicios externos.",
+      "sourceComponents": [
+        "frontend/packages/app-common/src/components/OperationalStatusCard.tsx"
+      ]
+    },
+    {
+      "application": "gestion",
+      "step": 0,
+      "source": {
+        "path": "assets/marketing-sources/tour-steps/gestion-1.jpg",
+        "width": 1480,
+        "height": 1040,
+        "bytes": 98900,
+        "sha256": "e96b4c8848b2a5ae18f7b340cea8c6608b1506dd740c8651b8543a59ffb5841d",
+        "format": "jpeg"
+      },
+      "output": {
+        "path": "public/marketing/steps/gestion-1.webp",
+        "url": "/marketing/steps/gestion-1.webp",
+        "width": 1480,
+        "height": 1040,
+        "bytes": 59002,
+        "sha256": "56b049534c3058a1ad4fd1eefb0792ef384092c4728ef130a2eee43a4ee8f84c",
+        "format": "webp"
+      },
+      "scenario": "Existencias de productos y almacenes con datos ficticios de demostración.",
+      "sourceComponents": [
+        "frontend/packages/app-common/src/components/StockScreen.tsx"
+      ]
+    },
+    {
+      "application": "gestion",
+      "step": 1,
+      "source": {
+        "path": "assets/marketing-sources/tour-steps/gestion-2.jpg",
+        "width": 1920,
+        "height": 1080,
+        "bytes": 137343,
+        "sha256": "385821280d71143d11c681672a17d730455b3576dc037f10872015ebd31a3e08",
+        "format": "jpeg"
+      },
+      "output": {
+        "path": "public/marketing/steps/gestion-2.webp",
+        "url": "/marketing/steps/gestion-2.webp",
+        "width": 1920,
+        "height": 1080,
+        "bytes": 96730,
+        "sha256": "2f09517e602f0c43bdcd3df4d1eef20e99e5bbd5aae7899ff8498cb7579d4b4b",
+        "format": "webp"
+      },
+      "scenario": "Mapeo Código/Nombre/Compra/Venta a las columnas A/B/C/D de una muestra Excel con tres filas; sin aplicar cambios.",
+      "sourceComponents": [
+        "frontend/packages/app-common/src/components/SharedExcelImportDialog.tsx"
+      ]
+    },
+    {
+      "application": "gestion",
+      "step": 2,
+      "source": {
+        "path": "assets/marketing-sources/tour-steps/gestion-3.jpg",
+        "width": 1614,
+        "height": 1052,
+        "bytes": 82382,
+        "sha256": "8395c592bf610c13dba6b67991aebb6f98fe0faec375bb1c07c65255398193c1",
+        "format": "jpeg"
+      },
+      "output": {
+        "path": "public/marketing/steps/gestion-3.webp",
+        "url": "/marketing/steps/gestion-3.webp",
+        "width": 1614,
+        "height": 1052,
+        "bytes": 44572,
+        "sha256": "4d8061c827270461d87c7c931baa472b7cfc5b65bcf813b133160751f3867993",
+        "format": "webp"
+      },
+      "scenario": "Revisión de roles y permisos del rol CAJA DEMO mediante la pantalla real de Gestión.",
+      "sourceComponents": [
+        "frontend/apps/app-gestion/src/SecurityAdministrationScreen.tsx",
+        "frontend/apps/app-gestion/src/GestionShell.tsx"
+      ]
+    },
+    {
+      "application": "pda",
+      "step": 0,
+      "source": {
+        "path": "assets/marketing-sources/tour-steps/pda-1.jpg",
+        "width": 445,
+        "height": 822,
+        "bytes": 37932,
+        "sha256": "60b1e5894a52274c58ffa2a88882e91cfa5e339f156b7823ec090465232e3b67",
+        "format": "jpeg"
+      },
+      "output": {
+        "path": "public/marketing/steps/pda-1.webp",
+        "url": "/marketing/steps/pda-1.webp",
+        "width": 445,
+        "height": 822,
+        "bytes": 23594,
+        "sha256": "246d29fb2e0955902a89332b70f06c21022949f30d291fb557ea4d35f6875bf9",
+        "format": "webp"
+      },
+      "scenario": "Recuento de inventario de demostración: cantidades esperadas, contadas y diferencias antes de confirmar.",
+      "sourceComponents": [
+        "frontend/apps/app-pda/src/main.tsx",
+        "frontend/apps/app-pda/src/PdaStockCount.tsx"
+      ]
+    },
+    {
+      "application": "pda",
+      "step": 1,
+      "source": {
+        "path": "assets/marketing-sources/tour-steps/pda-2.jpg",
+        "width": 445,
+        "height": 822,
+        "bytes": 42646,
+        "sha256": "12ea6217712953840e1997ef4d5f97973dd6893a1b4faf00f6bd7b7866bff68b",
+        "format": "jpeg"
+      },
+      "output": {
+        "path": "public/marketing/steps/pda-2.webp",
+        "url": "/marketing/steps/pda-2.webp",
+        "width": 445,
+        "height": 822,
+        "bytes": 28288,
+        "sha256": "8470d0a2a5b3a837b73e06e2ff920f7ccbc1003459c35b8d0a8c29cd3acfe1c7",
+        "format": "webp"
+      },
+      "scenario": "Comprobación de mercancía contra un documento de entrada confirmado, sin registrar otra entrada de stock.",
+      "sourceComponents": [
+        "frontend/apps/app-pda/src/main.tsx",
+        "frontend/packages/app-common/src/components/GoodsCheckPanel.tsx"
+      ]
+    },
+    {
+      "application": "pda",
+      "step": 2,
+      "source": {
+        "path": "assets/marketing-sources/tour-steps/pda-3.jpg",
+        "width": 445,
+        "height": 822,
+        "bytes": 42971,
+        "sha256": "e835b4b68c9089eb7b3c09b114c8d3f7aef3aadf10927578ce44fea4d93f0847",
+        "format": "jpeg"
+      },
+      "output": {
+        "path": "public/marketing/steps/pda-3.webp",
+        "url": "/marketing/steps/pda-3.webp",
+        "width": 445,
+        "height": 822,
+        "bytes": 28038,
+        "sha256": "656c256d5ef9a1045bfe07f95880e647e79b83b7a374ee928e83c2a99655966e",
+        "format": "webp"
+      },
+      "scenario": "Preparación de una reposición de dos unidades entre almacenes de demostración, sin confirmar la transferencia.",
+      "sourceComponents": [
+        "frontend/apps/app-pda/src/main.tsx",
+        "frontend/apps/app-pda/src/PdaReplenishment.tsx"
+      ]
+    },
+    {
+      "application": "saas",
+      "step": 0,
+      "source": {
+        "path": "assets/marketing-sources/tour-steps/saas-1.jpg",
+        "width": 1280,
+        "height": 720,
+        "bytes": 73503,
+        "sha256": "f0e2d4c501e587b3c980a4cd14453264199ccf5ea151d4a84777e590a93a116b",
+        "format": "jpeg"
+      },
+      "output": {
+        "path": "public/marketing/steps/saas-1.webp",
+        "url": "/marketing/steps/saas-1.webp",
+        "width": 1280,
+        "height": 720,
+        "bytes": 49872,
+        "sha256": "4066604dc2a4e823254701930007ed38949e86cb00370a715f2e205d0b038d8a",
+        "format": "webp"
+      },
+      "scenario": "Consulta de documentos recibidos de tiendas autorizadas en el portal cliente, con datos ficticios.",
+      "sourceComponents": [
+        "frontend-saas/src/app/TenantApp.tsx",
+        "frontend-saas/src/features/tenant/TenantWorkspace.tsx",
+        "frontend-saas/src/features/tenant/TenantSupervision.tsx"
+      ]
+    },
+    {
+      "application": "saas",
+      "step": 1,
+      "source": {
+        "path": "assets/marketing-sources/tour-steps/saas-2.jpg",
+        "width": 1280,
+        "height": 720,
+        "bytes": 67071,
+        "sha256": "f16ac061df9c155fc3cd18f8d5710b26afa76b91ae675263489aa8ffca59e607",
+        "format": "jpeg"
+      },
+      "output": {
+        "path": "public/marketing/steps/saas-2.webp",
+        "url": "/marketing/steps/saas-2.webp",
+        "width": 1280,
+        "height": 720,
+        "bytes": 42892,
+        "sha256": "57a397bee05126b83abc518c041e915ba19b13d1abc4b45e36e9b095daf48a07",
+        "format": "webp"
+      },
+      "scenario": "Consulta de los contadores de sincronización recibidos para una tienda en el portal cliente.",
+      "sourceComponents": [
+        "frontend-saas/src/features/tenant/TenantSupervision.tsx"
+      ]
+    },
+    {
+      "application": "saas",
+      "step": 2,
+      "source": {
+        "path": "assets/marketing-sources/tour-steps/saas-3.jpg",
+        "width": 1280,
+        "height": 720,
+        "bytes": 55424,
+        "sha256": "ac5fc86481c9ad3b337632f3b8738bac26050adf00e2012a0ae65627c0795a92",
+        "format": "jpeg"
+      },
+      "output": {
+        "path": "public/marketing/steps/saas-3.webp",
+        "url": "/marketing/steps/saas-3.webp",
+        "width": 1280,
+        "height": 720,
+        "bytes": 36120,
+        "sha256": "586e83320018624f43471c7be486aee2cd4545c251dbfd5bcb0e3be3c93dcb25",
+        "format": "webp"
+      },
+      "scenario": "Conversación de soporte del portal cliente sobre la referencia de un documento ficticio del servicio.",
+      "sourceComponents": [
+        "frontend-saas/src/features/tenant/TenantPortal.tsx",
+        "frontend-saas/src/features/tenant/TenantSupportConversation.tsx"
+      ]
+    }
+  ]
+}

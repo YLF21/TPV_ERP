@@ -164,7 +164,7 @@ test("optimized image files preserve originals and enforce actual local byte/dim
   const manifest = JSON.parse(await localFile("public/marketing/optimized/manifest.json"));
   assert.equal(manifest.schemaVersion, 1);
   assert.equal(manifest.generator.tool, "sharp");
-  assert.deepEqual(manifest.images.map(image => image.id).sort(), Object.keys(originals).sort());
+  assert.deepEqual(manifest.images.map(image => image.id), ["contact-ecosystem"], "Only assets consumed by the site receive public derivatives");
   const expectedOutputPaths = new Set();
   for (const image of manifest.images) {
     await suite.test(`${image.id}: source integrity and generated representations`, async () => {
@@ -208,6 +208,16 @@ test("optimized image files preserve originals and enforce actual local byte/dim
       assert.ok(largestBytes.webp < baseline.bytes * 0.15, "Full-size WebP must reduce original bytes by at least 85%");
       assert.ok(largestBytes.jpeg < baseline.bytes * 0.25, "Compatible JPEG fallback must reduce original bytes by at least 75%");
     });
+  }
+  // The unused hero master remains available outside public, byte-identical;
+  // its unreferenced derivatives must not consume the deployed asset budget.
+  const hero = originals["hero-ecosystem"];
+  const heroMaster = await localFile("assets/marketing-sources/hero-ecosystem.png");
+  assert.equal(heroMaster.length, hero.bytes);
+  assert.equal(hash(heroMaster), hero.sha256);
+  assert.deepEqual(imageDimensions(heroMaster, "png"), { width: hero.width, height: hero.height });
+  for (const extension of ["avif", "webp", "jpg"]) {
+    await assert.rejects(lstat(path.join(optimizedRoot, `hero-ecosystem-865.${extension}`)), { code: "ENOENT" });
   }
   assert.deepEqual((await readdir(optimizedRoot)).sort(), ["manifest.json", ...expectedOutputPaths].sort(), "No stale masters or untracked generated variants are shipped");
 });

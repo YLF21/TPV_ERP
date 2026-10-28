@@ -18,7 +18,7 @@ export function ApplicationChooser({ language, onRequestApplications }: Applicat
   const applications = getMarketingContent(language).apps.items;
   const applicationName = (id: AppId) => applications[appMeta.findIndex((application) => application.id === id)][0];
 
-  return <details className="mk-application-chooser" data-testid="application-chooser">
+  return <details id="mk-home-applications" className="mk-application-chooser" data-testid="application-chooser">
     <summary>
       <span><strong>{copy.title}</strong><span>{copy.subtitle}</span></span>
       <CaretDown aria-hidden="true" />
@@ -37,7 +37,7 @@ export function ApplicationChooser({ language, onRequestApplications }: Applicat
             <p className="mk-application-choice-dependency"><strong>{copy.dependenciesLabel}: </strong>{scenarioCopy.dependency}</p>
             <a
               data-testid={`application-choice-${scenario.id}`}
-              href={`${marketingHref(language, "contacto")}${marketingContactSearch(scenario.applications)}`}
+              href={`${marketingHref(language, "contacto")}${marketingContactSearch(scenario.applications)}#mk-demo-form`}
               aria-label={`${copy.requestAction}: ${scenarioCopy.title}`}
               onClick={(event) => {
                 if (event.defaultPrevented || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;

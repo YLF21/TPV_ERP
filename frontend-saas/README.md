@@ -51,3 +51,65 @@ El backend debe exponer `GET /api/v1/admin/demo-requests/page` y
 `PUT /api/v1/admin/demo-requests/{id}/status`. La API de consulta admite `page`
 (base cero), `size`, `status` opcional y `query` opcional (máximo 160 caracteres).
 Las credenciales siguen el transporte Bearer y el vencimiento de sesión existentes.
+
+### Responsable, notas y próxima acción
+
+La tabla añade una sola columna de seguimiento: responsable, resumen de próxima
+acción y fecha, con indicación de vencimiento en solicitudes abiertas. El texto
+completo se consulta en el detalle. El formulario usa dos columnas y pasa a una
+en pantallas pequeñas; las notas históricas permanecen en un desplegable cerrado.
+
+El responsable se elige entre cuentas internas activas con `MANAGE_OPERATIONS`.
+Se puede dejar sin asignar o retirar la asignación. Consultar requiere
+`VIEW_ADMIN_DATA`; guardar el seguimiento requiere además `MANAGE_OPERATIONS`.
+El permiso histórico del cambio de estado no se modifica.
+
+La próxima acción admite hasta 500 caracteres y una fecha opcional. Una fecha
+necesita una descripción de la acción. La entrada usa la hora local del equipo
+del operador y se transmite como un instante UTC; se conserva la precisión de la
+fecha guardada si no se edita. El indicador de vencimiento se revisa cada minuto,
+usa el reloj del dispositivo y no es una alerta automática ni una cita reservada.
+
+Cada nota interna admite hasta 2.000 caracteres y se añade con autor y fecha del
+servidor. No sustituye al mensaje del cliente ni a notas anteriores. El detalle
+muestra las 100 más recientes y avisa cuando hay otras anteriores; no se borran
+por ese límite de presentación. No se han añadido edición ni borrado de notas.
+
+El guardado envía `expectedVersion` para el seguimiento, independiente del estado
+de la solicitud. Un conflicto 409 impide otra escritura hasta actualizar y revisar
+el detalle. El borrador se conserva para poder leerlo o copiarlo; descartarlo es
+una acción explícita. No hay reintento automático de una escritura en conflicto,
+ni guardado en almacenamiento local del navegador. Guardar el seguimiento o
+registrar una solicitud no envía mensajes al cliente.
+
+Endpoints adicionales, con respuestas `no-store`:
+
+- `GET /api/v1/admin/demo-requests/assignees`: nombres de usuario elegibles,
+  sin credenciales ni datos de configuración de las cuentas.
+- `GET /api/v1/admin/demo-requests/{id}/follow-up`: solicitud y notas internas.
+- `PUT /api/v1/admin/demo-requests/{id}/follow-up`: responsable, próxima acción,
+  fecha, nota opcional y versión esperada. La actualización, la nueva nota y la
+  auditoría se confirman en una misma transacción. La auditoría general contiene
+  identificadores y tipo de cambio, sin el texto de la acción, nota o contacto.
+
+Este código requiere la migración versionada
+`backend-saas/src/main/resources/db/migration/V82__marketing_demo_followup.sql`
+y el backend actualizado. Preparar la migración no significa que esté aplicada a
+la base de la aplicación. La revisión visual en navegador continúa pendiente por
+el bloqueo de acceso; las pruebas de código no certifican la geometría real.
+
+`node --test test/demo-follow-up.test.mjs test/demo-request-inbox.test.mjs`
+comprueba fechas locales/UTC, cambios de horario, vencimientos, traducciones y
+contratos de sesión, guardado y borradores. Se complementa con `npm test`, la
+compilación y las pruebas backend de permisos, validación y concurrencia.
+
+Validación de esta fase: `npm test` 111/111 y `npm run build` aprobados. En backend,
+62 pruebas unitarias, de controlador, repositorio y permisos, más los 8 casos de
+`DemoRequestPostgreSqlTest`, aprobados sin omisiones. La integración usó un clúster
+PostgreSQL 18.4 desechable en `127.0.0.1:65432`, una base de pruebas y un esquema
+aleatorio; no se usó `tpv_erp_saas` ni se cargó el `.env` de la aplicación. Se
+comprobaron las migraciones hasta V82, la lectura de los campos, la conservación
+del seguimiento al cambiar estado, un único ganador y una única nota ante dos
+editores, el reintento con versión antigua y la reversión completa si falla la
+inserción de una nota. El servidor temporal se detuvo al terminar. El backend y
+la base de la aplicación no se han reiniciado ni migrado en esta fase.

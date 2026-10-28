@@ -18,6 +18,9 @@ import type {
   DemoRequest,
   DemoRequestPage,
   DemoRequestStatus,
+  DemoRequestAssignee,
+  DemoRequestFollowUp,
+  UpdateDemoRequestFollowUp,
   LoginCredentials,
   CustomerHealth,
   DashboardData,
@@ -204,6 +207,15 @@ export const api = {
   },
   updateDemoRequestStatus(credentials: Credentials, id: string, status: DemoRequestStatus, expectedStatus: DemoRequestStatus) {
     return inboxRequest<DemoRequest>(credentials, `/api/v1/admin/demo-requests/${encodeURIComponent(id)}/status`, { method: "PUT", body: { status, expectedStatus } });
+  },
+  demoRequestAssignees(credentials: Credentials) {
+    return inboxRequest<DemoRequestAssignee[]>(credentials, "/api/v1/admin/demo-requests/assignees");
+  },
+  demoRequestFollowUp(credentials: Credentials, id: string) {
+    return inboxRequest<DemoRequestFollowUp>(credentials, `/api/v1/admin/demo-requests/${encodeURIComponent(id)}/follow-up`);
+  },
+  updateDemoRequestFollowUp(credentials: Credentials, id: string, body: UpdateDemoRequestFollowUp) {
+    return inboxRequest<DemoRequestFollowUp>(credentials, `/api/v1/admin/demo-requests/${encodeURIComponent(id)}/follow-up`, { method: "PUT", body });
   },
   tenantLogin(credentials: LoginCredentials) {
     return publicPost<LoginResponse>("/api/v1/auth/login", credentials);

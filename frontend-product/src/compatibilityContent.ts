@@ -58,7 +58,7 @@ const content: Record<MarketingLanguage, CompatibilityCopy> = {
       saas: { toConfirm: [
         "Versión del navegador y conexión a internet desde los equipos de consulta.",
         "Organización, tiendas vinculadas y alcance de consulta permitido a cada usuario.",
-        "Qué información llega de cada tienda y cómo comprobar la última sincronización antes de interpretar los datos."
+        "Qué información se ha recibido de cada tienda y cómo revisar el estado de sincronización antes de interpretar los datos."
       ] }
     }
   },
@@ -95,7 +95,7 @@ const content: Record<MarketingLanguage, CompatibilityCopy> = {
       saas: { toConfirm: [
         "Browser version and internet access from the devices used for viewing information.",
         "Organisation, linked stores and each user's permitted viewing scope.",
-        "What information arrives from each store and how to check the last synchronisation before interpreting the data."
+        "What information has been received from each store and how to review synchronisation status before interpreting the data."
       ] }
     }
   },
@@ -132,7 +132,7 @@ const content: Record<MarketingLanguage, CompatibilityCopy> = {
       saas: { toConfirm: [
         "查询设备的浏览器版本及互联网连接。",
         "所属组织、关联门店，以及各用户获准查询的范围。",
-        "各门店上传的信息范围，以及判断数据前如何查询最近同步时间。"
+        "各门店已接收的信息范围，以及解读数据前如何检查同步状态。"
       ] }
     }
   }

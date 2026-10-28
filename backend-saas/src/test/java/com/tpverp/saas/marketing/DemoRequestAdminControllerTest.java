@@ -28,7 +28,8 @@ class DemoRequestAdminControllerTest {
                 null, "Necesitamos inventarios", "es", "/producto/contacto",
                 "https://partner.example/campaign", "partner", "referral", "retail-2026",
                 "NEW", receivedAt, receivedAt)));
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(new DemoRequestAdminController(service)).build();
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new DemoRequestAdminController(service,
+                mock(DemoRequestFollowUpService.class))).build();
 
         mvc.perform(get("/api/v1/admin/demo-requests"))
                 .andExpect(status().isOk())

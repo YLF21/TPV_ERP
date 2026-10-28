@@ -43,7 +43,7 @@ test("demo inbox follows admin permission and non-optimistic update contracts", 
   assert.match(view, /nextStatus, selected\.status\)/);
   assert.match(view, /error\.status === 409[\s\S]*setNeedsRefresh\(true\)/);
   assert.match(view, /disabled=\{busy \|\| needsRefresh\}/);
-  assert.match(view, /query: id/);
+  assert.match(view, /api\.demoRequestFollowUp\(credentials, id\)/, "Refresh the exact record and its notes instead of a filtered inbox page");
   assert.match(view, /demoRefreshDetail/);
   assert.doesNotMatch(view, /APP Gestión|UTM source \/ medium \/ campaign/);
   assert.match(types, /"demo-requests"/);

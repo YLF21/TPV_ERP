@@ -171,10 +171,17 @@ describe("WarehouseOperationsScreen", () => {
   });
 
   it("opens the adjustment form with F5 without changing stock and ignores F5 while it is open", async () => {
+    let resolveWarehouses!: (value: typeof resources.warehouses) => void;
+    vi.mocked(api.loadWarehouseOptions).mockReturnValueOnce(new Promise((resolve) => {
+      resolveWarehouses = resolve;
+    }));
     render(<WarehouseOperationsScreen session={session(["STOCK_ADJUST"])} mode="adjustment" t={t} />);
     fireEvent.keyDown(window, { key: "F5" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    const command = await screen.findByRole("button", { name: "warehouse.adjustment.perform" });
+    expect(screen.queryByRole("button", { name: "warehouse.adjustment.perform" })).not.toBeInTheDocument();
+    // Flush the loading transition and shortcut effect before dispatching the ready-state key.
+    await act(async () => { resolveWarehouses(resources.warehouses); });
+    const command = screen.getByRole("button", { name: "warehouse.adjustment.perform" });
     expect(command).toHaveAttribute("aria-keyshortcuts", "F5");
     fireEvent.keyDown(window, { key: "F5" });
     expect(await screen.findByRole("dialog", { name: "warehouse.adjustment.perform" })).toBeInTheDocument();

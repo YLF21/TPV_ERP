@@ -24,14 +24,6 @@ const sources = [
     responsiveWidths: [480, 768, 1024, 1536],
     jpegWidths: [768, 1536],
   },
-  {
-    id: "hero-ecosystem",
-    width: 865,
-    height: 795,
-    sha256: "18421de4e08e7e80a646d51411e1694291627bb725a7bc75fb4bb7d24b45f5e6",
-    responsiveWidths: [865],
-    jpegWidths: [865],
-  },
 ];
 
 function parseArguments(arguments_) {

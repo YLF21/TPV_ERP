@@ -7,11 +7,18 @@ import {
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent, type UIEvent } from "react";
 import { getMarketingContent, type MarketingLanguage } from "./marketingI18n";
 import { getMarketingUiContent } from "./marketingUiI18n";
+import { getApplicationPreviewAlts } from "./applicationPreviewContent";
 import { productBrand } from "./brand";
 import { marketingContact } from "./contact";
 import { ApplicationExplorer } from "./ApplicationExplorer";
 import { ApplicationChooser } from "./ApplicationChooser";
+import { getApplicationChoices } from "./applicationChoices";
 import { AdvantagesComparison } from "./AdvantagesComparison";
+import { ComparisonDecisionHelp } from "./ComparisonDecisionHelp";
+import { ProductImportHelp } from "./ProductImportHelp";
+import { SectorCases } from "./SectorCases";
+import { ConnectedScenario } from "./ConnectedScenario";
+import { DemoRequestReceipt } from "./DemoRequestReceipt";
 import { ConnectionSummary } from "./ConnectionSummary";
 import { ImplementationJourney } from "./ImplementationJourney";
 import { CompatibilityChecklist } from "./CompatibilityChecklist";
@@ -20,7 +27,7 @@ import { MarketingImage } from "./MarketingImage";
 import { marketingImageSizes } from "./marketingImages";
 import { appMeta, type AppId, type MarketingCopy } from "./applicationMetadata";
 import { MarketingDialogLoader } from "./MarketingDialogLoader";
-import { MarketingLanguageProvider, MarketingLink, navigateMarketing } from "./MarketingNavigation";
+import { demoFormHash, focusDemoForm, isLanguageOnlyNavigation, MarketingLanguageProvider, MarketingLink, navigateMarketing, readMarketingNavigation } from "./MarketingNavigation";
 import { marketingHref, readMarketingLocation, routeIds, type MarketingRoute } from "./marketingRoutes";
 import { createCampaignAttribution, marketingContactSearch, parseRequestedApplications, type MarketingAttribution } from "./marketingCampaign";
 import { checkDemoAvailability, createDemoRequestAttempts, demoFieldLimits, DemoRequestError, submitDemoRequest, type DemoReceipt, type DemoRequestFailure } from "./demoRequests";
@@ -67,7 +74,8 @@ export default function MarketingPage({ language, onLanguageChange }: { language
   const [tourApp, setTourApp] = useState<AppId | null>(null);
   const [preferredApps, setPreferredApps] = useState<AppId[]>(() => parseRequestedApplications(window.location.search) ?? ["venta"]);
   const [attribution] = useState<MarketingAttribution>(readMarketingAttribution);
-  const previousSearchRef = useRef(window.location.search);
+  const [contactVisit, setContactVisit] = useState(0);
+  const previousNavigationRef = useRef(readMarketingNavigation(window.location));
   const pageRef = useRef<HTMLDivElement | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -77,33 +85,35 @@ export default function MarketingPage({ language, onLanguageChange }: { language
 
   useEffect(() => {
     const syncTab = () => {
-      setActiveTab(readMarketingTab());
-      if (previousSearchRef.current !== window.location.search) {
+      const next = readMarketingNavigation(window.location);
+      const previous = previousNavigationRef.current;
+      setActiveTab(next.route);
+      if (previous.route !== next.route) { setDownloadsOpen(false); setTourApp(null); }
+      if (previous.search !== next.search) {
         // Ordinary navigation drops query parameters, not the visitor's chosen apps.
         // Only another explicit, valid application choice replaces that preference.
         const requestedApps = parseRequestedApplications(window.location.search);
         if (requestedApps) setPreferredApps(requestedApps);
-        previousSearchRef.current = window.location.search;
       }
+      if (next.route === "contacto" && (!next.target || next.target === demoFormHash) && !isLanguageOnlyNavigation(previous, next)) setContactVisit((visit) => visit + 1);
+      previousNavigationRef.current = next;
     };
-    syncTab();
     window.addEventListener("hashchange", syncTab);
     window.addEventListener("popstate", syncTab);
     return () => { window.removeEventListener("hashchange", syncTab); window.removeEventListener("popstate", syncTab); };
   }, []);
 
   useEffect(() => {
-    pageRef.current?.scrollTo({ top: 0, behavior: "auto" });
+    const demoFocused = activeTab === "contacto" && window.location.hash === demoFormHash && focusDemoForm(pageRef.current);
+    if (!demoFocused) pageRef.current?.scrollTo({ top: 0, behavior: "instant" });
     setMenuOpen(false);
     setScrolled(false);
-    // Do not steal focus when the page first loads or its language changes.
+    // A demo entry focuses its heading; ordinary route changes focus main.
     if (previousTabRef.current !== activeTab) {
-      setDownloadsOpen(false);
-      setTourApp(null);
-      mainRef.current?.focus({ preventScroll: true });
+      if (!demoFocused) mainRef.current?.focus({ preventScroll: true });
     }
     previousTabRef.current = activeTab;
-  }, [activeTab]);
+  }, [activeTab, contactVisit]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -127,7 +137,7 @@ export default function MarketingPage({ language, onLanguageChange }: { language
 
   function requestApplications(apps: readonly AppId[]) {
     setPreferredApps([...apps]);
-    navigateMarketing(`${marketingHref(language, "contacto")}${marketingContactSearch(apps)}`);
+    navigateMarketing(`${marketingHref(language, "contacto")}${marketingContactSearch(apps)}${demoFormHash}`);
   }
 
   function followMarketingLink(event: ReactMouseEvent<HTMLDivElement>) {
@@ -136,10 +146,10 @@ export default function MarketingPage({ language, onLanguageChange }: { language
     const link = event.target.closest<HTMLAnchorElement>("a[href]");
     if (!link || link.target && link.target !== "_self" || link.hasAttribute("download")) return;
     const target = new URL(link.href, window.location.origin);
-    if (target.origin !== window.location.origin || !/^\/(es|en|zh)\/producto\/(inicio|solucion|funcionalidades|apps|ventajas|contacto)\/$/.test(target.pathname) || target.hash) return;
+    if (target.origin !== window.location.origin || !/^\/(es|en|zh)\/producto\/(inicio|solucion|funcionalidades|apps|ventajas|contacto)\/$/.test(target.pathname) || target.hash && (target.hash !== demoFormHash || !target.pathname.endsWith("/contacto/"))) return;
     event.preventDefault();
     setMenuOpen(false);
-    navigateMarketing(`${target.pathname}${target.search}`);
+    navigateMarketing(`${target.pathname}${target.search}${target.hash}`);
   }
 
   return <MarketingLanguageProvider value={language}><div className="mk-page" ref={pageRef} onScroll={updateHeader} onClick={followMarketingLink}>
@@ -160,11 +170,11 @@ export default function MarketingPage({ language, onLanguageChange }: { language
     </header>
 
     <main id="mk-main-content" className="mk-main-content" ref={mainRef} tabIndex={-1} aria-label={copy.navigation[navigation.indexOf(activeTab)]}>
-    {activeTab === "inicio" && <HomePage copy={copy} />}
+    {activeTab === "inicio" && <HomePage copy={copy} language={language} onRequestApplications={requestApplications} />}
     {activeTab === "solucion" && <SolutionPage copy={copy} language={language} />}
     {activeTab === "apps" && <AppsPage copy={copy} language={language} onOpenTour={setTourApp} onRequestDemo={(app) => requestApplications([app])} onRequestApplications={requestApplications} />}
     {activeTab === "ventajas" && <AdvantagesPage copy={copy} language={language} />}
-    {activeTab === "contacto" && <ContactPage copy={copy} language={language} initialApps={preferredApps} attribution={attribution} />}
+    {activeTab === "contacto" && <ContactPage copy={copy} language={language} initialApps={preferredApps} onSelectionChange={setPreferredApps} attribution={attribution} />}
     </main>
 
     <footer className="mk-footer">
@@ -180,7 +190,7 @@ export default function MarketingPage({ language, onLanguageChange }: { language
   </div></MarketingLanguageProvider>;
 }
 
-function HomePage({ copy }: { copy: MarketingCopy }) {
+function HomePage({ copy, language, onRequestApplications }: { copy: MarketingCopy; language: MarketingLanguage; onRequestApplications: (apps: readonly AppId[]) => void }) {
   return <div className="mk-home-page">
     <section className="mk-hero">
       <div className="mk-grid-decoration" aria-hidden="true" />
@@ -188,7 +198,7 @@ function HomePage({ copy }: { copy: MarketingCopy }) {
         <p className="mk-hero-kicker">{copy.home.kicker}</p>
         <h1>{copy.home.title}<br /><em>{copy.home.titleAccent}</em></h1>
         <p className="mk-lead"><strong>{copy.home.lead}</strong><span>{copy.home.body}</span></p>
-        <div className="mk-actions"><MarketingLink className="mk-primary" href="#/producto/contacto">{copy.common.demo} <ArrowRight /></MarketingLink><MarketingLink className="mk-secondary" href="#/producto/solucion">{copy.common.exploreSolution}</MarketingLink></div>
+        <div className="mk-actions"><MarketingLink demo className="mk-primary" href="#/producto/contacto">{copy.common.demo} <ArrowRight /></MarketingLink><MarketingLink className="mk-secondary" href="#mk-home-applications">{getApplicationChoices(language).title}</MarketingLink></div>
         <ul className="mk-checks">{copy.home.checks.map((item) => <li key={item}><Check weight="bold" /> {item}</li>)}</ul>
       </div>
       <div className="mk-hero-product"><MarketingImage image="contactEcosystem" alt={`esPOS · ${copy.common.applications}`} sizes={marketingImageSizes.home} loading="eager" fetchPriority="high" /><div className="mk-proof-panel" aria-label={copy.growth.proof.title}>{copy.growth.proof.metrics.map(([value, label]) => <span key={label}><strong>{value}</strong><small>{label}</small></span>)}</div></div>
@@ -199,14 +209,13 @@ function HomePage({ copy }: { copy: MarketingCopy }) {
         return <article key={title}><BenefitIcon weight="duotone" aria-hidden="true" /><span><strong>{title}</strong><small>{body}</small></span></article>;
       })}
     </section>
+    <ApplicationChooser language={language} onRequestApplications={onRequestApplications} />
     <section className="mk-intro">
       <p className="mk-kicker">{copy.home.introKicker}</p>
       <h2>{copy.home.introTitle}<br /><span>{copy.home.introAccent}</span></h2>
       <p>{copy.home.introBody}</p>
       <MarketingLink href="#/producto/solucion">{copy.home.introLink} <ArrowRight /></MarketingLink>
-      <div className="mk-home-sector-preview" aria-label={copy.growth.sectors.title}>
-        {copy.growth.sectors.items.map(([id, label, headline, , bullets]) => <article key={id}><p>{label}</p><h3>{headline}</h3><small><Check weight="bold" aria-hidden="true" />{bullets[0]}</small></article>)}
-      </div>
+      <SectorCases copy={copy} language={language} onRequestApplications={onRequestApplications} />
     </section>
   </div>;
 }
@@ -222,6 +231,7 @@ function SolutionPage({ copy, language }: { copy: MarketingCopy; language: Marke
       })}
     </div>
     <FeaturesSection copy={copy} />
+    <ConnectedScenario language={language} />
     <div className="mk-dark-band"><div><p className="mk-kicker">{copy.solution.bandKicker}</p><h2>{copy.solution.bandTitle}</h2><p>{copy.solution.bandBody}</p></div><MarketingLink className="mk-primary" href="#/producto/apps">{copy.solution.bandAction} <ArrowRight aria-hidden="true" /></MarketingLink></div>
   </section>;
 }
@@ -240,10 +250,12 @@ function FeaturesSection({ copy }: { copy: MarketingCopy }) {
 }
 
 function AppsPage({ copy, language, onOpenTour, onRequestDemo, onRequestApplications }: { copy: MarketingCopy; language: MarketingLanguage; onOpenTour: (app: AppId) => void; onRequestDemo: (app: AppId) => void; onRequestApplications: (apps: readonly AppId[]) => void }) {
+  const previewAlts = getApplicationPreviewAlts(language);
   return <section className="mk-inner-page mk-apps-page">
     <MarketingHeading kicker={copy.apps.kicker} title={copy.apps.title} accent={copy.apps.accent} body={copy.apps.body} secondaryHref="#/producto/ventajas" secondaryLabel={copy.common.compareOptions} copy={copy} />
     <ApplicationChooser language={language} onRequestApplications={onRequestApplications} />
-    <ApplicationExplorer language={language} applications={appMeta.map(({ id }, index) => ({ id, name: copy.apps.items[index][0], label: copy.apps.items[index][1], description: copy.apps.items[index][2], previewAlt: copy.tour.previewAlts[index] }))} onOpenTour={onOpenTour} onRequestDemo={onRequestDemo} />
+    <ApplicationExplorer language={language} applications={appMeta.map(({ id }, index) => ({ id, name: copy.apps.items[index][0], label: copy.apps.items[index][1], description: copy.apps.items[index][2], previewAlt: previewAlts[id] }))} onOpenTour={onOpenTour} onRequestDemo={onRequestDemo} />
+    <ProductImportHelp language={language} />
     <ImplementationJourney language={language} />
     <CompatibilityChecklist language={language} />
     <SupportInformation language={language} />
@@ -254,6 +266,7 @@ function AdvantagesPage({ copy, language }: { copy: MarketingCopy; language: Mar
   return <section className="mk-inner-page mk-advantages-page">
     <MarketingHeading kicker={copy.advantagesPage.kicker} title={copy.advantagesPage.title} accent={copy.advantagesPage.accent} body={copy.advantagesPage.body} secondaryHref="#/producto/apps" secondaryLabel={copy.common.seeApps} copy={copy} />
     <AdvantagesComparison copy={copy.advantagesPage} language={language} />
+    <ComparisonDecisionHelp language={language} />
   </section>;
 }
 
@@ -262,13 +275,20 @@ function MarketingHeading({ kicker, title, accent, body, secondaryHref, secondar
     <div className="mk-page-heading-title"><p className="mk-kicker">{kicker}</p><h1>{title}<br /><span>{accent}</span></h1></div>
     <div className="mk-page-heading-support">
       <p>{body}</p>
-      <div className="mk-heading-actions"><MarketingLink className="mk-primary" href="#/producto/contacto">{copy.common.demo} <ArrowRight /></MarketingLink><MarketingLink href={secondaryHref}>{secondaryLabel} <ArrowRight /></MarketingLink></div>
+      <div className="mk-heading-actions"><MarketingLink demo className="mk-primary" href="#/producto/contacto">{copy.common.demo} <ArrowRight /></MarketingLink><MarketingLink href={secondaryHref}>{secondaryLabel} <ArrowRight /></MarketingLink></div>
       <small><ShieldCheck weight="fill" /> {copy.common.demoHint}</small>
     </div>
   </header>;
 }
 
-function ContactPage({ copy, language, initialApps, attribution }: { copy: MarketingCopy; language: MarketingLanguage; initialApps: readonly AppId[]; attribution: MarketingAttribution }) {
+export function getContactFieldError(field: string, code: string, copy: MarketingCopy): string {
+  const delivery = copy.contact.delivery;
+  if (code === "REQUIRED" || code === "MUST_ACCEPT") return delivery.fieldRequired;
+  if (code === "TOO_LONG" && field in demoFieldLimits) return delivery.tooLong.replace("{max}", String(demoFieldLimits[field as keyof typeof demoFieldLimits]));
+  return field === "email" ? delivery.emailInvalid : delivery.validation;
+}
+
+function ContactPage({ copy, language, initialApps, onSelectionChange, attribution }: { copy: MarketingCopy; language: MarketingLanguage; initialApps: readonly AppId[]; onSelectionChange: (apps: AppId[]) => void; attribution: MarketingAttribution }) {
   const [wechatQrOpen, setWechatQrOpen] = useState(false);
   const [wechatCopyState, setWechatCopyState] = useState<"idle" | "copied" | "error">("idle");
   const wechatIdRef = useRef<HTMLInputElement | null>(null);
@@ -278,7 +298,7 @@ function ContactPage({ copy, language, initialApps, attribution }: { copy: Marke
   const [submitState, setSubmitState] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [availability, setAvailability] = useState<"checking" | "available" | "unavailable">("checking");
   const [failure, setFailure] = useState<DemoRequestFailure | null>(null);
-  const [receipt, setReceipt] = useState<DemoReceipt | null>(null);
+  const [receipt, setReceipt] = useState<(DemoReceipt & { applications: readonly AppId[] }) | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const availabilityAbort = useRef<AbortController | null>(null);
   const submitAbort = useRef<AbortController | null>(null);
@@ -335,7 +355,7 @@ function ContactPage({ copy, language, initialApps, attribution }: { copy: Marke
   }
 
   function fieldError(field: string) {
-    return fieldErrors[field] ? <span id={`mk-contact-${field}-error`} className="mk-field-error">{fieldErrors[field]}</span> : null;
+    return fieldErrors[field] ? <span id={`mk-contact-${field}-error`} className="mk-field-error">{getContactFieldError(field, fieldErrors[field], copy)}</span> : null;
   }
 
   useEffect(() => {
@@ -361,6 +381,7 @@ function ContactPage({ copy, language, initialApps, attribution }: { copy: Marke
 
   function selectApplications(apps: AppId[]) {
     setSelectedApps(apps);
+    onSelectionChange(apps);
     setSelectionError(false);
     clearSubmissionFeedback();
   }
@@ -382,21 +403,22 @@ function ContactPage({ copy, language, initialApps, attribution }: { copy: Marke
     const values = Object.fromEntries(Object.keys(demoFieldLimits).map((field) => [field, String(data.get(field) ?? "").trim()]));
     const errors: Record<string, string> = {};
     for (const [field, max] of Object.entries(demoFieldLimits)) {
-      if (["name", "company", "email"].includes(field) && !values[field]) errors[field] = copy.contact.delivery.fieldRequired;
-      else if (values[field].length > max) errors[field] = copy.contact.delivery.tooLong.replace("{max}", String(max));
+      if (["name", "company", "email"].includes(field) && !values[field]) errors[field] = "REQUIRED";
+      else if (values[field].length > max) errors[field] = "TOO_LONG";
     }
     const emailInput = form.elements.namedItem("email") as HTMLInputElement;
     // Trim before native email validation, so accidental surrounding spaces are harmless.
     emailInput.value = values.email;
-    if (values.email && emailInput.validity.typeMismatch) errors.email = copy.contact.delivery.emailInvalid;
-    if (data.get("privacyAccepted") !== "on") errors.privacyAccepted = copy.contact.delivery.fieldRequired;
+    if (values.email && emailInput.validity.typeMismatch) errors.email = "INVALID";
+    if (data.get("privacyAccepted") !== "on") errors.privacyAccepted = "MUST_ACCEPT";
     setFieldErrors(errors);
     if (Object.keys(errors).length) {
       const first = form.elements.namedItem(Object.keys(errors)[0]);
       if (first instanceof HTMLElement) first.focus();
       return;
     }
-    const products = appMeta.filter(({ id }) => selectedApps.includes(id)).map(({ id }) => `APP_${id.toUpperCase()}`);
+    const requestedApplications = appMeta.filter(({ id }) => selectedApps.includes(id)).map(({ id }) => id);
+    const products = requestedApplications.map(id => `APP_${id.toUpperCase()}`);
     const body = JSON.stringify({
       product: products[0], products, ...values, locale: language,
       privacyAccepted: data.get("privacyAccepted") === "on",
@@ -415,17 +437,15 @@ function ContactPage({ copy, language, initialApps, attribution }: { copy: Marke
       setSelectedApps([...initialApps]);
       setSelectionError(false);
       setFieldErrors({});
-      setReceipt(received);
+      setReceipt({ ...received, applications: requestedApplications });
       requestAttempts.complete(body);
       setSubmitState("success");
     } catch (error) {
       if (controller.signal.aborted) return;
       const requestError = error instanceof DemoRequestError ? error : new DemoRequestError("network");
-      const serverErrors = Object.fromEntries(Object.entries(requestError.fields).map(([field, code]) => [field,
-        code === "REQUIRED" || code === "MUST_ACCEPT" ? copy.contact.delivery.fieldRequired
-          : code === "TOO_LONG" && field in demoFieldLimits ? copy.contact.delivery.tooLong.replace("{max}", String(demoFieldLimits[field as keyof typeof demoFieldLimits]))
-            : field === "email" ? copy.contact.delivery.emailInvalid : copy.contact.delivery.validation]));
-      setFieldErrors(serverErrors);
+      // Keep validated codes, not translated strings, so changing language also
+      // changes existing field feedback without resetting the entered values.
+      setFieldErrors(requestError.fields);
       setFailure(requestError.kind);
       setSubmitState("error");
     } finally {
@@ -464,7 +484,7 @@ function ContactPage({ copy, language, initialApps, attribution }: { copy: Marke
             const [name, label] = copy.apps.items[index];
             return <button type="button" key={id} className={`mk-contact-product tone-${index}${selectedApps.includes(id) ? " is-selected" : ""}`} aria-pressed={selectedApps.includes(id)} onClick={() => toggleApplication(id)} disabled={submitState === "submitting"}>
             <AppIcon weight="duotone" aria-hidden="true" />
-            <span><small>APP</small><strong>{name.replace(/^APP | App$| 应用$/g, "")}</strong><em>{label}</em></span>
+            <span><small>APP</small><strong>{name}</strong><em>{label}</em></span>
             <Check className="mk-contact-product-check" weight="bold" aria-hidden="true" />
           </button>})}
         </div>
@@ -478,7 +498,7 @@ function ContactPage({ copy, language, initialApps, attribution }: { copy: Marke
         <SupportInformation language={language} showAccount={false} onContactWechat={() => { setFaqOpen(false); setWechatQrOpen(true); }} />
       </div>
 
-      <form className="mk-contact-form" onSubmit={prepareDemo} noValidate onInput={(event) => {
+      <form className="mk-contact-form" aria-labelledby="mk-demo-form" onSubmit={prepareDemo} noValidate onInput={(event) => {
         if (submitState === "submitting") return;
         clearSubmissionFeedback();
         const target = event.target;
@@ -487,7 +507,7 @@ function ContactPage({ copy, language, initialApps, attribution }: { copy: Marke
         }
       }}>
         <p className="mk-contact-form-tag">{copy.contact.formTag}</p>
-        <h2>{copy.contact.formTitle}</h2>
+        <h2 id="mk-demo-form" tabIndex={-1}>{copy.contact.formTitle}</h2>
         <p>{copy.contact.formBody}</p>
         <div className="mk-delivery-status" data-state={availability}>
           <p role="status" aria-live="polite">{copy.contact.delivery[availability]}</p>
@@ -524,7 +544,7 @@ function ContactPage({ copy, language, initialApps, attribution }: { copy: Marke
         <button className="mk-contact-submit" type="submit" disabled={submitState === "submitting" || availability !== "available"} aria-busy={submitState === "submitting"}>{submitState === "submitting" ? copy.contact.submitting : submitState === "error" ? copy.contact.delivery.retrySubmit : copy.contact.submit} <PaperPlaneTilt weight="bold" /></button>
         <button className="mk-contact-talk" type="button" onClick={() => setFaqOpen(true)}><Question weight="bold" /> {copy.contact.faqAction}</button>
         {submitState === "success" && <p className="mk-contact-prepared" role="status">{copy.contact.success}</p>}
-        {receipt && <p className="mk-demo-receipt">{copy.contact.delivery.receiptLabel}: <code>{receipt.id}</code></p>}
+        {receipt && <DemoRequestReceipt receipt={receipt} applications={receipt.applications} language={language} />}
         {submitState === "error" && failure && <>
           <p ref={errorSummaryRef} className="mk-contact-error mk-form-error-summary" role="alert" tabIndex={-1}>{copy.contact.delivery[failure]}</p>
           <div className="mk-delivery-actions"><button type="button" onClick={() => setWechatQrOpen(true)}>{copy.contact.delivery.viaWechat}</button></div>

@@ -34,10 +34,11 @@ test("application explorer server-render contract (no browser or HTTP)", async s
 
   try {
     assert.equal(server.httpServer, null, "SSR tests must never create a listening HTTP server");
-    const [{ ApplicationExplorer }, { getMarketingContent }, { getApplicationGuides }] = await Promise.all([
+    const [{ ApplicationExplorer }, { getMarketingContent }, { getApplicationGuides }, { getApplicationPreviewAlts }] = await Promise.all([
       server.ssrLoadModule("/src/ApplicationExplorer.tsx"),
       server.ssrLoadModule("/src/marketingI18n.ts"),
-      server.ssrLoadModule("/src/applicationGuides.ts")
+      server.ssrLoadModule("/src/applicationGuides.ts"),
+      server.ssrLoadModule("/src/applicationPreviewContent.ts")
     ]);
     let callbackCount = 0;
     const onAction = () => { callbackCount += 1; };
@@ -48,7 +49,7 @@ test("application explorer server-render contract (no browser or HTTP)", async s
         name: marketing.apps.items[index][0],
         label: marketing.apps.items[index][1],
         description: marketing.apps.items[index][2],
-        previewAlt: marketing.tour.previewAlts[index]
+        previewAlt: getApplicationPreviewAlts(language)[id]
       }));
     };
     const render = (language, applications = applicationProps(language)) => renderToStaticMarkup(createElement(ApplicationExplorer, {
@@ -116,7 +117,7 @@ test("application explorer server-render contract (no browser or HTTP)", async s
         for (const application of applications) requireText(markup, application.name);
         for (const label of [copy.tourAction, copy.demoAction, copy.consultAction, copy.scopeNote]) requireText(markup, label);
         const anchors = tags(markup, "a");
-        assert.equal(anchors.filter(anchor => anchor.href === `/${language}/producto/contacto/?apps=venta`).length, 1, "Only the demo action should request contact for the selected app");
+        assert.equal(anchors.filter(anchor => anchor.href === `/${language}/producto/contacto/?apps=venta#mk-demo-form`).length, 1, "Only the demo action should request contact for the selected app");
         const preparation = anchors.find(anchor => anchor["data-testid"] === "guide-preparation-action");
         assert.equal(preparation?.href, `/${language}/producto/apps/#mk-implementation-journey`);
         assert.equal(preparation?.["aria-controls"], "mk-implementation-journey");

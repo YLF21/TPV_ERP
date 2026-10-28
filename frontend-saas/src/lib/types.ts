@@ -38,8 +38,22 @@ export type DemoRequest = {
   status: DemoRequestStatus;
   privacyAcceptedAt: string;
   createdAt: string;
+  assigneeUsername: string | null;
+  nextAction: string | null;
+  nextActionAt: string | null;
+  followUpVersion: number;
 };
 export type DemoRequestPage = { items: DemoRequest[]; total: number; page: number; size: number };
+export type DemoRequestAssignee = { username: string };
+export type DemoRequestNote = { id: string; author: string; body: string; createdAt: string };
+export type DemoRequestFollowUp = { request: DemoRequest; notes: DemoRequestNote[]; hasMoreNotes: boolean };
+export type UpdateDemoRequestFollowUp = {
+  assigneeUsername: string | null;
+  nextAction: string | null;
+  nextActionAt: string | null;
+  note: string | null;
+  expectedVersion: number;
+};
 
 export type LoginCredentials = {
   username: string;

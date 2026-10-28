@@ -140,45 +140,6 @@
           "sha256": "40a4122181b8db558505f801f4ddd7bf24fc152315b08d05acfd5f2f710b419a"
         }
       ]
-    },
-    {
-      "id": "hero-ecosystem",
-      "source": {
-        "path": "assets/marketing-sources/hero-ecosystem.png",
-        "sha256": "18421de4e08e7e80a646d51411e1694291627bb725a7bc75fb4bb7d24b45f5e6",
-        "width": 865,
-        "height": 795,
-        "bytes": 777623
-      },
-      "outputs": [
-        {
-          "path": "public/marketing/optimized/hero-ecosystem-865.avif",
-          "url": "/marketing/optimized/hero-ecosystem-865.avif",
-          "format": "avif",
-          "width": 865,
-          "height": 795,
-          "bytes": 44217,
-          "sha256": "71e2f4d368ad128ada24bebad5ec8d7734f9f1b37489a3395b9c2fef6b7c83cf"
-        },
-        {
-          "path": "public/marketing/optimized/hero-ecosystem-865.webp",
-          "url": "/marketing/optimized/hero-ecosystem-865.webp",
-          "format": "webp",
-          "width": 865,
-          "height": 795,
-          "bytes": 70308,
-          "sha256": "3568784f0910249945f2910a1536584fcb7899630de651a49b0aa9684d0e7674"
-        },
-        {
-          "path": "public/marketing/optimized/hero-ecosystem-865.jpg",
-          "url": "/marketing/optimized/hero-ecosystem-865.jpg",
-          "format": "jpeg",
-          "width": 865,
-          "height": 795,
-          "bytes": 137083,
-          "sha256": "d3a05f4ea60cac2aab62f6bc211f6463ece06848c13f7734d81d764fa55f1a9d"
-        }
-      ]
     }
   ]
 }

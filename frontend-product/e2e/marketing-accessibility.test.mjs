@@ -11,7 +11,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const languages = ["es", "en", "zh"];
 const routes = ["inicio", "solucion", "funcionalidades", "apps", "ventajas", "contacto"];
 const navigationRoutes = ["inicio", "solucion", "apps", "ventajas", "contacto"];
-const uiKeys = ["skipToContent", "primaryNavigation", "openMenu", "closeMenu", "closeDialog", "tourApplications", "tourSteps"];
+const uiKeys = ["skipToContent", "primaryNavigation", "openMenu", "closeMenu", "tourApplications", "tourSteps"];
 const escapeHtml = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#x27;");
 
 // This parser only examines controlled React SSR output. It is not a DOM, layout
@@ -64,13 +64,14 @@ test("marketing accessibility contracts without a browser, HTTP or hydration", a
 
   try {
     assert.equal(server.httpServer, null, "The Vite loader must not create a listening HTTP server");
-    const [{ default: MarketingPage }, { getMarketingContent }, { getMarketingUiContent }, helpers, { getApplicationGuides }, { marketingContact }] = await Promise.all([
+    const [{ default: MarketingPage }, { getMarketingContent }, { getMarketingUiContent }, helpers, { getApplicationGuides }, { marketingContact }, { getApplicationChoices }] = await Promise.all([
       server.ssrLoadModule("/src/MarketingPage.tsx"),
       server.ssrLoadModule("/src/marketingI18n.ts"),
       server.ssrLoadModule("/src/marketingUiI18n.ts"),
       server.ssrLoadModule("/src/marketingAccessibility.ts"),
       server.ssrLoadModule("/src/applicationGuides.ts"),
-      server.ssrLoadModule("/src/contact.ts")
+      server.ssrLoadModule("/src/contact.ts"),
+      server.ssrLoadModule("/src/applicationChoices.ts")
     ]);
     const render = (language, route, search = "", entry = "hash") => {
       location.pathname = entry === "path" ? `/${language}/producto/${route}/` : "/";
@@ -220,14 +221,16 @@ test("marketing accessibility contracts without a browser, HTTP or hydration", a
         assert.equal(tags(benefits, "article").length, copy.home.benefits.length);
         for (const texts of copy.home.benefits) for (const text of texts) requireText(benefits, text);
         for (const text of [copy.home.introKicker, copy.home.introTitle, copy.home.introAccent, copy.home.introBody, copy.home.introLink]) requireText(home, text);
-        const sectors = home.match(/<div\b[^>]*class="mk-home-sector-preview"[^>]*>([\s\S]*?)<\/div>/)?.[1];
-        assert.ok(sectors);
+        const sectorsStart = home.indexOf('class="mk-home-sector-preview"');
+        assert.ok(sectorsStart >= 0);
+        // Sector disclosures can contain nested blocks; keep their complete contents.
+        const sectors = home.slice(sectorsStart);
         assert.equal(copy.growth.sectors.items.length, 4);
         assert.equal(tags(sectors, "article").length, copy.growth.sectors.items.length);
         for (const [, label, headline, , bullets] of copy.growth.sectors.items) for (const text of [label, headline, bullets[0]]) requireText(sectors, text);
         const actions = [...home.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)];
-        for (const [text, route] of [[copy.common.demo, "contacto"], [copy.common.exploreSolution, "solucion"], [copy.home.introLink, "solucion"]]) {
-          assert.ok(actions.some(match => match[2].includes(escapeHtml(text)) && attributes(match[1]).href === `/${language}/producto/${route}/`), `The ${route} action remains a real localized link`);
+        for (const [text, href] of [[copy.common.demo, `/${language}/producto/contacto/#mk-demo-form`], [getApplicationChoices(language).title, "#mk-home-applications"], [copy.home.introLink, `/${language}/producto/solucion/`]]) {
+          assert.ok(actions.some(match => match[2].includes(escapeHtml(text)) && attributes(match[1]).href === href), `The ${href} action remains a real localized or in-page link`);
         }
         assert.equal(requestCount, 0);
       });
@@ -251,7 +254,7 @@ test("marketing accessibility contracts without a browser, HTTP or hydration", a
         assert.ok(gettingStarted);
         assert.equal(tags(gettingStarted, "li").length, 3);
         for (const step of guide.gettingStarted.steps) for (const text of [step.title, step.body]) requireText(gettingStarted, text);
-        const contactLinks = tags(main, "a").filter(anchor => anchor.href === `/${language}/producto/contacto/?apps=venta`);
+        const contactLinks = tags(main, "a").filter(anchor => anchor.href === `/${language}/producto/contacto/?apps=venta#mk-demo-form`);
         assert.equal(contactLinks.length, 1, "The selected application's demo has one shareable contact link");
         const preparationLinks = tags(main, "a").filter(anchor => anchor["data-testid"] === "guide-preparation-action");
         assert.equal(preparationLinks.length, 1, "Preparation is an information action, not a second demo request");

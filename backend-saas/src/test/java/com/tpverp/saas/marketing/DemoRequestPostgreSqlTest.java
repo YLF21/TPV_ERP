@@ -44,6 +44,7 @@ class DemoRequestPostgreSqlTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired DemoRequestRepository repository;
     @Autowired DemoRequestService service;
+    @Autowired DemoRequestFollowUpService followUp;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
 
@@ -192,6 +193,102 @@ class DemoRequestPostgreSqlTest {
                         .content(payload(marker, null).replace("Synthetic test", " ")))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.fields.name").value("REQUIRED"));
         assertThat(service.page(0, 20, null, marker).total()).isZero();
+    }
+
+    @Test
+    void internalFollowUpPersistsHistoryAndRejectsStaleSavesWithoutDuplicatingNotes() throws Exception {
+        UUID id = service.submit(request("follow-up-" + UUID.randomUUID())).id();
+        String route = "/api/v1/admin/demo-requests/" + id + "/follow-up";
+        String privateNote = "Synthetic private note " + UUID.randomUUID();
+        String action = "Review synthetic catalogue";
+        String payload = mapper.writeValueAsString(new UpdateDemoRequestFollowUp("admin", action,
+                Instant.parse("2026-11-02T10:00:00Z"), privateNote, 0L));
+        mvc.perform(get(route)).andExpect(status().isUnauthorized());
+        mvc.perform(put(route).header("Authorization", basic("viewer"))
+                        .contentType(MediaType.APPLICATION_JSON).content(payload)).andExpect(status().isForbidden());
+        mvc.perform(put(route).header("Authorization", basic("admin"))
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.request.assigneeUsername").value("admin"))
+                .andExpect(jsonPath("$.request.nextAction").value(action))
+                .andExpect(jsonPath("$.request.followUpVersion").value(1))
+                .andExpect(jsonPath("$.notes[0].author").value("admin"))
+                .andExpect(jsonPath("$.notes[0].body").value(privateNote));
+        mvc.perform(put(route).header("Authorization", basic("admin"))
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("FOLLOW_UP_CONFLICT"));
+        assertThat(jdbc.queryForObject("select count(*) from saas_marketing_demo_note where request_id = ?", Long.class, id))
+                .isEqualTo(1L);
+        mvc.perform(get(route).header("Authorization", basic("viewer")))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.notes.length()").value(1));
+        List<String> auditDetails = jdbc.queryForList("""
+                select details from saas_admin_audit_log
+                where action = 'UPDATE_DEMO_REQUEST_FOLLOW_UP' and target_id = ?
+                """, String.class, id.toString());
+        assertThat(auditDetails).containsExactly("FOLLOW_UP_UPDATED_WITH_NOTE");
+        assertThat(auditDetails.getFirst()).doesNotContain(privateNote, action, "admin");
+        // Status operations are independent and must not erase the assignment, due action or note.
+        service.updateStatus(id, DemoRequestStatus.CONTACTED, DemoRequestStatus.NEW);
+        DemoRequestFollowUp afterStatus = followUp.detail(id);
+        assertThat(afterStatus.request().assigneeUsername()).isEqualTo("admin");
+        assertThat(afterStatus.request().nextAction()).isEqualTo(action);
+        assertThat(afterStatus.request().followUpVersion()).isEqualTo(1);
+        assertThat(afterStatus.notes()).hasSize(1);
+    }
+
+    @Test
+    void concurrentFollowUpEditorsHaveOneWinnerAndOnlyOneAppendedNote() throws Exception {
+        UUID id = service.submit(request("concurrent-follow-up-" + UUID.randomUUID())).id();
+        var ready = new CountDownLatch(2);
+        var start = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var futures = new ArrayList<java.util.concurrent.Future<Boolean>>();
+            for (int index = 0; index < 2; index++) {
+                int editor = index;
+                futures.add(executor.submit(() -> {
+                    ready.countDown();
+                    assertThat(start.await(10, TimeUnit.SECONDS)).isTrue();
+                    try {
+                        followUp.update(id, new UpdateDemoRequestFollowUp(null, "Action " + editor,
+                                null, "Note " + editor, 0L));
+                        return true;
+                    } catch (DemoRequestFailure conflict) {
+                        assertThat(conflict.code).isEqualTo("FOLLOW_UP_CONFLICT");
+                        return false;
+                    }
+                }));
+            }
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            int winners = 0;
+            for (var future : futures) if (future.get(20, TimeUnit.SECONDS)) winners++;
+            assertThat(winners).isEqualTo(1);
+        }
+        assertThat(followUp.detail(id).request().followUpVersion()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from saas_marketing_demo_note where request_id = ?", Long.class, id))
+                .isEqualTo(1L);
+    }
+
+    @Test
+    void aNoteInsertFailureRollsBackTheAssignmentAndActionInTheSameTransaction() {
+        UUID id = service.submit(request("rollback-follow-up-" + UUID.randomUUID())).id();
+        String marker = "rollback-note-" + UUID.randomUUID();
+        String constraint = "ck_note_test_" + UUID.randomUUID().toString().replace("-", "");
+        // This disposable schema is created for this test class. The temporary
+        // constraint fails only this synthetic note, never another test's data.
+        jdbc.execute("alter table saas_marketing_demo_note add constraint " + constraint + " check (body <> '" + marker + "')");
+        try {
+            assertThatThrownBy(() -> followUp.update(id, new UpdateDemoRequestFollowUp(
+                    "admin", "Must roll back", null, marker, 0L))).isInstanceOf(org.springframework.dao.DataAccessException.class);
+            DemoRequestView unchanged = repository.findById(id).orElseThrow();
+            assertThat(unchanged.followUpVersion()).isZero();
+            assertThat(unchanged.assigneeUsername()).isNull();
+            assertThat(unchanged.nextAction()).isNull();
+            assertThat(followUp.detail(id).notes()).isEmpty();
+        } finally {
+            jdbc.execute("alter table saas_marketing_demo_note drop constraint " + constraint);
+        }
     }
 
     private static String basic(String username) {

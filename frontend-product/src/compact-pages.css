@@ -132,6 +132,7 @@
 .mk-home-page .mk-home-sector-preview {
   grid-area: sectors;
   display: grid;
+  align-items: start;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-top: 14px;

@@ -83,7 +83,8 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         }
 
         Set<String> permissions = users.permissionCodes(user.getUsername());
-        if (permissions.contains(requiredPermission(request).name())) {
+        if (permissions.contains(requiredPermission(request).name())
+                && (!demoFollowUpMutation(request) || permissions.contains(AdminPermission.VIEW_ADMIN_DATA.name()))) {
             request.setAttribute(AdminAuditService.USERNAME_ATTRIBUTE, user.getUsername());
             return true;
         }
@@ -97,7 +98,7 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         String path = matched == null ? request.getRequestURI() : matched.toString();
         if (path.contains("/backup-recoveries")) return AdminPermission.MANAGE_SUPPORT_TICKETS;
         if ("PUT".equals(method) && path.startsWith("/api/v1/admin/demo-requests/")
-                && path.endsWith("/status")) {
+                && (path.endsWith("/status") || path.endsWith("/follow-up"))) {
             return AdminPermission.MANAGE_OPERATIONS;
         }
         if ("GET".equals(method) && path.equals("/api/v1/admin/license-workspace/activation-codes")) {
@@ -183,6 +184,13 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
             return AdminPermission.REVOKE_INSTALLATION;
         }
         return AdminPermission.VIEW_ADMIN_DATA;
+    }
+
+    private static boolean demoFollowUpMutation(HttpServletRequest request) {
+        Object matched = request.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+        String path = matched == null ? request.getRequestURI() : matched.toString();
+        return "PUT".equals(request.getMethod()) && path.startsWith("/api/v1/admin/demo-requests/")
+                && path.endsWith("/follow-up");
     }
 
 }

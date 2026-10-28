@@ -19,9 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class DemoRequestAdminController {
 
     private final DemoRequestService service;
+    private final DemoRequestFollowUpService followUp;
 
-    public DemoRequestAdminController(DemoRequestService service) {
+    public DemoRequestAdminController(DemoRequestService service, DemoRequestFollowUpService followUp) {
         this.service = service;
+        this.followUp = followUp;
     }
 
     @GetMapping
@@ -48,4 +50,20 @@ public class DemoRequestAdminController {
     }
 
     public record UpdateStatus(@NotNull DemoRequestStatus status, @NotNull DemoRequestStatus expectedStatus) { }
+
+    @GetMapping("/assignees")
+    public ResponseEntity<List<DemoRequestAssignee>> assignees() {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(followUp.assignees());
+    }
+
+    @GetMapping("/{id}/follow-up")
+    public ResponseEntity<DemoRequestFollowUp> followUp(@PathVariable UUID id) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(followUp.detail(id));
+    }
+
+    @PutMapping("/{id}/follow-up")
+    public ResponseEntity<DemoRequestFollowUp> followUp(@PathVariable UUID id,
+            @Valid @RequestBody UpdateDemoRequestFollowUp request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(followUp.update(id, request));
+    }
 }

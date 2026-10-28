@@ -160,7 +160,8 @@ class DemoRequestReliabilityTest {
     }
 
     private static MockMvc mvc(DemoRequestService service) {
-        return MockMvcBuilders.standaloneSetup(new DemoRequestController(service), new DemoRequestAdminController(service))
+        return MockMvcBuilders.standaloneSetup(new DemoRequestController(service), new DemoRequestAdminController(service,
+                mock(DemoRequestFollowUpService.class)))
                 .setControllerAdvice(new DemoRequestExceptionHandler()).build();
     }
 
