@@ -63,9 +63,10 @@ describe("BackupManagementScreen", () => {
 
   it("polls a running backup without replacing the history with a loading row", async () => {
     let tick: (() => void) | undefined;
-    vi.spyOn(window, "setInterval").mockImplementation((callback) => {
-      tick = callback as () => void;
-      return 1 as unknown as ReturnType<typeof setInterval>;
+    const realSetInterval = window.setInterval.bind(window);
+    vi.spyOn(window, "setInterval").mockImplementation((callback, timeout, ...args) => {
+      if (timeout === 4500) tick = callback as () => void;
+      return realSetInterval(callback, timeout, ...args) as unknown as ReturnType<typeof setInterval>;
     });
     const running = { id: "backup-1", sequenceNumber: 12, startedAt: "2026-10-22T08:00:00Z",
       result: "EN_CURSO" as const, available: false, origin: "MANUAL" as const };
