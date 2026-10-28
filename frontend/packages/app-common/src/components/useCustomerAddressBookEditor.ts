@@ -74,11 +74,16 @@ export function useCustomerAddressBookEditor(session: UserSession, onLoaded: (cu
       return selected ? [selected, ...current.filter(entry => entry.id !== selectedId)] : current;
     });
   }
+  function removeSelected() {
+    if (busy || !drafts.some((entry, index) => index > 0 && entry.id === selectedId)) return;
+    setDrafts(current => current.filter((entry, index) => index === 0 || entry.id !== selectedId));
+    setSelectedId(drafts[0].id); setError("");
+  }
   return {
     drafts, source, selectedId, selected: drafts.find(entry => entry.id === selectedId) ?? drafts[0],
     busy, error, status: source?.addressSyncStatus,
     dirty: JSON.stringify(customerContactRequests(drafts)) !== JSON.stringify(customerContactRequests(initial)),
-    select: setSelectedId, change, add, makeDefault, openNew, openExisting, cancel,
+    select: setSelectedId, change, add, makeDefault, removeSelected, openNew, openExisting, cancel,
     reload: (form: PartyForm, useCentral = false) => source ? refresh(source, form, false, useCentral) : Promise.resolve(),
   };
 }

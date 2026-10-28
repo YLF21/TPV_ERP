@@ -65,6 +65,7 @@ describe("Venta customer editor", () => {
     expect(number).toHaveFocus();
     expect(number.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(dialog).getByRole("checkbox", { name: "Permitir ventas a crédito" })).not.toBeChecked();
+    expect(within(dialog).getByRole("checkbox", { name: "Crear miembro" })).not.toBeChecked();
     expect(within(dialog).queryByText(/¿Ya existe en otra tienda/)).not.toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Validar" })).toBeDisabled();
   });
@@ -91,9 +92,43 @@ describe("Venta customer editor", () => {
     fireEvent.change(within(dialog).getByLabelText("Teléfono"), { target: { value: "600333444" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
     await waitFor(() => expect(request).toHaveBeenCalledWith("/customers", expect.objectContaining({ method: "POST", body: expect.objectContaining({
-      creditEnabled: false, address: expect.objectContaining({ address: "CALLE NUEVA A" }), phone: "600111222",
+      isMember: false, creditEnabled: false, address: expect.objectContaining({ address: "CALLE NUEVA A" }), phone: "600111222",
       addresses: [expect.objectContaining({ address: expect.objectContaining({ address: "CALLE NUEVA A" }), phone: "600111222" }), expect.objectContaining({ address: expect.objectContaining({ address: "CALLE NUEVA B" }), phone: "600333444" })],
     }) })));
+  });
+
+  it("requests direct membership only when checked and resets the option for the next customer", async () => {
+    const dialog = await newCustomer(); fillIdentity(dialog);
+    const createMember = within(dialog).getByRole("checkbox", { name: "Crear miembro" });
+    expect(createMember.closest(".party-form-section--identity")).toBeInTheDocument();
+    fireEvent.click(createMember);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/customers", expect.objectContaining({ method: "POST", body: expect.objectContaining({
+      isMember: true, numMember: null, creditEnabled: false, addresses: expect.any(Array),
+    }) })));
+    expect(request.mock.calls.some(([path]) => path.endsWith("/member/activate"))).toBe(false);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo cliente F8" }));
+    expect(within(screen.getByRole("dialog")).getByRole("checkbox", { name: "Crear miembro" })).not.toBeChecked();
+  });
+
+  it("does not create a member after the option is unchecked", async () => {
+    const dialog = await newCustomer(); fillIdentity(dialog);
+    const createMember = within(dialog).getByRole("checkbox", { name: "Crear miembro" });
+    fireEvent.click(createMember); fireEvent.click(createMember);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/customers", expect.objectContaining({ method: "POST", body: expect.objectContaining({ isMember: false }) })));
+  });
+
+  it("treats the membership checkbox as an unsaved change and hides it when editing", async () => {
+    const dialog = await newCustomer();
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Crear miembro" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }));
+    const confirm = screen.getByRole("alertdialog");
+    fireEvent.click(within(confirm).getByRole("button", { name: "Confirmar" }));
+    fireEvent.click(screen.getByText(customer.fiscalName).closest("[role=row]")!, { detail: 1 });
+    fireEvent.click(screen.getByRole("button", { name: "Modificar cliente F7" }));
+    expect(within(screen.getByRole("dialog")).queryByRole("checkbox", { name: "Crear miembro" })).not.toBeInTheDocument();
   });
 
   it("moves a secondary to the first position without deleting the previous default", async () => {
@@ -118,6 +153,37 @@ describe("Venta customer editor", () => {
     fireEvent.change(within(dialog).getByLabelText("Nombre o razón social"), { target: { value: "Otro nombre" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
     await waitFor(() => expect(request).toHaveBeenCalledWith("/customers/c1", expect.objectContaining({ body: expect.objectContaining({ fiscalName: "Otro nombre", addresses: [nullCountry, addressB] }) })));
+  });
+
+  it("deletes only a secondary address on save and keeps the default contact intact", async () => {
+    const dialog = await editCustomer();
+    expect(within(dialog).queryByRole("button", { name: "Eliminar dirección" })).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Contacto y dirección" }));
+    fireEvent.click(screen.getByRole("option", { name: "CALLE SEGUNDA · 600333444" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Eliminar dirección" }));
+    expect(within(dialog).getByLabelText("Dirección")).toHaveValue("CALLE PRIMERA");
+    expect(within(dialog).getByLabelText("Teléfono")).toHaveValue("600111222");
+    expect(within(dialog).queryByRole("button", { name: "Eliminar dirección" })).not.toBeInTheDocument();
+    expect(request.mock.calls.some(([, options]) => options?.method === "PUT")).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Contacto y dirección" }));
+    expect(screen.queryByRole("option", { name: "CALLE SEGUNDA · 600333444" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "Predeterminada · CALLE PRIMERA · 600111222" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/customers/c1", expect.objectContaining({ method: "PUT", body: expect.objectContaining({
+      expectedVersion: 7, addresses: [addressA], address: addressA.address, phone: addressA.phone,
+    }) })));
+  });
+
+  it("treats a deleted address as an unsaved change and blocks pending shared replacements", async () => {
+    refreshed = { ...customer, addressSyncStatus: "PENDING" };
+    const dialog = await editCustomer();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Contacto y dirección" }));
+    fireEvent.click(screen.getByRole("option", { name: "CALLE SEGUNDA · 600333444" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Eliminar dirección" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+    expect(request.mock.calls.some(([, options]) => options?.method === "PUT")).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
   });
 
   it("keeps address edits in the form when pending synchronization blocks a replacement", async () => {
@@ -161,7 +227,7 @@ describe("Venta customer editor", () => {
   it("provides every new editor caption in ES, EN and ZH", () => {
     for (const locale of ["es", "en", "zh"] as const) {
       const t = createTranslator(locale);
-      for (const key of ["validate", "existsTitle", "exists", "address.default", "address.add", "address.makeDefault", "address.pending", "address.conflict", "address.reload"])
+      for (const key of ["validate", "createMember", "existsTitle", "exists", "address.default", "address.add", "address.makeDefault", "address.remove", "address.pending", "address.conflict", "address.reload"])
         expect(t(`party.customerEditor.${key}`)).not.toBe(`party.customerEditor.${key}`);
     }
   });

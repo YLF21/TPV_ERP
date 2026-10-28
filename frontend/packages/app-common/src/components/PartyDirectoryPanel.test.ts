@@ -16,8 +16,17 @@ import {
   PartyDirectoryPanel,
   partyFormFromView,
   sortPartyDirectoryEntries,
-  validatePartyForm
+  validatePartyForm,
+  type CustomerView
 } from "./PartyDirectoryPanel";
+const secondaryContactCustomer: CustomerView = {
+  id: "with-secondary", clientId: "C-001", fiscalName: "Cliente con dos direcciones", documentType: "NIF", documentNumber: "12345678Z",
+  active: true, isMember: false, phone: "600111222", email: "principal@example.test", address: { city: "Madrid", province: "Madrid", country: "ES", postalCode: "28001" },
+  addresses: [
+    { id: "primary", phone: "600111222", email: "principal@example.test", address: { city: "Madrid", province: "Madrid", country: "ES", postalCode: "28001" } },
+    { id: "secondary", phone: "699888777", email: "secundaria@example.test", address: { address: "CALLE OCULTA 20", city: "Sintra", province: "Lisboa", postalCode: "2710", country: "PT" } },
+  ],
+};
 const layoutSession: UserSession = {
   username: "layout.user",
   displayName: "Layout User",
@@ -190,6 +199,29 @@ describe("PartyDirectoryPanel", () => {
       session: layoutSession
     }));
     expect(html.match(/class="erp-select(?: [^"]*)?"/g)).toHaveLength(1);
+  });
+
+  it.each(["699888777", "SECUNDARIA@EXAMPLE.TEST", "calle oculta", "sintra", "lisboa", "2710", "pt"])("finds secondary contact data in the customer search: %s", (query) => {
+    expect(filterPartyDirectoryEntries([secondaryContactCustomer], "customers", query, "all", "es").map(entry => entry.id))
+      .toEqual([secondaryContactCustomer.id]);
+  });
+
+  it.each([
+    { phone: " 699888 " }, { email: "SECUNDARIA@EXAMPLE.TEST" }, { location: "Sintra" },
+    { location: "Lisboa" }, { location: "Sintra Lisboa" }, { postalCode: "2710" }, { country: "pt" },
+  ])("matches customer field filters against secondary contacts: %o", (filters) => {
+    expect(filterPartyDirectoryEntries([secondaryContactCustomer], "customers", "", "all", "es", filters, true).map(entry => entry.id))
+      .toEqual([secondaryContactCustomer.id]);
+  });
+
+  it("combines secondary contact filters with other criteria and keeps legacy primary contacts searchable", () => {
+    const customer = { ...secondaryContactCustomer, creditEnabled: true };
+    expect(filterPartyDirectoryEntries([customer], "customers", "", "active", "es", { phone: "699", postalCode: "2710", creditEnabled: "true" }, true))
+      .toEqual([customer]);
+    expect(filterPartyDirectoryEntries([customer], "customers", "", "active", "es", { phone: "699", postalCode: "9999" }, true)).toEqual([]);
+    expect(filterPartyDirectoryEntries([customer], "customers", "699", "inactive", "es")).toEqual([]);
+    expect(filterPartyDirectoryEntries([customer], "customers", "", "all", "es", { phone: "600111", country: "ES" }, true)).toEqual([customer]);
+    expect(filterPartyDirectoryEntries([{ ...customer, addresses: [] }], "customers", "600111", "all", "es")).toHaveLength(1);
   });
 
   it("sorts directory rows by the selected visible column", () => {

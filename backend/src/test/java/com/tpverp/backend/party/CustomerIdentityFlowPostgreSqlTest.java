@@ -58,6 +58,7 @@ class CustomerIdentityFlowPostgreSqlTest {
     @Autowired CompanyRepository companies;
     @Autowired StoreRepository stores;
     @Autowired CustomerRepository customers;
+    @Autowired MemberRepository members;
     @Autowired JdbcTemplate jdbc;
     @MockitoBean PartyContext context;
     @MockitoBean MemberLoyaltyService memberLoyalty;
@@ -109,12 +110,80 @@ class CustomerIdentityFlowPostgreSqlTest {
         assertThat(stored.getSaasIdentityRevision()).isEqualTo(1L);
         assertThat(stored.getDocumentNumber()).isEqualTo("00000001R");
         assertThat(count("cliente", "empresa_id")).isEqualTo(1);
+        assertThat(count("miembro", "empresa_id")).isZero();
+        assertThat(result.isMember()).isFalse();
         assertThat(count("sync_outbox", "empresa_id")).isEqualTo(1);
         assertThat(states()).containsExactly("LOCAL_COMMITTED");
         assertThat(jdbc.queryForObject("select payload->>'clientId' from sync_outbox where entidad_id=?",
                 String.class, result.id())).isEqualTo(result.clientId());
         assertThat(jdbc.queryForObject("select payload->>'operationId' from sync_outbox where entidad_id=?",
                 String.class, result.id())).isNotBlank();
+    }
+
+    @Test
+    void createsMembersWithDistinctAutomaticCodesAndTheSameCustomerIdentityInOneTransaction() {
+        doAnswer(invocation -> {
+            Member member = invocation.getArgument(0);
+            assertThat(member.getCustomer().getSaasCustomerId()).isNotNull();
+            members.flush();
+            assertThat(jdbc.queryForObject("select count(*) from sync_outbox where entidad_id=? and tipo_entidad='CUSTOMER_IDENTITY'",
+                    Integer.class, member.getCustomer().getId())).isEqualTo(1);
+            return null;
+        }).when(memberLoyalty).activateMember(any());
+        var first = service.create(memberCommand("00000001R"));
+        var second = service.create(memberCommand("00000002W"));
+
+        assertThat(first.isMember()).isTrue();
+        assertThat(second.isMember()).isTrue();
+        assertThat(first.memberId()).isEqualTo("M-001-000001");
+        assertThat(second.memberId()).isEqualTo("M-001-000002");
+        assertThat(first.clientId()).isEqualTo("C-001-000001");
+        assertThat(second.clientId()).isEqualTo("C-001-000002");
+        assertThat(count("cliente", "empresa_id")).isEqualTo(2);
+        assertThat(count("miembro", "empresa_id")).isEqualTo(2);
+        assertThat(count("sync_outbox", "empresa_id")).isEqualTo(2);
+        assertThat(jdbc.queryForList("select cliente_id from miembro where empresa_id=?", UUID.class, company.getId()))
+                .containsExactlyInAnyOrder(first.id(), second.id());
+        assertThat(jdbc.queryForList("select member_code_store_id from miembro where empresa_id=?", UUID.class, company.getId()))
+                .containsOnly(store.getId());
+        assertThat(jdbc.queryForList("select saas_customer_id from cliente where empresa_id=?", UUID.class, company.getId()))
+                .doesNotContainNull().doesNotHaveDuplicates();
+        assertThat(states()).containsExactlyInAnyOrder("LOCAL_COMMITTED", "LOCAL_COMMITTED");
+    }
+
+    @Test
+    void failedMemberActivationRollsBackBothFlushedEntitiesAndCountersAndCancelsTheCentralReservation() {
+        doAnswer(invocation -> {
+            members.flush();
+            assertThat(count("cliente", "empresa_id")).isEqualTo(1);
+            assertThat(count("miembro", "empresa_id")).isEqualTo(1);
+            assertThat(count("sync_outbox", "empresa_id")).isEqualTo(1);
+            throw new IllegalStateException("forced-member-activation-failure");
+        }).when(memberLoyalty).activateMember(any());
+
+        assertThatThrownBy(() -> service.create(memberCommand("00000001R")))
+                .isInstanceOf(IllegalStateException.class).hasMessage("forced-member-activation-failure");
+
+        assertThat(count("cliente", "empresa_id")).isZero();
+        assertThat(count("miembro", "empresa_id")).isZero();
+        assertThat(count("sync_outbox", "empresa_id")).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from party_code_counter where scope_id=?", Integer.class, store.getId())).isZero();
+        assertThat(states()).containsExactly("CANCEL_PENDING");
+    }
+
+    @Test
+    void identityOutboxFailureLeavesNoCustomerOrMemberAndRollsBackBothAutomaticCodes() {
+        doThrow(new IllegalStateException("forced-outbox-failure")).when(outbox).enqueue(any());
+
+        assertThatThrownBy(() -> service.create(memberCommand("00000001R")))
+                .isInstanceOf(IllegalStateException.class).hasMessage("forced-outbox-failure");
+
+        assertThat(count("cliente", "empresa_id")).isZero();
+        assertThat(count("miembro", "empresa_id")).isZero();
+        assertThat(count("sync_outbox", "empresa_id")).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from party_code_counter where scope_id=?", Integer.class, store.getId())).isZero();
+        assertThat(states()).containsExactly("CANCEL_PENDING");
+        reset(outbox);
     }
 
     @Test
@@ -198,6 +267,10 @@ class CustomerIdentityFlowPostgreSqlTest {
     private static CustomerService.CustomerCommand command(String number) {
         return new CustomerService.CustomerCommand("Synthetic customer", DocumentType.DNI, number, null,
                 null, null, null, BigDecimal.ZERO, false, null);
+    }
+    private static CustomerService.CustomerCommand memberCommand(String number) {
+        return new CustomerService.CustomerCommand("Synthetic member", DocumentType.DNI, number, null,
+                null, null, null, BigDecimal.ZERO, true, null);
     }
     @TestConfiguration
     static class Configuration { @Bean Clock clock() { return Clock.systemUTC(); } }

@@ -81,6 +81,8 @@ class CustomerServiceTest {
         assertThat(created.id()).isEqualTo(approval.customerId());
         assertThat(created.clientId()).isEqualTo("C-001-000001");
         assertThat(created.isMember()).isFalse();
+        verifyNoInteractions(members, memberLoyalty);
+        verify(codes, never()).nextMember(any());
         var order = inOrder(customers, identities, codes);
         order.verify(customers).findByCompanyAndNormalizedDocument(company.getId(), "12345678Z");
         order.verify(codes).nextClient(store);
@@ -92,16 +94,65 @@ class CustomerServiceTest {
     }
 
     @Test
-    void rejectsCreatingCustomerAndMemberInTheSameOperation() {
+    void createsCustomerAndMemberInTheSameOperationUsingTheApprovedCustomerIdentity() {
+        var approval = allowReservation(null, DocumentType.PASAPORTE, "99Z");
+        when(customers.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(members.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(codes.nextClient(store)).thenReturn("C-001-000001");
+        when(codes.nextMember(store)).thenReturn("M-001-000001");
         var command = new CustomerService.CustomerCommand(
                 "Member", DocumentType.PASAPORTE, "99z", null,
                 null, null, null, BigDecimal.ZERO, true, " EXT/2026 #1 ");
 
-        assertThatThrownBy(() -> service().create(command))
+        var created = service().create(command);
+
+        assertThat(created.id()).isEqualTo(approval.customerId());
+        assertThat(created.isMember()).isTrue();
+        assertThat(created.memberId()).isEqualTo("M-001-000001");
+        assertThat(created.numMember()).isEqualTo("EXT/2026 #1");
+        assertThat(created.balance()).isEqualByComparingTo("0.00");
+        var order = inOrder(codes, identities, customers, members, memberLoyalty);
+        order.verify(codes).nextClient(store);
+        order.verify(codes).nextMember(store);
+        order.verify(identities).reserve(any(), any(), eq(null), any(), any());
+        var persisted = ArgumentCaptor.forClass(Customer.class);
+        order.verify(customers).save(persisted.capture());
+        order.verify(identities).complete(approval, persisted.getValue());
+        var member = ArgumentCaptor.forClass(Member.class);
+        order.verify(members).save(member.capture());
+        assertThat(member.getValue().getCustomer()).isSameAs(persisted.getValue());
+        assertThat(member.getValue().getCompany()).isSameAs(company);
+        order.verify(memberLoyalty).activateMember(member.getValue());
+    }
+
+    @Test
+    void batchStillRejectsImplicitMemberCreationBeforeAllocatingCodesOrReservingIdentity() {
+        var command = new CustomerService.CustomerCommand(
+                "Member", DocumentType.PASAPORTE, "99Z", null,
+                null, null, null, BigDecimal.ZERO, true, null);
+
+        assertThatThrownBy(() -> service().createBatch(List.of(command)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("message.member.customer_must_exist");
+        verifyNoInteractions(customers, members, codes, identities, memberLoyalty);
+    }
+
+    @Test
+    void rejectsAnExistingOptionalMemberNumberBeforeAllocatingCodesOrReservingIdentity() {
+        var existingCustomer = new Customer(company, "Existing", DocumentType.PASAPORTE, "OTHER", null,
+                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var existingMember = new Member(existingCustomer, "M-001-000001", LocalDate.of(2026, 5, 1));
+        when(members.findByCompanyIdAndNumMember(company.getId(), "EXTERNAL"))
+                .thenReturn(Optional.of(existingMember));
+        var command = new CustomerService.CustomerCommand(
+                "Member", DocumentType.PASAPORTE, "99Z", null,
+                null, null, null, BigDecimal.ZERO, true, " EXTERNAL ");
+
+        assertThatThrownBy(() -> service().create(command))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Ya existe ese numero de member");
         verify(customers, never()).save(any());
-        verify(members, never()).save(any());
+        verifyNoInteractions(codes, identities, memberLoyalty);
     }
 
     @Test

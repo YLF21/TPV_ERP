@@ -79,6 +79,26 @@ describe("Party directory applied filter chips", () => {
     expect(screen.getByRole("searchbox")).toHaveValue("");
   });
 
+  it.each([
+    ["Teléfono", "699888777"], ["Email", "secundaria@example.test"], ["Población / Provincia", "Sintra"],
+    ["Código postal", "2710"], ["País", "PT"],
+  ])("finds customers by secondary %s without replacing the primary data in the table", async (label, value) => {
+    const customer = { ...entries[0], phone: "600111222", addresses: [
+      { id: "primary", phone: "600111222", email: "principal@example.test", address: { city: "Madrid", province: "Madrid", postalCode: "28001", country: "ES" } },
+      { id: "secondary", phone: "699888777", email: "secundaria@example.test", address: { city: "Sintra", province: "Lisboa", postalCode: "2710", country: "PT" } },
+    ] };
+    vi.mocked(apiRequest).mockImplementation(async path => path === "/customers" ? [customer, entries[2]] : []);
+    render(<PartyDirectoryPanel app="venta" kind="customers" locale="es" session={session} />);
+    await screen.findByText("Zoe");
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
+    fireEvent.change(screen.getByLabelText(label, { exact: true }), { target: { value } });
+    expect(screen.getByText("Ana activa")).toBeVisible();
+    expect(screen.getByText("600111222")).toBeVisible();
+    expect(screen.queryByText("Zoe")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(label, { exact: true }), { target: { value: "sin coincidencia" } });
+    expect(screen.queryByText("Ana activa")).not.toBeInTheDocument();
+  });
+
   it.each(["customers", "suppliers"] as const)("keeps management %s chips on server filters and resets pagination", async (kind) => {
     vi.mocked(apiRequest).mockImplementation(async path => {
       if (!path.startsWith(`/${kind}/management/page?`)) return [];
