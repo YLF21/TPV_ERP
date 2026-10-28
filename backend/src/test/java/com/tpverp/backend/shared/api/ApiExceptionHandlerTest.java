@@ -50,6 +50,16 @@ class ApiExceptionHandlerTest {
     private final ApiExceptionHandler handler = new ApiExceptionHandler(messageSource());
 
     @Test
+    void customerAddressErrorsKeepStableCodesAndTranslateTheirDetail() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en");
+        var problem = handler.customerIdentityProblem(new com.tpverp.backend.party.CustomerIdentityException(
+                "CUSTOMER_ADDRESSES_PENDING", org.springframework.http.HttpStatus.CONFLICT), request);
+        assertEquals("CUSTOMER_ADDRESSES_PENDING", problem.getProperties().get("code"));
+        assertEquals("Address changes are awaiting synchronization.", problem.getDetail());
+    }
+
+    @Test
     void cashActivityDailyLimitReturnsBusinessConflictWithoutDatabaseDetails() {
         var request = new MockHttpServletRequest();
         request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es");

@@ -27,14 +27,16 @@ public class CustomerAdoptionService {
     private final SaasInstallationRepository installations;
     private final InstallationAuthenticator authenticator;
     private final ObjectMapper mapper;
+    private final CustomerAddressBookService addressBooks;
 
     public CustomerAdoptionService(jakarta.persistence.EntityManager entityManager, JdbcTemplate jdbc, SaasInstallationRepository installations,
-            InstallationAuthenticator authenticator, ObjectMapper mapper) {
+            InstallationAuthenticator authenticator, ObjectMapper mapper, CustomerAddressBookService addressBooks) {
         this.entityManager = entityManager;
         this.jdbc = jdbc;
         this.installations = installations;
         this.authenticator = authenticator;
         this.mapper = mapper;
+        this.addressBooks = addressBooks;
     }
 
     @Transactional(readOnly = true)
@@ -162,7 +164,12 @@ public class CustomerAdoptionService {
                     row.getBoolean("active"), row.getObject("local_customer_id", UUID.class));
         }, installation.getId(), installation.getCompany().getId(), customerId);
         if (rows.isEmpty()) throw CustomerIdentityException.notFound();
-        return rows.getFirst();
+        Profile profile = rows.getFirst();
+        var book = addressBooks.read(installation.getCompany().getId(), customerId);
+        var primary = book.addresses().getFirst();
+        return new Profile(profile.customerId(), profile.revision(), profile.centralCode(), profile.fiscalName(),
+                profile.documentType(), profile.documentNumber(), primary.address(), primary.phone(), primary.email(),
+                profile.active(), profile.localCustomerId(), book.addresses(), book.revision());
     }
 
     private void requireAvailableLink(SaasInstallation installation, UUID localId, UUID centralId) {

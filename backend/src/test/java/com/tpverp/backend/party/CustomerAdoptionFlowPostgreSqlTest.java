@@ -42,7 +42,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @DataJpaTest(showSql = false)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({FlywayPostgreSqlConfiguration.class, CustomerService.class, CustomerIdentityOperations.class,
+@Import({FlywayPostgreSqlConfiguration.class, CustomerService.class, CustomerAddressBookService.class, CustomerIdentityOperations.class,
         CustomerIdentityCoordinator.class, CustomerAdoptionOperations.class, CustomerAdoptionService.class,
         SyncOutboxService.class, PartyCodeAllocator.class, CustomerAdoptionFlowPostgreSqlTest.Configuration.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)

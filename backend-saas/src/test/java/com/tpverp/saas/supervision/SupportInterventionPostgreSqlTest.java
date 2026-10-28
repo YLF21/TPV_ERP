@@ -451,7 +451,7 @@ class SupportInterventionPostgreSqlTest {
         assertThat(support.notifications()).extracting(AdminNotificationResponse::id).doesNotContain(notification);
         apply(ticket,closed,"REOPEN",null);
         assertThat(support.notifications()).extracting(AdminNotificationResponse::id).contains(notification);
-        assertThat(support.status().expectedMigration()).isEqualTo("V81__supported_disaster_recovery");
+        assertThat(support.status().expectedMigration()).isEqualTo("V83__customer_address_book");
     }
 
     @Test

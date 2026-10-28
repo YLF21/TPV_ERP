@@ -16,6 +16,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.List;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "cliente")
@@ -104,6 +107,39 @@ public class Customer {
 
     @Version
     private long version;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "addresses_json", nullable = false, columnDefinition = "jsonb")
+    private List<CustomerAddressEntry> addresses = List.of();
+
+    @Column(name = "saas_address_revision")
+    private Long addressBookRevision;
+
+    @Column(name = "address_sync_status", nullable = false, length = 16)
+    private String addressSyncStatus = "LOCAL";
+
+    @Column(name = "address_operation_id")
+    private UUID addressOperationId;
+
+    public List<CustomerAddressEntry> getAddresses() {
+        return addresses == null || addresses.isEmpty() ? List.of(CustomerAddressEntry.from(this)) : List.copyOf(addresses);
+    }
+    public Long getAddressBookRevision() { return addressBookRevision; }
+    public String getAddressSyncStatus() { return addressSyncStatus; }
+    public UUID getAddressOperationId() { return addressOperationId; }
+
+    void replaceAddresses(List<CustomerAddressEntry> entries) {
+        addresses = CustomerAddressEntry.validated(entries);
+        var primary = addresses.getFirst();
+        fiscalAddress = primary.address() == null ? null : primary.address().local();
+        telefono = primary.phone(); email = primary.email(); observaciones = primary.notes();
+    }
+    void addressPending(UUID operationId) { addressOperationId = operationId; addressSyncStatus = "PENDING"; }
+    void addressConflict() { addressSyncStatus = "CONFLICT"; }
+    void addressConfirmed(List<CustomerAddressEntry> entries, long revision) {
+        replaceAddresses(entries); addressBookRevision = revision;
+        addressOperationId = null; addressSyncStatus = "SYNCED";
+    }
 
     protected Customer() {
     }

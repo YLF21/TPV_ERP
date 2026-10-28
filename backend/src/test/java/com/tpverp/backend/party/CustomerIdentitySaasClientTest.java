@@ -221,6 +221,18 @@ class CustomerIdentitySaasClientTest {
         return new CustomerAdoptionOperations.Operation(UUID.randomUUID(), company, store, UUID.randomUUID(),
                 centralCustomer, 0, DocumentType.DNI, "00000001R", "PENDING");
     }
+
+    @Test
+    void lookupRejectsFractionalOrTextAddressBookRevisionsBeforeConversion() throws Exception {
+        var profile = mapper.valueToTree(adoptionProfile());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) profile).putArray("addresses");
+        ((com.fasterxml.jackson.databind.node.ObjectNode) profile).put("addressBookRevision", 1.5);
+        body.set(mapper.writeValueAsString(profile));
+        unavailable(() -> client().lookup(company, store, CustomerDocumentIdentity.validate(DocumentType.DNI, "00000001R")));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) profile).put("addressBookRevision", "1");
+        body.set(mapper.writeValueAsString(profile));
+        unavailable(() -> client().lookup(company, store, CustomerDocumentIdentity.validate(DocumentType.DNI, "00000001R")));
+    }
     private CustomerAdoptionApi.Profile adoptionProfile() {
         return new CustomerAdoptionApi.Profile(centralCustomer, 0L, "CENTRAL-001", "Selected customer", DocumentType.DNI,
                 "00000001R", null, null, null, true, null);

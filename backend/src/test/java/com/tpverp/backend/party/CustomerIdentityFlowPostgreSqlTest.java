@@ -41,7 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 /** The real service/JPA/code allocator/outbox transaction, using only an explicitly supplied test database. */
 @DataJpaTest(showSql = false)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({FlywayPostgreSqlConfiguration.class, CustomerService.class, CustomerIdentityOperations.class,
+@Import({FlywayPostgreSqlConfiguration.class, CustomerService.class, CustomerAddressBookService.class, CustomerIdentityOperations.class,
         CustomerIdentityCoordinator.class, SyncOutboxService.class, PartyCodeAllocator.class,
         CustomerIdentityFlowPostgreSqlTest.Configuration.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -54,6 +54,7 @@ class CustomerIdentityFlowPostgreSqlTest {
     private static final String PASSWORD = System.getenv("TPV_ERP_TEST_DB_PASSWORD");
     private static final String SCHEMA = "customer_identity_flow_" + UUID.randomUUID().toString().replace("-", "");
     @Autowired CustomerService service;
+    @Autowired CustomerAddressBookService addressBooks;
     @Autowired CompanyRepository companies;
     @Autowired StoreRepository stores;
     @Autowired CustomerRepository customers;
@@ -126,6 +127,35 @@ class CustomerIdentityFlowPostgreSqlTest {
         assertThat(states()).containsExactly("CANCEL_PENDING");
         assertThat(jdbc.queryForObject("select count(*) from party_code_counter where scope_id=?", Integer.class, store.getId())).isZero();
         reset(outbox);
+    }
+
+    @Test
+    void addressCollectionRoundTripsAndPendingOutboxSharesTheCustomerTransaction() {
+        var first = new CustomerAddressEntry(UUID.randomUUID(), new CustomerAddressEntry.Address("First", "35001", "City", "Province", "ES"), "111", null, "Notes one");
+        var second = new CustomerAddressEntry(UUID.randomUUID(), new CustomerAddressEntry.Address("Second", "35002", "City", "Province", "ES"), "222", null, "Notes two");
+        var created = service.create(addressCommand(List.of(first, second), null));
+        var stored = customers.findById(created.id()).orElseThrow();
+        assertThat(stored.getAddresses()).containsExactly(first, second);
+        assertThat(stored.getPhone()).isEqualTo("111");
+        assertThat(created.addressSyncStatus()).isEqualTo("PENDING");
+        when(central.addressSnapshot(company.getId(), store.getId(), created.id(), stored.getSaasCustomerId(), null))
+                .thenReturn(new CustomerAddressBookService.Snapshot(stored.getSaasCustomerId(), 1L, List.of(first, second), null, null));
+        addressBooks.refresh(created.id(), false, null);
+        var current = service.get(created.id());
+        assertThat(current.addressBookRevision()).isEqualTo(1L);
+        var edited = service.update(created.id(), addressCommand(List.of(second, first), current.version()));
+        assertThat(edited.phone()).isEqualTo("222");
+        assertThat(edited.addressSyncStatus()).isEqualTo("PENDING");
+        assertThat(edited.version()).isGreaterThan(current.version());
+        assertThat(jdbc.queryForObject("select count(*) from sync_outbox where entidad_id=? and tipo_entidad='CUSTOMER_ADDRESSES'",
+                Integer.class, created.id())).isEqualTo(1);
+        assertThat(customers.findById(created.id()).orElseThrow().getAddresses()).containsExactly(second, first);
+    }
+
+    private static CustomerService.CustomerCommand addressCommand(List<CustomerAddressEntry> entries, Long version) {
+        return new CustomerService.CustomerCommand("Synthetic customer", DocumentType.DNI, "00000001R", null,
+                null, null, null, BigDecimal.ZERO, false, null, null, null, false, null,
+                false, null, false, null, null, null, entries, version);
     }
 
     @Test

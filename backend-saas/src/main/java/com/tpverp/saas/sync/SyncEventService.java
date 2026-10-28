@@ -10,6 +10,7 @@ import com.tpverp.saas.license.TokenHasher;
 import com.tpverp.saas.fiscal.FiscalStatusSyncProjector;
 import com.tpverp.saas.customer.CustomerIdentityService;
 import com.tpverp.saas.customer.CustomerAdoptionService;
+import com.tpverp.saas.customer.CustomerAddressBookService;
 import com.tpverp.saas.document.CommercialDocumentSyncProjector;
 import com.tpverp.saas.plan.PlanLimitService;
 import com.tpverp.saas.plan.PlanResource;
@@ -35,6 +36,7 @@ public class SyncEventService {
     private MemberReturnBalanceRecoveryProjector retentionRecoveryProjector;
     private CustomerIdentityService customerIdentityService;
     private CustomerAdoptionService customerAdoptionService;
+    private CustomerAddressBookService customerAddressBookService;
     private CommercialDocumentSyncProjector commercialDocumentSyncProjector;
     private com.tpverp.saas.supervision.StoreFailureProjector storeFailureProjector;
 
@@ -56,6 +58,11 @@ public class SyncEventService {
     @org.springframework.beans.factory.annotation.Autowired
     void setCustomerAdoptionService(CustomerAdoptionService service) {
         this.customerAdoptionService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setCustomerAddressBookService(CustomerAddressBookService service) {
+        this.customerAddressBookService = service;
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -172,6 +179,12 @@ public class SyncEventService {
     }
 
     private void projectEvent(SaasSyncEvent event, SyncEventRequest request, java.time.Instant projectedAt) {
+        if (customerAddressBookService != null && customerAddressBookService.supports(request.entityType(), request.operation())) {
+            customerAddressBookService.project(event, request.payload());
+            // A revision conflict is persisted as a terminal business outcome.
+            event.markProjected(projectedAt);
+            return;
+        }
         if (storeFailureProjector != null && storeFailureProjector.supports(request.entityType(), request.operation())) {
             events.flush();
             storeFailureProjector.project(event, request.payload());

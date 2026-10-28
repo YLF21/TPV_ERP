@@ -52,6 +52,7 @@ public class CustomerIdentityCoordinator {
             throw CustomerIdentityException.conflict();
         }
         customer.linkSaasIdentity(approval.reservation().customerId(), approval.reservation().revision());
+        if (customer.getAddressBookRevision() == null) customer.addressPending(null);
         var payload = new LinkedHashMap<>(approval.profile());
         payload.put("operationId", operation.operationId().toString());
         outbox.enqueue(new SyncOutboundEventCommand(operation.companyId(), operation.storeId(), null,
@@ -83,6 +84,7 @@ public class CustomerIdentityCoordinator {
             addressData.put("country", address.getCountry());
         }
         payload.put("address", addressData);
+        payload.put("addresses", customer.getAddresses());
         return java.util.Collections.unmodifiableMap(payload);
     }
 

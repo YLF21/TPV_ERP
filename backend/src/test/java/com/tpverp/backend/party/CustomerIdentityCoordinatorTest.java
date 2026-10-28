@@ -59,7 +59,8 @@ class CustomerIdentityCoordinatorTest {
         Customer customer = customer(UUID.randomUUID(), "Álvarez 商店");
         var operation = prepared(customer, "PENDING");
         var reservation = new CustomerIdentitySaasClient.Reservation(operation.operationId(), UUID.randomUUID(), 1L, "DNI", "12345678Z");
-        Map<String, Object> expectedProfile = expectedProfile(customer.getFiscalName());
+        Map<String, Object> expectedProfile = new LinkedHashMap<>(expectedProfile(customer.getFiscalName()));
+        expectedProfile.put("addresses", customer.getAddresses());
         when(central.reserve(operation, expectedProfile)).thenReturn(reservation);
 
         var approval = transactions.execute(status -> {
@@ -154,6 +155,7 @@ class CustomerIdentityCoordinatorTest {
             assertEquals("CENTRAL-MASTER-CODE", approval.profile().get("clientId"));
             existing.update(candidate.getFiscalName(), candidate.getDocumentType(), candidate.getDocumentNumber(),
                     candidate.getFiscalAddress(), candidate.getPhone(), candidate.getEmail(), null, CustomerRate.VENTA, BigDecimal.ZERO);
+            existing.replaceAddresses(candidate.getAddresses());
             coordinator.complete(approval, existing);
         });
         assertEquals("C-001-000001", existing.getClientId());

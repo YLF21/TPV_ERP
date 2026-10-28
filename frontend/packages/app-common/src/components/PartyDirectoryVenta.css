@@ -1,0 +1,178 @@
+/* Reuse Gestión's directory skin within the three APP VENTA directories. */
+@media screen {
+  .stock-screen.stock-screen--venta .stock-list:has(> .party-directory-heading) { gap: 0; }
+  .stock-screen.stock-screen--venta .stock-list > .party-directory-heading {
+    min-height: 0 !important;
+    align-items: center;
+    padding: 6px 14px 7px !important;
+    border-bottom: 1px solid #aeb9c8;
+  }
+  .stock-screen.stock-screen--venta .party-directory-heading h2 {
+    margin: 0;
+    color: #102033;
+    font-size: 22px !important;
+    font-weight: 900 !important;
+    line-height: 1.1 !important;
+  }
+  .stock-screen.stock-screen--venta .party-directory-heading > div:first-child > span { display: none; }
+
+  .stock-screen.stock-screen--venta .party-directory-toolbar.party-directory-toolbar--classic {
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    grid-template-columns: minmax(220px, 360px) 190px auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: end;
+    gap: 8px;
+    min-width: 0;
+    margin: 4px 14px 8px;
+    padding: 8px 12px;
+    border: 1px solid #b5c3d2;
+    border-radius: 6px;
+    background: #fff;
+    box-shadow: none;
+  }
+  .stock-screen.stock-screen--venta .party-directory-search-label,
+  .stock-screen.stock-screen--venta .party-directory-status-filter > span {
+    color: #5b7088;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .stock-screen.stock-screen--venta .party-directory-status-filter { gap: 5px; }
+  .stock-screen.stock-screen--venta .party-directory-toolbar > .gestion-search-frame {
+    display: flex;
+    grid-column: 1;
+    grid-row: 2;
+    align-items: center;
+    box-sizing: border-box;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    padding: 0 8px;
+    border: 1px solid #aebfd0;
+    border-radius: 4px;
+    background: #fff;
+  }
+  .stock-screen.stock-screen--venta .party-directory-toolbar > .gestion-search-frame > img {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+  }
+  .stock-screen.stock-screen--venta .party-directory-toolbar > .gestion-search-frame > input {
+    flex: 1 1 0;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    outline: none;
+    color: #12385f;
+    background: transparent;
+    box-shadow: none;
+    font-size: 12px;
+  }
+  .stock-screen.stock-screen--venta .party-directory-toolbar > .gestion-search-frame:focus-within {
+    border-color: #0065fe;
+    outline: 2px solid #0065fe;
+    outline-offset: 1px;
+  }
+  .stock-screen.stock-screen--venta .party-directory-toolbar .erp-select { height: 34px; }
+  .stock-screen.stock-screen--venta .party-directory-status-filter .erp-select { border: 0 !important; box-shadow: none; }
+  .stock-screen.stock-screen--venta .party-directory-toolbar .erp-select__trigger {
+    grid-template-columns: minmax(0, 1fr) 42px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 !important;
+    border: 1px solid #aebfd0 !important;
+    border-radius: 4px !important;
+    color: #12385f !important;
+    background: #fff !important;
+    box-shadow: none;
+    font-size: 12px !important;
+    overflow: hidden;
+  }
+  .stock-screen.stock-screen--venta .party-directory-toolbar .erp-select__arrow {
+    width: 42px !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    border-radius: 3px !important;
+    background: #12385f !important;
+  }
+  .stock-screen.stock-screen--venta .party-directory-toolbar :is([data-filter-active="true"], .erp-select__trigger:hover, .erp-select__trigger:focus-visible, .erp-select__trigger[aria-expanded="true"]) .erp-select__arrow { background: #0065fe !important; }
+  .stock-screen.stock-screen--venta .party-directory-toolbar .party-directory-result-count { grid-column: 4; grid-row: 2; margin: 0; }
+
+  .stock-screen.stock-screen--venta :is(.party-directory-heading .management-record-actions > button, .party-directory-filter-button) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    gap: 6px;
+    height: 34px;
+    min-height: 34px;
+    padding: 0 10px;
+    border: 1px solid #68737e;
+    border-radius: 4px !important;
+    color: #092b53;
+    background: #eef1f4;
+    box-shadow: none;
+    font-size: 11px !important;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  .stock-screen.stock-screen--venta .party-directory-heading .management-record-actions > .party-directory-add {
+    border-color: #0065fe;
+    color: #fff;
+    background: #0065fe;
+  }
+  .stock-screen.stock-screen--venta .party-directory-heading .management-record-actions > button > span { margin: 0; color: inherit; font-size: inherit; }
+  .stock-screen.stock-screen--venta .party-directory-heading .management-record-actions > button:disabled { opacity: .5; }
+  .stock-screen.stock-screen--venta :is(.party-directory-heading .management-record-actions > button, .party-directory-filter-button, .party-directory-toolbar .erp-select__trigger):focus-visible {
+    outline: 2px solid #0065fe;
+    outline-offset: 2px;
+  }
+
+  .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header .table-layout-column-menu-button {
+    opacity: 0 !important;
+    visibility: hidden !important;
+  }
+  .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header .table-layout-header-cell:is(:hover, :focus-within) .table-layout-column-menu-button,
+  .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header .table-layout-column-menu-button.is-open {
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+  /* As in Gestión, reserve room only for header tools that are visible. */
+  .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header > .table-layout-header-cell {
+    --party-sort-space: 0px;
+    --party-menu-space: 0px;
+  }
+  .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header > .table-layout-header-cell:is(:hover, :focus-within, :has(.table-layout-column-menu-button.is-open), :has(.table-layout-sort-button.is-active)) { --party-sort-space: 17px; }
+  .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header > .table-layout-header-cell.has-column-menu:is(:hover, :focus-within, :has(.table-layout-column-menu-button.is-open)) { --party-menu-space: 25px; }
+  .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header .table-layout-sort-button { padding-right: calc(2px + var(--party-sort-space) + var(--party-menu-space)) !important; }
+  .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header .table-layout-sort-label { flex: 1; width: auto; }
+  .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header .table-layout-sort-indicator {
+    position: absolute !important;
+    right: calc(2px + var(--party-menu-space));
+  }
+  .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header .table-layout-header-label { padding-right: calc(2px + var(--party-menu-space)) !important; }
+  .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header .table-layout-sort-button:not(.is-active) .table-layout-sort-indicator { display: inline-grid; }
+
+  @media (max-width: 1100px) {
+    .stock-screen.stock-screen--venta .party-directory-toolbar.party-directory-toolbar--classic { grid-template-columns: minmax(180px, 1fr) 150px auto auto; }
+  }
+  @media (max-width: 760px) {
+    .stock-screen.stock-screen--venta .party-directory-toolbar.party-directory-toolbar--classic { grid-template-columns: minmax(0, 1fr) 150px; }
+    .stock-screen.stock-screen--venta .party-directory-toolbar .party-directory-filter-button { grid-column: 1; grid-row: 3; justify-self: start; }
+    .stock-screen.stock-screen--venta .party-directory-toolbar .party-directory-result-count { grid-column: 2; grid-row: 3; }
+    .stock-screen.stock-screen--venta .party-directory-toolbar .party-directory-filter-fields { grid-row: 4; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (hover: none), (any-pointer: coarse) {
+    .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header > .table-layout-header-cell { --party-sort-space: 17px; }
+    .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header > .table-layout-header-cell.has-column-menu { --party-menu-space: 25px; }
+    .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header .table-layout-column-menu-button { opacity: 1 !important; visibility: visible !important; }
+  }
+}

@@ -23,6 +23,7 @@ export function erpSelectPopoverLayout(
   trigger: Pick<DOMRect, "top" | "bottom" | "left" | "width">,
   popover: Pick<DOMRect, "width" | "height">,
   viewport: { width: number; height: number },
+  maximumWidth = 360,
 ): ErpSelectPopoverLayout {
   const margin = 8;
   const gap = 4;
@@ -36,7 +37,7 @@ export function erpSelectPopoverLayout(
   // settings panel. The CSS already uses the same visual cap; applying it to
   // the measured layout prevents the inline positioning styles from overriding
   // that limit.
-  const maxWidth = Math.max(1, Math.min(360, viewport.width - margin * 2));
+  const maxWidth = Math.max(1, Math.min(maximumWidth, viewport.width - margin * 2));
   const desiredWidth = Math.min(maxWidth, Math.max(trigger.width, popover.width));
   const left = Math.min(
     Math.max(margin, trigger.left),
@@ -59,6 +60,7 @@ type ErpSelectProps = {
   id?: string;
   className?: string;
   placeholder?: string;
+  maxPopoverWidth?: number;
   title?: string;
   /** Optional editable text; selection still uses the same accessible option menu. */
   editable?: { text: string; onChange: (text: string) => void; label: string; maxLength?: number };
@@ -112,6 +114,7 @@ export function ErpSelect({
   id,
   className,
   placeholder = "-",
+  maxPopoverWidth = 360,
   title,
   editable,
   "aria-label": ariaLabel,
@@ -171,6 +174,7 @@ export function ErpSelect({
         trigger.getBoundingClientRect(),
         popover.getBoundingClientRect(),
         { width: window.innerWidth, height: window.innerHeight },
+        maxPopoverWidth,
       );
       popover.style.top = `${layout.top}px`;
       popover.style.left = `${layout.left}px`;
@@ -186,7 +190,7 @@ export function ErpSelect({
       window.removeEventListener("resize", positionPopover);
       window.removeEventListener("scroll", positionPopover, true);
     };
-  }, [open, options.length, Boolean(editable)]);
+  }, [open, options.length, Boolean(editable), maxPopoverWidth]);
 
   useOutsidePointerDown(open, rootRef, () => setOpen(false));
 

@@ -232,7 +232,20 @@ public class ApiExceptionHandler {
     @ExceptionHandler(com.tpverp.backend.party.CustomerIdentityException.class)
     ProblemDetail customerIdentityProblem(com.tpverp.backend.party.CustomerIdentityException exception,
             HttpServletRequest request) {
-        return problem(exception.status(), exception.code(), exception.code(), language(request), request);
+        var language = language(request);
+        return problem(exception.status(), exception.code(), customerAddressDetail(exception.code(), language), language, request);
+    }
+
+    private static String customerAddressDetail(String code, SupportedLanguage language) {
+        String[] text = switch (code) {
+            case "CUSTOMER_ADDRESSES_VERSION_CONFLICT" -> new String[] {"El cliente ha cambiado. Recarga antes de modificar sus direcciones.", "The customer has changed. Reload before editing addresses.", "客户资料已更改。请刷新后再编辑地址。"};
+            case "CUSTOMER_ADDRESSES_PENDING" -> new String[] {"Las direcciones tienen cambios pendientes de sincronizar.", "Address changes are awaiting synchronization.", "地址更改正在等待同步。"};
+            case "CUSTOMER_ADDRESSES_CONFLICT" -> new String[] {"Otra tienda ha cambiado las direcciones. Revisa los cambios antes de continuar.", "Another store changed these addresses. Review the changes before continuing.", "另一门店已更改地址。请先核对更改。"};
+            case "CUSTOMER_ADDRESSES_REFRESH_REQUIRED" -> new String[] {"Actualiza las direcciones desde SaaS antes de modificarlas.", "Refresh the addresses from SaaS before editing them.", "请先从 SaaS 刷新地址再编辑。"};
+            case "CUSTOMER_ADDRESSES_INVALID" -> new String[] {"Revisa las direcciones: los datos o su tamaño no son válidos.", "Check the addresses: their data or size is invalid.", "请检查地址：数据或长度无效。"};
+            default -> null;
+        };
+        return text == null ? code : text[language == SupportedLanguage.EN ? 1 : language == SupportedLanguage.ZH ? 2 : 0];
     }
 
     @ExceptionHandler(PaymentTerminalApiException.class)
