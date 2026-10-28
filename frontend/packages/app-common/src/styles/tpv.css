@@ -7811,15 +7811,6 @@ textarea {
   padding: 0;
 }
 
-.product-create-status {
-  margin: 0;
-  border: 1px solid #f0c3c3;
-  background: #fff3f3;
-  color: #8a2f2f;
-  padding: 10px 12px;
-  font-weight: 850;
-}
-
 .product-family-field,
 .product-offer-range,
 .product-dropdown-field {
@@ -16645,8 +16636,18 @@ textarea:focus,
 }
 
 .product-create-status {
+  margin: 0;
+  border: 1px solid #f0c3c3;
   border-radius: 0 !important;
   background: var(--tpv-v3-surface-alt) !important;
+  color: #8a2f2f;
+  padding: 10px 12px;
+  font-weight: 850;
+}
+
+.product-create-status[role="status"] {
+  border-color: #ccc;
+  color: #333;
 }
 
 .stock-sales-history-panel {

@@ -2163,7 +2163,8 @@ export function StockScreen({
   const [selectedView, setSelectedView] = useState<StockViewKey>(initialView);
   const [partyDirectory, setPartyDirectory] = useState<PartyDirectoryKind | null>(initialPartyDirectory);
   const documentStock = app !== "pda" && !partyDirectory && isStockDocumentView(selectedView);
-  const documentStockAppearance = documentStock || (app === "gestion" && !partyDirectory && selectedView === "stock.promotions");
+  const desktopPromotions = app !== "pda" && !partyDirectory && selectedView === "stock.promotions";
+  const documentStockAppearance = documentStock || desktopPromotions;
   const stockTitle = app === "gestion" && partyDirectory ? t("gestion.navigation.group.thirdParties") : documentStock || (app === "gestion" && selectedView === "stock.promotions") || (app !== "pda" && selectedView === "stock.bulkEdit") ? t("stock.products.title") : t("home.product").toLocaleUpperCase(locale === "zh" ? "zh-CN" : locale);
   const [searchText, setSearchText] = useState("");
   const [allStockRows, setAllStockRows] = useState<StockInventoryRow[]>([]);
@@ -7509,7 +7510,7 @@ export function StockScreen({
   }
 
   function toolbarGroup(className: string, children: ReactNode) {
-    return app === "gestion" || documentStock ? <div className={className}>{children}</div> : <>{children}</>;
+    return app === "gestion" || documentStockAppearance ? <div className={className}>{children}</div> : <>{children}</>;
   }
 
   function renderWarehouseSummary() {
@@ -7525,7 +7526,7 @@ export function StockScreen({
   function renderInventoryToolbar() {
     return (
       <>
-      <div className={`stock-toolbar${app === "gestion" ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
+      <div className={`stock-toolbar${app === "gestion" || desktopPromotions ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
         {toolbarGroup("gestion-toolbar-start", <>
         <div className="stock-search-stack">
           {!documentStockAppearance && <div className="active-filter-summary" aria-label={t("stock.filters.summary")}>
@@ -7568,20 +7569,20 @@ export function StockScreen({
     if (selectedView === "stock.promotions") {
       const unavailable = stockExportBusy || !session.accessToken || !stockDataCurrent
         || stockPromotionsLoading || stockPromotionsLoadFailed || !promotionExportContext;
-      return <div className={`stock-promotion-export-actions${app === "gestion" ? " stock-document-actions gestion-toolbar-actions" : ""}`}>
+      return <div className={`stock-promotion-export-actions${app === "gestion" || desktopPromotions ? " stock-document-actions gestion-toolbar-actions" : ""}`}>
         <button type="button" className="stock-export-button"
           aria-keyshortcuts={STOCK_EXPORT_SHORTCUT}
           title={`${t("stock.exportExcel.selectedPromotionHint")} (${STOCK_EXPORT_SHORTCUT})`}
           disabled={unavailable || !promotionExportContext?.promotionId}
           onClick={() => void exportStockExcel("SELECTED")}>
-          {app === "gestion" ? <span><FileXls size={16} weight="bold" aria-hidden="true" />{t("stock.exportExcel.selectedPromotion")}</span>
+          {app === "gestion" || desktopPromotions ? <span><FileXls size={16} weight="bold" aria-hidden="true" />{t("stock.exportExcel.selectedPromotion")}</span>
             : <><FileXls size={16} weight="bold" aria-hidden="true" /><span>{t("stock.exportExcel.selectedPromotion")}</span></>}
           <kbd aria-hidden="true">{STOCK_EXPORT_SHORTCUT}</kbd>
         </button>
         <button type="button" className="stock-export-button stock-export-all-promotions"
           title={t("stock.exportExcel.activePromotionsHint")} disabled={unavailable}
           onClick={() => void exportStockExcel("ACTIVE")}>
-          {app === "gestion" ? <span><FileXls size={16} weight="bold" aria-hidden="true" />{t("stock.exportExcel.activePromotions")}</span>
+          {app === "gestion" || desktopPromotions ? <span><FileXls size={16} weight="bold" aria-hidden="true" />{t("stock.exportExcel.activePromotions")}</span>
             : <><FileXls size={16} weight="bold" aria-hidden="true" /><span>{t("stock.exportExcel.activePromotions")}</span></>}
         </button>
       </div>;

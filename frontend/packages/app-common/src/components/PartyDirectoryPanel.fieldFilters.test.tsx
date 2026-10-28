@@ -99,8 +99,10 @@ describe("Party directory field filter controls", () => {
     const toggle = screen.getByRole("button", { name: "Filtrar" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("group", { name: "Filtros por campo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Estado" })).not.toBeInTheDocument();
     const fields = openFieldFilters();
     expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(fields.getByRole("button", { name: "Estado" })).toBeVisible();
     for (const label of ["Código", "Nombre / Razón social", "Documento", "Teléfono", "Email"]) {
       expect(fields.getByRole("textbox", { name: label })).toHaveAttribute("type", "text");
     }
@@ -124,9 +126,10 @@ describe("Party directory field filter controls", () => {
     fireEvent.click(screen.getByRole("button", { name: /Ordenar por Nombre/ }));
     fireEvent.click(screen.getByRole("button", { name: /Ordenar por Nombre/ }));
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Ana" } });
+    const fields = openFieldFilters();
     fireEvent.click(screen.getByRole("button", { name: "Estado" }));
     fireEvent.click(screen.getByRole("option", { name: "Activos" }));
-    const fields = openFieldFilters();
+    expect(screen.getByRole("button", { name: "Filtrar" })).toHaveTextContent("Filtrar (1)");
     fireEvent.change(fields.getByRole("textbox", { name: "Teléfono" }), { target: { value: "91" } });
     fireEvent.change(fields.getByRole("textbox", { name: "Población / Provincia" }), { target: { value: "Palmas" } });
     expect(screen.getByText("Ana local")).toBeVisible();
@@ -152,9 +155,12 @@ describe("Party directory field filter controls", () => {
     const props = { app: "venta" as const, kind: "members" as const, locale: "es" as const, session };
     const view = render(<PartyDirectoryPanel {...props} />);
     await within(screen.getByRole("table")).findByText("Bea");
-    fireEvent.change(openFieldFilters().getByRole("textbox", { name: "Categoría" }), { target: { value: "Oro" } });
+    const fields = openFieldFilters();
+    fireEvent.change(fields.getByRole("textbox", { name: "Categoría" }), { target: { value: "Oro" } });
+    fireEvent.click(fields.getByRole("button", { name: "Estado" }));
+    fireEvent.click(screen.getByRole("option", { name: "Activos" }));
     const key = partyDirectoryPreferenceStorageKey("venta", session.username, "members");
-    await waitFor(() => expect(JSON.parse(localStorage.getItem(key)!)).toMatchObject({ fieldFilters: { category: "Oro" } }));
+    await waitFor(() => expect(JSON.parse(localStorage.getItem(key)!)).toMatchObject({ statusFilter: "active", fieldFilters: { category: "Oro" } }));
     view.unmount();
     render(<PartyDirectoryPanel {...props} />);
     await within(screen.getByRole("table")).findByText("Ana local");
@@ -163,6 +169,7 @@ describe("Party directory field filter controls", () => {
     const toggle = screen.getByRole("button", { name: "Filtrar" });
     if (toggle.getAttribute("aria-expanded") === "false") fireEvent.click(toggle);
     expect(within(screen.getByRole("group", { name: "Filtros por campo" })).getByRole("textbox", { name: "Categoría" })).toHaveValue("Oro");
+    expect(within(screen.getByRole("group", { name: "Filtros por campo" })).getByRole("button", { name: "Estado" })).toHaveTextContent("Activos");
   });
 
   it.each([
@@ -187,7 +194,9 @@ describe("Party directory field filter controls", () => {
     render(<PartyDirectoryPanel app="gestion" kind={kind} locale="es" session={session} />);
     await within(screen.getByRole("table")).findByText("Bea");
     expect(screen.getByText("Ana local")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Estado" })).not.toBeInTheDocument();
     const fields = openFieldFilters();
+    expect(fields.getByRole("button", { name: "Estado" })).toBeVisible();
     fireEvent.change(fields.getByRole("textbox", { name: "Nombre / Razón social" }), { target: { value: "Bea" } });
     expect(screen.queryByText("Ana local")).not.toBeInTheDocument();
     expect(within(screen.getByRole("table")).getByText("Bea")).toBeVisible();

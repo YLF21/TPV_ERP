@@ -81,17 +81,17 @@ describe("AppFrame SaaS connectivity", () => {
     expect(within(titlebar).getByText("Mi Empresa")).toBeInTheDocument();
     expect(within(titlebar).queryByText("Caja Principal")).not.toBeInTheDocument();
     expect(within(titlebar).queryByText("Tienda Principal")).not.toBeInTheDocument();
-    expect(screen.getByText("Tienda Principal · 3500002")).toHaveAttribute("title", "Código de tienda en SaaS");
-    expect(screen.getByRole("contentinfo")).toHaveTextContent("Terminal: Caja Principal");
+    expect(screen.getByText("Tienda Principal · 3500002")).toHaveAttribute("title", "Código de tienda en el servidor central");
+    expect(within(screen.getByRole("contentinfo")).getByText("Caja Principal")).toBeInTheDocument();
     expect(screen.getByRole("contentinfo")).toHaveTextContent(`v${applicationVersion}`);
     await act(async () => { view.rerender(frame("en", "Contenido", vi.fn(), { ...context, terminalName: "", storeInternalCode: "DEMO001" })); });
     expect(within(titlebar).queryByText("001")).not.toBeInTheDocument();
     expect(screen.queryByText(/Tienda Principal ·/)).not.toBeInTheDocument();
   });
   it.each([
-    { locale: "es" as const, status: "Conectado con SaaS", action: "Comprobar conexión con SaaS" },
-    { locale: "en" as const, status: "Connected to SaaS", action: "Check SaaS connection" },
-    { locale: "zh" as const, status: "已连接 SaaS", action: "检查 SaaS 连接" }
+    { locale: "es" as const, status: "Conectado con el servidor central", action: "Comprobar conexión con el servidor central" },
+    { locale: "en" as const, status: "Connected to central server", action: "Check central server connection" },
+    { locale: "zh" as const, status: "已连接中央服务器", action: "检查中央服务器连接" }
   ])("shows the real SaaS status and localized action in $locale", async ({ locale, status, action }) => {
     request.mockResolvedValue({ saasConnected: true });
     await mountFrame(locale);
@@ -99,6 +99,7 @@ describe("AppFrame SaaS connectivity", () => {
     expect(screen.getByText("Administrador")).toBeInTheDocument();
     expect(screen.queryByText(/Servidor local/)).not.toBeInTheDocument();
     expect(screen.getByRole("status", { name: status })).toHaveClass("online");
+    expect(screen.getByRole("status")).toHaveAttribute("title", status);
     expect(screen.getByRole("button", { name: action })).toBeEnabled();
     expect(request).toHaveBeenCalledExactlyOnceWith("/connectivity", { signal: expect.any(AbortSignal) });
     expect(addressFetch).not.toHaveBeenCalled();
@@ -106,13 +107,13 @@ describe("AppFrame SaaS connectivity", () => {
 
   it("refreshes on click and prevents overlapping checks while waiting", async () => {
     await mountFrame();
-    expect(screen.getByRole("status", { name: "Sin conexión con SaaS" })).toHaveClass("offline");
+    expect(screen.getByRole("status", { name: "Sin conexión con el servidor central" })).toHaveClass("offline");
     let completeCheck!: (result: { saasConnected: boolean }) => void;
     request.mockReturnValueOnce(new Promise((resolve) => { completeCheck = resolve; }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Comprobar conexión con SaaS" }));
+    fireEvent.click(screen.getByRole("button", { name: "Comprobar conexión con el servidor central" }));
 
-    const busyButton = screen.getByRole("button", { name: "Comprobando conexión con SaaS" });
+    const busyButton = screen.getByRole("button", { name: "Comprobando conexión con el servidor central" });
     expect(busyButton).toBeDisabled();
     expect(busyButton).toHaveAttribute("aria-busy", "true");
     expect(request).toHaveBeenCalledTimes(2);
@@ -122,8 +123,8 @@ describe("AppFrame SaaS connectivity", () => {
 
     await act(async () => { completeCheck({ saasConnected: true }); });
 
-    expect(screen.getByRole("status", { name: "Conectado con SaaS" })).toHaveClass("online");
-    expect(screen.getByRole("button", { name: "Comprobar conexión con SaaS" })).toBeEnabled();
+    expect(screen.getByRole("status", { name: "Conectado con el servidor central" })).toHaveClass("online");
+    expect(screen.getByRole("button", { name: "Comprobar conexión con el servidor central" })).toBeEnabled();
     expect(addressFetch).not.toHaveBeenCalled();
   });
 
@@ -136,18 +137,18 @@ describe("AppFrame SaaS connectivity", () => {
     await act(async () => { view.rerender(frame("en", "Stock")); });
 
     expect(screen.getByText("Stock")).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "Connected to SaaS" })).toHaveClass("online");
+    expect(screen.getByRole("status", { name: "Connected to central server" })).toHaveClass("online");
     expect(request).toHaveBeenCalledTimes(1);
 
     await act(async () => { await vi.advanceTimersByTimeAsync(CONNECTION_REFRESH_MS / 2); });
-    expect(screen.getByRole("status", { name: "No connection to SaaS" })).toHaveClass("offline");
+    expect(screen.getByRole("status", { name: "No connection to central server" })).toHaveClass("offline");
     expect(request).toHaveBeenCalledTimes(2);
     await act(async () => { view.rerender(frame("zh", "Ventas")); });
     expect(request).toHaveBeenCalledTimes(2);
     await act(async () => { await vi.advanceTimersByTimeAsync(CONNECTION_REFRESH_MS); });
 
-    expect(screen.getByRole("status", { name: "已连接 SaaS" })).toHaveClass("online");
-    expect(screen.getByRole("button", { name: "检查 SaaS 连接" })).toBeEnabled();
+    expect(screen.getByRole("status", { name: "已连接中央服务器" })).toHaveClass("online");
+    expect(screen.getByRole("button", { name: "检查中央服务器连接" })).toBeEnabled();
     expect(request).toHaveBeenCalledTimes(3);
     expect(addressFetch).not.toHaveBeenCalled();
   });
@@ -162,14 +163,14 @@ describe("AppFrame SaaS connectivity", () => {
 
     let finishNew!: (result: { saasConnected: boolean }) => void;
     request.mockReturnValueOnce(new Promise((resolve) => { finishNew = resolve; }));
-    fireEvent.click(screen.getByRole("button", { name: "Comprobar conexión con SaaS" }));
+    fireEvent.click(screen.getByRole("button", { name: "Comprobar conexión con el servidor central" }));
     await act(async () => { finishOld({ saasConnected: true }); });
 
     expect(screen.getByRole("status")).toHaveClass("offline");
-    expect(screen.getByRole("button", { name: "Comprobando conexión con SaaS" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Comprobando conexión con el servidor central" })).toBeDisabled();
     expect(request).toHaveBeenCalledTimes(2);
     await act(async () => { finishNew({ saasConnected: true }); });
     expect(screen.getByRole("status")).toHaveClass("online");
-    expect(screen.getByRole("button", { name: "Comprobar conexión con SaaS" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Comprobar conexión con el servidor central" })).toBeEnabled();
   });
 });

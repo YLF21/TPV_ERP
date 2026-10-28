@@ -51,6 +51,7 @@ describe("Party directory applied filter chips", () => {
     render(<PartyDirectoryPanel app="venta" kind={kind} locale="es" session={session} />);
     await screen.findByText("Zoe");
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Ana" } });
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
     fireEvent.click(screen.getByRole("button", { name: "Estado" }));
     fireEvent.click(screen.getByRole("option", { name: "Activos" }));
     expect(screen.getByText("Ana activa")).toBeVisible();
@@ -110,6 +111,7 @@ describe("Party directory applied filter chips", () => {
     await screen.findByText("Zoe");
     expect(screen.getByRole("button", { name: "Filtrar" })).toBeVisible();
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Ana" } });
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
     fireEvent.click(screen.getByRole("button", { name: "Estado" }));
     fireEvent.click(screen.getByRole("option", { name: "Activos" }));
     const queries = () => vi.mocked(apiRequest).mock.calls.map(([path]) => path).filter(path => path.startsWith(`/${kind}/management/page?`))

@@ -12,7 +12,7 @@ const request = vi.mocked(apiRequest);
 const addressFetch = vi.fn();
 const terminalContext = { storeName: "Tienda Principal", terminalCode: "SERVIDOR" };
 
-async function mountFooter(terminalNameOnly = false) {
+async function mountFooter(terminalNameOnly = true) {
   let view!: ReturnType<typeof render>;
   await act(async () => { view = render(<ScreenContextFooter locale="es" terminalContext={terminalContext} terminalNameOnly={terminalNameOnly} />); });
   return view;
@@ -34,10 +34,10 @@ describe("ScreenContextFooter real connectivity", () => {
     vi.unstubAllGlobals();
   });
 
-  it.each([false, true])("uses the terminal name and optional prefix: %s", async (terminalNameOnly) => {
+  it.each([undefined, false, true])("shows the terminal name by default and supports an explicit prefix: %s", async (terminalNameOnly) => {
     await act(async () => { render(<ScreenContextFooter locale="es"
       terminalContext={{ ...terminalContext, terminalName: "Caja Principal" }} terminalNameOnly={terminalNameOnly} />); });
-    expect(screen.getByText(terminalNameOnly ? "Caja Principal" : "Terminal: Caja Principal")).toBeInTheDocument();
+    expect(screen.getByText(terminalNameOnly === false ? "Terminal: Caja Principal" : "Caja Principal")).toBeInTheDocument();
     expect(screen.queryByText("Terminal: SERVIDOR")).not.toBeInTheDocument();
     expect(screen.getByText(`v${applicationVersion}`)).toBeInTheDocument();
   });
@@ -51,8 +51,8 @@ describe("ScreenContextFooter real connectivity", () => {
   it("shows only a verified seven-digit SaaS store code next to the store name", async () => {
     await act(async () => { render(<ScreenContextFooter locale="es"
       terminalContext={{ ...terminalContext, storeInternalCode: "3500002" }} />); });
-    expect(screen.getByText("Tienda Principal · 3500002")).toHaveAttribute("title", "Código de tienda en SaaS");
-    expect(screen.getByText("Terminal: SERVIDOR")).toBeInTheDocument();
+    expect(screen.getByText("Tienda Principal · 3500002")).toHaveAttribute("title", "Código de tienda en el servidor central");
+    expect(screen.getByText("SERVIDOR")).toBeInTheDocument();
   });
 
   it.each(["", "123", "12345678", "DEMO001", "0000000", "3500000", "5300001", "3500002 "])("omits an invalid store code: %s", async (storeInternalCode) => {
@@ -65,7 +65,9 @@ describe("ScreenContextFooter real connectivity", () => {
   it("does not infer a SaaS connection from the browser having a network", async () => {
     expect(navigator.onLine).toBe(true);
     await mountFooter();
-    expect(screen.getByRole("status", { name: "Sin conexión con SaaS" })).toHaveClass("offline");
+    expect(screen.getByRole("status", { name: "Sin conexión con el servidor central" })).toHaveClass("offline");
+    expect(screen.getByRole("status")).toHaveAttribute("title", "Sin conexión con el servidor central");
+    expect(screen.getByRole("status")).toHaveTextContent(/^Conexión$/);
     expect(screen.getByText("DB: LOCAL").querySelector("svg")).toBeInTheDocument();
     expect(screen.getByRole("status").querySelector("svg")).toBeInTheDocument();
     expect(request).toHaveBeenCalledWith("/connectivity", { signal: expect.any(AbortSignal) });
@@ -76,7 +78,7 @@ describe("ScreenContextFooter real connectivity", () => {
       .mockRejectedValueOnce(new Error("Backend unavailable"))
       .mockResolvedValueOnce({ saasConnected: true });
     await mountFooter();
-    expect(screen.getByRole("status", { name: "Conectado con SaaS" })).toHaveClass("online");
+    expect(screen.getByRole("status", { name: "Conectado con el servidor central" })).toHaveClass("online");
     await act(async () => { await vi.advanceTimersByTimeAsync(CONNECTION_REFRESH_MS); });
     expect(screen.getByRole("status")).toHaveClass("offline");
     await act(async () => { await vi.advanceTimersByTimeAsync(CONNECTION_REFRESH_MS); });

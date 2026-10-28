@@ -48,34 +48,34 @@ const detailLabels: Record<LocaleCode, Record<string, string>> = {
 };
 const cloudLabels: Record<LocaleCode, Record<string, string>> = {
   es: {
-    "gestion.backups.cloudStatus": "Copia en SaaS", "gestion.backups.cloudAttempts": "Intentos de envío",
+    "gestion.backups.cloudStatus": "Copia en el servidor central", "gestion.backups.cloudAttempts": "Intentos de envío",
     "gestion.backups.cloudUploadedAt": "Enviada el", "gestion.backups.cloudNextAttempt": "Próximo intento",
-    "gestion.backups.cloudRetry": "Reintentar envío a SaaS", "gestion.backups.cloudRetryError": "No se pudo reintentar el envío a SaaS.",
+    "gestion.backups.cloudRetry": "Reintentar envío al servidor central", "gestion.backups.cloudRetryError": "No se pudo reintentar el envío al servidor central.",
     "gestion.backups.cloudErrorDetail": "Detalle del error de envío", "gestion.backups.cloud.PENDING": "Pendiente de envío",
-    "gestion.backups.cloud.UPLOADING": "Enviando a SaaS", "gestion.backups.cloud.SENT": "Guardada en SaaS",
-    "gestion.backups.cloud.RETIRED": "Ya no conservada en SaaS",
+    "gestion.backups.cloud.UPLOADING": "Enviando al servidor central", "gestion.backups.cloud.SENT": "Guardada en el servidor central",
+    "gestion.backups.cloud.RETIRED": "Ya no conservada en el servidor central",
     "gestion.backups.cloud.FAILED": "Error de envío",
     "gestion.backups.portableSecretsIncomplete": "La copia conserva los datos, pero faltan claves necesarias para recuperar otro equipo. Revísalo con soporte.",
     "gestion.backups.legacyRecoveryLimit": "Esta copia antigua no incluye las claves portátiles necesarias para una recuperación completa en otro equipo."
   },
   en: {
-    "gestion.backups.cloudStatus": "SaaS copy", "gestion.backups.cloudAttempts": "Upload attempts",
+    "gestion.backups.cloudStatus": "Central server copy", "gestion.backups.cloudAttempts": "Upload attempts",
     "gestion.backups.cloudUploadedAt": "Uploaded at", "gestion.backups.cloudNextAttempt": "Next attempt",
-    "gestion.backups.cloudRetry": "Retry upload to SaaS", "gestion.backups.cloudRetryError": "The SaaS upload could not be retried.",
+    "gestion.backups.cloudRetry": "Retry upload to the central server", "gestion.backups.cloudRetryError": "The upload to the central server could not be retried.",
     "gestion.backups.cloudErrorDetail": "Upload error details", "gestion.backups.cloud.PENDING": "Pending upload",
-    "gestion.backups.cloud.UPLOADING": "Uploading to SaaS", "gestion.backups.cloud.SENT": "Stored in SaaS",
-    "gestion.backups.cloud.RETIRED": "No longer retained in SaaS",
+    "gestion.backups.cloud.UPLOADING": "Uploading to the central server", "gestion.backups.cloud.SENT": "Stored on the central server",
+    "gestion.backups.cloud.RETIRED": "No longer retained on the central server",
     "gestion.backups.cloud.FAILED": "Upload failed",
     "gestion.backups.portableSecretsIncomplete": "The backup preserves the data, but keys needed to recover another computer are missing. Review this with support.",
     "gestion.backups.legacyRecoveryLimit": "This older backup does not include the portable keys needed for complete recovery on another computer."
   },
   zh: {
-    "gestion.backups.cloudStatus": "SaaS 备份", "gestion.backups.cloudAttempts": "上传次数",
+    "gestion.backups.cloudStatus": "中央服务器备份", "gestion.backups.cloudAttempts": "上传次数",
     "gestion.backups.cloudUploadedAt": "上传时间", "gestion.backups.cloudNextAttempt": "下次尝试",
-    "gestion.backups.cloudRetry": "重试上传到 SaaS", "gestion.backups.cloudRetryError": "无法重试上传到 SaaS。",
+    "gestion.backups.cloudRetry": "重试上传到中央服务器", "gestion.backups.cloudRetryError": "无法重试上传到中央服务器。",
     "gestion.backups.cloudErrorDetail": "上传错误详情", "gestion.backups.cloud.PENDING": "等待上传",
-    "gestion.backups.cloud.UPLOADING": "正在上传到 SaaS", "gestion.backups.cloud.SENT": "已保存在 SaaS",
-    "gestion.backups.cloud.RETIRED": "SaaS 已不再保留",
+    "gestion.backups.cloud.UPLOADING": "正在上传到中央服务器", "gestion.backups.cloud.SENT": "已保存在中央服务器",
+    "gestion.backups.cloud.RETIRED": "中央服务器已不再保留",
     "gestion.backups.cloud.FAILED": "上传失败",
     "gestion.backups.portableSecretsIncomplete": "此备份保留了数据，但缺少在另一台设备上恢复所需的密钥。请联系支持人员核查。",
     "gestion.backups.legacyRecoveryLimit": "此旧备份不包含在另一台设备上完整恢复所需的可迁移密钥。"

@@ -72,7 +72,7 @@ describe("CustomerDocumentsDialog", () => {
   it.each(["venta", "gestion"] as const)("opens Model 347 in %s from invoices even with empty or unapplied filters", async (app) => {
     vi.mocked(apiRequest).mockResolvedValue(page([]));
     mount({ app, session: { ...session, permissions: ["INVOICES_READ"] } });
-    await screen.findByText("No hay documentos de este tipo recibidos en SaaS para este cliente.");
+    await screen.findByText("No hay documentos de este tipo recibidos en el servidor central para este cliente.");
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "NO-MATCH" } });
     const modelButton = screen.getByRole("button", { name: "Resumen anual" }); modelButton.focus(); fireEvent.click(modelButton);
     expect(screen.getByRole("dialog", { name: "Modelo 347" })).toBeInTheDocument();
@@ -209,7 +209,7 @@ describe("CustomerDocumentsDialog", () => {
     mount();
     expect(await screen.findByRole("alert")).not.toHaveTextContent("internal SQL");
     fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
-    await screen.findByText("No hay documentos de este tipo recibidos en SaaS para este cliente.");
+    await screen.findByText("No hay documentos de este tipo recibidos en el servidor central para este cliente.");
     expect(screen.getByRole("table")).toBeInTheDocument();
     expect(apiRequest).toHaveBeenCalledTimes(2);
   });
@@ -338,7 +338,7 @@ describe("CustomerDocumentsDialog", () => {
     expect(row.style.gridTemplateColumns).toBe(headerRow.style.gridTemplateColumns);
     vi.mocked(apiRequest).mockResolvedValueOnce(page([]));
     fireEvent.keyDown(window, { key: "F3" });
-    await screen.findByText("No hay documentos de este tipo recibidos en SaaS para este cliente.");
+    await screen.findByText("No hay documentos de este tipo recibidos en el servidor central para este cliente.");
     expect(screen.getAllByRole("columnheader")).toHaveLength(11);
     expect(screen.getAllByRole("columnheader")[10].parentElement!.style.gridTemplateColumns).toMatch(/minmax\(160px, 1fr\)$/);
   });

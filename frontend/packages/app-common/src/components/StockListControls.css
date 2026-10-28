@@ -106,6 +106,16 @@
     font-size: 9px;
   }
   .stock-document-screen .stock-document-actions button:disabled { opacity: .5; }
+  .stock-screen.erp-classic-tables .stock-bulk-workspace-table th {
+    background-image: none !important;
+    box-shadow: none !important;
+  }
+  .stock-screen.erp-classic-tables .stock-bulk-workspace-table tbody :is(td, td *) {
+    font-weight: 400 !important;
+  }
+  .stock-screen.erp-classic-tables .stock-bulk-workspace-table tbody tr:is(.selected, [aria-selected="true"]) :is(td, td *) {
+    font-weight: 700 !important;
+  }
   .stock-document-screen :is(.stock-document-actions, .stock-panel-heading) button:focus-visible {
     outline: 2px solid #0065fe;
     outline-offset: 2px;
@@ -123,14 +133,93 @@
   .stock-document-screen .stock-promotion-overview { overflow: hidden; }
   .stock-document-screen .stock-promotion-list-filters { margin: 8px; }
   .stock-document-screen .stock-promotion-list-filters .stock-promotion-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     width: 100% !important;
     max-width: none;
+    height: 34px !important;
+    padding: 0 8px;
+    border: 1px solid #aebfd0;
+    border-radius: 4px;
+    background: #fff;
+  }
+  .stock-document-screen .stock-promotion-search > input {
+    flex: 1 1 0;
+    width: 100%;
+    height: 100% !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  .stock-document-screen .stock-promotion-search > svg {
+    position: static;
+    flex: 0 0 auto;
+    order: -1;
+  }
+  .stock-document-screen .stock-promotion-search:focus-within {
+    border-color: #0065fe;
+    outline: 2px solid #0065fe;
+    outline-offset: 1px;
+  }
+  .stock-document-screen .stock-promotion-status-filter .erp-select {
+    height: 34px;
+    border: 0;
+  }
+  .stock-document-screen .stock-promotion-status-filter .erp-select > .erp-select__trigger {
+    overflow: hidden;
+    grid-template-columns: minmax(0, 1fr) 42px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 !important;
+    border: 1px solid #aebfd0 !important;
+    border-radius: 4px !important;
+    background: #fff !important;
+    color: #12385f !important;
+    box-shadow: none !important;
+    font-size: 12px !important;
+  }
+  .stock-document-screen .stock-promotion-status-filter .erp-select__arrow {
+    display: grid !important;
+    width: 42px;
+    height: 100%;
+    min-height: 0;
+    margin: 0;
+    border-radius: 0 3px 3px 0;
+    background: #12385f;
+    color: #fff;
+  }
+  .stock-document-screen .stock-promotion-status-filter .erp-select__trigger:is(:hover, :focus-visible, [aria-expanded="true"]) .erp-select__arrow {
+    background: #0065fe;
   }
   .stock-document-screen .stock-promotion-status-filter .erp-select__trigger { font-weight: 800; }
   .stock-document-screen .stock-promotion-status-filter > svg { display: none; }
   .stock-document-screen .stock-promotion-list-footer button { width: 34px; height: 34px; }
   .stock-document-screen .stock-promotion-products .report-table-scroll {
     border: 1px solid #aebfd0;
+  }
+  .stock-document-screen .stock-promotion-products table.report-table th {
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 8px !important;
+    border-color: #d9e1e9 !important;
+    background: #12385f !important;
+    color: #fff !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+  }
+  .stock-document-screen .stock-promotion-products table.report-table tbody > tr > td {
+    height: 36px !important;
+    padding: 5px 8px !important;
+    border: 0 !important;
+    border-right: 1px solid #d9e1e9 !important;
+    border-bottom: 1px solid #d9e1e9 !important;
+    background: inherit !important;
+    color: #172e4c !important;
+    font-size: 13px !important;
   }
 }
 

@@ -132,7 +132,7 @@ describe("LicenseSaasManagementScreen", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Vincular licencia" }));
 
-    expect(await screen.findByText("Licencia SaaS vinculada correctamente.")).toBeInTheDocument();
+    expect(await screen.findByText("Licencia del servidor central vinculada correctamente.")).toBeInTheDocument();
     expect(screen.getAllByText("LIC-2026-0001")).toHaveLength(2);
   });
 

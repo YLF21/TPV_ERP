@@ -931,7 +931,7 @@ export function PartyDirectoryPanel({
   function clearDirectoryFilters() {
     setQuery(""); setStatusFilter("all"); setFieldFilters({});
   }
-  const activeFieldFilterCount = directoryFilterFields.filter(field => fieldFilters[field]?.trim()).length;
+  const activeFieldFilterCount = Number(statusFilter !== "all") + directoryFilterFields.filter(field => fieldFilters[field]?.trim()).length;
   const filterChips: ErpFilterChip[] = [
     { key: "query", label: t("party.searchLabel"), value: query.trim(), onRemove: () => setQuery("") },
     { key: "status", label: t("party.column.status"), value: statusFilter === "all" ? "" : t(`party.filter.status.${statusFilter}`), onRemove: () => setStatusFilter("all") },
@@ -940,6 +940,20 @@ export function PartyDirectoryPanel({
       onRemove: () => setFieldFilters(current => ({ ...current, [field]: "" }))
     })) : [])
   ].filter((chip) => chip.value !== "");
+  const statusFilterControl = <label className={supportsFieldFilters ? undefined : "party-directory-status-filter"}
+    data-filter-active={classicWindow && statusFilter !== "all"}>
+    <span>{t("party.column.status")}</span>
+    <ErpSelect
+      className="erp-select--compact"
+      value={statusFilter}
+      aria-label={t("party.column.status")}
+      onChange={(value) => setStatusFilter(value as PartyStatusFilter)}
+      options={["all", "active", "inactive"].map((value) => ({
+        value,
+        label: t(`party.filter.status.${value}`)
+      }))}
+    />
+  </label>;
   function creditOverview(customer: CustomerView | MemberDirectoryView) {
     return <section className="party-desktop-credit-overview" aria-label={t("party.gestion.section.account")}>
       <h3>{t("party.gestion.section.account")}</h3>
@@ -1126,19 +1140,7 @@ export function PartyDirectoryPanel({
       {classicWindow && <label className="party-directory-search-label" htmlFor="party-management-search">{t("party.searchLabel")}</label>}
       {classicWindow ? <GestionSearchFrame><input id={classicWindow ? "party-management-search" : undefined} ref={searchRef} aria-label={t("party.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("party.search")} /></GestionSearchFrame>
         : <input id={classicWindow ? "party-management-search" : undefined} ref={searchRef} aria-label={t("party.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("party.search")} />}
-      <label className="party-directory-status-filter" data-filter-active={classicWindow && statusFilter !== "all"}>
-        <span>{t("party.column.status")}</span>
-        <ErpSelect
-          className="erp-select--compact"
-          value={statusFilter}
-          aria-label={t("party.column.status")}
-          onChange={(value) => setStatusFilter(value as PartyStatusFilter)}
-          options={["all", "active", "inactive"].map((value) => ({
-            value,
-            label: t(`party.filter.status.${value}`)
-          }))}
-        />
-      </label>
+      {!supportsFieldFilters && statusFilterControl}
       {supportsFieldFilters && <button ref={filterButtonRef} type="button" className="stock-filter-button party-directory-filter-button"
         aria-label={t("salesReport.filter")} aria-expanded={fieldFiltersOpen} aria-controls={fieldFiltersId}
         onClick={() => setFieldFiltersOpen(current => !current)}>
@@ -1172,6 +1174,7 @@ export function PartyDirectoryPanel({
             event.preventDefault(); event.stopPropagation(); setFieldFiltersOpen(false); filterButtonRef.current?.focus();
           }
         }}>
+        {statusFilterControl}
         {directoryFilterFields.map(field => <label key={field}>
           <span>{fieldFilterLabel(field)}</span>
           {filterOptions(field) ? <ErpSelect aria-label={fieldFilterLabel(field)} value={fieldFilters[field] ?? ""} options={filterOptions(field)!} onChange={value => setFieldFilters(current => ({ ...current, [field]: value }))} /> : <input type="text" maxLength={120} value={fieldFilters[field] ?? ""} onChange={event => {
