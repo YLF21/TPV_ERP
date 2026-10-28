@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.UUID;
+import java.util.List;
 
 public final class CustomerAdoptionApi {
     private CustomerAdoptionApi() { }
@@ -18,10 +19,17 @@ public final class CustomerAdoptionApi {
     }
     public record Profile(UUID customerId, Long revision, String centralCode, String fiscalName,
             DocumentType documentType, String documentNumber, Address address, String phone,
-            String email, Boolean active, UUID localCustomerId) {
+            String email, Boolean active, UUID localCustomerId,
+            List<CustomerAddressEntry> addresses, Long addressBookRevision) {
+        public Profile(UUID customerId, Long revision, String centralCode, String fiscalName,
+                DocumentType documentType, String documentNumber, Address address, String phone,
+                String email, Boolean active, UUID localCustomerId) {
+            this(customerId, revision, centralCode, fiscalName, documentType, documentNumber,
+                    address, phone, email, active, localCustomerId, null, null);
+        }
         Profile withLocalCustomerId(UUID id) {
             return new Profile(customerId, revision, centralCode, fiscalName, documentType,
-                    documentNumber, address, phone, email, active, id);
+                    documentNumber, address, phone, email, active, id, addresses, addressBookRevision);
         }
     }
     public record Reservation(UUID operationId, UUID localCustomerId, Profile customer) { }

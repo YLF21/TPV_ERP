@@ -25,6 +25,10 @@ public class CustomerService {
     private final MemberLoyaltyService memberLoyalty;
     private final Clock clock;
     private final CustomerIdentityCoordinator identities;
+    private CustomerAddressBookService addressBooks;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAddressBooks(CustomerAddressBookService addressBooks) { this.addressBooks = addressBooks; }
 
     public CustomerService(
             CustomerRepository customers,
@@ -90,6 +94,7 @@ public class CustomerService {
         candidate.assignClientCode(store.getId(), clientCode);
         var approval = identities.reserve(company.getId(), store.getId(), null, identity, candidate);
         var customer = newCustomer(approval.customerId(), company, command, identity);
+        customer.replaceAddresses(candidate.getAddresses());
         customer.assignClientCode(store.getId(), clientCode);
         customer = customers.save(customer);
         identities.complete(approval, customer);
@@ -127,6 +132,7 @@ public class CustomerService {
             var approval = identities.reserve(company.getId(), store.getId(), null, identity, candidate);
             approvals.add(approval);
             var customer = newCustomer(approval.customerId(), company, command, identity);
+            customer.replaceAddresses(candidate.getAddresses());
             customer.assignClientCode(store.getId(), reservedCodes.get(index));
             pending.add(customer);
         }
@@ -139,6 +145,9 @@ public class CustomerService {
     public CustomerView update(UUID id, CustomerCommand command) {
         Customer customer = customers.findLockedByIdAndCompanyId(id, context.currentCompany().getId())
                 .orElseThrow(() -> new IllegalArgumentException("Cliente no encontrado"));
+        var previousAddresses = customer.getAddresses();
+        var requestedAddresses = CustomerAddressBookService.prepareUpdate(customer,
+                command.addresses(), command.expectedVersion(), command.address(), command.phone(), command.email(), command.notes());
         DocumentType canonicalType;
         String canonicalNumber;
         try {
@@ -156,6 +165,7 @@ public class CustomerService {
             // A legacy record can be registered with a corrected, valid identity. Never attach
             // it to another central customer merely because a number matches.
             var candidate = newCustomer(id, context.currentCompany(), command, identity);
+            candidate.replaceAddresses(requestedAddresses);
             candidate.assignClientCode(customer.getClientCodeStoreId(), customer.getClientId());
             approval = identities.reserve(context.currentCompany().getId(), context.currentStore().getId(), customer, identity, candidate);
         }
@@ -169,6 +179,10 @@ public class CustomerService {
         customer.updateProfile(
                 command.birthday(), command.gender(), command.commercialConsent(),
                 command.preferredCommercialChannelId());
+        customer.replaceAddresses(requestedAddresses);
+        if (addressBooks != null && !previousAddresses.equals(requestedAddresses)) {
+            addressBooks.enqueue(customer);
+        }
         applyCreditConfiguration(customer, command, false);
         if (command.member()) {
             if (member == null) {
@@ -187,6 +201,7 @@ public class CustomerService {
             memberLoyalty.deactivateMember(member);
         }
         if (approval != null) identities.complete(approval, customer);
+        customers.flush(); // Return the committed optimistic version used by subsequent address edits.
         return view(customer, member);
     }
 
@@ -217,6 +232,7 @@ public class CustomerService {
                 command.address(), command.phone(), command.email(), command.notes(), CustomerRate.VENTA, command.discount());
         customer.updateProfile(command.birthday(), command.gender(), command.commercialConsent(), command.preferredCommercialChannelId());
         applyCreditConfiguration(customer, command, true);
+        customer.replaceAddresses(command.addresses() == null ? customer.getAddresses() : command.addresses());
         return customer;
     }
 
@@ -391,7 +407,21 @@ public class CustomerService {
             boolean creditLimitSpecified,
             Integer paymentTermDays,
             Boolean creditBlocked,
-            Boolean blockOnOverdue) {
+            Boolean blockOnOverdue,
+            List<CustomerAddressEntry> addresses,
+            Long expectedVersion) {
+
+        public CustomerCommand(String fiscalName, DocumentType documentType, String documentNumber,
+                FiscalAddress address, String phone, String email, String notes, BigDecimal discount,
+                boolean member, String numMember, LocalDate birthday, CustomerGender gender,
+                boolean commercialConsent, UUID preferredCommercialChannelId, Boolean creditEnabled,
+                BigDecimal creditLimit, boolean creditLimitSpecified, Integer paymentTermDays,
+                Boolean creditBlocked, Boolean blockOnOverdue) {
+            this(fiscalName, documentType, documentNumber, address, phone, email, notes, discount,
+                    member, numMember, birthday, gender, commercialConsent, preferredCommercialChannelId,
+                    creditEnabled, creditLimit, creditLimitSpecified, paymentTermDays, creditBlocked,
+                    blockOnOverdue, null, null);
+        }
 
         public CustomerCommand(
                 String fiscalName,
@@ -464,7 +494,10 @@ public class CustomerService {
             boolean blockOnOverdue,
             BigDecimal outstandingDebt,
             BigDecimal overdueDebt,
-            BigDecimal availableCredit) {
+            BigDecimal availableCredit,
+            List<CustomerAddressEntry> addresses,
+            Long addressBookRevision,
+            String addressSyncStatus) {
 
         static CustomerView from(Customer customer, Member member, CreditSummary credit) {
             boolean activeMember = member != null && member.isActive();
@@ -491,7 +524,8 @@ public class CustomerService {
                     customer.isCreditEnabled(), customer.getCreditLimit(),
                     customer.getPaymentTermDays(), customer.isCreditBlocked(),
                     customer.isBlockOnOverdue(), credit.outstandingDebt(),
-                    credit.overdueDebt(), credit.availableCredit());
+                    credit.overdueDebt(), credit.availableCredit(), customer.getAddresses(),
+                    customer.getAddressBookRevision(), customer.getAddressSyncStatus());
         }
     }
 

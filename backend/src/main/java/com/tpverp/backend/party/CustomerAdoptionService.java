@@ -141,6 +141,11 @@ public class CustomerAdoptionService {
                     profile.phone(), profile.email(), null, CustomerRate.VENTA, BigDecimal.ZERO);
             customer.assignClientCode(store.getId(), code);
             customer.linkAdoptedSaasIdentity(profile.customerId(), profile.revision(), profile.centralCode());
+            if (profile.addresses() != null) {
+                customer.addressConfirmed(profile.addresses(), profile.addressBookRevision());
+            } else {
+                customer.replaceAddresses(customer.getAddresses());
+            }
             customers.saveAndFlush(customer);
         }
         outbox.enqueue(new SyncOutboundEventCommand(company.getId(), store.getId(), null, "CUSTOMER_ADOPTION",

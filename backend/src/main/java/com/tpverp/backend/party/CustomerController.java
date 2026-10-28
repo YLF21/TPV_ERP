@@ -155,7 +155,21 @@ public class CustomerController {
             @DecimalMin("0") @DecimalMax("3650") Integer paymentTermDays,
             Boolean creditBlocked,
             Boolean blockOnOverdue,
-            Boolean unlimitedCredit) {
+            Boolean unlimitedCredit,
+            List<CustomerAddressEntry> addresses,
+            Long expectedVersion) {
+
+        public CustomerRequest(String fiscalName, DocumentType documentType, String documentNumber,
+                FiscalAddress address, String phone, String email, String notes, BigDecimal discount,
+                boolean isMember, String numMember, LocalDate birthday, CustomerGender gender,
+                boolean commercialConsent, UUID preferredCommercialChannelId, Boolean creditEnabled,
+                BigDecimal creditLimit, Integer paymentTermDays, Boolean creditBlocked,
+                Boolean blockOnOverdue, Boolean unlimitedCredit) {
+            this(fiscalName, documentType, documentNumber, address, phone, email, notes, discount,
+                    isMember, numMember, birthday, gender, commercialConsent, preferredCommercialChannelId,
+                    creditEnabled, creditLimit, paymentTermDays, creditBlocked, blockOnOverdue,
+                    unlimitedCredit, null, null);
+        }
 
         public CustomerRequest(
                 String fiscalName,
@@ -184,7 +198,7 @@ public class CustomerController {
                     birthday, gender, commercialConsent, preferredCommercialChannelId,
                     creditEnabled, Boolean.TRUE.equals(unlimitedCredit) ? null : creditLimit,
                     creditLimit != null || Boolean.TRUE.equals(unlimitedCredit), paymentTermDays,
-                    creditBlocked, blockOnOverdue);
+                    creditBlocked, blockOnOverdue, addresses, expectedVersion);
         }
     }
 

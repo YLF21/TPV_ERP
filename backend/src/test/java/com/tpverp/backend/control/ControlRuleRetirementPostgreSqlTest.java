@@ -113,7 +113,7 @@ class ControlRuleRetirementPostgreSqlTest {
     @Test
     void retirementAndReadditionKeepIdentityEvidenceAndEveryVersion() {
         assertThat(jdbc.queryForObject("select max(version::integer) from flyway_schema_history "
-                + "where success and version ~ '^[0-9]+$'", Integer.class)).isEqualTo(279);
+                + "where success and version ~ '^[0-9]+$'", Integer.class)).isEqualTo(280);
         var created = create();
         var rule = rules.findById(created.id()).orElseThrow();
         var event = events.saveAndFlush(new ControlEvent(storeId, rule, "TEST", UUID.randomUUID(),

@@ -15,6 +15,7 @@ const customer: CustomerView = { id: "customer-1", clientId: "C-001", fiscalName
 beforeEach(() => {
   request.mockReset().mockImplementation(async (path) => {
     if (path === "/customers") return [customer];
+    if (path === "/customers/customer-1/addresses/refresh") return { ...customer, version: 1, addressSyncStatus: "SYNCED", addresses: [{ id: "00000000-0000-4000-8000-000000000001", address: { country: "ES" } }] };
     if (path === "/suppliers") return [{ ...customer, supplierId: "P-001", legalName: "Proveedor existente" }];
     if (path.startsWith("/document-reports/")) return { items: [], hasMore: false };
     return [];
@@ -57,6 +58,7 @@ describe("customer identity forms", () => {
     await screen.findByRole("dialog", { name: "Documentos del cliente" });
     fireEvent.keyDown(window, { key: "F7" });
     const dialog = screen.getByRole("dialog");
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Guardar" })).toBeEnabled());
     expect(within(dialog).getByRole("button", { name: "Tipo de documento" })).toHaveTextContent("NIF");
     expect(within(dialog).getByLabelText("Número de documento")).toHaveValue("B12345674");
     fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));

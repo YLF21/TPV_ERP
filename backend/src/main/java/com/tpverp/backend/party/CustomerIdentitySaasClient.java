@@ -90,6 +90,7 @@ public class CustomerIdentitySaasClient {
             payload.put("documentNumber", document.canonicalNumber());
             var tree = mapper.readTree(send("/api/v1/customer-identities/lookup", payload));
             requireExactRevision(tree.path("revision"));
+            requireAddressBookRevision(tree);
             var profile = mapper.treeToValue(tree, CustomerAdoptionApi.Profile.class);
             validateAdoptionProfile(profile);
             if (!document.canonicalNumber().equals(profile.documentNumber())) throw CustomerIdentityException.unavailable();
@@ -108,6 +109,7 @@ public class CustomerIdentitySaasClient {
             payload.put("documentNumber", operation.documentNumber());
             var tree = mapper.readTree(send("/api/v1/customer-identities/adoptions", payload));
             requireExactRevision(tree.path("customer").path("revision"));
+            requireAddressBookRevision(tree.path("customer"));
             var value = mapper.treeToValue(tree, CustomerAdoptionApi.Reservation.class);
             validateAdoptionProfile(value == null ? null : value.customer());
             var profile = value.customer();
@@ -121,6 +123,25 @@ public class CustomerIdentitySaasClient {
                 throw CustomerIdentityException.unavailable();
             }
             return value;
+        } catch (CustomerIdentityException exception) { throw exception; }
+        catch (Exception exception) { throw CustomerIdentityException.unavailable(); }
+    }
+
+    public CustomerAddressBookService.Snapshot addressSnapshot(UUID companyId, UUID storeId, UUID localCustomerId,
+            UUID customerId, UUID operationId) {
+        try {
+            var payload = adoptionContext(companyId, storeId, localCustomerId);
+            payload.put("customerId", customerId);
+            if (operationId != null) payload.put("operationId", operationId);
+            var tree = mapper.readTree(send("/api/v1/customer-addresses/snapshot", payload));
+            requireExactRevision(tree.path("revision"));
+            var snapshot = mapper.treeToValue(tree, CustomerAddressBookService.Snapshot.class);
+            if (!customerId.equals(snapshot.customerId()) || snapshot.revision() < 1
+                    || (operationId != null && !operationId.equals(snapshot.operationId()))
+                    || (snapshot.operationStatus() != null && !Set.of("APPLIED", "CONFLICT", "NOT_FOUND")
+                        .contains(snapshot.operationStatus()))) throw CustomerIdentityException.unavailable();
+            return new CustomerAddressBookService.Snapshot(snapshot.customerId(), snapshot.revision(),
+                    CustomerAddressEntry.validated(snapshot.addresses()), snapshot.operationStatus(), snapshot.operationId());
         } catch (CustomerIdentityException exception) { throw exception; }
         catch (Exception exception) { throw CustomerIdentityException.unavailable(); }
     }
@@ -148,6 +169,13 @@ public class CustomerIdentitySaasClient {
         }
     }
 
+    private static void requireAddressBookRevision(com.fasterxml.jackson.databind.JsonNode profile) {
+        if (profile.hasNonNull("addresses")) {
+            if (!profile.path("addresses").isArray()) throw CustomerIdentityException.unavailable();
+            requireExactRevision(profile.path("addressBookRevision"));
+        }
+    }
+
     static void validateAdoptionProfile(CustomerAdoptionApi.Profile profile) {
         if (profile == null || profile.customerId() == null || profile.revision() == null || profile.revision() < 0
                 || profile.active() == null) throw CustomerIdentityException.unavailable();
@@ -160,6 +188,11 @@ public class CustomerIdentitySaasClient {
             length(profile.phone(), 64, false);
             length(profile.email(), 320, false);
             var address = profile.address();
+            if (profile.addresses() != null) {
+                if (profile.addressBookRevision() == null || profile.addressBookRevision() < 1)
+                    throw CustomerIdentityException.unavailable();
+                CustomerAddressEntry.validated(profile.addresses());
+            } else if (profile.addressBookRevision() != null) throw CustomerIdentityException.unavailable();
             if (address != null) {
                 length(address.address(), 255, false); length(address.postalCode(), 16, false);
                 length(address.city(), 128, false); length(address.province(), 128, false);

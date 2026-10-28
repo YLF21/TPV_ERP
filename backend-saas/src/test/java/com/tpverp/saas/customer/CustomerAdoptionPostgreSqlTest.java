@@ -51,6 +51,92 @@ class CustomerAdoptionPostgreSqlTest {
     @Autowired ObjectMapper mapper;
     @Autowired AdminService admin;
     @Autowired MockMvc mvc;
+    @Autowired CustomerAddressBookService addressBooks;
+
+    @Test void addressBooksShareCasAcrossStoresWithoutChangingIdentityAndStaleEventsAreTerminal() {
+        var first = site(); var second = site(first.company(), "002"); UUID customer = master(first);
+        var a = reserve(first, customer); var b = reserve(second, customer);
+        service.reserve(a, first.token()); finish(first, a);
+        service.reserve(b, second.token()); finish(second, b);
+        var before = masterRow(customer);
+        UUID firstOperation = UUID.randomUUID(), secondOperation = UUID.randomUUID();
+        var firstPayload = addressPayload(customer, firstOperation, "First store");
+        var secondPayload = addressPayload(customer, secondOperation, "Second store");
+        sync.receive(addressEvent(first, a.localCustomerId(), firstPayload), first.token());
+        var failed = addressEvent(second, b.localCustomerId(), secondPayload);
+        sync.receive(failed, second.token());
+        assertThat(events.findById(failed.eventId()).orElseThrow().getProjectionStatus()).isEqualTo(SaasSyncEvent.ProjectionStatus.PROJECTED);
+        var snapshotA = addressBooks.snapshot(addressRequest(a, firstOperation), first.token());
+        var snapshotB = addressBooks.snapshot(addressRequest(b, secondOperation), second.token());
+        assertThat(snapshotA.revision()).isEqualTo(2);
+        assertThat(snapshotA.operationStatus()).isEqualTo("APPLIED");
+        assertThat(snapshotB.operationStatus()).isEqualTo("CONFLICT");
+        assertThat(snapshotB.addresses()).isEqualTo(snapshotA.addresses());
+        assertThat(snapshotA.addresses().getFirst().address().address()).isEqualTo("First store");
+        assertThat(masterRow(customer)).isEqualTo(before);
+        sync.receive(addressEvent(first, a.localCustomerId(), firstPayload), first.token());
+        sync.receive(failed, second.token());
+        assertThat(addressBooks.snapshot(addressRequest(a, firstOperation), first.token()).revision()).isEqualTo(2);
+        assertThat(addressBooks.snapshot(addressRequest(a, UUID.randomUUID()), first.token()).operationStatus()).isEqualTo("NOT_FOUND");
+        var lookup = service.lookup(new Lookup(a.companyId(), a.storeId(), "NIF", "12345678Z"), first.token());
+        assertThat(lookup.addressBookRevision()).isEqualTo(2);
+        assertThat(lookup.address()).isEqualTo(snapshotA.addresses().getFirst().address());
+        // Old identity payloads must never replace a separately updated book.
+        var change = identityChange(first, a, "NEW-DOC"); identities.reserve(change, first.token());
+        var identityPayload = new java.util.LinkedHashMap<String, Object>(change.profile());
+        identityPayload.put("operationId", change.operationId().toString());
+        sync.receive(new SyncEventRequest(UUID.randomUUID(), a.companyId(), a.storeId(), null, "CUSTOMER_IDENTITY",
+                a.localCustomerId(), SyncOperation.ACTUALIZAR, identityPayload), first.token());
+        assertThat(addressBooks.snapshot(addressRequest(a, firstOperation), first.token()).addresses()).isEqualTo(snapshotA.addresses());
+    }
+
+    @Test void addressOperationRejectsChangedContentWrongLinksAndForeignSnapshotOwner() {
+        var first = site(); var second = site(first.company(), "002"); UUID customer = master(first);
+        var a = reserve(first, customer); var b = reserve(second, customer);
+        service.reserve(a, first.token()); finish(first, a);
+        service.reserve(b, second.token()); finish(second, b);
+        UUID operation = UUID.randomUUID();
+        sync.receive(addressEvent(first, a.localCustomerId(), addressPayload(customer, operation, "Original")), first.token());
+        var changed = addressEvent(first, a.localCustomerId(), addressPayload(customer, operation, "Changed"));
+        assertThatThrownBy(() -> sync.receive(changed, first.token())).isInstanceOf(ResponseStatusException.class);
+        assertThat(events.findById(changed.eventId())).isEmpty();
+        assertThatThrownBy(() -> addressBooks.snapshot(addressRequest(b, operation), second.token())).isInstanceOf(ResponseStatusException.class);
+        var wrongLink = addressEvent(first, UUID.randomUUID(), addressPayload(customer, UUID.randomUUID(), "Wrong"));
+        assertThatThrownBy(() -> sync.receive(wrongLink, first.token())).isInstanceOf(ResponseStatusException.class);
+        assertThat(events.findById(wrongLink.eventId())).isEmpty();
+        assertThat(addressBooks.snapshot(addressRequest(a, operation), first.token()).revision()).isEqualTo(2);
+    }
+
+    @Test void initialIdentityAddressesAreReservedHashedAndCommittedAtomically() {
+        var site = site(); UUID local = UUID.randomUUID(), operation = UUID.randomUUID();
+        var entries = addressPayload(UUID.randomUUID(), UUID.randomUUID(), "Initial").get("addresses");
+        Map<String, Object> profile = Map.of("clientId", "FIRST", "fiscalName", "Customer", "address", Map.of(), "addresses", entries);
+        var request = new CustomerIdentityReservationRequest(site.company().getId(), site.store().getId(), operation,
+                local, null, null, "PASAPORTE", "NEW-123", profile);
+        var reserved = identities.reserve(request, site.token());
+        var payload = new java.util.LinkedHashMap<String, Object>(profile); payload.put("operationId", operation.toString());
+        var bad = new java.util.LinkedHashMap<>(payload); bad.put("addresses", addressPayload(reserved.customerId(), operation, "Tampered").get("addresses"));
+        assertThatThrownBy(() -> sync.receive(new SyncEventRequest(UUID.randomUUID(), site.company().getId(), site.store().getId(), null,
+                "CUSTOMER_IDENTITY", local, SyncOperation.ACTUALIZAR, bad), site.token())).isInstanceOf(CustomerIdentityException.class);
+        assertThat(jdbc.queryForObject("select count(*) from saas_customer_address_book where customer_id=?", Integer.class, reserved.customerId())).isZero();
+        sync.receive(new SyncEventRequest(UUID.randomUUID(), site.company().getId(), site.store().getId(), null,
+                "CUSTOMER_IDENTITY", local, SyncOperation.ACTUALIZAR, payload), site.token());
+        var book = addressBooks.snapshot(new CustomerAddressBookApi.Request(site.company().getId(), site.store().getId(), local, reserved.customerId(), null), site.token());
+        assertThat(book.revision()).isEqualTo(1);
+        assertThat(book.addresses().getFirst().address().address()).isEqualTo("Initial");
+    }
+
+    private Map<String, Object> addressPayload(UUID customer, UUID operation, String street) {
+        return Map.of("operationId", operation.toString(), "customerId", customer.toString(), "expectedRevision", 1L,
+                "addresses", java.util.List.of(Map.of("id", customer.toString(), "address", Map.of("address", street, "country", "ES"))));
+    }
+    private SyncEventRequest addressEvent(Site site, UUID local, Map<String, Object> payload) {
+        return new SyncEventRequest(UUID.randomUUID(), site.company().getId(), site.store().getId(), null,
+                "CUSTOMER_ADDRESSES", local, SyncOperation.ACTUALIZAR, payload);
+    }
+    private CustomerAddressBookApi.Request addressRequest(Reserve adoption, UUID operation) {
+        return new CustomerAddressBookApi.Request(adoption.companyId(), adoption.storeId(), adoption.localCustomerId(), adoption.customerId(), operation);
+    }
 
     @Test void exactNormalizedLookupReturnsActualTypeAndAdministrativeRevisionZeroWithoutWrites() {
         var site = site();

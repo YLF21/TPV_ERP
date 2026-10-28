@@ -12,6 +12,7 @@ const customer: CustomerView = { id: "customer-1", clientId: "C-001", fiscalName
 beforeEach(() => {
   vi.mocked(apiRequest).mockReset().mockImplementation(async (path) => {
     if (path === "/customers") return [customer];
+    if (path === "/customers/customer-1/addresses/refresh") return { ...customer, version: 1, addressSyncStatus: "SYNCED", addresses: [{ id: "00000000-0000-4000-8000-000000000001", address: { country: "ES" } }] };
     if (path.startsWith("/customers/management/page")) return { items: [customer], hasMore: false };
     if (path === "/suppliers") return [{ ...customer, supplierId: "P-001", legalName: "Proveedor de prueba" }];
     if (path.startsWith("/customer-document-reports/saas/customer-1/")) return { localCustomerId: customer.id, customer: { id: "central-customer" }, coverage: "RECEIVED_V2_ONLY", items: [], hasMore: false };
@@ -35,7 +36,7 @@ describe("Customer directory document entry", () => {
     await screen.findByText("No hay documentos de este tipo recibidos en SaaS para este cliente.");
     fireEvent.keyDown(window, { key: "F7" });
     const name = await screen.findByDisplayValue("Cliente de prueba");
-    expect(name).toHaveFocus();
+    await waitFor(() => expect(name).toHaveFocus());
     expect(screen.queryByRole("dialog", { name: "Documentos del cliente" })).not.toBeInTheDocument();
     const editDialog = screen.getByRole("dialog");
     fireEvent.click(within(editDialog).getByRole("button", { name: "Cerrar" }));
@@ -43,7 +44,7 @@ describe("Customer directory document entry", () => {
     expect(screen.getByRole("tab", { name: "Albaranes F3" })).toHaveAttribute("aria-selected", "true");
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument(); expect(row).toHaveFocus();
-    expect(vi.mocked(apiRequest).mock.calls.every(([, options]) => !options?.body && (!options?.method || options.method === "GET"))).toBe(true);
+    expect(vi.mocked(apiRequest).mock.calls.every(([path, options]) => !options?.body && (!options?.method || options.method === "GET" || path === "/customers/customer-1/addresses/refresh" && options.method === "POST"))).toBe(true);
   });
 
   it("supports keyboard activation of a customer without editing", async () => {

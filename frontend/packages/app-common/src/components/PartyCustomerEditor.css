@@ -1,0 +1,119 @@
+/* Customer editor in APP VENTA; shared supplier, PDA and Gestión forms keep their skin. */
+.party-customer-editor--venta .party-document-row { grid-template-columns: minmax(130px, .8fr) minmax(0, 1.6fr); align-items: start; }
+.party-customer-editor--venta .party-document-number-with-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 5px 8px;
+  min-width: 0;
+}
+.party-customer-editor--venta .party-document-number-with-action > label,
+.party-customer-editor--venta .party-document-validation { display: contents; }
+.party-customer-editor--venta .party-document-number-with-action > label > span { grid-column: 1 / -1; grid-row: 1; }
+.party-customer-editor--venta .party-document-number-with-action > label > input { grid-column: 1; grid-row: 2; width: 100%; min-width: 0; height: 34px !important; min-height: 34px !important; }
+.party-customer-editor--venta .party-document-number-with-action > label > small { grid-column: 1 / -1; grid-row: 3; }
+.party-customer-editor--venta .party-document-validation > button { grid-column: 2; grid-row: 2; }
+.party-customer-editor--venta .party-document-validation > small { grid-column: 1 / -1; font-size: 11px; line-height: 1.4; }
+.party-customer-editor--venta .party-document-available { color: #21633d; }
+.party-customer-editor--venta :is(.party-document-validation > button, .party-address-book-footer > button) {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid #68737e;
+  border-radius: 4px !important;
+  color: #092b53;
+  background: #eef1f4;
+  box-shadow: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.party-customer-editor--venta :is(.party-form-section, .party-credit-settings) { border-radius: 4px !important; }
+.party-customer-editor--venta .party-form-section--contact { grid-row: 1 / span 3; }
+.party-customer-editor--venta .party-form-section--communications {
+  grid-column: 1;
+  grid-row: 3;
+  align-self: start;
+  min-height: 0;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.party-customer-editor--venta .party-form-section--communications > .party-commercial-consent { min-height: 26px; margin: 0; }
+.party-customer-editor--venta .party-form-section--communications > h3 { margin: 0; }
+.party-customer-editor--venta .party-credit-settings { grid-column: 1 / -1; grid-row: 4; }
+.party-customer-editor--venta > .filter-header > button.party-customer-refresh { margin-left: auto; min-height: 32px; border-radius: 4px !important; font: inherit; font-size: 12px; font-weight: 700; }
+.party-customer-editor--venta > .filter-header > button.party-customer-refresh:disabled { opacity: .6; }
+.party-customer-editor--venta .erp-select { height: 34px; padding: 0 !important; border: 0 !important; box-shadow: none !important; }
+.party-customer-editor--venta .erp-select > .erp-select__trigger {
+  grid-template-columns: minmax(0, 1fr) 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 !important;
+  border: 1px solid #aebfd0 !important;
+  border-radius: 4px !important;
+  color: #12385f !important;
+  background: #fff !important;
+  box-shadow: none !important;
+  overflow: hidden;
+  font-size: 12px;
+}
+.party-customer-editor--venta .erp-select__arrow {
+  width: 34px !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  border-radius: 3px !important;
+  background: #12385f !important;
+}
+.party-customer-editor--venta .erp-select__trigger:is(:hover, :focus-visible, [aria-expanded="true"]) .erp-select__arrow { background: #0065fe !important; }
+.party-customer-editor--venta .party-address-picker {
+  box-sizing: border-box;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  height: 34px;
+  border: 1px solid #aebfd0 !important;
+  border-radius: 4px !important;
+  background: #fff;
+  overflow: hidden;
+}
+.party-customer-editor--venta .party-address-picker > input {
+  min-height: 0 !important;
+  height: 32px !important;
+  border: 0 !important;
+  border-radius: 3px !important;
+  outline: none !important;
+  background: #fff;
+  box-shadow: none !important;
+}
+.party-customer-editor--venta .party-address-picker > .party-address-picker__trigger {
+  box-sizing: border-box;
+  width: 32px !important;
+  min-width: 0 !important;
+  height: 32px !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 3px !important;
+  background: #12385f;
+}
+.party-customer-editor--venta :is(.party-address-picker, .erp-select):focus-within {
+  outline: 2px solid #0065fe;
+  outline-offset: 1px;
+}
+.party-customer-editor--venta .party-address-book-heading { min-width: 0; }
+.party-customer-editor--venta .party-address-book-heading .erp-select__trigger { font-weight: 700; }
+.party-customer-editor--venta .party-address-book-footer { display: grid; justify-items: start; gap: 7px; }
+.party-customer-editor--venta .party-address-book-footer:empty { display: none; }
+.party-customer-editor--venta .party-address-book-footer > p { margin: 0; color: #52687e; font-size: 12px; line-height: 1.4; }
+.party-customer-editor--venta .party-address-book-footer > [role="alert"] { color: #a62929; }
+@media (max-width: 800px) {
+  .party-customer-editor--venta :is(.party-form-section, .party-credit-settings) { grid-column: 1; grid-row: auto; }
+  .party-customer-editor--venta .party-form-section--identity { order: 1; }
+  .party-customer-editor--venta .party-form-section--contact { order: 2; }
+  .party-customer-editor--venta .party-form-section--personal { order: 3; }
+  .party-customer-editor--venta .party-form-section--communications { order: 4; }
+  .party-customer-editor--venta .party-credit-settings { order: 5; }
+}
+@media (max-width: 600px) {
+  .party-customer-editor--venta .party-document-row { grid-template-columns: minmax(0, 1fr); }
+}

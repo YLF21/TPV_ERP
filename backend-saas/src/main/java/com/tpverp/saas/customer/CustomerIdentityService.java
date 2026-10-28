@@ -31,15 +31,17 @@ public class CustomerIdentityService {
     private final InstallationAuthenticator authenticator;
     private final ObjectMapper mapper;
     private final Clock clock;
+    private final CustomerAddressBookService addressBooks;
 
     public CustomerIdentityService(jakarta.persistence.EntityManager entityManager, JdbcTemplate jdbc, SaasInstallationRepository installations,
-            InstallationAuthenticator authenticator, ObjectMapper mapper, Clock clock) {
+            InstallationAuthenticator authenticator, ObjectMapper mapper, Clock clock, CustomerAddressBookService addressBooks) {
         this.entityManager = entityManager;
         this.jdbc = jdbc;
         this.installations = installations;
         this.authenticator = authenticator;
         this.mapper = mapper;
         this.clock = clock;
+        this.addressBooks = addressBooks;
     }
 
     @Transactional
@@ -201,6 +203,7 @@ public class CustomerIdentityService {
                     insert into saas_customer_identity_link(installation_id, local_customer_id, company_id, customer_id)
                     values (?, ?, ?, ?)
                     """, operation.installationId(), operation.localCustomerId(), operation.companyId(), operation.customerId());
+            addressBooks.initialize(operation.companyId(), operation.customerId(), profile.addresses());
         } else {
             jdbc.update("""
                     update saas_erp_customer set code = ?, name = ?, tax_id = ?, document_type = ?,
@@ -319,7 +322,8 @@ public class CustomerIdentityService {
             if (address.length() > 4000) throw CustomerIdentityException.conflict();
         }
         return new Profile(text(payload.get("clientId"), 40, true), text(payload.get("fiscalName"), 255, true),
-                text(payload.get("phone"), 64, false), text(payload.get("email"), 320, false), address);
+                text(payload.get("phone"), 64, false), text(payload.get("email"), 320, false), address,
+                payload.containsKey("addresses") ? CustomerAddressBookService.normalize(payload.get("addresses")) : null);
     }
 
     private void requireMasterCapacity(UUID companyId) {
@@ -350,11 +354,14 @@ public class CustomerIdentityService {
         catch (IllegalArgumentException exception) { throw CustomerIdentityException.conflict(); }
     }
 
-    private record Profile(String code, String name, String phone, String email, String addressJson) {
+    private record Profile(String code, String name, String phone, String email, String addressJson,
+            List<CustomerAddressBookApi.Entry> addresses) {
         Map<String, Object> asMap() {
             Map<String, Object> values = new LinkedHashMap<>();
             values.put("clientId", code); values.put("fiscalName", name); values.put("phone", phone);
             values.put("email", email); values.put("address", addressJson);
+            // Preserve the pre-V83 hash exactly for already reserved legacy events.
+            if (addresses != null) values.put("addresses", addresses);
             return values;
         }
     }
