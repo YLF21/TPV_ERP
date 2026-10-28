@@ -59,10 +59,11 @@ type Props = {
   locale: LocaleCode;
   country?: string;
   invalid?: boolean;
+  uppercase?: boolean;
   onChange: (value: string) => void;
 };
 
-export function PartyAddressPicker({ kind, value, label, locale, country, invalid = false, onChange }: Props) {
+export function PartyAddressPicker({ kind, value, label, locale, country, invalid = false, uppercase = false, onChange }: Props) {
   const words = copy[locale];
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -71,18 +72,20 @@ export function PartyAddressPicker({ kind, value, label, locale, country, invali
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState<string | null>(null);
   const [active, setActive] = useState(0);
+  const selectedValue = uppercase ? value.toUpperCase() : value;
   const options = useMemo<Option[]>(() => {
-    const catalogue = kind === "country" ? countryOptions(locale) : [
+    const entries = kind === "country" ? countryOptions(locale) : [
       { value: "", label: words.clear, search: words.clear },
       ...(country?.trim().toUpperCase() === "ES" ? PROVINCES.map((name) => ({
         value: name, label: name, search: PROVINCE_ALIASES[name] ?? "",
       })) : []),
     ];
-    return value && !catalogue.some(option => option.value === value)
-      ? [{ value, label: value, search: value }, ...catalogue] : catalogue;
-  }, [kind, locale, country, value, words.clear]);
-  const selected = options.find((option) => option.value === value);
-  const display = value === "" ? "" : selected?.label ?? value;
+    const catalogue = uppercase ? entries.map(option => ({ ...option, value: option.value.toUpperCase(), label: option.label.toUpperCase() })) : entries;
+    return selectedValue && !catalogue.some(option => option.value === selectedValue)
+      ? [{ value: selectedValue, label: selectedValue, search: selectedValue }, ...catalogue] : catalogue;
+  }, [kind, locale, country, selectedValue, uppercase, words.clear]);
+  const selected = options.find((option) => option.value === selectedValue);
+  const display = selectedValue === "" ? "" : selected?.label ?? selectedValue;
   const filtered = query === null || query.trim() === "" ? options : options.filter((option) =>
     searchKey(`${option.label} ${option.search}`).includes(searchKey(query)));
   const custom = query?.trim() ?? "";
@@ -94,7 +97,7 @@ export function PartyAddressPicker({ kind, value, label, locale, country, invali
 
   function openOptions() {
     setQuery("");
-    setActive(Math.max(0, options.findIndex(option => option.value === value)));
+    setActive(Math.max(0, options.findIndex(option => option.value === selectedValue)));
     setOpen(true);
   }
 
@@ -177,7 +180,7 @@ export function PartyAddressPicker({ kind, value, label, locale, country, invali
       placeholder={`${words.search} ${label.toLocaleLowerCase(locale)}`}
       value={query ?? display}
       onFocus={openOptions}
-      onChange={(event) => { setQuery(event.target.value); setActive(0); setOpen(true); }}
+      onChange={(event) => { setQuery(uppercase ? event.target.value.toUpperCase() : event.target.value); setActive(0); setOpen(true); }}
       onKeyDown={onKeyDown}
     />
     <button type="button" className="party-address-picker__trigger" aria-label={`${words.search} ${label}`} aria-expanded={open}
@@ -194,7 +197,7 @@ export function PartyAddressPicker({ kind, value, label, locale, country, invali
         id={`${listId}-${index}`}
         type="button"
         role="option"
-        aria-selected={option.value === value}
+        aria-selected={option.value === selectedValue}
         data-active={index === active ? "true" : undefined}
         onMouseDown={(event) => event.preventDefault()}
         tabIndex={-1}

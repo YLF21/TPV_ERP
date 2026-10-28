@@ -2,8 +2,9 @@ import { Fragment, type ReactNode } from "react";
 import { ErpSelect } from "./ErpSelect";
 import { PartyAddressPicker } from "./PartyAddressPicker";
 import type { PartyForm } from "./PartyDirectoryPanel";
-import type { LocaleCode } from "../types";
+import type { LocaleCode, UserSession } from "../types";
 import { customerDocumentType } from "./customerDocumentIdentity";
+import { PartyAddressAutocomplete, type SuggestedPartyAddress } from "./PartyAddressAutocomplete";
 
 export type CommercialChannelOption = {
   id: string;
@@ -28,7 +29,15 @@ type Props = {
   identityAction?: ReactNode;
   documentAction?: ReactNode;
   customerEditor?: boolean;
+  documentFirst?: boolean;
+  uppercaseAddress?: boolean;
   contactEditor?: PartyContactEditor;
+  addressSuggestions?: {
+    session: UserSession;
+    scopeKey: string;
+    disabled: boolean;
+    onSelect: (address: SuggestedPartyAddress) => void;
+  };
   channels: CommercialChannelOption[];
   supplier?: boolean;
   grouped?: boolean;
@@ -46,7 +55,10 @@ export function PartyFormFields({
   identityAction,
   documentAction,
   customerEditor = false,
+  documentFirst = customerEditor,
+  uppercaseAddress = false,
   contactEditor,
+  addressSuggestions,
   channels,
   supplier = false,
   grouped = false,
@@ -67,7 +79,12 @@ export function PartyFormFields({
   }
 
   const contact = contactEditor?.value ?? form;
-  const changeContact = (field: PartyContactField, value: string) => contactEditor ? contactEditor.onChange(field, value) : onChange(field, value);
+  const locationValue = (value: string) => uppercaseAddress ? value.toUpperCase() : value;
+  const changeContact = (field: PartyContactField, value: string) => {
+    const next = ["city", "province", "country"].includes(field) ? locationValue(value) : value;
+    if (contactEditor) contactEditor.onChange(field, next);
+    else onChange(field, next);
+  };
   const nameRow = <div className="product-create-row product-create-row-two">
       <label className={invalidClass("name")}>
         <span>{t(supplier ? "party.field.legalName" : "party.field.fiscalName")}</span>
@@ -104,7 +121,7 @@ export function PartyFormFields({
       value={form.documentNumber} onChange={(event) => onChange("documentNumber", event.target.value)} />
     {error("documentNumber")}
   </label>;
-  const documentRow = <div className={`product-create-row product-create-row-two${customerEditor ? " party-document-row" : ""}`}>
+  const documentRow = <div className={`product-create-row product-create-row-two${documentFirst ? " party-document-row" : ""}`}>
       <label>
         <span>{t("party.field.documentType")}</span>
         <ErpSelect
@@ -135,7 +152,7 @@ export function PartyFormFields({
   const Container = grouped ? "div" : Fragment;
   return <Container {...(grouped ? { className: `party-form-sections${supplier ? " party-form-sections--supplier" : ""}` } : {})}>
     <PartyFormSection enabled={grouped} sectionKey="identity" title={t("party.gestion.section.identity")}>
-    {customerEditor ? <>{documentRow}{nameRow}</> : <>{nameRow}{documentRow}</>}
+    {documentFirst ? <>{documentRow}{nameRow}</> : <>{nameRow}{documentRow}</>}
     {identityAction}
     </PartyFormSection>
     <PartyFormSection enabled={grouped} sectionKey="contact" title={contactEditor?.heading ?? t("party.gestion.section.contact")}>
@@ -143,15 +160,27 @@ export function PartyFormFields({
       <label className={invalidClass("phone")}><span>{t("party.field.phone")}</span><input maxLength={64} aria-invalid={errors.includes("phone")} value={contact.phone} onChange={(event) => changeContact("phone", event.target.value)} />{error("phone")}</label>
       <label className={invalidClass("email")}><span>{t("party.field.email")}</span><input type="email" maxLength={320} aria-invalid={errors.includes("email")} value={contact.email} onChange={(event) => changeContact("email", event.target.value)} />{error("email")}</label>
     </div>
-    <label className={invalidClass("address")}><span>{t("party.field.address")}</span><input maxLength={255} aria-invalid={errors.includes("address")} value={contact.address} onChange={(event) => changeContact("address", event.target.value)} />{error("address")}</label>
+    <label className={invalidClass("address")}><span>{t("party.field.address")}</span>{addressSuggestions ? <PartyAddressAutocomplete
+      key={addressSuggestions.scopeKey}
+      value={contact.address}
+      onChange={value => changeContact("address", value)}
+      onSelect={addressSuggestions.onSelect}
+      context={{ postalCode: contact.postalCode, city: contact.city, country: contact.country }}
+      scopeKey={addressSuggestions.scopeKey}
+      session={addressSuggestions.session}
+      disabled={addressSuggestions.disabled}
+      invalid={errors.includes("address")}
+      label={t("party.field.address")}
+      t={t}
+    /> : <input maxLength={255} aria-invalid={errors.includes("address")} value={contact.address} onChange={(event) => changeContact("address", event.target.value)} />}{error("address")}</label>
     {grouped ? <>
       <div className="product-create-row product-create-row-two party-address-postal-row">
         <label className={invalidClass("postalCode")}><span>{t("party.field.postalCode")}</span><input maxLength={16} aria-invalid={errors.includes("postalCode")} value={contact.postalCode} onChange={(event) => changeContact("postalCode", event.target.value)} />{error("postalCode")}</label>
-        <label className={invalidClass("city")}><span>{t("party.field.city")}</span><input maxLength={128} aria-invalid={errors.includes("city")} value={contact.city} onChange={(event) => changeContact("city", event.target.value)} />{error("city")}</label>
+        <label className={invalidClass("city")}><span>{t("party.field.city")}</span><input maxLength={128} aria-invalid={errors.includes("city")} value={locationValue(contact.city)} onChange={(event) => changeContact("city", event.target.value)} />{error("city")}</label>
       </div>
       <div className="product-create-row product-create-row-two party-address-location-row">
-        <label><span>{t("party.field.province")}</span><PartyAddressPicker kind="province" country={contact.country} value={contact.province} label={t("party.field.province")} locale={locale} onChange={(value) => changeContact("province", value)} /></label>
-        <label className={invalidClass("country")}><span>{t("party.field.country")}</span><PartyAddressPicker kind="country" value={contact.country} label={t("party.field.country")} locale={locale} invalid={errors.includes("country")} onChange={(value) => changeContact("country", value)} />{error("country")}</label>
+        <label><span>{t("party.field.province")}</span><PartyAddressPicker kind="province" country={contact.country} value={contact.province} label={t("party.field.province")} locale={locale} uppercase={uppercaseAddress} onChange={(value) => changeContact("province", value)} /></label>
+        <label className={invalidClass("country")}><span>{t("party.field.country")}</span><PartyAddressPicker kind="country" value={contact.country} label={t("party.field.country")} locale={locale} uppercase={uppercaseAddress} invalid={errors.includes("country")} onChange={(value) => changeContact("country", value)} />{error("country")}</label>
       </div>
       <label className={invalidClass("notes")}><span>{t("party.field.notes")}</span><textarea rows={2} maxLength={65536} value={contact.notes} onChange={(event) => changeContact("notes", event.target.value)} />{error("notes")}</label>
     </> : <>

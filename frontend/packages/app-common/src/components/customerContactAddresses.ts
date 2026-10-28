@@ -9,6 +9,10 @@ export type CustomerContactAddress = {
 export type CustomerAddressSyncStatus = "LOCAL" | "SYNCED" | "PENDING" | "CONFLICT";
 export type CustomerContactDraft = PartyContactForm & { id: string };
 
+export function uppercaseContactLocation<T extends Pick<PartyContactForm, "city" | "province" | "country">>(contact: T): T {
+  return { ...contact, city: contact.city.toUpperCase(), province: contact.province.toUpperCase(), country: contact.country.toUpperCase() };
+}
+
 export function newCustomerContact(source?: Partial<PartyContactForm>, id: string = crypto.randomUUID()): CustomerContactDraft {
   return { id, phone: source?.phone ?? "", email: source?.email ?? "", address: source?.address ?? "", postalCode: source?.postalCode ?? "", city: source?.city ?? "", province: source?.province ?? "", country: source?.country ?? "ES", notes: source?.notes ?? "" };
 }

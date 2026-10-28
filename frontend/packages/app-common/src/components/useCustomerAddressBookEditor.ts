@@ -63,6 +63,10 @@ export function useCustomerAddressBookEditor(session: UserSession, onLoaded: (cu
   function change(field: PartyContactField, value: string) {
     setDrafts(current => current.map(entry => entry.id === selectedId ? { ...entry, [field]: value } : entry));
   }
+  function applyAddress(address: Pick<CustomerContactDraft, "address" | "postalCode" | "city" | "province" | "country">) {
+    if (busy) return;
+    setDrafts(current => current.map(entry => entry.id === selectedId ? { ...entry, ...address } : entry));
+  }
   function add() {
     if (drafts.length >= 50) { setError("party.customerEditor.address.limit"); return; }
     const next = newCustomerContact();
@@ -83,7 +87,7 @@ export function useCustomerAddressBookEditor(session: UserSession, onLoaded: (cu
     drafts, source, selectedId, selected: drafts.find(entry => entry.id === selectedId) ?? drafts[0],
     busy, error, status: source?.addressSyncStatus,
     dirty: JSON.stringify(customerContactRequests(drafts)) !== JSON.stringify(customerContactRequests(initial)),
-    select: setSelectedId, change, add, makeDefault, removeSelected, openNew, openExisting, cancel,
+    select: setSelectedId, change, applyAddress, add, makeDefault, removeSelected, openNew, openExisting, cancel,
     reload: (form: PartyForm, useCentral = false) => source ? refresh(source, form, false, useCentral) : Promise.resolve(),
   };
 }
