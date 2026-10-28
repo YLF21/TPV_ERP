@@ -10,6 +10,8 @@ vi.mock("../api/client", async original => ({ ...await original<typeof import(".
 const request = vi.mocked(apiRequest);
 const addressA = { id: "00000000-0000-4000-8000-000000000001", address: { address: "CALLE PRIMERA", postalCode: "35120", city: "Mogán", province: "Las Palmas", country: "ES" }, phone: "600111222", email: null, notes: "Primera" };
 const addressB = { ...addressA, id: "00000000-0000-4000-8000-000000000002", address: { ...addressA.address, address: "CALLE SEGUNDA" }, phone: "600333444", notes: "Segunda" };
+const uppercaseA = { ...addressA, address: { ...addressA.address, city: "MOGÁN", province: "LAS PALMAS" } };
+const uppercaseB = { ...addressB, address: { ...addressB.address, city: "MOGÁN", province: "LAS PALMAS" } };
 const customer: CustomerView = {
   id: "customer-1", clientId: "C-001", fiscalName: "Cliente miembro", documentType: "NIF", documentNumber: "12345678Z",
   active: true, isMember: true, memberUuid: "member-1", numMember: "M-001", creditEnabled: true, version: 7,
@@ -86,7 +88,7 @@ describe("Venta member editor", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
     await waitFor(() => expect(request).toHaveBeenCalledWith("/customers/customer-1", expect.objectContaining({ method: "PUT", body: expect.objectContaining({
       fiscalName: "Nombre editado", isMember: true, numMember: "M-001", creditEnabled: true, expectedVersion: 7,
-      address: addressB.address, phone: addressB.phone, addresses: [{ ...addressB, notes: "Nota editada" }, addressA],
+      address: uppercaseB.address, phone: addressB.phone, addresses: [{ ...uppercaseB, notes: "Nota editada" }, uppercaseA],
     }) })));
   });
 
@@ -101,6 +103,19 @@ describe("Venta member editor", () => {
     expect(request.mock.calls.some(([, options]) => options?.method === "PUT")).toBe(false);
   });
 
+  it.each(["PENDING", "CONFLICT"] as const)("keeps mixed-case shared contacts unchanged during an identity-only save with a %s book", async status => {
+    refreshed = { ...customer, addressSyncStatus: status };
+    const dialog = await editMember();
+    expect(within(dialog).getByLabelText("Población")).toHaveValue("MOGÁN");
+    expect(within(dialog).getByRole("combobox", { name: "Provincia" })).toHaveValue("LAS PALMAS");
+    fireEvent.change(within(dialog).getByLabelText("Nombre o razón social"), { target: { value: "Solo identidad miembro" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/customers/customer-1", expect.objectContaining({ method: "PUT", body: expect.objectContaining({
+      fiscalName: "Solo identidad miembro", isMember: true, numMember: "M-001", creditEnabled: true, expectedVersion: 7,
+      address: addressA.address, phone: addressA.phone, notes: addressA.notes, addresses: [addressA, addressB],
+    }) })));
+  });
+
   it("saves a removed secondary address against the member's customer and preserves membership", async () => {
     const dialog = await editMember();
     expect(within(dialog).queryByRole("button", { name: "Eliminar dirección" })).not.toBeInTheDocument();
@@ -110,7 +125,7 @@ describe("Venta member editor", () => {
     expect(within(dialog).getByLabelText("Dirección")).toHaveValue("CALLE PRIMERA");
     fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
     await waitFor(() => expect(request).toHaveBeenCalledWith("/customers/customer-1", expect.objectContaining({ method: "PUT", body: expect.objectContaining({
-      isMember: true, numMember: "M-001", creditEnabled: true, expectedVersion: 7, addresses: [addressA], address: addressA.address,
+      isMember: true, numMember: "M-001", creditEnabled: true, expectedVersion: 7, addresses: [uppercaseA], address: uppercaseA.address,
     }) })));
   });
 

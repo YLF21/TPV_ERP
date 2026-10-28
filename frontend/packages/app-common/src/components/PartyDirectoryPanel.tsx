@@ -26,7 +26,7 @@ import { savePartyDirectoryExport } from "./partyDirectoryExport";
 import { customerDocumentType, customerIdentityFailure } from "./customerDocumentIdentity";
 import { CustomerDocumentValidation, ExistingCustomerNotice, type ExistingCentralCustomer } from "./CustomerDocumentValidation";
 import { CustomerAddressBookHeading } from "./CustomerAddressBookHeading";
-import { customerContactRequests, firstInvalidCustomerContact, formWithDefaultContact } from "./customerContactAddresses";
+import { customerContactRequests, firstInvalidCustomerContact, formWithDefaultContact, uppercaseContactLocation } from "./customerContactAddresses";
 import { customerAddressError, useCustomerAddressBookEditor } from "./useCustomerAddressBookEditor";
 import stockFilterIcon from "../assets/stock/filter.png";
 import "./PartyDirectoryFilters.css";
@@ -429,8 +429,8 @@ export function PartyDirectoryPanel({
   const [centralBusy, setCentralBusy] = useState(false);
   const [existingCentralCustomer, setExistingCentralCustomer] = useState<ExistingCentralCustomer | null>(null);
   const [addressReloadConfirmation, setAddressReloadConfirmation] = useState(false);
-  const customerFormRef = useRef<HTMLFormElement>(null);
-  const focusCustomerEditor = useRef(false);
+  const partyFormRef = useRef<HTMLFormElement>(null);
+  const focusPartyEditor = useRef(false);
   const [retirementOpen, setRetirementOpen] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -443,7 +443,8 @@ export function PartyDirectoryPanel({
   const isMember = kind === "members";
   const managementMode = allowSafeRetirement && !isMember;
   const classicWindow = app !== "pda";
-  const customerEditor = app === "venta" && !isSupplier;
+  const ventaEditor = app === "venta";
+  const customerEditor = ventaEditor && !isSupplier;
   const addressBook = useCustomerAddressBookEditor(session, (customer, resetForm) => {
     if (resetForm) {
       const next = partyFormFromView(customer, false);
@@ -452,10 +453,10 @@ export function PartyDirectoryPanel({
     setCustomers(current => current.map(entry => entry.id === customer.id ? customer : entry));
   });
   useEffect(() => {
-    if (!customerEditor || !dialogOpen || addressBook.busy || !focusCustomerEditor.current) return;
-    customerFormRef.current?.querySelector<HTMLInputElement>(`[data-party-field="${selectedId ? "name" : "documentNumber"}"]`)?.focus();
-    focusCustomerEditor.current = false;
-  }, [customerEditor, dialogOpen, addressBook.busy, selectedId]);
+    if (!ventaEditor || !dialogOpen || customerEditor && addressBook.busy || !focusPartyEditor.current) return;
+    partyFormRef.current?.querySelector<HTMLInputElement>(`[data-party-field="${selectedId ? "name" : "documentNumber"}"]`)?.focus();
+    focusPartyEditor.current = false;
+  }, [ventaEditor, customerEditor, dialogOpen, addressBook.busy, selectedId]);
   const [confirmation, setConfirmation] = useState<"discard" | "active" | null>(null);
   const supportsFieldFilters = app !== "pda";
   const directoryFilterFields = partyDirectoryFilterFields(kind, app !== "pda");
@@ -699,7 +700,7 @@ export function PartyDirectoryPanel({
     setFormErrors((current) => current.filter((candidate) => candidate !== field && !(identityChanged && candidate === "documentNumber")));
   }
   function openNew() {
-    focusCustomerEditor.current = customerEditor;
+    focusPartyEditor.current = ventaEditor;
     const nextForm = customerEditor ? { ...emptyPartyForm, creditEnabled: false } : emptyPartyForm;
     setSelectedId(null); setForm(nextForm); setInitialForm(nextForm); setFormErrors([]); setDocumentError(""); setStatus("");
     setExistingCentralCustomer(null); setAddressReloadConfirmation(false);
@@ -707,7 +708,7 @@ export function PartyDirectoryPanel({
     setMemberCandidateQuery(""); setMemberCandidateId(null); setDialogOpen(true);
   }
   function openEntry(entry: PartyDirectoryEntry) {
-    focusCustomerEditor.current = customerEditor;
+    focusPartyEditor.current = ventaEditor;
     setSelectedId(entry.id);
     setMemberTab("customer");
     const editableEntry = isMember ? customers.find(customer => customer.id === (entry as MemberDirectoryView).customerId) : entry;
@@ -819,7 +820,10 @@ export function PartyDirectoryPanel({
     if (customerEditor && addressBook.dirty && (addressBook.status === "PENDING" || addressBook.status === "CONFLICT")) {
       setStatus(t(addressBook.status === "PENDING" ? "party.customerEditor.address.pending" : "party.customerEditor.address.conflict")); return;
     }
-    const requestForm = customerEditor ? formWithDefaultContact(form, addressBook.drafts) : form;
+    // Pending/conflicting books must retain their exact payload until reconciled.
+    const addressDrafts = customerEditor && addressBook.status !== "PENDING" && addressBook.status !== "CONFLICT"
+      ? addressBook.drafts.map(uppercaseContactLocation) : addressBook.drafts;
+    const requestForm = customerEditor ? formWithDefaultContact(form, addressDrafts) : ventaEditor ? uppercaseContactLocation(form) : form;
     const invalidContact = customerEditor ? firstInvalidCustomerContact(addressBook.drafts) : null;
     if (invalidContact) {
       addressBook.select(addressBook.drafts[invalidContact.index].id);
@@ -836,7 +840,7 @@ export function PartyDirectoryPanel({
       const saved = await apiRequest<CustomerView | SupplierView>(editId ? `${editEndpoint}/${editId}` : editEndpoint, {
         method: editId ? "PUT" : "POST", token: session.accessToken,
         body: { ...buildPartyRequest(requestForm, isSupplier, member),
-          ...(customerEditor ? { addresses: customerContactRequests(addressBook.drafts), ...(editId ? { expectedVersion: addressBook.source?.version ?? customer?.version } : {}) } : {}) }
+          ...(customerEditor ? { addresses: customerContactRequests(addressDrafts), ...(editId ? { expectedVersion: addressBook.source?.version ?? customer?.version } : {}) } : {}) }
       });
       setDialogOpen(false); if (customerEditor) addressBook.cancel();
       await load(false); setStatus(t(customerEditor && (saved as CustomerView)?.addressSyncStatus === "PENDING" ? "party.customerEditor.address.savedPending" : "party.saveSuccess"));
@@ -947,7 +951,7 @@ export function PartyDirectoryPanel({
       </dl>
     </section>;
   }
-  const partyEditForm = <form ref={customerFormRef} className="product-create-form party-create-form" onSubmit={submit}>
+  const partyEditForm = <form ref={partyFormRef} className="product-create-form party-create-form" onSubmit={submit}>
           {app !== "pda" && !isSupplier && selected && creditOverview(isMember && selectedMemberCustomer ? selectedMemberCustomer : selected as CustomerView)}
           <fieldset disabled={!canWrite || saving || centralBusy || customerEditor && addressBook.busy}>
             <PartyFormFields
@@ -955,6 +959,19 @@ export function PartyDirectoryPanel({
               errors={formErrors}
               documentError={documentError}
               customerEditor={customerEditor}
+              documentFirst={ventaEditor}
+              uppercaseAddress={ventaEditor}
+              addressSuggestions={ventaEditor && canWrite ? {
+                session,
+                scopeKey: customerEditor ? addressBook.selectedId : `supplier:${selectedId ?? "new"}`,
+                disabled: saving || centralBusy || customerEditor && addressBook.busy || confirmation !== null || existingCentralCustomer !== null || addressReloadConfirmation,
+                onSelect: address => {
+                  const selectedAddress = uppercaseContactLocation(address);
+                  if (customerEditor) addressBook.applyAddress(selectedAddress);
+                  else setForm(current => ({ ...current, ...selectedAddress }));
+                  setFormErrors(current => current.filter(field => !["address", "postalCode", "city", "province", "country"].includes(field)));
+                },
+              } : undefined}
               documentAction={customerEditor && !selectedId && canWrite ? <CustomerDocumentValidation
                 documentType={form.documentType} documentNumber={form.documentNumber} session={session} locale={locale} disabled={saving}
                 onBusyChange={setCentralBusy} onAvailable={() => setStatus("")} onExisting={setExistingCentralCustomer}
@@ -992,7 +1009,7 @@ export function PartyDirectoryPanel({
               channels={channels}
               supplier={isSupplier}
               autoFocusName
-              autoFocusDocument={customerEditor && !selectedId}
+              autoFocusDocument={ventaEditor && !selectedId}
               grouped={app !== "pda"}
               locale={locale}
               t={t}
@@ -1235,7 +1252,7 @@ export function PartyDirectoryPanel({
       onEdit={() => { if (canWrite) openEntry(customers.find((customer) => customer.id === historyCustomer.id) ?? historyCustomer); }}
     />}
     {dialogOpen && <div className={`filter-overlay${classicWindow ? " erp-classic-overlay" : ""}`} role="dialog" aria-modal="true" aria-labelledby="party-form-title">
-      <section className={`filter-dialog party-create-dialog${app !== "pda" ? ` party-desktop-dialog party-desktop-dialog--${kind}` : " product-create-dialog"}${classicWindow ? " erp-classic-window" : ""}${customerEditor ? " party-customer-editor--venta" : ""}`} inert={confirmation !== null || existingCentralCustomer !== null || addressReloadConfirmation || undefined}>
+      <section className={`filter-dialog party-create-dialog${app !== "pda" ? ` party-desktop-dialog party-desktop-dialog--${kind}` : " product-create-dialog"}${classicWindow ? " erp-classic-window" : ""}${ventaEditor ? ` party-editor--venta party-${isSupplier ? "supplier" : "customer"}-editor--venta` : ""}`} inert={confirmation !== null || existingCentralCustomer !== null || addressReloadConfirmation || undefined}>
         <header className="filter-header">
           <div><h2 id="party-form-title">{selectedId ? t(`party.${kind}.detail`) : t(`party.${kind}.new`)}</h2><span>{selected && app !== "pda" ? <>{selectedCode} <span className={`party-desktop-status ${selected.active ? "is-active" : "is-inactive"}`}>{t(selected.active ? "party.active" : "party.inactive")}</span></> : selected ? `${selectedCode} · ${selected.active ? t("party.active") : t("party.inactive")}` : isMember ? t("party.members.selectCustomerSubtitle") : t("party.form.subtitle")}</span></div>
           {customerEditor && selectedId && addressBook.source && <button type="button" className="party-customer-refresh"

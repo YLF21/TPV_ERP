@@ -1,0 +1,18 @@
+.party-address-autocomplete { width: 100%; min-width: 0; }
+.party-address-autocomplete > input { width: 100%; box-sizing: border-box; }
+.party-address-autocomplete__popup {
+  position: fixed; z-index: 16000; box-sizing: border-box; overflow: auto;
+  background: #fff; color: #172b46; border: 1px solid #8193aa;
+  border-radius: var(--erp-window-radius, 3px); box-shadow: 0 3px 10px #14294126;
+  font: 12px/1.35 Arial, sans-serif;
+}
+.party-address-autocomplete__popup [role="option"] {
+  display: block; width: 100%; min-height: 28px; padding: 5px 8px;
+  border: 0; border-bottom: 1px solid #e3e9f0; border-radius: 0;
+  background: #fff; color: inherit; text-align: left; font: inherit;
+  overflow-wrap: anywhere; cursor: pointer;
+}
+.party-address-autocomplete__popup [role="option"][data-active="true"] { background: #e8f0fc; }
+.party-address-autocomplete__popup [role="option"]:disabled { cursor: wait; opacity: .65; }
+.party-address-autocomplete__status { padding: 6px 8px; color: #52657b; }
+.party-address-autocomplete__attribution { display: block; padding: 5px 8px; color: #355f94; font-size: 10px; }

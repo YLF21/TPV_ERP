@@ -50,7 +50,13 @@ const catalogs: Record<LocaleCode, Record<string, string>> = {
     "party.customerEditor.address.invalid": "Revisa los datos de todas las direcciones.",
     "party.customerEditor.address.reload": "Actualizar",
     "party.customerEditor.address.replaceTitle": "Actualizar direcciones",
-    "party.customerEditor.address.replaceMessage": "Se sustituirán las direcciones pendientes de esta tienda por las guardadas en SaaS. ¿Quieres continuar?"
+    "party.customerEditor.address.replaceMessage": "Se sustituirán las direcciones pendientes de esta tienda por las guardadas en SaaS. ¿Quieres continuar?",
+    "party.addressSearch.loading": "Buscando direcciones…",
+    "party.addressSearch.unavailable": "No se han podido consultar las sugerencias. Puedes introducir la dirección manualmente.",
+    "party.addressSearch.empty": "Sin sugerencias. Puedes introducir la dirección manualmente.",
+    "party.addressSearch.selecting": "Completando dirección…",
+    "party.addressSearch.results": "Sugerencias de direcciones",
+    "party.addressSearch.attribution": "CartoCiudad · CC BY 4.0"
   },
   "en": {
     "party.gestion.column.commercialConsent": "Marketing consent",
@@ -101,7 +107,13 @@ const catalogs: Record<LocaleCode, Record<string, string>> = {
     "party.customerEditor.address.invalid": "Check the details of every address.",
     "party.customerEditor.address.reload": "Refresh",
     "party.customerEditor.address.replaceTitle": "Refresh addresses",
-    "party.customerEditor.address.replaceMessage": "This store's pending addresses will be replaced with the addresses saved in SaaS. Continue?"
+    "party.customerEditor.address.replaceMessage": "This store's pending addresses will be replaced with the addresses saved in SaaS. Continue?",
+    "party.addressSearch.loading": "Searching for addresses…",
+    "party.addressSearch.unavailable": "Suggestions could not be retrieved. You can enter the address manually.",
+    "party.addressSearch.empty": "No suggestions. You can enter the address manually.",
+    "party.addressSearch.selecting": "Completing address…",
+    "party.addressSearch.results": "Address suggestions",
+    "party.addressSearch.attribution": "CartoCiudad · CC BY 4.0"
   },
   "zh": {
     "party.gestion.column.commercialConsent": "同意营销通知",
@@ -152,7 +164,13 @@ const catalogs: Record<LocaleCode, Record<string, string>> = {
     "party.customerEditor.address.invalid": "请检查所有地址的资料。",
     "party.customerEditor.address.reload": "刷新",
     "party.customerEditor.address.replaceTitle": "刷新地址",
-    "party.customerEditor.address.replaceMessage": "本店尚未同步的地址将被 SaaS 中保存的地址替换。是否继续？"
+    "party.customerEditor.address.replaceMessage": "本店尚未同步的地址将被 SaaS 中保存的地址替换。是否继续？",
+    "party.addressSearch.loading": "正在搜索地址…",
+    "party.addressSearch.unavailable": "无法获取地址建议。您可以手动输入地址。",
+    "party.addressSearch.empty": "没有地址建议。您可以手动输入地址。",
+    "party.addressSearch.selecting": "正在填写地址…",
+    "party.addressSearch.results": "地址建议",
+    "party.addressSearch.attribution": "CartoCiudad · CC BY 4.0"
   }
 };
 

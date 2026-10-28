@@ -12,6 +12,8 @@ const request = vi.mocked(apiRequest);
 const session: UserSession = { username: "customer-editor", displayName: "Editor", accessToken: "test", permissions: ["ADMIN"] };
 const addressA = { id: "00000000-0000-4000-8000-000000000001", address: { address: "CALLE PRIMERA", postalCode: "35120", city: "Mogán", province: "Las Palmas", country: "ES" }, phone: "600111222", email: null, notes: "Primera" };
 const addressB = { id: "00000000-0000-4000-8000-000000000002", address: { ...addressA.address, address: "CALLE SEGUNDA" }, phone: "600333444", email: null, notes: "Segunda" };
+const uppercaseA = { ...addressA, address: { ...addressA.address, city: "MOGÁN", province: "LAS PALMAS" } };
+const uppercaseB = { ...addressB, address: { ...addressB.address, city: "MOGÁN", province: "LAS PALMAS" } };
 const customer: CustomerView = { id: "c1", clientId: "C-001", fiscalName: "Cliente existente", documentType: "NIF", documentNumber: "12345678Z", active: true, isMember: false, version: 7, creditEnabled: true, address: addressA.address, phone: addressA.phone, notes: addressA.notes, addresses: [addressA, addressB], addressBookRevision: 3, addressSyncStatus: "SYNCED" };
 let refreshed: CustomerView;
 
@@ -142,7 +144,7 @@ describe("Venta customer editor", () => {
     expect(within(dialog).queryByRole("button", { name: "Convertir a predeterminado" })).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
     await waitFor(() => expect(request).toHaveBeenCalledWith("/customers/c1", expect.objectContaining({ method: "PUT", body: expect.objectContaining({
-      expectedVersion: 7, creditEnabled: true, address: addressB.address, phone: addressB.phone, addresses: [addressB, addressA],
+      expectedVersion: 7, creditEnabled: true, address: uppercaseB.address, phone: addressB.phone, addresses: [uppercaseB, uppercaseA],
     }) })));
   });
 
@@ -153,6 +155,18 @@ describe("Venta customer editor", () => {
     fireEvent.change(within(dialog).getByLabelText("Nombre o razón social"), { target: { value: "Otro nombre" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
     await waitFor(() => expect(request).toHaveBeenCalledWith("/customers/c1", expect.objectContaining({ body: expect.objectContaining({ fiscalName: "Otro nombre", addresses: [nullCountry, addressB] }) })));
+  });
+
+  it.each(["PENDING", "CONFLICT"] as const)("keeps the exact mixed-case contact payload when only identity changes with a %s book", async status => {
+    refreshed = { ...customer, addressSyncStatus: status };
+    const dialog = await editCustomer();
+    expect(within(dialog).getByLabelText("Población")).toHaveValue("MOGÁN");
+    expect(within(dialog).getByRole("combobox", { name: "Provincia" })).toHaveValue("LAS PALMAS");
+    fireEvent.change(within(dialog).getByLabelText("Nombre o razón social"), { target: { value: "Solo identidad" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/customers/c1", expect.objectContaining({ method: "PUT", body: expect.objectContaining({
+      fiscalName: "Solo identidad", expectedVersion: 7, addresses: [addressA, addressB], address: addressA.address, phone: addressA.phone, notes: addressA.notes,
+    }) })));
   });
 
   it("deletes only a secondary address on save and keeps the default contact intact", async () => {
@@ -170,7 +184,7 @@ describe("Venta customer editor", () => {
     fireEvent.click(screen.getByRole("option", { name: "Predeterminada · CALLE PRIMERA · 600111222" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
     await waitFor(() => expect(request).toHaveBeenCalledWith("/customers/c1", expect.objectContaining({ method: "PUT", body: expect.objectContaining({
-      expectedVersion: 7, addresses: [addressA], address: addressA.address, phone: addressA.phone,
+      expectedVersion: 7, addresses: [uppercaseA], address: uppercaseA.address, phone: addressA.phone,
     }) })));
   });
 
