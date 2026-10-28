@@ -100,7 +100,7 @@ describe("BackupManagementScreen", () => {
     const row = await screen.findByRole("row", { name: /12/ });
     expect(row).toHaveTextContent("Error de envío");
     fireEvent.doubleClick(row);
-    fireEvent.click(await screen.findByRole("button", { name: "Reintentar envío a SaaS" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Reintentar envío al servidor central" }));
     await waitFor(() => expect(api.retryBackupCloudUpload).toHaveBeenCalledWith("backup-1", "token"));
   });
 

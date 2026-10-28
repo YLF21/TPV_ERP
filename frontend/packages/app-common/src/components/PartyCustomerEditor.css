@@ -43,8 +43,9 @@
 .party-editor--venta .party-credit-settings { grid-column: 1 / -1; grid-row: 4; }
 .party-editor--venta > .filter-header > button.party-customer-refresh { margin-left: auto; min-height: 32px; border-radius: 4px !important; font: inherit; font-size: 12px; font-weight: 700; }
 .party-editor--venta > .filter-header > button.party-customer-refresh:disabled { opacity: .6; }
-.party-editor--venta .erp-select { height: 34px; padding: 0 !important; border: 0 !important; box-shadow: none !important; }
-.party-editor--venta .erp-select > .erp-select__trigger {
+/* Keep directory field filters aligned with the record editor controls. */
+:is(.party-editor--venta, .party-directory-filter-fields) .erp-select { --erp-select-arrow-width: 34px; height: 34px; padding: 0 !important; border: 0 !important; box-shadow: none !important; }
+:is(.party-editor--venta, .party-directory-filter-fields) .erp-select > .erp-select__trigger {
   grid-template-columns: minmax(0, 1fr) 34px !important;
   height: 34px !important;
   min-height: 34px !important;
@@ -57,7 +58,7 @@
   overflow: hidden;
   font-size: 12px;
 }
-.party-editor--venta .erp-select__arrow {
+:is(.party-editor--venta, .party-directory-filter-fields) .erp-select__arrow {
   width: 34px !important;
   height: 100% !important;
   min-height: 0 !important;
@@ -65,7 +66,7 @@
   border-radius: 3px !important;
   background: #12385f !important;
 }
-.party-editor--venta .erp-select__trigger:is(:hover, :focus-visible, [aria-expanded="true"]) .erp-select__arrow { background: #0065fe !important; }
+:is(.party-editor--venta, .party-directory-filter-fields) .erp-select__trigger:is(:hover, :focus-visible, [aria-expanded="true"]) .erp-select__arrow { background: #0065fe !important; }
 .party-editor--venta .party-address-picker {
   box-sizing: border-box;
   grid-template-columns: minmax(0, 1fr) 32px;
@@ -97,7 +98,7 @@
   border-radius: 3px !important;
   background: #12385f;
 }
-.party-editor--venta :is(.party-address-picker, .erp-select):focus-within {
+:is(.party-editor--venta, .party-directory-filter-fields) :is(.party-address-picker, .erp-select):focus-within {
   outline: 2px solid #0065fe;
   outline-offset: 1px;
 }

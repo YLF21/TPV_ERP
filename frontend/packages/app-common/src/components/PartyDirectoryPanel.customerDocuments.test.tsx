@@ -33,7 +33,7 @@ describe("Customer directory document entry", () => {
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(`/ui/table-preferences/${app}/customers.documents`, expect.objectContaining({ token: "test-token" })));
     expect(screen.queryByRole("textbox", { name: "Nombre fiscal" })).not.toBeInTheDocument();
     fireEvent.keyDown(window, { key: "F3" });
-    await screen.findByText("No hay documentos de este tipo recibidos en SaaS para este cliente.");
+    await screen.findByText("No hay documentos de este tipo recibidos en el servidor central para este cliente.");
     fireEvent.keyDown(window, { key: "F7" });
     const name = await screen.findByDisplayValue("Cliente de prueba");
     await waitFor(() => expect(name).toHaveFocus());

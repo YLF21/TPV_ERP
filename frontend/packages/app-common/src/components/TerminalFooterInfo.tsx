@@ -8,7 +8,7 @@ type TerminalFooterInfoProps = {
   terminalNameOnly?: boolean;
 };
 
-export function TerminalFooterInfo({ locale, terminalContext, terminalNameOnly = false }: TerminalFooterInfoProps) {
+export function TerminalFooterInfo({ locale, terminalContext, terminalNameOnly = true }: TerminalFooterInfoProps) {
   const t = createTranslator(locale);
   const terminalName = terminalContext.terminalName?.trim() || terminalContext.terminalCode;
 

@@ -202,7 +202,7 @@ describe("SalesDocumentScreen", () => {
     expect(topbar).toHaveTextContent("Mi Empresa");
     expect(topbar).not.toHaveTextContent("Caja Principal");
     expect(topbar).not.toHaveTextContent("Tienda Principal");
-    expect(screen.getByText("Tienda Principal · 3500002")).toHaveAttribute("title", "Código de tienda en SaaS");
+    expect(screen.getByText("Tienda Principal · 3500002")).toHaveAttribute("title", "Código de tienda en el servidor central");
     view.rerender(<SalesDocumentScreen locale="es" session={session}
       terminalContext={{ ...terminalContext, storeInternalCode: "0000000" }} />);
     expect(topbar.querySelector(".desktop-header-context")).toHaveTextContent(/^—$/);

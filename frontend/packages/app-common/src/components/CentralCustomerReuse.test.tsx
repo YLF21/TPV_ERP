@@ -17,7 +17,7 @@ describe("CentralCustomerReuse", () => {
   it("requires explicit lookup and confirmation, then returns the linked local copy", async () => {
     const input = props(); render(<CentralCustomerReuse {...input} />);
     expect(apiRequest).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Buscar en SaaS" }));
+    fireEvent.click(screen.getByRole("button", { name: "Buscar en el servidor central" }));
     expect(await screen.findByText("C-001 · Cliente central")).toBeInTheDocument();
     expect(apiRequest).toHaveBeenCalledExactlyOnceWith("/customers/central-lookup", expect.objectContaining({ body: { documentType: "DNI", documentNumber: "12345678Z" } }));
     const customer = { id: "local-2", fiscalName: "Cliente central" };
@@ -30,7 +30,7 @@ describe("CentralCustomerReuse", () => {
     let finish!: (value: unknown) => void;
     vi.mocked(apiRequest).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
     const input = props(); const view = render(<CentralCustomerReuse {...input} />);
-    const search = screen.getByRole("button", { name: "Buscar en SaaS" });
+    const search = screen.getByRole("button", { name: "Buscar en el servidor central" });
     fireEvent.click(search); fireEvent.click(search);
     expect(apiRequest).toHaveBeenCalledTimes(1);
     const signal = vi.mocked(apiRequest).mock.calls[0][1]!.signal!;
@@ -44,14 +44,14 @@ describe("CentralCustomerReuse", () => {
   it("keeps inactive customers read-only", async () => {
     vi.mocked(apiRequest).mockResolvedValue({ ...candidate, active: false });
     render(<CentralCustomerReuse {...props()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Buscar en SaaS" }));
+    fireEvent.click(screen.getByRole("button", { name: "Buscar en el servidor central" }));
     expect(await screen.findByRole("button", { name: "Usar cliente existente" })).toBeDisabled();
     expect(apiRequest).toHaveBeenCalledTimes(1);
   });
   it("shows not found without creating a customer or exposing server details", async () => {
     vi.mocked(apiRequest).mockRejectedValue(new ApiError("internal", 404, { code: "CUSTOMER_CENTRAL_NOT_FOUND" }));
     render(<CentralCustomerReuse {...props()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Buscar en SaaS" }));
+    fireEvent.click(screen.getByRole("button", { name: "Buscar en el servidor central" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("No se encontró");
     expect(screen.queryByRole("button", { name: "Usar cliente existente" })).not.toBeInTheDocument();
   });

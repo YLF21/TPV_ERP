@@ -174,7 +174,7 @@ describe("PartyDirectoryPanel", () => {
     ]);
   });
 
-  it("searches every directory from one query and keeps only the status filter", () => {
+  it("searches every directory from one query and keeps status inside the collapsed filters", () => {
     const members = [
       {
         id: "m1", customerId: "c1", memberId: "M-001", numMember: "VIP-7", memberSince: "2026-07-01",
@@ -198,7 +198,8 @@ describe("PartyDirectoryPanel", () => {
       locale: "es",
       session: layoutSession
     }));
-    expect(html.match(/class="erp-select(?: [^"]*)?"/g)).toHaveLength(1);
+    expect(html).not.toContain('class="erp-select');
+    expect(html).toContain('aria-label="Filtrar"');
   });
 
   it.each(["699888777", "SECUNDARIA@EXAMPLE.TEST", "calle oculta", "sintra", "lisboa", "2710", "pt"])("finds secondary contact data in the customer search: %s", (query) => {

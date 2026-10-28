@@ -12,7 +12,7 @@ type ScreenContextFooterProps = {
   terminalNameOnly?: boolean;
 };
 
-export function ScreenContextFooter({ locale, terminalContext, terminalNameOnly = false }: ScreenContextFooterProps) {
+export function ScreenContextFooter({ locale, terminalContext, terminalNameOnly = true }: ScreenContextFooterProps) {
   const t = createTranslator(locale);
   const { backendLabel, saasConnected } = useScreenConnectionStatus();
   const storeCode = validStoreInternalCode(terminalContext.storeInternalCode);

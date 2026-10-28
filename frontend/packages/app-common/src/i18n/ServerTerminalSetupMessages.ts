@@ -2,11 +2,11 @@ import type { LocaleCode } from "../types";
 
 const es: Record<string, string> = {
   "gestion.serverSetup.title": "Configurar instalación",
-  "gestion.serverSetup.description": "Comprueba la conexión y vincula la instalación con el código de emparejamiento de SaaS.",
+  "gestion.serverSetup.description": "Comprueba la conexión y vincula la instalación con el código de emparejamiento del servidor central.",
   "gestion.serverSetup.server": "Servidor conectado",
   "gestion.serverSetup.addressUnavailable": "Dirección no disponible",
   "gestion.serverSetup.submit": "Comprobar y vincular",
-  "gestion.serverSetup.licenseTitle": "Vinculación con SaaS",
+  "gestion.serverSetup.licenseTitle": "Vinculación con el servidor central",
   "gestion.serverSetup.licenseDescription": "Introduce el código de emparejamiento de esta instalación.",
   "gestion.serverSetup.pairingRequired": "Introduce el código de emparejamiento.",
   "gestion.serverSetup.licenseError": "No se pudo vincular la instalación. Comprueba el código y vuelve a intentar.",
@@ -26,11 +26,11 @@ const es: Record<string, string> = {
 };
 const en: Record<string, string> = {
   "gestion.serverSetup.title": "Set up installation",
-  "gestion.serverSetup.description": "Check the connection and link the installation using its SaaS pairing code.",
+  "gestion.serverSetup.description": "Check the connection and link the installation using its central server pairing code.",
   "gestion.serverSetup.server": "Connected server",
   "gestion.serverSetup.addressUnavailable": "Address unavailable",
   "gestion.serverSetup.submit": "Check and link",
-  "gestion.serverSetup.licenseTitle": "SaaS linking",
+  "gestion.serverSetup.licenseTitle": "Central server linking",
   "gestion.serverSetup.licenseDescription": "Enter the pairing code for this installation.",
   "gestion.serverSetup.pairingRequired": "Enter the pairing code.",
   "gestion.serverSetup.licenseError": "Could not link the installation. Check the code and retry.",
@@ -50,11 +50,11 @@ const en: Record<string, string> = {
 };
 const zh: Record<string, string> = {
   "gestion.serverSetup.title": "配置安装实例",
-  "gestion.serverSetup.description": "检查连接，然后使用 SaaS 配对码绑定安装实例。",
+  "gestion.serverSetup.description": "检查连接，然后使用中央服务器配对码绑定安装实例。",
   "gestion.serverSetup.server": "已连接的服务器",
   "gestion.serverSetup.addressUnavailable": "地址不可用",
   "gestion.serverSetup.submit": "检查并绑定",
-  "gestion.serverSetup.licenseTitle": "SaaS 绑定",
+  "gestion.serverSetup.licenseTitle": "中央服务器绑定",
   "gestion.serverSetup.licenseDescription": "请输入此安装实例的配对码。",
   "gestion.serverSetup.pairingRequired": "请输入配对码。",
   "gestion.serverSetup.licenseError": "无法绑定安装实例。请检查配对码后重试。",

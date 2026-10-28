@@ -19,7 +19,7 @@
   .stock-screen.stock-screen--venta .party-directory-toolbar.party-directory-toolbar--classic {
     box-sizing: border-box;
     flex: 0 0 auto;
-    grid-template-columns: minmax(220px, 360px) 190px auto minmax(0, 1fr);
+    grid-template-columns: minmax(220px, 360px) auto minmax(0, 1fr);
     grid-template-rows: auto auto;
     align-items: end;
     gap: 8px;
@@ -82,7 +82,7 @@
   }
   .stock-screen.stock-screen--venta .party-directory-toolbar .erp-select { height: 34px; }
   .stock-screen.stock-screen--venta .party-directory-status-filter .erp-select { border: 0 !important; box-shadow: none; }
-  .stock-screen.stock-screen--venta .party-directory-toolbar .erp-select__trigger {
+  .stock-screen.stock-screen--venta .party-directory-status-filter .erp-select__trigger {
     grid-template-columns: minmax(0, 1fr) 42px !important;
     height: 34px !important;
     min-height: 34px !important;
@@ -95,7 +95,7 @@
     font-size: 12px !important;
     overflow: hidden;
   }
-  .stock-screen.stock-screen--venta .party-directory-toolbar .erp-select__arrow {
+  .stock-screen.stock-screen--venta .party-directory-status-filter .erp-select__arrow {
     width: 42px !important;
     height: 100% !important;
     min-height: 0 !important;
@@ -103,8 +103,9 @@
     border-radius: 3px !important;
     background: #12385f !important;
   }
-  .stock-screen.stock-screen--venta .party-directory-toolbar :is([data-filter-active="true"], .erp-select__trigger:hover, .erp-select__trigger:focus-visible, .erp-select__trigger[aria-expanded="true"]) .erp-select__arrow { background: #0065fe !important; }
-  .stock-screen.stock-screen--venta .party-directory-toolbar .party-directory-result-count { grid-column: 4; grid-row: 2; margin: 0; }
+  .stock-screen.stock-screen--venta .party-directory-status-filter :is([data-filter-active="true"], .erp-select__trigger:hover, .erp-select__trigger:focus-visible, .erp-select__trigger[aria-expanded="true"]) .erp-select__arrow { background: #0065fe !important; }
+  .stock-screen.stock-screen--venta .party-directory-toolbar .party-directory-filter-button { grid-column: 2; grid-row: 2; }
+  .stock-screen.stock-screen--venta .party-directory-toolbar .party-directory-result-count { grid-column: 3; grid-row: 2; margin: 0; }
 
   .stock-screen.stock-screen--venta :is(.party-directory-heading .management-record-actions > button, .party-directory-filter-button) {
     display: inline-flex;
@@ -131,7 +132,7 @@
   }
   .stock-screen.stock-screen--venta .party-directory-heading .management-record-actions > button > span { margin: 0; color: inherit; font-size: inherit; }
   .stock-screen.stock-screen--venta .party-directory-heading .management-record-actions > button:disabled { opacity: .5; }
-  .stock-screen.stock-screen--venta :is(.party-directory-heading .management-record-actions > button, .party-directory-filter-button, .party-directory-toolbar .erp-select__trigger):focus-visible {
+  .stock-screen.stock-screen--venta :is(.party-directory-heading .management-record-actions > button, .party-directory-filter-button, .party-directory-status-filter .erp-select__trigger):focus-visible {
     outline: 2px solid #0065fe;
     outline-offset: 2px;
   }
@@ -162,7 +163,7 @@
   .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header .table-layout-sort-button:not(.is-active) .table-layout-sort-indicator { display: inline-grid; }
 
   @media (max-width: 1100px) {
-    .stock-screen.stock-screen--venta .party-directory-toolbar.party-directory-toolbar--classic { grid-template-columns: minmax(180px, 1fr) 150px auto auto; }
+    .stock-screen.stock-screen--venta .party-directory-toolbar.party-directory-toolbar--classic { grid-template-columns: minmax(180px, 1fr) auto minmax(0, 1fr); }
   }
   @media (max-width: 760px) {
     .stock-screen.stock-screen--venta .party-directory-toolbar.party-directory-toolbar--classic { grid-template-columns: minmax(0, 1fr) 150px; }

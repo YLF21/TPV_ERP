@@ -23,11 +23,16 @@
 .party-desktop-table .party-directory-row.header .table-layout-drag-handle { display: none !important; }
 .party-desktop-table .party-directory-row.header .table-layout-column-menu-button { opacity: 1 !important; visibility: visible !important; width: 22px; min-width: 22px; flex-basis: 22px; }
 
-.party-directory-toolbar.party-directory-toolbar--classic.party-directory-toolbar--field-filters { grid-template-columns: minmax(220px, 420px) 180px auto 1fr; }
-.party-directory-toolbar--classic .party-directory-filter-button { grid-column: 3; grid-row: 2; align-self: stretch; }
-.party-directory-toolbar--classic.party-directory-toolbar--field-filters .party-directory-result-count { grid-column: 4; }
+.party-directory-toolbar.party-directory-toolbar--classic.party-directory-toolbar--field-filters { grid-template-columns: minmax(220px, 420px) auto minmax(0, 1fr) auto; }
+.party-directory-toolbar--classic.party-directory-toolbar--field-filters .party-directory-filter-button { grid-column: 2; grid-row: 2; align-self: stretch; }
+.party-directory-toolbar--classic.party-directory-toolbar--field-filters .party-directory-result-count { grid-column: 3; grid-row: 2; }
+.party-directory-toolbar--classic.party-directory-toolbar--field-filters .gestion-party-output-actions { grid-column: 4; grid-row: 2; }
 .party-directory-toolbar--classic .party-directory-filter-fields { grid-column: 1 / -1; grid-row: 3; grid-template-columns: repeat(4, minmax(150px, 1fr)); }
 .party-directory-toolbar--classic .party-directory-active-filters { grid-column: 1 / -1; }
+
+@media (max-width: 1100px) {
+  .party-directory-toolbar.party-directory-toolbar--classic.party-directory-toolbar--field-filters { grid-template-columns: minmax(180px, 1fr) auto minmax(0, 1fr) auto; }
+}
 
 .filter-dialog.party-create-dialog.party-desktop-dialog.erp-classic-window { display: flex; flex-direction: column; width: min(1120px, calc(100vw - 40px)) !important; max-height: calc(100dvh - 40px) !important; padding: 0; gap: 0; border: 1px solid #12385f; border-radius: 2px; background: #f2f5f8; overflow: hidden; }
 .filter-dialog.party-create-dialog.party-desktop-dialog--suppliers.erp-classic-window { width: min(880px, calc(100vw - 40px)) !important; }
@@ -81,7 +86,9 @@
   .party-desktop-dialog .party-form-section, .party-desktop-dialog .party-credit-settings { grid-column: auto; grid-row: auto; }
   .party-desktop-credit-overview dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .party-directory-toolbar.party-directory-toolbar--classic.party-directory-toolbar--field-filters { grid-template-columns: minmax(0, 1fr) 150px; }
-  .party-directory-toolbar--classic .party-directory-filter-button { grid-column: 1; grid-row: 3; justify-self: start; }
+  .party-directory-toolbar--classic.party-directory-toolbar--field-filters .party-directory-filter-button { grid-column: 1; grid-row: 3; justify-self: start; }
   .party-directory-toolbar--classic.party-directory-toolbar--field-filters .party-directory-result-count { grid-column: 2; grid-row: 3; }
+  .party-directory-toolbar--classic.party-directory-toolbar--field-filters .gestion-party-output-actions { grid-column: 1 / -1; grid-row: 4; justify-content: flex-start; flex-wrap: wrap; }
   .party-directory-toolbar--classic .party-directory-filter-fields { grid-row: 4; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .party-directory-toolbar.party-directory-toolbar--classic.gestion-filter-toolbar .party-directory-filter-fields { grid-row: 5; }
 }

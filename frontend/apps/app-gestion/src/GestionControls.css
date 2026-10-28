@@ -195,7 +195,7 @@
     html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-table-search) .erp-select__trigger {
       overflow: hidden;
       padding: 0 !important;
-      grid-template-columns: minmax(0, 1fr) 42px !important;
+      grid-template-columns: minmax(0, 1fr) var(--erp-select-arrow-width, 42px) !important;
     }
 
     html[data-app="gestion"] .gestion-filter-toolbar .promotion-status-filter > svg {
@@ -204,7 +204,7 @@
 
     html[data-app="gestion"] :is(.gestion-filter-toolbar, .gestion-table-search) .erp-select__arrow {
       display: grid !important;
-      width: 42px !important;
+      width: var(--erp-select-arrow-width, 42px) !important;
       height: 100% !important;
       min-height: 0 !important;
       margin: 0 !important;
