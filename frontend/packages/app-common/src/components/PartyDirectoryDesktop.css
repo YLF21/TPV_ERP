@@ -1,4 +1,8 @@
 /* Shared desktop directories for APP GESTIÓN and APP VENTA > Gestión. */
+/* Checkboxes must not inherit text-field height or a pointer-focus frame. */
+.party-create-dialog input[type="checkbox"] { box-sizing: border-box; flex: 0 0 16px; width: 16px !important; min-width: 16px; height: 16px !important; min-height: 16px !important; padding: 0 !important; box-shadow: none !important; }
+.party-create-dialog input[type="checkbox"]:focus:not(:focus-visible) { outline: none !important; }
+.party-create-dialog input[type="checkbox"]:focus-visible { outline: 2px solid #0065fe !important; outline-offset: 2px; }
 .party-desktop-table .party-directory-row { align-items: stretch; }
 .party-desktop-table .party-directory-row > .party-directory-cell { display: flex; align-items: center; gap: 6px; min-height: 38px; padding: 7px 10px; font-size: 12px; }
 .party-desktop-table .party-directory-cell:is(.party-directory-cell-debt,.party-directory-cell-balance,.party-directory-cell-creditLimit,.party-directory-cell-discount,.party-directory-cell-points,.party-directory-cell-paymentTermDays) { justify-content: flex-end; font-variant-numeric: tabular-nums; }

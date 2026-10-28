@@ -154,6 +154,7 @@ export type PartyForm = {
   name: string; tradeName: string; documentType: string; documentNumber: string; phone: string; email: string;
   address: string; postalCode: string; city: string; province: string; country: string; notes: string;
   discount: string; numMember: string; birthday: string; gender: string; commercialConsent: boolean;
+  createMember: boolean;
   preferredCommercialChannelId: string;
   creditEnabled: boolean; creditLimit: string; paymentTermDays: string; creditBlocked: boolean; blockOnOverdue: boolean;
 };
@@ -161,7 +162,7 @@ export type PartyForm = {
 export const emptyPartyForm: PartyForm = {
   name: "", tradeName: "", documentType: "NIF", documentNumber: "", phone: "", email: "", address: "",
   postalCode: "", city: "", province: "", country: "ES", notes: "", discount: "0", numMember: "",
-  birthday: "", gender: "", commercialConsent: false, preferredCommercialChannelId: "",
+  birthday: "", gender: "", commercialConsent: false, createMember: false, preferredCommercialChannelId: "",
   creditEnabled: true, creditLimit: "", paymentTermDays: "30", creditBlocked: false, blockOnOverdue: false
 };
 
@@ -193,7 +194,7 @@ export function partyFormFromView(entry: CustomerView | SupplierView, supplier: 
   };
 }
 
-export function buildPartyRequest(form: PartyForm, supplier: boolean, preserveMember = false) {
+export function buildPartyRequest(form: PartyForm, supplier: boolean, member = false) {
   const address = {
     address: form.address.trim() || null, postalCode: form.postalCode.trim() || null, city: form.city.trim() || null,
     province: form.province.trim() || null, country: form.country.trim().toUpperCase() || null
@@ -206,8 +207,8 @@ export function buildPartyRequest(form: PartyForm, supplier: boolean, preserveMe
   return {
     fiscalName: form.name.trim(), documentType: customerDocumentType(form.documentType), documentNumber: form.documentNumber.trim(), address,
     phone: form.phone.trim() || null, email: form.email.trim() || null, notes: form.notes.trim() || null,
-    discount: Number(form.discount) || 0, isMember: preserveMember,
-    numMember: preserveMember ? form.numMember.trim() || null : null,
+    discount: Number(form.discount) || 0, isMember: member,
+    numMember: member ? form.numMember.trim() || null : null,
     birthday: form.birthday || null, gender: form.gender || null, commercialConsent: form.commercialConsent,
     preferredCommercialChannelId: form.commercialConsent ? form.preferredCommercialChannelId || null : null,
     creditEnabled: form.creditEnabled,
@@ -236,6 +237,10 @@ function normalizedText(value: string | null | undefined, locale: LocaleCode): s
   return value?.toLocaleLowerCase(locale) ?? "";
 }
 
+function customerDirectoryContacts(customer: CustomerView) {
+  return [{ phone: customer.phone, email: customer.email, address: customer.address }, ...(customer.addresses ?? [])];
+}
+
 export function partyDirectorySearchValues(entry: PartyDirectoryEntry, kind: PartyDirectoryKind): Array<string | null | undefined> {
   if (kind === "members") {
     const member = entry as MemberDirectoryView;
@@ -248,8 +253,9 @@ export function partyDirectorySearchValues(entry: PartyDirectoryEntry, kind: Par
       supplier.phone, supplier.email, supplier.address?.city, supplier.address?.province];
   }
   const customer = entry as CustomerView;
-  return [customer.clientId, customer.fiscalName, customer.documentNumber, customer.phone, customer.email,
-    customer.address?.city, customer.address?.province];
+  return [customer.clientId, customer.fiscalName, customer.documentNumber,
+    ...customerDirectoryContacts(customer).flatMap(contact => [contact.phone, contact.email, contact.address?.address,
+      contact.address?.city, contact.address?.province, contact.address?.postalCode, contact.address?.country])];
 }
 
 export function filterPartyDirectoryEntries(
@@ -274,6 +280,11 @@ export function filterPartyDirectoryEntries(
       if (field === "creditEnabled" || field === "creditBlocked" || field === "isMember" || field === "commercialConsent") return customer[field] != null && customer[field] === (criterion === "true");
       let values: Array<string | null | undefined>;
       if (field === "category") values = [(entry as MemberDirectoryView).categoryName];
+      else if (kind === "customers" && (field === "phone" || field === "email" || field === "location" || field === "postalCode" || field === "country")) {
+        values = customerDirectoryContacts(customer).map(contact => field === "location"
+          ? `${contact.address?.city ?? ""} ${contact.address?.province ?? ""}`
+          : field === "phone" || field === "email" ? contact[field] : contact.address?.[field]);
+      }
       else if (field === "name" && kind === "suppliers") {
         const supplier = entry as SupplierView;
         values = [supplier.legalName, supplier.tradeName];
@@ -432,7 +443,7 @@ export function PartyDirectoryPanel({
   const isMember = kind === "members";
   const managementMode = allowSafeRetirement && !isMember;
   const classicWindow = app !== "pda";
-  const customerEditor = app === "venta" && kind === "customers";
+  const customerEditor = app === "venta" && !isSupplier;
   const addressBook = useCustomerAddressBookEditor(session, (customer, resetForm) => {
     if (resetForm) {
       const next = partyFormFromView(customer, false);
@@ -821,9 +832,10 @@ export function PartyDirectoryPanel({
       const editId = isMember ? selectedMemberCustomer?.id : selectedId;
       const editEndpoint = isMember ? "/customers" : endpoint;
       const customer = isMember ? selectedMemberCustomer : selected as CustomerView | null;
+      const member = !isSupplier && (editId ? Boolean(customer?.isMember) : requestForm.createMember);
       const saved = await apiRequest<CustomerView | SupplierView>(editId ? `${editEndpoint}/${editId}` : editEndpoint, {
         method: editId ? "PUT" : "POST", token: session.accessToken,
-        body: { ...buildPartyRequest(requestForm, isSupplier, !isSupplier && Boolean(customer?.isMember)),
+        body: { ...buildPartyRequest(requestForm, isSupplier, member),
           ...(customerEditor ? { addresses: customerContactRequests(addressBook.drafts), ...(editId ? { expectedVersion: addressBook.source?.version ?? customer?.version } : {}) } : {}) }
       });
       setDialogOpen(false); if (customerEditor) addressBook.cancel();
@@ -947,7 +959,12 @@ export function PartyDirectoryPanel({
                 documentType={form.documentType} documentNumber={form.documentNumber} session={session} locale={locale} disabled={saving}
                 onBusyChange={setCentralBusy} onAvailable={() => setStatus("")} onExisting={setExistingCentralCustomer}
               /> : undefined}
-              identityAction={!customerEditor && kind === "customers" && !selectedId && canWrite && <CentralCustomerReuse
+              identityAction={<>
+              {customerEditor && kind === "customers" && !selectedId && <label className="party-commercial-consent">
+                <input type="checkbox" checked={form.createMember} onChange={event => update("createMember", event.target.checked)} />
+                <span>{t("party.customerEditor.createMember")}</span>
+              </label>}
+              {!customerEditor && kind === "customers" && !selectedId && canWrite && <CentralCustomerReuse
                 documentType={form.documentType} documentNumber={form.documentNumber}
                 session={session} locale={locale} disabled={saving}
                 onBusyChange={setCentralBusy}
@@ -956,13 +973,17 @@ export function PartyDirectoryPanel({
                   void load(false); setStatus(t("party.saveSuccess"));
                 }}
               />}
+              </>}
               contactEditor={customerEditor && addressBook.selected ? {
                 value: addressBook.selected,
                 onChange: (field, value) => { addressBook.change(field, value); setFormErrors(current => current.filter(error => error !== field)); },
                 heading: <CustomerAddressBookHeading addresses={addressBook.drafts} selectedId={addressBook.selectedId} disabled={addressBook.busy || saving || centralBusy}
                   onSelect={addressBook.select} onAdd={addressBook.add} t={t} />,
                 footer: <div className="party-address-book-footer">
-                  {addressBook.selectedId !== addressBook.drafts[0]?.id && <button type="button" onClick={addressBook.makeDefault}>{t("party.customerEditor.address.makeDefault")}</button>}
+                  {addressBook.selectedId !== addressBook.drafts[0]?.id && <>
+                    <button type="button" onClick={addressBook.makeDefault}>{t("party.customerEditor.address.makeDefault")}</button>
+                    <button type="button" onClick={() => { addressBook.removeSelected(); setFormErrors(current => current.filter(field => !["phone", "email", "address", "postalCode", "city", "province", "country", "notes"].includes(field))); }}>{t("party.customerEditor.address.remove")}</button>
+                  </>}
                   {addressBook.busy && <p role="status">{t("party.customerEditor.address.loading")}</p>}
                   {!addressBook.busy && addressBook.status && addressBook.status !== "SYNCED" && <p role="status">{t(`party.customerEditor.address.${addressBook.status.toLowerCase()}`)}</p>}
                   {addressBook.error && <p role="alert">{t(addressBook.error)}</p>}

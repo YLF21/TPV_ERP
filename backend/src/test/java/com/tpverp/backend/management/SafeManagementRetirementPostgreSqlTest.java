@@ -12,6 +12,7 @@ import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 import jakarta.persistence.EntityManager;
 import java.sql.DriverManager;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -171,6 +172,77 @@ class SafeManagementRetirementPostgreSqlTest {
                 1, firstPage.nextCursor(), null, null, "code", "desc");
         assertThat(secondPage.items()).extracting(ManagementItem::id).containsExactly(ids.customerId());
         assertThat(secondPage.hasMore()).isFalse();
+    }
+
+    @Test
+    void searchesAndFiltersSecondaryCustomerAddressesWithoutChangingTenantOrCursorScope() {
+        var ids = insertFixture();
+        UUID secondCustomerId = UUID.randomUUID();
+        jdbc.update("""
+                insert into cliente(id,empresa_id,client_id,client_code_store_id,nombre_fiscal,
+                    tipo_documento,numero_documento,tarifa,descuento,addresses_json)
+                values (?,?,?,?,?,'CIF',?,'VENTA',0,cast(? as jsonb))
+                """, secondCustomerId, companyId, "C-001-000002", storeId,
+                "Cliente secundario", "B00000005", """
+                [{"id":"00000000-0000-0000-0000-000000000004","address":
+                  {"address":"Calle Olivo","postalCode":"35004","city":"Arucas",
+                   "province":"Las Palmas","country":"ES"},
+                  "phone":"611111111","email":"principal@example.test","notes":null},
+                 {"id":"00000000-0000-0000-0000-000000000005","address":
+                  {"address":"Calle Roble","postalCode":"28042","city":"Madrid",
+                   "province":"Madrid","country":"PT"},
+                  "phone":"699888777","email":"secundario@example.test","notes":null}]
+                """);
+        UUID otherCompany = UUID.randomUUID();
+        UUID otherStore = UUID.randomUUID();
+        jdbc.update("insert into empresa(id,tax_id,razon_social,domicilio_fiscal) values (?,?,?,cast(? as jsonb))",
+                otherCompany, "B00000006", "Otra empresa", address());
+        jdbc.update("insert into tienda(id,empresa_id,nombre,direccion,address_normalized_hash,timezone,moneda,locale,codigo_tienda) values (?,?,?,cast(? as jsonb),?,?,?,?,?)",
+                otherStore, otherCompany, "Otra tienda", address(), "hash-" + otherStore,
+                "Atlantic/Canary", "EUR", "es-ES", "999");
+        jdbc.update("""
+                insert into cliente(id,empresa_id,client_id,client_code_store_id,nombre_fiscal,tipo_documento,
+                    numero_documento,tarifa,descuento,addresses_json)
+                values (?,?,?,?,'Cliente ajeno','CIF',?,'VENTA',0,cast(? as jsonb))
+                """, UUID.randomUUID(), otherCompany, "C-999-000001", otherStore, "B00000007", """
+                [{"id":"00000000-0000-0000-0000-000000000006","address":
+                  {"address":"Calle Cedro","postalCode":"35005","city":"Telde",
+                   "province":"Las Palmas","country":"ES"},
+                  "phone":"622222222","email":"ajeno-principal@example.test","notes":null},
+                 {"id":"00000000-0000-0000-0000-000000000007","address":
+                  {"address":"Calle Roble","postalCode":"28042","city":"Madrid",
+                   "province":"Madrid","country":"PT"},
+                  "phone":"699888777","email":"secundario@example.test","notes":null}]
+                """);
+
+        var type = SafeManagementRetirementService.EntityType.CUSTOMER;
+        for (String term : new String[] {"699888777", "secundario@example.test", "Calle Roble",
+                "28042", "Madrid", "PT"}) {
+            assertThat(service.page(type, 25, null, term, null).items())
+                    .extracting(ManagementItem::id).containsExactly(secondCustomerId);
+        }
+        for (var filter : Map.of("phone", "699888777", "email", "secundario@example.test",
+                "location", "Madrid", "postalCode", "28042", "country", "PT").entrySet()) {
+            assertThat(service.page(type, 25, null, null, null, "code", "asc",
+                    Map.of("field." + filter.getKey(), filter.getValue())).items())
+                    .extracting(ManagementItem::id).contains(secondCustomerId);
+        }
+        assertThat(service.page(type, 25, null, null, null, "code", "asc",
+                Map.of("field.phone", "699888777", "field.location", "Madrid")).items())
+                .extracting(ManagementItem::id).containsExactly(secondCustomerId);
+        assertThat(service.page(type, 25, null, null, null, "code", "asc",
+                Map.of("field.phone", "699888777", "field.location", "Sevilla")).items()).isEmpty();
+        assertThat(service.page(type, 25, null, "699%888777", null).items()).isEmpty();
+        var first = service.page(type, 1, null, null, null, "code", "asc",
+                Map.of("field.location", "Las Palmas"));
+        assertThat(first.items()).extracting(ManagementItem::id).containsExactly(ids.customerId());
+        assertThat(first.hasMore()).isTrue();
+        var next = service.page(type, 1, first.nextCursor(), null, null, "code", "asc",
+                Map.of("field.location", "Las Palmas"));
+        assertThat(next.items()).extracting(ManagementItem::id).containsExactly(secondCustomerId);
+        assertThat(next.hasMore()).isFalse();
+        assertThat(service.page(type, 25, null, "600111222", null).items())
+                .extracting(ManagementItem::id).containsExactly(ids.customerId());
     }
 
     private Fixture insertFixture() {

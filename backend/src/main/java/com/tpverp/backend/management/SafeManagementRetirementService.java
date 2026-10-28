@@ -494,9 +494,17 @@ public class SafeManagementRetirementService {
                 args.add(normalizedSearch);
             }
             case CUSTOMER -> {
-                sql.append(" and lower(concat_ws(' ', c.client_id, c.nombre_fiscal, "
-                        + "c.numero_documento, c.telefono, c.email, c.poblacion, c.provincia)) like ?");
-                args.add(normalizedSearch);
+                sql.append(" and (lower(concat_ws(' ', c.client_id, c.nombre_fiscal, "
+                        + "c.numero_documento, c.telefono, c.email, c.direccion, c.codigo_postal, "
+                        + "c.poblacion, c.provincia, c.pais)) like ? escape '!' "
+                        + "or exists (select 1 from jsonb_array_elements(c.addresses_json) ca "
+                        + "where lower(concat_ws(' ', ca->>'phone', ca->>'email', "
+                        + "ca->'address'->>'address', ca->'address'->>'postalCode', "
+                        + "ca->'address'->>'city', ca->'address'->>'province', "
+                        + "ca->'address'->>'country')) like ? escape '!'))");
+                String pattern = escapedLikePattern(normalizedSearch.substring(1, normalizedSearch.length() - 1));
+                args.add(pattern);
+                args.add(pattern);
             }
             case SUPPLIER -> {
                 sql.append(" and lower(concat_ws(' ', s.supplier_id, s.razon_social, s.nombre_comercial, "
@@ -542,8 +550,24 @@ public class SafeManagementRetirementService {
             String value = filters.get("field." + key);
             if (value == null || value.isBlank()) return;
             if (value.length() > 120) throw new IllegalArgumentException("Filtro demasiado largo");
-            sql.append(" and lower(").append(expression).append(") like ?");
-            args.add(likePattern(value));
+            if (type == EntityType.CUSTOMER && Set.of("phone", "email", "location", "postalCode", "country").contains(key)) {
+                String secondary = switch (key) {
+                    case "phone" -> "ca->>'phone'";
+                    case "email" -> "ca->>'email'";
+                    case "location" -> "concat_ws(' ', ca->'address'->>'city', ca->'address'->>'province')";
+                    case "postalCode" -> "ca->'address'->>'postalCode'";
+                    default -> "ca->'address'->>'country'";
+                };
+                sql.append(" and (lower(").append(expression).append(") like ? escape '!' "
+                        + "or exists (select 1 from jsonb_array_elements(c.addresses_json) ca "
+                        + "where lower(").append(secondary).append(") like ? escape '!'))");
+                String pattern = escapedLikePattern(value);
+                args.add(pattern);
+                args.add(pattern);
+            } else {
+                sql.append(" and lower(").append(expression).append(") like ?");
+                args.add(likePattern(value));
+            }
         });
         if (type != EntityType.CUSTOMER) return;
         for (String key : List.of("creditEnabled", "creditBlocked", "isMember", "commercialConsent")) {
@@ -667,6 +691,11 @@ public class SafeManagementRetirementService {
 
     private static String likePattern(String value) {
         return "%" + value.trim().toLowerCase(Locale.ROOT) + "%";
+    }
+
+    private static String escapedLikePattern(String value) {
+        return "%" + value.trim().toLowerCase(Locale.ROOT)
+                .replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
     }
 
     private static int validateSize(int size) {

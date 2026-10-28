@@ -84,13 +84,14 @@ public class CustomerService {
     public CustomerView create(CustomerCommand command) {
         var company = context.currentCompany();
         var store = context.currentStore();
-        rejectDirectMemberCreation(command);
         var identity = validateDocument(command);
         ensureUnique(company.getId(), identity.canonicalNumber(), null);
+        if (command.member()) ensureUniqueMemberNumber(company.getId(), command.numMember(), null);
         // Validate non-identity fields before making a central reservation.
         var candidate = newCustomer(UUID.randomUUID(), company, command, identity);
         // All create paths lock the code allocator before reservation rows (batch uses the same order).
         var clientCode = codes.nextClient(store);
+        var memberCode = command.member() ? codes.nextMember(store) : null;
         candidate.assignClientCode(store.getId(), clientCode);
         var approval = identities.reserve(company.getId(), store.getId(), null, identity, candidate);
         var customer = newCustomer(approval.customerId(), company, command, identity);
@@ -98,7 +99,15 @@ public class CustomerService {
         customer.assignClientCode(store.getId(), clientCode);
         customer = customers.save(customer);
         identities.complete(approval, customer);
-        return view(customer, null);
+        Member member = null;
+        if (command.member()) {
+            member = new Member(customer, memberCode, LocalDate.now(clock));
+            member.assignMemberStore(store.getId());
+            member.setNumMember(command.numMember());
+            member = members.save(member);
+            memberLoyalty.activateMember(member);
+        }
+        return view(customer, member);
     }
 
     @Transactional

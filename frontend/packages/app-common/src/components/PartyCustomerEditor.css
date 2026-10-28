@@ -1,4 +1,4 @@
-/* Customer editor in APP VENTA; shared supplier, PDA and Gestión forms keep their skin. */
+/* Customer and member editors in APP VENTA; supplier, PDA and Gestión keep their skin. */
 .party-customer-editor--venta .party-document-row { grid-template-columns: minmax(130px, .8fr) minmax(0, 1.6fr); align-items: start; }
 .party-customer-editor--venta .party-document-number-with-action {
   display: grid;
@@ -102,9 +102,9 @@
 }
 .party-customer-editor--venta .party-address-book-heading { min-width: 0; }
 .party-customer-editor--venta .party-address-book-heading .erp-select__trigger { font-weight: 700; }
-.party-customer-editor--venta .party-address-book-footer { display: grid; justify-items: start; gap: 7px; }
+.party-customer-editor--venta .party-address-book-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
 .party-customer-editor--venta .party-address-book-footer:empty { display: none; }
-.party-customer-editor--venta .party-address-book-footer > p { margin: 0; color: #52687e; font-size: 12px; line-height: 1.4; }
+.party-customer-editor--venta .party-address-book-footer > p { flex-basis: 100%; margin: 0; color: #52687e; font-size: 12px; line-height: 1.4; }
 .party-customer-editor--venta .party-address-book-footer > [role="alert"] { color: #a62929; }
 @media (max-width: 800px) {
   .party-customer-editor--venta :is(.party-form-section, .party-credit-settings) { grid-column: 1; grid-row: auto; }
