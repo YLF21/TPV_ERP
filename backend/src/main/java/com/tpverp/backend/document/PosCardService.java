@@ -120,7 +120,7 @@ public class PosCardService {
         var hasOpenPrice=sale.lines().stream().anyMatch(l->l.openUnitPrice()!=null);
         var hasSerialNumbers=sale.lines().stream().anyMatch(l->l.serialNumbers()!=null&&!l.serialNumbers().isEmpty());
         var hasTemporaryNames=sale.lines().stream().anyMatch(l->l.temporaryName()!=null&&!l.temporaryName().isBlank());
-        var c=new StringBuilder(sale.previousTicketImport()!=null?"v9-previous-ticket-import|":hasTemporaryNames?"v8-temporary-name|":!internalComment.isEmpty()?"v7-internal-comment|":hasSerialNumbers?"v6-checkout-serials|":"v5-checkout-discount|").append(sale.customerId()).append('|').append(sale.wholesaleMode()).append('|').append(documentDiscount).append('|').append(PosCashService.canonicalPreviousTicketImport(sale.previousTicketImport())).append('|');
+        var c=new StringBuilder(sale.previousTicketImport()!=null?"v9-previous-ticket-import|":hasTemporaryNames?"v8-temporary-name|":!internalComment.isEmpty()?"v7-internal-comment|":hasSerialNumbers?"v6-checkout-serials|":"v5-checkout-discount|").append(sale.customerId()).append('|').append(PosCashService.canonicalCustomerAddress(sale.customerAddressId())).append(sale.wholesaleMode()).append('|').append(documentDiscount).append('|').append(PosCashService.canonicalPreviousTicketImport(sale.previousTicketImport())).append('|');
         if(!internalComment.isEmpty())c.append(internalComment.length()).append(':').append(internalComment).append('|');
         if(!coupon.isEmpty())c.append(coupon).append('|');
         c.append(sale.checkoutDiscountAmount()==null?"0.00":Money.euros(sale.checkoutDiscountAmount())).append('|');
@@ -140,7 +140,7 @@ public class PosCardService {
         var hasOpenPrice=sale.lines().stream().anyMatch(l->l.openUnitPrice()!=null);
         var hasSerialNumbers=sale.lines().stream().anyMatch(l->l.serialNumbers()!=null&&!l.serialNumbers().isEmpty());
         var hasTemporaryNames=sale.lines().stream().anyMatch(l->l.temporaryName()!=null&&!l.temporaryName().isBlank());
-        var c=new StringBuilder(sale.previousTicketImport()!=null?"v8-previous-ticket-import|":hasTemporaryNames?"v7-temporary-name|":!internalComment.isEmpty()?"v6-internal-comment|":hasSerialNumbers?"v5-checkout-serials|":"v4-checkout-discount|").append(sale.customerId()).append('|').append(PosCashService.canonicalPreviousTicketImport(sale.previousTicketImport())).append('|');
+        var c=new StringBuilder(sale.previousTicketImport()!=null?"v8-previous-ticket-import|":hasTemporaryNames?"v7-temporary-name|":!internalComment.isEmpty()?"v6-internal-comment|":hasSerialNumbers?"v5-checkout-serials|":"v4-checkout-discount|").append(sale.customerId()).append('|').append(PosCashService.canonicalCustomerAddress(sale.customerAddressId())).append(PosCashService.canonicalPreviousTicketImport(sale.previousTicketImport())).append('|');
         if(!internalComment.isEmpty())c.append(internalComment.length()).append(':').append(internalComment).append('|');
         if(!coupon.isEmpty())c.append(coupon).append('|');
         c.append(sale.checkoutDiscountAmount()==null?"0.00":Money.euros(sale.checkoutDiscountAmount())).append('|');

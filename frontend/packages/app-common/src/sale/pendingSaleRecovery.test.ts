@@ -22,6 +22,7 @@ class MemoryStorage implements Storage {
 const draft: PendingSaleDraft = {
   checkoutId: "checkout-1", warehouseId: "warehouse-1", type: "FACTURA_VENTA",
   date: "2026-07-18", customerId: "customer-1", dueDate: "2026-08-17",
+  customerAddressId: "00000000-0000-4000-8000-000000000002",
   globalDiscount: "0.00", lines: [{ productId: "product-1", quantity: 1,
     code: "P-1", name: "Producto", price: "100.00", discount: "0.00",
     taxesIncluded: true, taxRegime: "GENERAL", taxPercentage: "21.00" }],

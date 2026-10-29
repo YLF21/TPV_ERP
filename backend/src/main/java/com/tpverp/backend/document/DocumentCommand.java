@@ -17,7 +17,39 @@ public record DocumentCommand(
         List<DocumentLineCommand> lineas,
         String comentarioInterno,
         BigDecimal documentDiscountPercent,
-        boolean wholesaleMode) {
+        boolean wholesaleMode,
+        UUID customerAddressId,
+        @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        DocumentCustomerContact customerContactSnapshot) {
+
+    public DocumentCommand(UUID almacenId, CommercialDocumentType tipo, LocalDate fecha, UUID clienteId,
+            UUID proveedorId, String numeroExterno, BigDecimal descuentoGlobal, boolean directo,
+            List<DocumentLineCommand> lineas, String comentarioInterno, BigDecimal documentDiscountPercent,
+            boolean wholesaleMode, UUID customerAddressId) {
+        this(almacenId, tipo, fecha, clienteId, proveedorId, numeroExterno, descuentoGlobal, directo,
+                lineas, comentarioInterno, documentDiscountPercent, wholesaleMode, customerAddressId, null);
+    }
+
+    DocumentCommand withFrozenCustomerContact(DocumentCustomerContact contact) {
+        return contact == null ? this : new DocumentCommand(almacenId, tipo, fecha, clienteId, proveedorId,
+                numeroExterno, descuentoGlobal, directo, lineas, comentarioInterno, documentDiscountPercent,
+                wholesaleMode, contact.id(), contact);
+    }
+
+
+    DocumentCommand withoutCustomerAddressId() {
+        return new DocumentCommand(almacenId, tipo, fecha, clienteId, proveedorId, numeroExterno,
+                descuentoGlobal, directo, lineas, comentarioInterno, documentDiscountPercent, wholesaleMode, null);
+    }
+
+    public DocumentCommand(UUID almacenId, CommercialDocumentType tipo, LocalDate fecha,
+            UUID clienteId, UUID proveedorId, String numeroExterno, BigDecimal descuentoGlobal,
+            boolean directo, List<DocumentLineCommand> lineas, String comentarioInterno,
+            BigDecimal documentDiscountPercent, boolean wholesaleMode) {
+        this(almacenId, tipo, fecha, clienteId, proveedorId, numeroExterno, descuentoGlobal,
+                directo, lineas, comentarioInterno, documentDiscountPercent, wholesaleMode, null);
+    }
+
 
     public DocumentCommand(
             UUID almacenId,

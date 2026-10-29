@@ -560,7 +560,7 @@ public class CustomerService {
             boolean blockOnOverdue,
             BigDecimal outstandingDebt,
             BigDecimal overdueDebt,
-            BigDecimal availableCredit) {
+            BigDecimal availableCredit, List<CustomerAddressEntry> addresses) {
 
         static SaleCustomerSearchView from(
                 Customer customer,
@@ -582,7 +582,7 @@ public class CustomerService {
                     customer.isBlockOnOverdue(), outstanding,
                     money(debt == null ? null : debt.getOverdueDebt()),
                     customer.getCreditLimit() == null ? null
-                            : money(customer.getCreditLimit().subtract(outstanding)));
+                            : money(customer.getCreditLimit().subtract(outstanding)), customer.getAddresses());
         }
     }
 

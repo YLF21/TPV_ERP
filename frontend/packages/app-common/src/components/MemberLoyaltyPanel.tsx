@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { apiRequest } from "../api/client";
 import type { AppKind, UserSession } from "../types";
@@ -40,7 +40,7 @@ export type MemberCardDelivery = {
 };
 
 type Translate = (key: string) => string;
-type Tab = "detail" | "movements" | "deliveries";
+type Tab = "detail" | "movements" | "deliveries" | "adjustments";
 export type MemberMovementColumnKey = "date" | "movement" | "amount" | "reason";
 export type MemberCardDeliveryColumnKey = "email" | "status" | "date";
 
@@ -68,6 +68,7 @@ export type MemberLoyaltyPanelProps = {
   session: UserSession;
   t?: Translate;
   request?: MemberLoyaltyRequest;
+  memberNumberEditor?: ReactNode;
 };
 
 type TableLayoutController<Key extends string> = {
@@ -94,7 +95,9 @@ function MemberOperationalTable<Key extends string, Row extends { id: string }>(
   resizeLabel,
   actionLabel,
   actionWidth = 0,
-  renderActions
+  renderActions,
+  emptyLabel,
+  label
 }: {
   columns: readonly OperationalColumn<Key, Row>[];
   layoutController: TableLayoutController<Key>;
@@ -106,6 +109,8 @@ function MemberOperationalTable<Key extends string, Row extends { id: string }>(
   actionLabel?: string;
   actionWidth?: number;
   renderActions?: (row: Row) => ReactNode;
+  emptyLabel: string;
+  label: string;
 }) {
   const tableSort = useTableSortPreference({
     app,
@@ -125,8 +130,8 @@ function MemberOperationalTable<Key extends string, Row extends { id: string }>(
       : null;
   });
 
-  return <div style={{ overflowX: "auto" }}>
-    <table style={{ tableLayout: "fixed", minWidth: tableWidth }}>
+  return <div className="member-loyalty-table-scroll" role="region" aria-label={label} tabIndex={0}>
+    <table aria-label={label} style={{ tableLayout: "fixed", minWidth: tableWidth }}>
       <colgroup>
         {visibleColumns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
         {renderActions && <col style={{ width: actionWidth }} />}
@@ -157,7 +162,7 @@ function MemberOperationalTable<Key extends string, Row extends { id: string }>(
           return <td data-column-key={column.key} key={column.key}>{definition?.render(row)}</td>;
         })}
         {renderActions && <td data-fixed-column="actions">{renderActions(row)}</td>}
-      </tr>)}</tbody>
+      </tr>)}{sortedRows.length === 0 && <tr><td colSpan={visibleColumns.length + Number(Boolean(renderActions))} className="member-loyalty-empty">{emptyLabel}</td></tr>}</tbody>
     </table>
   </div>;
 }
@@ -225,7 +230,8 @@ export function memberMovementPresentation(
   };
 }
 
-export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallback, request = apiRequest }: MemberLoyaltyPanelProps) {
+export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallback, request = apiRequest, memberNumberEditor }: MemberLoyaltyPanelProps) {
+  const tabId = useId();
   const [tab, setTab] = useState<Tab>("detail");
   const [visitedTabs, setVisitedTabs] = useState<Set<Tab>>(() => new Set(["detail"]));
   const [member, setMember] = useState<MemberView | null>(null);
@@ -235,6 +241,7 @@ export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallb
   const [adjustment, setAdjustment] = useState({ kind: "points" as "points" | "balance", value: "", reason: "" });
   const [categoryId, setCategoryId] = useState("");
   const [categoryReason, setCategoryReason] = useState("");
+  const [categoryLocked, setCategoryLocked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const permissions = memberLoyaltyPermissions(session);
@@ -266,6 +273,7 @@ export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallb
       const data = await loadMemberLoyalty(memberId, session.accessToken ?? "", request);
       setMember(data.member); setMovements(data.movements); setCategories(data.categories);
       setCategoryId(data.member.categoryId ?? "");
+      setCategoryLocked(data.member.autoCategoryLocked);
     } catch (cause) { setError(cause instanceof Error ? cause.message : t("party.loadError")); }
     finally { setBusy(false); }
   }, [memberId, request, session.accessToken, t]);
@@ -279,8 +287,8 @@ export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallb
   function showError(cause: unknown) { setError(cause instanceof Error ? cause.message : t("party.loadError")); }
   async function mutate(action: () => Promise<unknown>, refresh = true) {
     setBusy(true); setError("");
-    try { await action(); if (refresh) await reload(); }
-    catch (cause) { showError(cause); }
+    try { await action(); if (refresh) await reload(); return true; }
+    catch (cause) { showError(cause); return false; }
     finally { setBusy(false); }
   }
 
@@ -290,7 +298,7 @@ export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallb
     try { body = memberLoyaltyAdjustmentBody(adjustment.value, adjustment.reason, adjustment.kind); }
     catch (cause) { showError(cause); return; }
     void mutate(() => request(`/members/${memberId}/${adjustment.kind}-adjustments`, { ...options, method: "POST", body }))
-      .then(() => setAdjustment((value) => ({ ...value, value: "", reason: "" })));
+      .then(saved => { if (saved) setAdjustment((value) => ({ ...value, value: "", reason: "" })); });
   }
 
   const movementColumns: readonly OperationalColumn<MemberMovementColumnKey, MemberMovement>[] = [
@@ -310,17 +318,26 @@ export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallb
     { key: "status", label: t("party.status"), render: (item) => t(`party.members.deliveryStatus.${item.status}`) },
     { key: "date", label: t("party.members.date"), render: (item) => new Date(item.createdAt).toLocaleString(), sortValue: (item) => new Date(item.createdAt) }
   ];
-  const tabs: Tab[] = ["detail", "movements", "deliveries"];
+  const tabs: Tab[] = ["detail", "movements", "deliveries", "adjustments"];
   return <section className="stock-section party-member-loyalty" aria-label={t("party.members.loyaltyTitle")}>
     <div className="stock-section__header">
       <h3>{t("party.members.loyaltyTitle")}</h3>
-      <div className="stock-toolbar member-loyalty-tabs" role="tablist">{tabs.map((item) =>
-        <button key={item} type="button" role="tab" aria-selected={tab === item} className={tab === item ? "is-active" : ""} onClick={() => selectTab(item)}>{t(`party.members.tab.${item}`)}</button>
+      <div className="stock-toolbar member-loyalty-tabs" role="tablist" aria-label={t("party.members.loyaltyTitle")}>{tabs.map((item, index) =>
+        <button key={item} type="button" role="tab" id={`${tabId}-${item}-tab`} aria-controls={`${tabId}-panel`}
+          aria-selected={tab === item} tabIndex={tab === item ? 0 : -1} className={tab === item ? "is-active" : ""} onClick={() => selectTab(item)}
+          onKeyDown={event => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
+            selectTab(tabs[nextIndex]);
+            document.getElementById(`${tabId}-${tabs[nextIndex]}-tab`)?.focus();
+          }}>{t(`party.members.tab.${item}`)}</button>
       )}</div>
     </div>
     {error && <p role="alert" className="form-error">{t(error)}</p>}
     {busy && !member ? <p>{t("common.loading")}</p> : null}
 
+    <div className="member-loyalty-tab-content" role="tabpanel" id={`${tabId}-panel`} aria-labelledby={`${tabId}-${tab}-tab`}>
     {tab === "detail" && member && <>
       <div className="stock-summary-grid">
         <Summary label={t("party.memberId")} value={member.memberId} />
@@ -329,35 +346,43 @@ export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallb
         <Summary label={t("party.members.balance")} value={String(member.balance)} />
         <Summary label={t("party.members.returnCreditBalance")} value={String(member.returnCreditBalance ?? 0)} />
         <Summary label={t("party.status")} value={t(member.active ? "party.active" : "party.inactive")} />
+        <Summary label={t("party.members.category")} value={categories.find(category => category.id === member.categoryId)?.name || "—"} />
       </div>
+    </>}
+    {tab === "adjustments" && member && <>
       <div className="member-loyalty-editor-grid">
         {permissions.canSetCategory && <section className="member-loyalty-card">
           <h4>{t("party.members.category")}</h4>
           <form onSubmit={(event) => {
             event.preventDefault();
             if (!categoryReason.trim()) { setError("party.members.reasonRequired"); return; }
-            void mutate(() => request(`/members/${memberId}/category`, { ...options, method: "PUT", body: { categoryId: categoryId || null, lockAutomatic: member.autoCategoryLocked, reason: categoryReason.trim() } })).then(() => setCategoryReason(""));
+            void mutate(() => request(`/members/${memberId}/category`, { ...options, method: "PUT", body: { categoryId: categoryId || null, lockAutomatic: categoryLocked, reason: categoryReason.trim() } })).then(saved => { if (saved) setCategoryReason(""); });
           }}>
+            <fieldset disabled={busy}>
             <label><span>{t("party.members.category")}</span><ErpSelect value={categoryId} onChange={setCategoryId} options={[{ value: "", label: "—" }, ...categories.filter((item) => item.active || item.id === categoryId).map((item) => ({ value: item.id, label: item.name }))]} /></label>
             <label><span>{t("party.members.reason")}</span><input value={categoryReason} onChange={(event) => setCategoryReason(event.target.value)} /></label>
-            <label className="member-loyalty-check"><input type="checkbox" checked={member.autoCategoryLocked} onChange={(event) => setMember({ ...member, autoCategoryLocked: event.target.checked })} /><span>{t("party.members.autoCategoryLocked")}</span></label>
+            <label className="member-loyalty-check"><input type="checkbox" checked={categoryLocked} onChange={(event) => setCategoryLocked(event.target.checked)} /><span>{t("party.members.autoCategoryLocked")}</span></label>
             <button disabled={busy}>{t("common.save")}</button>
+            </fieldset>
           </form>
         </section>}
-        {permissions.canWrite && <section className="member-loyalty-card">
+        {permissions.canWrite && <section className="member-loyalty-card member-loyalty-card--manual">
           <h4>{t("party.members.adjustmentsTitle")}</h4>
           <form onSubmit={submitAdjustment}>
+            <fieldset disabled={busy}>
             <label><span>{t("party.members.adjustmentType")}</span><ErpSelect value={adjustment.kind} onChange={(value) => setAdjustment((current) => ({ ...current, kind: value as "points" | "balance" }))} options={[{ value: "points", label: t("party.members.points") }, { value: "balance", label: t("party.members.balance") }]} /></label>
             <label><span>{t("party.members.amount")}</span><input type="number" step={adjustment.kind === "balance" ? "0.01" : "1"} value={adjustment.value} onChange={(event) => setAdjustment((value) => ({ ...value, value: event.target.value }))} /></label>
             <label><span>{t("party.members.reason")}</span><input value={adjustment.reason} onChange={(event) => setAdjustment((value) => ({ ...value, reason: event.target.value }))} /></label>
             <button disabled={busy}>{t("party.members.adjust")}</button>
+            </fieldset>
           </form>
         </section>}
+        {memberNumberEditor}
+        {!permissions.canWrite && !permissions.canSetCategory && <p className="member-loyalty-empty">{t("party.members.adjustmentsReadOnly")}</p>}
       </div>
     </>}
 
-    {tab === "movements" && <section className="member-loyalty-list-section">
-      <header><h4>{t("party.members.movementsTitle")}</h4><span>{movements.length}</span></header>
+    {tab === "movements" && <section className="member-loyalty-list-section member-loyalty-list-section--movements">
       <MemberOperationalTable
         app={app}
         username={session.username}
@@ -366,8 +391,9 @@ export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallb
         layoutController={movementTableLayout}
         rows={movements}
         resizeLabel={t("stock.columns.resize")}
+        label={t("party.members.tab.movements")}
+        emptyLabel={t("party.members.noMovements")}
       />
-      {movements.length === 0 && <p className="member-loyalty-empty">{t("party.members.noMovements")}</p>}
     </section>}
 
     {tab === "deliveries" && <section className="member-loyalty-list-section">
@@ -380,6 +406,8 @@ export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallb
       layoutController={deliveryTableLayout}
       rows={deliveries}
       resizeLabel={t("stock.columns.resize")}
+      label={t("party.members.cardDeliveriesTitle")}
+      emptyLabel={t("party.members.noCardDeliveries")}
       actionLabel={t("common.actions")}
       actionWidth={120}
       renderActions={(item) => permissions.canWrite && ["ERROR", "PENDIENTE"].includes(item.status) && <button disabled={busy} onClick={() => void mutate(async () => {
@@ -387,8 +415,8 @@ export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallb
         setDeliveries((rows) => rows.map((row) => row.id === updated.id ? updated : row));
       }, false)}>{t("party.members.retry")}</button>}
       />
-      {deliveries.length === 0 && <p className="member-loyalty-empty">{t("party.members.noCardDeliveries")}</p>}
     </section>}
+    </div>
   </section>;
 }
 
