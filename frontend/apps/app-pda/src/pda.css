@@ -207,7 +207,11 @@ select {
 .pda-app-shell .goods-check-lines { max-height: 58vh; }
 
 @media (max-width: 700px) {
-  .pda-app-header { align-items: flex-start; padding-inline: 12px; }
+  .pda-app-header {
+    min-height: 75px;
+    align-items: flex-start;
+    padding-inline: 12px;
+  }
   .pda-app-header strong { font-size: 15px; }
   .pda-header-actions small { display: none; }
   .pda-header-actions button {
@@ -221,6 +225,7 @@ select {
     white-space: nowrap;
   }
   .pda-header-actions button::after { content: "↪"; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 22px; }
+  .pda-header-actions .pda-rotate-credential::after { content: "↻"; }
 
   .pda-app-shell .goods-check-panel { gap: 10px; padding: 10px; }
   .pda-app-shell .goods-check-documents,
@@ -1612,7 +1617,7 @@ select {
 
 .pda-module-loading { width: min(100%, 820px); min-height: calc(100dvh - 124px); display: grid; place-items: start center; box-sizing: border-box; margin: 0 auto; padding: clamp(28px, 9vh, 82px) 18px 28px; }
 .pda-module-loading-card { width: min(100%, 480px); display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 16px; box-sizing: border-box; padding: 22px; border: 1px solid #b6c6d5; border-radius: 12px; background: #fff; box-shadow: 0 12px 30px rgba(18, 49, 79, .09); }
-.pda-module-loading-icon { color: #1475b8; animation: pda-loading-spin 1s linear infinite; }
+.pda-module-loading-icon { width: 42px; height: 42px; border: 5px solid #c8ddeb; border-top-color: #1475b8; border-radius: 50%; color: #1475b8; animation: pda-loading-spin 1s linear infinite; }
 .pda-module-loading-card > div { min-width: 0; display: grid; gap: 4px; }
 .pda-module-loading-card span { color: #2772a8; font-size: 11px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
 .pda-module-loading-card strong { overflow-wrap: anywhere; color: #0b3157; font-size: 19px; line-height: 1.2; }
@@ -1875,3 +1880,15 @@ select {
 .pda-work-fefo article { min-height: 44px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 0 11px; border: 1px solid #d5dee6; border-radius: 6px; }
 .pda-work-fefo article strong { min-width: 50px; text-align: right; }
 @media (max-width: 390px) { .pda-work-lot-actions { grid-template-columns: 1fr; } .pda-work-fefo article { grid-template-columns: 1fr auto; padding: 8px 11px; } .pda-work-fefo article span { grid-column: 1 / -1; } }
+
+/* Resiliencia y estados accesibles de los módulos PDA. */
+.pda-module-error { margin: 20px; padding: 24px; border: 1px solid #efb1b1; border-radius: 14px; background: #fff7f7; color: #5f1c1c; text-align: center; }
+.pda-module-error h2 { margin: 0 0 8px; }
+.pda-module-error p { margin: 0 0 18px; }
+.pda-module-error div { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.pda-catalog-status { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 9px 16px; background: #eef6ff; border-bottom: 1px solid #b8d4ef; color: #174f7d; font-weight: 700; }
+.pda-catalog-status.is-error { background: #fff7ed; border-color: #efc58a; color: #7d4900; }
+.pda-catalog-status button { min-height: 36px; padding: 6px 14px; }
+.pda-home-kpis-skeleton > span { display: block; min-height: 112px; border: 1px solid #c7d7e5; border-radius: 12px; background: linear-gradient(90deg, #edf3f8 25%, #fff 45%, #edf3f8 65%); background-size: 220% 100%; animation: pda-skeleton 1.4s ease-in-out infinite; }
+@keyframes pda-skeleton { to { background-position: -220% 0; } }
+@media (prefers-reduced-motion: reduce) { .pda-home-kpis-skeleton > span { animation: none; } }

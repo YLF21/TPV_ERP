@@ -5,8 +5,8 @@ import { PdaReplenishment } from "./PdaReplenishment";
 
 const apiRequestMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@tpverp/app-common", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@tpverp/app-common")>()),
+vi.mock("../../../packages/app-common/src/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../packages/app-common/src/api/client")>()),
   apiRequest: apiRequestMock
 }));
 
@@ -145,5 +145,25 @@ describe("PdaReplenishment", () => {
 
     expect((await screen.findByRole("alert")).textContent).toContain("No se aplicó ningún movimiento.");
     expect(screen.getByRole("dialog", { name: "Revisar reposición" })).not.toBeNull();
+  });
+
+  it("traps the review focus, closes with Escape and restores the trigger", async () => {
+    apiRequestMock.mockImplementation((path?: string) => {
+      if (!path) return Promise.resolve(undefined);
+      if (path?.startsWith("/stock/page?")) return Promise.resolve({ hasMore: false, nextCursor: null, items: [
+        { product: { id: "p1", code: "CAFE", name: "Café", stockMin: 4, stockMax: 10 }, stock: [{ productId: "p1", warehouseId: "shop", quantity: 1 }, { productId: "p1", warehouseId: "reserve", quantity: 20 }] }
+      ] });
+      throw new Error(`Unexpected path: ${path}`);
+    });
+    renderReplenishment();
+    await screen.findByText("Café");
+    fireEvent.click(screen.getByRole("button", { name: "Seleccionar disponibles" }));
+    const trigger=screen.getByRole("button", { name: "Reponer seleccionados (1)" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    await waitFor(()=>expect(document.activeElement).toBe(screen.getByRole("button", { name: "Confirmar todos" })));
+    fireEvent.keyDown(document,{key:"Escape"});
+    await waitFor(()=>expect(screen.queryByRole("dialog", { name: "Revisar reposición" })).toBeNull());
+    await waitFor(()=>expect(document.activeElement).toBe(trigger));
   });
 });

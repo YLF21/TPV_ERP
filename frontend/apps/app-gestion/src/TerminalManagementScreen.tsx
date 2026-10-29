@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { apiRequest, type UserSession } from "@tpverp/app-common";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { apiRequest, type LocaleCode, type UserSession } from "@tpverp/app-common";
 import { GestionModuleHeading } from "./GestionModuleHeading";
+import { PdaObservabilityPanel } from "./PdaObservabilityPanel";
 import "./TerminalServerConnection.css";
 
 export type TerminalServerConnection = {
@@ -48,9 +49,10 @@ export function terminalDisplayStatus(terminal: Pick<RegisteredTerminal, "approv
   return terminal.active ? "approved" : "inactive";
 }
 
-export function TerminalManagementScreen({ session, t }: {
+export function TerminalManagementScreen({ session, t, locale = "es" }: {
   session: UserSession;
   t: (key: string) => string;
+  locale?: LocaleCode;
 }) {
   const [terminals, setTerminals] = useState<RegisteredTerminal[]>([]);
   const [workstations, setWorkstations] = useState<WorkstationView | null>(null);
@@ -69,6 +71,9 @@ export function TerminalManagementScreen({ session, t }: {
   const [connectionRevision, setConnectionRevision] = useState(0);
   const [connectionLoading, setConnectionLoading] = useState(true);
   const [connectionError, setConnectionError] = useState(false);
+  const [view, setView] = useState<"devices" | "observability">("devices");
+  const devicesTabRef = useRef<HTMLButtonElement>(null);
+  const observabilityTabRef = useRef<HTMLButtonElement>(null);
   const token = session.accessToken;
   const selected = terminals.find((terminal) => terminal.id === selectedId) ?? null;
   const selectedSlot = workstations?.slots.find(slot => slot.code === selectedSlotCode);
@@ -194,15 +199,35 @@ export function TerminalManagementScreen({ session, t }: {
     }
   }
 
+  function selectView(next: "devices" | "observability", focus = false) {
+    setView(next);
+    if (focus) (next === "devices" ? devicesTabRef : observabilityTabRef).current?.focus();
+  }
+
+  function handleViewTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    let next: "devices" | "observability" | null = null;
+    if (event.key === "Home") next = "devices";
+    if (event.key === "End") next = "observability";
+    if (["ArrowLeft", "ArrowUp", "ArrowRight", "ArrowDown"].includes(event.key)) next = view === "devices" ? "observability" : "devices";
+    if (!next) return;
+    event.preventDefault();
+    selectView(next, true);
+  }
+
   return (
-    <section className="gestion-workspace gestion-module-screen gestion-terminal-workspace">
+    <section className={`gestion-workspace gestion-module-screen gestion-terminal-workspace is-${view}`}>
       <GestionModuleHeading group={t("gestion.navigation.group.security")} title={t("gestion.terminals.title")} description={t("gestion.terminals.subtitle")}>
-        <button type="button" disabled={loading || busy} onClick={() => {
+        <div className="gestion-terminal-view-tabs" role="tablist" aria-label={t("gestion.pdaObservability.view")}>
+          <button ref={devicesTabRef} id="gestion-terminal-devices-tab" type="button" role="tab" tabIndex={view === "devices" ? 0 : -1} aria-controls="gestion-terminal-devices-panel" aria-selected={view === "devices"} className={view === "devices" ? "active" : ""} onKeyDown={handleViewTabKeyDown} onClick={() => selectView("devices")}>{t("gestion.pdaObservability.devices")}</button>
+          <button ref={observabilityTabRef} id="gestion-terminal-observability-tab" type="button" role="tab" tabIndex={view === "observability" ? 0 : -1} aria-controls="gestion-terminal-observability-panel" aria-selected={view === "observability"} className={view === "observability" ? "active" : ""} onKeyDown={handleViewTabKeyDown} onClick={() => selectView("observability")}>{t("gestion.pdaObservability.navigation")}</button>
+        </div>
+        {view === "devices" && <button type="button" disabled={loading || busy} onClick={() => {
           setConnectionRevision(value => value + 1);
           void refresh();
-        }}>{t("common.refresh")}</button>
+        }}>{t("common.refresh")}</button>}
       </GestionModuleHeading>
 
+      {view === "observability" ? <PdaObservabilityPanel token={token} terminals={terminals} t={t} locale={locale} /> : <div id="gestion-terminal-devices-panel" className="gestion-terminal-devices-view" role="tabpanel" aria-labelledby="gestion-terminal-devices-tab">
       <section className="gestion-terminal-server-connection gestion-module-panel" aria-label={t("gestion.terminals.serverConnection.title")} aria-busy={connectionLoading}>
         <h3>{t("gestion.terminals.serverConnection.title")}</h3>
         {connectionLoading ? <p role="status">{t("common.loading")}</p> : connectionError ?
@@ -317,6 +342,7 @@ export function TerminalManagementScreen({ session, t }: {
           {error && <p className="gestion-inline-error" role="alert">{error}</p>}
         </aside>
       </div>
+      </div>}
     </section>
   );
 }
