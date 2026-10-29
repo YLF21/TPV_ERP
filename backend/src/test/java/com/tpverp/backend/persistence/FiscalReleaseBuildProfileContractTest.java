@@ -21,7 +21,7 @@ class FiscalReleaseBuildProfileContractTest {
         assertThat(xpath.evaluate("/project/profiles/profile[id='test-bundle']/properties/tpv.release.version", document))
                 .isEqualTo("0.1.0");
         assertThat(xpath.evaluate("/project/profiles/profile[id='test-bundle']/properties/tpv.release.sequence", document))
-                .isEqualTo("37");
+                .isEqualTo("38");
         assertThat(Files.readString(Path.of("src/test-bundle/resources/META-INF/tpv-test-bundle.properties")))
                 .contains("purpose=TEST_ONLY", "production.allowed=false");
         assertThat(Files.exists(Path.of("src/test-bundle/resources/META-INF/fiscal"))).isFalse();
@@ -37,20 +37,20 @@ class FiscalReleaseBuildProfileContractTest {
         var defaultBuild = pom.substring(0, profilesStart);
         var releaseProfiles = pom.substring(profilesStart);
         assertThat(manifest).contains("@tpv.release.id@", "@tpv.release.version@",
-                "@tpv.release.capability@").contains("schema.version=V280")
+                "@tpv.release.capability@").contains("schema.version=V281")
                 .contains("release.sequence=@tpv.release.sequence@")
                 .contains("build.sequence=@tpv.release.build.sequence@");
-        assertThat(defaultBuild).contains("<tpv.release.id>tpv-erp-dev-v280</tpv.release.id>")
+        assertThat(defaultBuild).contains("<tpv.release.id>tpv-erp-dev-v281</tpv.release.id>")
                 .contains("<tpv.release.version>DEV</tpv.release.version>")
                 .contains("<tpv.release.capability>DUAL</tpv.release.capability>")
-                .contains("<tpv.release.sequence>37</tpv.release.sequence>")
+                .contains("<tpv.release.sequence>38</tpv.release.sequence>")
                 .contains("<tpv.release.build.sequence>0</tpv.release.build.sequence>");
         assertThat(releaseProfiles)
                 .contains("<id>production-release</id>")
-                .contains("<tpv.release.id>tpv-erp-1.0.0-v280</tpv.release.id>")
+                .contains("<tpv.release.id>tpv-erp-1.0.0-v281</tpv.release.id>")
                 .contains("<tpv.release.version>1.0.0</tpv.release.version>")
                 .contains("<tpv.release.capability>VERIFACTU_ONLY</tpv.release.capability>")
-                .contains("<tpv.release.sequence>38</tpv.release.sequence>")
+                .contains("<tpv.release.sequence>39</tpv.release.sequence>")
                 .contains("<tpv.release.build.sequence>1</tpv.release.build.sequence>");
         assertThat(pom).contains("<useDefaultDelimiters>false</useDefaultDelimiters>")
                 .contains("<delimiter>@</delimiter>");

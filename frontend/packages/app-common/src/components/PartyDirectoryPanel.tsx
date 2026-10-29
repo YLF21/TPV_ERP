@@ -827,10 +827,11 @@ export function PartyDirectoryPanel({
     const invalidContact = customerEditor ? firstInvalidCustomerContact(addressBook.drafts) : null;
     if (invalidContact) {
       addressBook.select(addressBook.drafts[invalidContact.index].id);
+      if (isMember) setMemberTab("customer");
       setFormErrors([invalidContact.field]); setStatus(t("party.customerEditor.address.invalid")); return;
     }
     const nextErrors = validatePartyForm(requestForm, isSupplier).filter(field => !(customerEditor && field === "country" && !requestForm.country.trim()));
-    if (nextErrors.length) { setFormErrors(nextErrors); setStatus(t("party.form.invalid")); return; }
+    if (nextErrors.length) { if (isMember) setMemberTab("customer"); setFormErrors(nextErrors); setStatus(t("party.form.invalid")); return; }
     setSaving(true); setStatus(""); setFormErrors([]);
     try {
       const editId = isMember ? selectedMemberCustomer?.id : selectedId;
@@ -1056,7 +1057,17 @@ export function PartyDirectoryPanel({
         {!selectedMember.customerActive && <span className="party-member-customer-warning">{t("party.members.customerInactiveHint")}</span>}
       </section>
       {app !== "pda" && selectedMemberCustomer && creditOverview(selectedMemberCustomer)}
-      <MemberLoyaltyPanel app={app} memberId={selectedMember.id} session={session} t={t} />
+      <MemberLoyaltyPanel app={app} memberId={selectedMember.id} session={session} t={t}
+        memberNumberEditor={app !== "pda" && selectedMemberCustomer && canWrite ? <section className="member-loyalty-card member-loyalty-card--number">
+          <h4>{t("party.numMember")}</h4>
+          <form onSubmit={submit}>
+            <fieldset disabled={saving || centralBusy || customerEditor && addressBook.busy}>
+              <label><span>{t("party.numMember")}</span><input value={form.numMember} onChange={event => update("numMember", event.target.value)} /></label>
+              <button type="submit" disabled={saving || centralBusy || customerEditor && addressBook.busy}>{saving ? t("party.saving") : t("common.save")}</button>
+              <p className="member-loyalty-number-hint">{t("party.members.numberSaveHint")}</p>
+            </fieldset>
+          </form>
+        </section> : undefined} />
     </div>
     {status && <p className="product-create-status" role="status">{status}</p>}
     <footer className="filter-actions erp-dialog-actions-row">

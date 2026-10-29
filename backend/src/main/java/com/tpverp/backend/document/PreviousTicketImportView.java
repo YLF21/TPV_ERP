@@ -22,7 +22,7 @@ public record PreviousTicketImportView(
         boolean manualDiscountAuthorizationRequired,
         String currency,
         List<LineView> lines,
-        List<AdjustmentView> adjustments) {
+        List<AdjustmentView> adjustments, UUID customerAddressId, DocumentCustomerContact customerContactSnapshot) {
 
     public PreviousTicketImportView {
         lines = List.copyOf(lines);

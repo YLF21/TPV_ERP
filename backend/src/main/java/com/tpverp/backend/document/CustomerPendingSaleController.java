@@ -106,7 +106,20 @@ public class CustomerPendingSaleController {
                     operationAuthorizations,
             @jakarta.validation.constraints.Min(0) Long draftVersion,
             @DecimalMin("0.00") BigDecimal documentDiscountPercent,
-            @JsonSetter(nulls = Nulls.AS_EMPTY) boolean wholesaleMode) {
+            @JsonSetter(nulls = Nulls.AS_EMPTY) boolean wholesaleMode,
+            UUID customerAddressId) {
+
+        public CreateRequest(UUID checkoutId, UUID warehouseId, CommercialDocumentType type, LocalDate date,
+                UUID customerId, LocalDate dueDate, BigDecimal globalDiscount, List<DocumentRequest.LineRequest> lines,
+                List<PaymentItem> payments, BigDecimal quotedTotal, CreditOverride creditOverride,
+                SalesDocumentCompletionMode completionMode, String internalComment, String authorizerUsername,
+                String authorizerPassword, Map<SaleOperationCode, OperationAuthorizationRequest> operationAuthorizations,
+                Long draftVersion, BigDecimal documentDiscountPercent, boolean wholesaleMode) {
+            this(checkoutId, warehouseId, type, date, customerId, dueDate, globalDiscount, lines, payments,
+                    quotedTotal, creditOverride, completionMode, internalComment, authorizerUsername,
+                    authorizerPassword, operationAuthorizations, draftVersion, documentDiscountPercent, wholesaleMode, null);
+        }
+
 
         public CreateRequest {
             operationAuthorizations = OperationAuthorizationRequest.immutableCopy(
@@ -269,7 +282,7 @@ public class CustomerPendingSaleController {
                     warehouseId, type, date, customerId, null, null,
                     globalDiscount, true,
                     lines.stream().map(DocumentRequest.LineRequest::toCommand).toList(),
-                    internalComment, documentDiscountPercent, wholesaleMode);
+                    internalComment, documentDiscountPercent, wholesaleMode, customerAddressId);
         }
     }
 
