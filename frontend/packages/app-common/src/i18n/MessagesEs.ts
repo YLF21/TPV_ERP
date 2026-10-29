@@ -111,6 +111,7 @@ export class MessagesEs {
     "login.backendOffline": "Sin conexion con backend. Enciende el backend para poder cargar datos.",
     "login.backendRetry": "Reintentar conexion",
     "login.language": "Cambiar idioma",
+    "login.settings": "Ajustes",
     "login.noAccess": "El usuario no tiene permiso para entrar",
     "login.terminalMissing": "Terminal no configurado",
     "gestion.serverSetup.title": "Configurar terminal servidor",

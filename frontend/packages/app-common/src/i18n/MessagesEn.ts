@@ -111,6 +111,7 @@ export class MessagesEn {
     "login.backendOffline": "No backend connection. Start the backend to load data.",
     "login.backendRetry": "Retry connection",
     "login.language": "Change language",
+    "login.settings": "Settings",
     "login.noAccess": "This user cannot enter",
     "login.terminalMissing": "Terminal is not configured",
     "gestion.serverSetup.title": "Configure server terminal",

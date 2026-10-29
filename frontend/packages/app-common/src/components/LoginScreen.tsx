@@ -1,5 +1,5 @@
 import { WindowCloseButton } from "./WindowCloseButton";
-import { FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ApiConnectionError, ApiError, checkBackendConnection } from "../api/client";
 import { authenticateRemote } from "../auth/auth";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
@@ -28,6 +28,7 @@ type LoginScreenProps = {
   notice?: string;
   secondaryActionLabel?: string;
   onSecondaryAction?: () => void;
+  headerActions?: ReactNode;
   onConfigureConnection?: () => void;
   connectionUnavailable?: boolean;
   onReconnect?: () => Promise<boolean>;
@@ -51,6 +52,7 @@ export function LoginScreen({
   notice,
   secondaryActionLabel,
   onSecondaryAction,
+  headerActions,
   onConfigureConnection,
   connectionUnavailable = false,
   onReconnect
@@ -180,6 +182,7 @@ export function LoginScreen({
             <strong>{terminalContext.storeName}</strong>
             <span>{t("login.terminalPrefix")}: {terminalContext.terminalCode}</span>
           </div>}
+          {headerActions}
           <div ref={languagePickerRef} style={{ display: "contents" }}>
             <button type="button" className="language-button" aria-expanded={languageOpen} aria-haspopup="listbox" aria-label={t("login.language")} title={t("login.language")} onClick={() => setLanguageOpen((open) => !open)}>
               <img alt="" src={languageIcon} />
