@@ -7,6 +7,7 @@ const repositoryRoot = path.resolve(frontendRoot, "..");
 const backendUrl = process.env.E2E_BACKEND_URL ?? "http://127.0.0.1:18080";
 const ventaUrl = process.env.E2E_VENTA_URL ?? "http://127.0.0.1:4173";
 const gestionUrl = process.env.E2E_GESTION_URL ?? "http://127.0.0.1:4174";
+const pdaUrl = process.env.E2E_PDA_URL ?? "http://127.0.0.1:4176";
 const reuseExternalServers = process.env.E2E_REUSE_EXTERNAL_SERVERS === "true";
 const backendMavenCommand = process.env.E2E_MAVEN_COMMAND ?? ".\\mvnw.cmd";
 const terminalId = process.env.E2E_TERMINAL_ID ?? "06d2ce45-8ead-349d-b844-4ecdead5e1ec";
@@ -34,7 +35,7 @@ export default defineConfig({
   },
   webServer: reuseExternalServers ? undefined : [
     {
-      command: `${backendMavenCommand} --batch-mode spring-boot:run`,
+      command: `${backendMavenCommand} --batch-mode clean spring-boot:run`,
       cwd: path.join(repositoryRoot, "backend"),
       env: {
         ...process.env,
@@ -74,6 +75,17 @@ export default defineConfig({
         VITE_TPV_TERMINAL_CREDENTIAL: terminalCredential
       },
       url: gestionUrl,
+      reuseExistingServer: true,
+      timeout: 60_000
+    },
+    {
+      command: "npm run dev --workspace @tpverp/app-pda -- --host 127.0.0.1 --port 4176 --strictPort",
+      cwd: frontendRoot,
+      env: {
+        ...process.env,
+        VITE_TPV_BACKEND_URL: backendUrl
+      },
+      url: pdaUrl,
       reuseExistingServer: true,
       timeout: 60_000
     }

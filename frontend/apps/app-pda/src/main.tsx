@@ -1,25 +1,19 @@
-import { lazy, StrictMode, Suspense, useEffect, useState, type FormEvent } from "react";
+import { Component, lazy, StrictMode, Suspense, useCallback, useEffect, useState, type ErrorInfo, type FormEvent, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { SpinnerGap } from "@phosphor-icons/react";
 import { version as applicationVersion } from "../package.json";
-import {
-  ApiError,
-  LoginScreen,
-  apiRequest,
-  classifyApiFailure,
-  createTranslator,
-  type LocaleCode,
-  type TerminalContext,
-  type UserSession
-} from "@tpverp/app-common";
+import { ApiError, apiRequest, classifyApiFailure } from "../../../packages/app-common/src/api/client";
+import { createTranslator } from "../../../packages/app-common/src/i18n/LocalizedMessages";
+import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
 import { PdaHomeDashboard } from "./PdaHomeDashboard";
 import {
-  clearPdaIdentity, quarantineDisabledPdaIdentity, readPdaIdentity, writePdaIdentity, type PdaIdentity
+  applyRotatedPdaCredential, clearPdaIdentity, quarantineDisabledPdaIdentity, readPdaIdentity, writePdaIdentity, type PdaIdentity, type RotatedPdaCredential
 } from "./pdaIdentity";
 import { usePdaModuleExitWarning, usePdaNavigation } from "./usePdaNavigation";
+import { readPdaWorkQueue } from "./PdaWorkQueue";
 import "./pda.css";
 
 const GoodsCheckPanel = lazy(async () => ({ default: (await import("../../../packages/app-common/src/components/GoodsCheckPanel")).GoodsCheckPanel }));
+const LoginScreen = lazy(async () => ({ default: (await import("../../../packages/app-common/src/components/LoginScreen")).LoginScreen }));
 const PdaProductLookup = lazy(async () => ({ default: (await import("./PdaProductLookup")).PdaProductLookup }));
 const PdaReplenishment = lazy(async () => ({ default: (await import("./PdaReplenishment")).PdaReplenishment }));
 const PdaStockCount = lazy(async () => ({ default: (await import("./PdaStockCount")).PdaStockCount }));
@@ -32,13 +26,47 @@ const moduleLoadingCopy: Record<LocaleCode, { eyebrow: string; title: string; de
   zh: { eyebrow: "正在准备模块", title: "正在加载{module}", detail: "正在准备所需的数据和工具。" }
 };
 
+const moduleErrorCopy: Record<LocaleCode, { title: string; detail: string; retry: string; home: string }> = {
+  es: { title: "No se pudo abrir este módulo", detail: "Puedes reintentar la carga o volver al inicio sin perder la sesión.", retry: "Reintentar", home: "Volver al inicio" },
+  en: { title: "This module could not be opened", detail: "Retry loading it or return home without losing your session.", retry: "Retry", home: "Back home" },
+  zh: { title: "无法打开此模块", detail: "你可以重试加载，或返回首页而无需退出登录。", retry: "重试", home: "返回首页" }
+};
+
+class PdaModuleBoundary extends Component<{
+  children: ReactNode;
+  locale: LocaleCode;
+  moduleKey: string;
+  onHome: () => void;
+}, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() { return { failed: true }; }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("PDA module failed", error, info.componentStack);
+  }
+
+  componentDidUpdate(previous: Readonly<{ moduleKey: string }>) {
+    if (previous.moduleKey !== this.props.moduleKey && this.state.failed) this.setState({ failed: false });
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    const text = moduleErrorCopy[this.props.locale];
+    return <section className="pda-module-error" role="alert">
+      <h2>{text.title}</h2><p>{text.detail}</p>
+      <div><button type="button" onClick={() => window.location.reload()}>{text.retry}</button><button type="button" className="secondary" onClick={this.props.onHome}>{text.home}</button></div>
+    </section>;
+  }
+}
+
 function PdaModuleLoading({ locale, moduleTitle }: { locale: LocaleCode; moduleTitle: string }) {
   const content = moduleLoadingCopy[locale];
   const title = content.title.replace("{module}", moduleTitle);
   return (
     <section className="pda-module-loading" role="status" aria-live="polite" aria-busy="true">
       <div className="pda-module-loading-card">
-        <SpinnerGap className="pda-module-loading-icon" size={44} weight="bold" aria-hidden="true" />
+        <span className="pda-module-loading-icon" aria-hidden="true" />
         <div><span>{content.eyebrow}</span><strong>{title}</strong><p>{content.detail}</p></div>
         <progress aria-label={title} />
       </div>
@@ -78,12 +106,17 @@ const copy = {
     link: "Vincular PDA",
     linkError: "El código no es válido, ha caducado o ya fue utilizado.",
     pending: "Solicitud enviada. Aprueba el PDA desde esPOS Gestión y después inicia sesión.",
+    offlinePending: "Sin conexión. Hay {count} acciones guardadas; se sincronizarán después de iniciar sesión cuando vuelva la conexión.",
     requestError: "No se pudo registrar el PDA",
     reset: "Registrar otro dispositivo",
     loginTitle: "esPOS PDA",
     loginHelp: "Identifícate para trabajar con este dispositivo de almacén.",
     language: "Idioma",
     logout: "Cerrar sesión",
+    rotateCredential: "Rotar credencial",
+    rotatingCredential: "Rotando…",
+    credentialRotated: "Credencial del PDA renovada.",
+    credentialRotationError: "No se pudo renovar la credencial. No cierres la sesión y vuelve a intentarlo.",
     title: "Operaciones de almacén",
     device: "Dispositivo"
   },
@@ -101,12 +134,17 @@ const copy = {
     link: "Link PDA",
     linkError: "The code is invalid, expired, or has already been used.",
     pending: "Request sent. Approve the PDA in esPOS Management and then sign in.",
+    offlinePending: "Offline. {count} saved actions will synchronize after sign-in when connectivity returns.",
     requestError: "The PDA could not be registered",
     reset: "Register another device",
     loginTitle: "esPOS PDA",
     loginHelp: "Sign in to work with this warehouse device.",
     language: "Language",
     logout: "Sign out",
+    rotateCredential: "Rotate credential",
+    rotatingCredential: "Rotating…",
+    credentialRotated: "PDA credential renewed.",
+    credentialRotationError: "The credential could not be renewed. Keep this session open and retry.",
     title: "Warehouse operations",
     device: "Device"
   },
@@ -124,21 +162,32 @@ const copy = {
     link: "绑定 PDA",
     linkError: "绑定码无效、已过期或已使用。",
     pending: "申请已发送。请先在 esPOS 管理应用中批准 PDA，然后登录。",
+    offlinePending: "当前离线。已有 {count} 个操作安全保存，恢复网络并登录后将自动同步。",
     requestError: "无法注册 PDA",
     reset: "注册其他设备",
     loginTitle: "esPOS PDA",
     loginHelp: "登录以使用此仓库设备。",
     language: "语言",
     logout: "退出登录",
+    rotateCredential: "轮换凭据",
+    rotatingCredential: "正在轮换…",
+    credentialRotated: "PDA 凭据已更新。",
+    credentialRotationError: "无法更新凭据。请保持当前会话并重试。",
     title: "仓库作业",
     device: "设备"
   }
 } as const;
 
 function App() {
-  const [locale, setLocale] = useState<LocaleCode>("es");
+  const [locale, setLocale] = useState<LocaleCode>(() => { const saved=localStorage.getItem("tpverp.pda.locale.v1"); return saved==="en"||saved==="zh"?saved:"es"; });
   const [identity, setIdentity] = useState<PdaIdentity | null>(() => readPdaIdentity(window.localStorage));
   const [session, setSession] = useState<UserSession | null>(null);
+
+  useEffect(() => { document.documentElement.lang = locale === "zh" ? "zh-CN" : locale; try{localStorage.setItem("tpverp.pda.locale.v1",locale)}catch{/* Language persistence is optional. */} }, [locale]);
+  useEffect(() => {
+    if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return;
+    void navigator.serviceWorker.register("/pda-sw.js").catch((error) => console.warn("PDA service worker registration failed", error));
+  }, []);
 
   function forgetDevice() {
     clearPdaIdentity(window.localStorage);
@@ -159,9 +208,11 @@ function App() {
 
   if (!session) {
     const text = copy[locale];
+    const queued = readPdaWorkQueue().length;
+    const notice = identity.pendingApproval ? text.pending : !navigator.onLine && queued > 0 ? text.offlinePending.replace("{count}",String(queued)) : undefined;
     return (
       <div className="pda-classic-login-shell">
-        <LoginScreen
+        <Suspense fallback={<PdaModuleLoading locale={locale} moduleTitle={text.loginTitle} />}><LoginScreen
           app="pda"
           locale={locale}
           terminalContext={identity}
@@ -174,10 +225,10 @@ function App() {
           }}
           onAuthenticationError={handleAuthenticationError}
           heading={text.loginTitle}
-          notice={identity.pendingApproval ? text.pending : undefined}
+          notice={notice}
           secondaryActionLabel={text.reset}
           onSecondaryAction={forgetDevice}
-        />
+        /></Suspense>
       </div>
     );
   }
@@ -189,6 +240,7 @@ function App() {
       session={session}
       onLocaleChange={setLocale}
       onLogout={() => setSession(null)}
+      onIdentityRotated={setIdentity}
     />
   );
 }
@@ -311,37 +363,66 @@ function PdaWorkspace({
   locale,
   session,
   onLocaleChange,
-  onLogout
+  onLogout,
+  onIdentityRotated
 }: {
-  identity: TerminalContext;
+  identity: PdaIdentity;
   locale: LocaleCode;
   session: UserSession;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout: () => void;
+  onIdentityRotated: (identity: PdaIdentity) => void;
 }) {
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
+  const [catalogErrors, setCatalogErrors] = useState<Array<"warehouses" | "suppliers">>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [credentialRotation, setCredentialRotation] = useState<"idle"|"busy"|"success"|"error">("idle");
   const { view, openView, goHome } = usePdaNavigation();
   const t = createTranslator(locale);
   const moduleTitle = t(view === "check" ? "pda.navigation.check" : view === "lookup" ? "pda.navigation.lookup" : view === "count" ? "pda.navigation.count" : view === "history" ? "pda.navigation.history" : view === "work" ? "pda.navigation.work" : "pda.navigation.replenishment");
 
   usePdaModuleExitWarning(view !== "home");
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadCatalogs = useCallback(async () => {
     const token = session.accessToken;
     if (!token) return;
-    void Promise.all([
+    setCatalogLoading(true);
+    const [warehouseResult, supplierResult] = await Promise.allSettled([
       apiRequest<WarehouseOption[]>("/warehouses", { token }),
       apiRequest<SupplierOption[]>("/suppliers", { token })
-    ]).then(([warehouseValues, supplierValues]) => {
-      if (!cancelled) {
-        setWarehouses(warehouseValues);
-        setSuppliers(supplierValues);
-      }
-    }).catch(() => undefined);
-    return () => { cancelled = true; };
+    ]);
+    const failures: Array<"warehouses" | "suppliers"> = [];
+    if (warehouseResult.status === "fulfilled") setWarehouses(warehouseResult.value);
+    else failures.push("warehouses");
+    if (supplierResult.status === "fulfilled") setSuppliers(supplierResult.value);
+    else failures.push("suppliers");
+    setCatalogErrors(failures);
+    setCatalogLoading(false);
   }, [session.accessToken]);
+
+  useEffect(() => { void loadCatalogs(); }, [loadCatalogs]);
+
+  async function rotateCredential() {
+    if (credentialRotation === "busy") return;
+    setCredentialRotation("busy");
+    try {
+      // Preflight the browser store before invalidating the server-side secret.
+      writePdaIdentity(window.localStorage, identity);
+      const result = await apiRequest<RotatedPdaCredential>("/terminals/current/credential/rotate", { method: "POST", token: session.accessToken });
+      const rotated = applyRotatedPdaCredential(window.localStorage, identity, result);
+      onIdentityRotated(rotated);
+      setCredentialRotation("success");
+    } catch {
+      setCredentialRotation("error");
+    }
+  }
+
+  const catalogText = locale === "es"
+    ? { loading: "Actualizando almacenes y proveedores…", warehouses: "No se pudieron cargar los almacenes.", suppliers: "No se pudieron cargar los proveedores.", retry: "Reintentar" }
+    : locale === "en"
+      ? { loading: "Updating warehouses and suppliers…", warehouses: "Warehouses could not be loaded.", suppliers: "Suppliers could not be loaded.", retry: "Retry" }
+      : { loading: "正在更新仓库和供应商…", warehouses: "无法加载仓库。", suppliers: "无法加载供应商。", retry: "重试" };
 
   return (
     <main className="pda-app-shell">
@@ -349,15 +430,22 @@ function PdaWorkspace({
         <div><span>esPOS · PDA · v{applicationVersion}</span><strong>{copy[locale].title}</strong></div>
         <div className="pda-header-actions">
           <small>{copy[locale].device}: {identity.terminalCode}</small>
-          <select aria-label="Idioma" value={locale} onChange={(event) => onLocaleChange(event.target.value as LocaleCode)}>
+          <select aria-label={copy[locale].language} value={locale} onChange={(event) => onLocaleChange(event.target.value as LocaleCode)}>
             <option value="es">ES</option><option value="en">EN</option><option value="zh">中文</option>
           </select>
+          <button type="button" className="pda-rotate-credential" aria-label={copy[locale].rotateCredential} disabled={credentialRotation==="busy"} onClick={()=>void rotateCredential()}>{credentialRotation==="busy"?copy[locale].rotatingCredential:copy[locale].rotateCredential}</button>
           <button type="button" onClick={onLogout}>{copy[locale].logout}</button>
         </div>
       </header>
+      {credentialRotation==="success"&&<p className="pda-count-status" role="status">{copy[locale].credentialRotated}</p>}
+      {credentialRotation==="error"&&<p className="pda-count-error" role="alert">{copy[locale].credentialRotationError}</p>}
+      {(catalogLoading || catalogErrors.length > 0) && <div className={`pda-catalog-status${catalogErrors.length ? " is-error" : ""}`} role={catalogErrors.length ? "alert" : "status"} aria-live="polite">
+        <span>{catalogLoading ? catalogText.loading : catalogErrors.map((key) => catalogText[key]).join(" ")}</span>
+        {catalogErrors.length > 0 && <button type="button" onClick={() => void loadCatalogs()} disabled={catalogLoading}>{catalogText.retry}</button>}
+      </div>}
       {view === "home" && <section className="pda-home">
         <header><span>{t("pda.home.eyebrow")}</span><h1>{t("pda.home.title")}</h1><p>{t("pda.home.subtitle")}</p></header>
-        <PdaHomeDashboard token={session.accessToken} locale={locale} warehouses={warehouses} onOpen={openView} />
+        <PdaHomeDashboard token={session.accessToken} userId={session.userId} locale={locale} warehouses={warehouses} onOpen={openView} />
         <nav className="pda-home-menu" aria-label={t("pda.navigation")}>
           <button type="button" onClick={() => openView("lookup")}><b aria-hidden="true">⌕</b><span>{t("pda.navigation.lookup")}</span><small>{t("pda.home.lookupHelp")}</small></button>
           <button type="button" onClick={() => openView("check")}><b aria-hidden="true">✓</b><span>{t("pda.navigation.check")}</span><small>{t("pda.home.checkHelp")}</small></button>
@@ -371,6 +459,7 @@ function PdaWorkspace({
         <button type="button" onClick={goHome}>← {t("pda.navigation.home")}</button>
         <strong>{moduleTitle}</strong>
       </nav>}
+      <PdaModuleBoundary locale={locale} moduleKey={view} onHome={goHome}>
       <Suspense fallback={<PdaModuleLoading locale={locale} moduleTitle={moduleTitle} />}>
       {view === "check" && <div className="pda-module-view">
         <GoodsCheckPanel
@@ -402,9 +491,10 @@ function PdaWorkspace({
         <PdaHistory token={session.accessToken} locale={locale} warehouses={warehouses} t={t} />
       </div>}
       {view === "work" && <div className="pda-module-view">
-        <PdaWorkboard token={session.accessToken} locale={locale} warehouses={warehouses} />
+        <PdaWorkboard token={session.accessToken} locale={locale} warehouses={warehouses} userId={session.userId} />
       </div>}
       </Suspense>
+      </PdaModuleBoundary>
     </main>
   );
 }

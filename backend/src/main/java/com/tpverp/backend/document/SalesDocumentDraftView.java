@@ -22,7 +22,7 @@ public record SalesDocumentDraftView(
         BigDecimal total,
         String internalComment,
         Instant createdAt,
-        List<LineView> lines) {
+        List<LineView> lines, UUID customerAddressId, DocumentCustomerContact customerContactSnapshot) {
 
     static SalesDocumentDraftView from(
             CommercialDocument document, String customerName) {
@@ -41,7 +41,7 @@ public record SalesDocumentDraftView(
                         .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
                         .sorted(Comparator.comparingInt(DocumentLine::getPosicion))
                         .map(LineView::from)
-                        .toList());
+                        .toList(), document.getCustomerAddressId(), document.getCustomerContact());
     }
 
     public record LineView(

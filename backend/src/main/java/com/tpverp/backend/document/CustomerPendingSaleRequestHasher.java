@@ -27,6 +27,7 @@ final class CustomerPendingSaleRequestHasher {
         var hasInternalComment = request.internalComment() != null
                 && !request.internalComment().isBlank();
         var canonical = new Canonical();
+        if (request.customerAddressId() != null) canonical.add("customer-address").add(request.customerAddressId());
         if (request.wholesaleMode()) {
             canonical.add("v6-wholesale");
         }

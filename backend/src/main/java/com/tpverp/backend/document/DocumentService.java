@@ -636,6 +636,7 @@ public class DocumentService {
                 organization.currentUser(authentication).getId(), snapshot.globalDiscount(),
                 snapshot.wholesaleMode());
         ticket.setParties(snapshot.customerId(), null, null);
+        ticket.setCustomerContact(snapshot.customerContact());
         ticket.setInternalComment(snapshot.internalComment());
         for (var line : snapshot.lines()) {
             ticket.addLine(line.toEntity(ticket));
@@ -727,6 +728,7 @@ public class DocumentService {
                 snapshot.date(), organization.currentUser(authentication).getId(),
                 snapshot.globalDiscount());
         sale.setParties(snapshot.customerId(), null, null);
+        sale.setCustomerContact(snapshot.customerContact());
         sale.setInternalComment(snapshot.internalComment());
         var snapshotToSalePositions = new HashMap<Integer, Integer>();
         for (int index = 0; index < snapshot.lines().size(); index++) {
@@ -756,7 +758,7 @@ public class DocumentService {
                 sale.getLineas().stream().map(DocumentLineCommand::from).toList(),
                 snapshot.internalComment(), null, saleAdjustments,
                 snapshot.manualControl() == null ? null
-                        : snapshot.manualControl().remapPositions(snapshotToSalePositions));
+                        : snapshot.manualControl().remapPositions(snapshotToSalePositions), snapshot.customerContact());
     }
 
     @Transactional
@@ -777,6 +779,7 @@ public class DocumentService {
                 organization.currentUser(authentication).getId(), snapshot.globalDiscount(),
                 snapshot.wholesaleMode());
         ticket.setParties(customer.getId(), null, null);
+        ticket.setCustomerContact(snapshot.customerContact());
         ticket.setInternalComment(snapshot.internalComment());
         snapshot.lines().forEach(line -> ticket.addLine(line.toEntity(ticket)));
         snapshot.restoreAdjustments(ticket);
@@ -1567,6 +1570,7 @@ public class DocumentService {
         var terminalId = currentTerminal.terminalId(authentication);
         refund.assignOriginTerminal(terminalId);
         refund.setParties(original.getClienteId(), null, null);
+        refund.setCustomerContact(original.getCustomerContact());
         refund.identifyReturnRequest(canonicalRequestId);
         if (paymentTerminalRefundOperationId != null) {
             refund.identifyPaymentTerminalRefund(paymentTerminalRefundOperationId);
@@ -2718,7 +2722,7 @@ public class DocumentService {
             var reference = values.get(requirement.paymentId().toString());
             if (reference == null || reference.isBlank()) {
                 throw new IllegalArgumentException(
-                        "la referencia de devolución es obligatoria para "
+                        "la referencia de devoluciÃ³n es obligatoria para "
                                 + requirement.paymentMethod());
             }
         }
@@ -2737,7 +2741,7 @@ public class DocumentService {
                 .orElseThrow(() -> new IllegalArgumentException("documento no encontrado"));
         if (ticketCancellations.hasActiveCancellation(ticketId)) {
             throw new IllegalStateException(
-                    "el ticket tiene una anulación en curso");
+                    "el ticket tiene una anulaciÃ³n en curso");
         }
         if (ticket.getTipo() != CommercialDocumentType.TICKET
                 || ticket.getEstado() != DocumentStatus.CONFIRMADO) {
@@ -2913,6 +2917,7 @@ public class DocumentService {
                 || draft.getTipo() != request.type()
                 || !Objects.equals(draft.getFecha(), request.date())
                 || !Objects.equals(draft.getClienteId(), request.customerId())
+                || (request.customerAddressId() != null && !Objects.equals(draft.getCustomerAddressId(), request.customerAddressId()))
                 || !Objects.equals(draft.getDueDate(), request.dueDate())
                 || persistedManualDocumentPercent(draft).compareTo(
                         resolvedDocumentPercent(
@@ -2994,7 +2999,10 @@ public class DocumentService {
                 command.tipo() == CommercialDocumentType.FACTURA_VENTA
                         ? CorePermissionBootstrap.INVOICES_WRITE
                         : CorePermissionBootstrap.DELIVERY_NOTES_WRITE);
-        draft.replacePendingSaleDraft(quotePendingSale(command, dueDate, authentication));
+        var retained = DocumentCustomerContact.retainedFor(draft, command);
+        var quoted = quotePendingSale(retained == null ? command : command.withoutCustomerAddressId(), dueDate, authentication);
+        if (retained != null) quoted.setCustomerContact(retained);
+        draft.replacePendingSaleDraft(quoted);
     }
 
     private static String normalizedComment(String value) {
@@ -3276,6 +3284,19 @@ public class DocumentService {
         }
     }
 
+    DocumentCustomerContact resolveCustomerContact(DocumentCommand command) {
+        if (command.customerContactSnapshot() != null) {
+            if (command.clienteId() == null || !command.customerContactSnapshot().id().equals(command.customerAddressId()))
+                throw new IllegalArgumentException("customer_address_invalid");
+            return command.customerContactSnapshot();
+        }
+        if (command.customerAddressId() == null) return null;
+        if (command.clienteId() == null) throw new IllegalArgumentException("customer_address_customer_required");
+        var customer = customers.findByIdAndCompanyId(command.clienteId(), organization.currentCompany().getId())
+                .orElseThrow(() -> new IllegalArgumentException("customer_address_customer_not_found"));
+        return DocumentCustomerContact.resolve(customer, command.customerAddressId());
+    }
+
     private CommercialDocument createDraft(
             DocumentCommand command, Authentication authentication) {
         return createDraft(command, authentication, pricingCustomer(command));
@@ -3305,6 +3326,7 @@ public class DocumentService {
         document.assignOriginTerminal(currentTerminalOrNull(authentication));
         document.setParties(
                 command.clienteId(), command.proveedorId(), command.numeroExterno());
+        document.setCustomerContact(resolveCustomerContact(command));
         document.setInternalComment(command.comentarioInterno());
         document.setStockOrigin(
                 command.directo()
@@ -3437,6 +3459,7 @@ public class DocumentService {
                 ticket.getDescuentoGlobal(), ticket.isWholesaleMode());
         invoice.assignOriginTerminal(currentTerminalOrNull(authentication));
         invoice.setParties(Objects.requireNonNull(customerId, "clienteId"), null, null);
+        if (customerId.equals(ticket.getClienteId())) invoice.setCustomerContact(ticket.getCustomerContact());
         invoice.setInternalComment(ticket.getComentarioInterno());
         invoice.setNumTicket(ticket.getNumero());
         ticket.getLineas().stream()

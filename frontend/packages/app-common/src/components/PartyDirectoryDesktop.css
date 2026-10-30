@@ -36,6 +36,7 @@
 
 .filter-dialog.party-create-dialog.party-desktop-dialog.erp-classic-window { display: flex; flex-direction: column; width: min(1120px, calc(100vw - 40px)) !important; max-height: calc(100dvh - 40px) !important; padding: 0; gap: 0; border: 1px solid #12385f; border-radius: 2px; background: #f2f5f8; overflow: hidden; }
 .filter-dialog.party-create-dialog.party-desktop-dialog--suppliers.erp-classic-window { width: min(880px, calc(100vw - 40px)) !important; }
+.filter-dialog.party-create-dialog.party-desktop-dialog--members.erp-classic-window { height: min(940px, calc(100dvh - 48px)); }
 .filter-dialog.party-desktop-dialog > .filter-header { display: flex; flex: none; align-items: center; justify-content: space-between; padding: 12px 16px; gap: 16px; margin: 0; color: #fff; background: #12385f; border-bottom: 1px solid #12385f; }
 .filter-dialog.party-desktop-dialog > .filter-header h2 { margin: 0 0 5px; font-size: 20px; color: #fff; line-height: 1.25; }
 .filter-dialog.party-desktop-dialog > .filter-header > div > span { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #e4edf7; }
@@ -65,20 +66,25 @@
 .party-desktop-dialog .party-credit-checkboxes > label { display: flex; align-items: center; gap: 8px; }
 .filter-dialog.party-desktop-dialog .filter-actions { display: flex; align-items: center; justify-content: flex-end; flex: none; gap: 8px; margin: 0; padding: 12px 14px !important; background: #fff; border-top: 1px solid #c6d2de; }
 .filter-dialog.party-desktop-dialog .party-create-form > .filter-actions { position: sticky; bottom: -14px; z-index: 2; margin: 0 -14px -14px; }
-.party-desktop-credit-overview { padding: 10px 12px; border: 1px solid #ccd7e2; background: #fff; }
+.party-desktop-credit-overview { padding: 10px 12px; border: 1px solid #ccd7e2; border-radius: var(--erp-window-radius, 6px); background: #fff; }
 .party-desktop-credit-overview dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 8px 0 0; }
 .party-desktop-credit-overview dt { color: #52687e; font-size: 11px; }
 .party-desktop-credit-overview dd { margin: 4px 0 0; font-size: 16px; color: #173c61; font-weight: 700; font-variant-numeric: tabular-nums; }
-.party-desktop-dialog .party-member-customer-summary { grid-template-columns: minmax(0, 1fr) auto; padding: 12px; border: 1px solid #ccd7e2; border-radius: 2px; background: #fff; }
-.party-desktop-dialog .party-member-directory-detail { min-height: 0; overflow: auto; gap: 12px; padding: 14px; }
+.party-desktop-dialog .party-member-customer-summary { grid-template-columns: minmax(0, 1fr) auto; padding: 12px; border: 1px solid #ccd7e2; border-radius: var(--erp-window-radius, 6px); background: #fff; }
+.party-desktop-dialog .party-member-directory-detail { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow: auto; gap: 12px; padding: 14px; }
+.party-desktop-dialog .party-member-directory-detail > :is(.party-member-customer-summary,.party-desktop-credit-overview) { flex: none; }
+.party-desktop-dialog .party-member-directory-detail > .party-member-loyalty { flex: 1 0 260px; overflow: hidden; margin: 0; }
+.party-desktop-dialog--members .party-member-tab-panel > .party-create-form { flex: 1 1 auto; }
 .party-desktop-dialog .party-member-customer-picker { min-height: 0; overflow: auto; }
 .party-desktop-dialog .party-member-profile { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; margin: 8px 0 0; }
 .party-desktop-dialog .party-member-profile dt { color: #52687e; font-size: 11px; }
 .party-desktop-dialog .party-member-profile dd { margin: 3px 0 0; font-size: 13px; overflow-wrap: anywhere; }
 .party-desktop-dialog .party-member-profile > div:last-child { grid-column: 1 / -1; }
-.party-desktop-dialog .party-member-tabs { display: flex; flex: none; gap: 4px; padding: 8px 14px 0; border-bottom: 1px solid #c6d2de; background: #fff; }
-.party-desktop-dialog .party-member-tabs > button { min-height: 36px; padding: 8px 14px; border: 0; border-bottom: 3px solid transparent; border-radius: 0; color: #52687e; background: transparent; font-size: 13px; font-weight: 600; }
-.party-desktop-dialog .party-member-tabs > button[aria-selected=true] { color: #12385f; border-bottom-color: #2878b9; }
+.party-desktop-dialog .party-member-tabs { display: flex; flex: none; gap: 6px; padding: 8px 14px; border-bottom: 1px solid #c6d2de; background: #fff; }
+.party-desktop-dialog .party-member-tabs > button { min-height: 34px; padding: 6px 14px; border: 1px solid #aebfd0; border-radius: var(--erp-window-radius, 4px); color: #12385f; background: #f5f8fb; font-size: 13px; font-weight: 700; line-height: 1.2; box-shadow: none; }
+.party-desktop-dialog .party-member-tabs > button:hover { background: #e8f1fa; }
+.party-desktop-dialog .party-member-tabs > button[aria-selected=true] { color: #fff; border-color: #12385f; background: #12385f; }
+.party-desktop-dialog .party-member-tabs > button:focus-visible { outline: 2px solid #0065fe; outline-offset: 2px; }
 .party-desktop-dialog .party-member-tab-panel { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
 .party-desktop-dialog .party-member-tab-panel[hidden] { display: none; }
 @media (max-width: 800px) {

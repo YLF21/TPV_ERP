@@ -4,6 +4,7 @@ export function executeE2eSql(sql: string) {
   execFileSync(process.env.E2E_PSQL_PATH ?? "psql", [
     "-X", "-q", "-v", "ON_ERROR_STOP=1",
     "-h", process.env.E2E_DB_HOST ?? "localhost",
+    "-p", process.env.E2E_DB_PORT ?? "5432",
     "-U", process.env.E2E_DB_ADMIN_USERNAME ?? "postgres",
     "-d", process.env.E2E_DB_NAME ?? "tpv_erp_dev"
   ], {

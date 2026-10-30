@@ -107,6 +107,7 @@ public class SalesInvoiceRectificationService {
                 draft.getId(), original.getId(), request.reason(), request.detail(), Instant.now(clock));
         draft.assignOriginTerminal(currentTerminalOrNull(authentication));
         draft.setParties(original.getClienteId(), null, null);
+        draft.setCustomerContact(original.getCustomerContact());
         draft.setStockOrigin(metadata.isAffectsStock());
         buildLines(draft, original, metadata, request.lines()).forEach(draft::addLine);
         validateEconomicResult(draft, metadata);

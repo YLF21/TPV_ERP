@@ -21,6 +21,23 @@ class DocumentSyncPayloadFactoryTest {
     private final DocumentSyncPayloadFactory factory = new DocumentSyncPayloadFactory(relations, attributions);
     private static final Instant CONFIRMED_AT = Instant.parse("2026-09-10T10:00:00Z");
 
+    @Test
+    void transportsFrozenContactWithoutChangingTheSchemaOrConsultingCustomerMaster() {
+        var document = document(CommercialDocumentType.TICKET);
+        var addressId = UUID.randomUUID();
+        document.setParties(UUID.randomUUID(), null, null);
+        document.setCustomerContact(new DocumentCustomerContact(addressId,
+                new com.tpverp.backend.party.CustomerAddressEntry.Address("Elegida", "35001", "Las Palmas", "Las Palmas", "ES"),
+                "111", "test@example.invalid"));
+        when(relations.findOutgoingForSync(document.getId(), document.getTiendaId())).thenReturn(List.of());
+        var payload = factory.create(document, 1);
+        assertThat(payload).containsEntry("schemaVersion", 2).containsEntry("customerAddressId", addressId.toString());
+        Map<?, ?> contact = (Map<?, ?>) payload.get("customerContactSnapshot");
+        assertThat(contact.get("id")).isEqualTo(addressId.toString());
+        assertThat(((Map<?, ?>) contact.get("address")).get("address")).isEqualTo("Elegida");
+        assertThat(contact.get("phone")).isEqualTo("111");
+    }
+
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.EnumSource(InvoiceFiscalProfile.class)
     @org.junit.jupiter.params.provider.NullSource
