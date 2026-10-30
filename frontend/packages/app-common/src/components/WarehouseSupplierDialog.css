@@ -1,0 +1,92 @@
+/* Match the customer selector on desktop, retaining supplier columns and actions. */
+@layer gestion-accents {
+  .warehouse-picker-classic .warehouse-supplier-action-bar {
+    padding: 9px 18px !important;
+    background: #f4f7fa !important;
+    border-bottom-color: #b8c6d5 !important;
+  }
+
+  .warehouse-picker-classic .warehouse-supplier-action-bar button {
+    min-height: 38px !important;
+    border-color: #7891ab !important;
+    background: #fff !important;
+    color: #153653 !important;
+    padding: 0 10px 0 13px !important;
+  }
+
+  .warehouse-picker-classic .warehouse-supplier-action-bar button:hover:not(:disabled) {
+    background: #eaf3fb !important;
+  }
+
+  .warehouse-picker-classic .warehouse-supplier-action-bar button:disabled {
+    color: #8492a3 !important;
+    opacity: .48 !important;
+  }
+
+  .warehouse-picker-classic .warehouse-supplier-search {
+    gap: 5px !important;
+  }
+
+  .warehouse-picker-classic .warehouse-supplier-table {
+    grid-template-rows: 38px minmax(0, 1fr) !important;
+    border: 0 !important;
+    font-family: inherit !important;
+  }
+
+  .warehouse-picker-classic .warehouse-supplier-table-header,
+  .warehouse-picker-classic .warehouse-supplier-table-header > * {
+    height: 38px !important;
+    min-height: 38px !important;
+  }
+
+  .warehouse-picker-classic .warehouse-supplier-table-header > *,
+  .warehouse-picker-classic .warehouse-supplier-table-row > * {
+    padding: 0 12px !important;
+    border-right-color: #c3d0dd !important;
+  }
+
+  .warehouse-picker-classic .warehouse-supplier-table-row {
+    min-height: 50px !important;
+    background: #fff !important;
+    color: #10253e !important;
+  }
+
+  .warehouse-picker-classic .warehouse-supplier-table-row:hover {
+    background: #edf4fa !important;
+  }
+
+  .warehouse-picker-classic .warehouse-supplier-table-row.inactive {
+    background: #f4f6f8 !important;
+    color: #69798b !important;
+  }
+
+  .warehouse-picker-classic .warehouse-supplier-table-row:is(.selected, :focus-visible) {
+    background: #dcecf9 !important;
+    outline: 2px solid #0065fe !important;
+    outline-offset: -2px !important;
+    border-radius: 6px !important;
+  }
+
+  .warehouse-picker-classic .warehouse-supplier-selection-footer {
+    justify-content: flex-end !important;
+    gap: 12px !important;
+    padding: 8px 18px !important;
+    background: #e2e9f0 !important;
+  }
+
+  .warehouse-picker-classic .warehouse-supplier-selection-footer p {
+    color: #40566e !important;
+    font-weight: 400 !important;
+  }
+
+  .warehouse-picker-classic .warehouse-supplier-dialog .warehouse-supplier-selection-footer .sale-action-buttons button.erp-dialog-action-confirm {
+    height: 34px !important;
+    min-height: 34px !important;
+    background: #07254f !important;
+    border-color: #07254f !important;
+    color: #fff !important;
+    padding: 0 14px !important;
+    font-size: 14px !important;
+    font-weight: 850 !important;
+  }
+}

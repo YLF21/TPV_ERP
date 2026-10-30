@@ -144,7 +144,7 @@ it("saves a transfer draft and applies it only after confirmation", async () => 
     lines: [expect.objectContaining({ productId: "product", quantity: 2, unitPrice: 3, discount: 0 })]
   }), "token", undefined);
   expect(api.confirmTransferDocument).not.toHaveBeenCalled();
-  const confirm = within(dialog).getByRole("button", { name: "Confirmar" });
+  const confirm = within(dialog).getByRole("button", { name: "Confirmar F10" });
   await waitFor(() => expect(confirm).toBeEnabled());
   fireEvent.click(confirm);
   await waitFor(() => expect(api.confirmTransferDocument).toHaveBeenCalledWith("transfer", 0, "token"));

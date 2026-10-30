@@ -19,6 +19,7 @@ import { useTableArrowRepeat } from "./useTableArrowRepeat";
 import { useTableInitialFocus } from "./useTableInitialFocus";
 import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import "./WarehouseDocumentClassicTables.css";
+import "./WarehouseSupplierDialog.css";
 
 type Props = {
   open: boolean;
@@ -97,6 +98,7 @@ export function WarehouseSupplierDialog({
     ready: filteredSuppliers.length > 0,
     scopeKey: open,
     onSelect: (row) => setActiveId(row.dataset.supplierId ?? ""),
+    focusTarget: tableTheme ? () => searchRef.current : "row",
   });
 
   useLayoutEffect(() => {
@@ -212,8 +214,8 @@ export function WarehouseSupplierDialog({
       >
         <header className="filter-header">
           <div>
-            <h2 id="warehouse-supplier-title">{editingId !== null ? (editingId ? t("warehouseDocument.supplierEdit") : t("party.suppliers.new")) : t("warehouseDocument.supplierListTitle")}</h2>
-            <span>{editingId !== null ? t("party.form.subtitle") : t("warehouseDocument.supplierListHelp")}</span>
+            <h2 id="warehouse-supplier-title">{editingId !== null ? (editingId ? t("warehouseDocument.supplierEdit") : t("party.suppliers.new")) : t("warehouseDocument.supplierSelectHint")}</h2>
+            {editingId !== null && <span>{t("party.form.subtitle")}</span>}
           </div>
           <WindowCloseButton aria-label={t("common.close")} disabled={saving} onClick={editingId !== null ? closeForm : onClose} >{t("common.close")}</WindowCloseButton>
         </header>
@@ -239,14 +241,14 @@ export function WarehouseSupplierDialog({
               if (event.key === "Enter" || event.key === "Insert") { event.preventDefault(); event.stopPropagation(); selectActive(); }
             }}
           >
-            <div className="warehouse-supplier-action-bar" aria-label={t("warehouseDocument.supplierListTitle")}>
-              {canWrite && <button type="button" onClick={openNew}><kbd>F5</kbd> {t("party.suppliers.new")}</button>}
-              {canWrite && <button type="button" disabled={!activeId} onClick={() => void openEdit()}><kbd>Ctrl+F7</kbd> {t("warehouseDocument.supplierEdit")}</button>}
+            <div className="warehouse-supplier-action-bar sale-customer-action-bar" aria-label={t("warehouseDocument.supplierListTitle")}>
+              {canWrite && <button type="button" onClick={openNew}><span>{t("party.suppliers.new")}</span><kbd>F5</kbd></button>}
+              {canWrite && <button type="button" disabled={!activeId} onClick={() => void openEdit()}><span>{t("warehouseDocument.supplierEdit")}</span><kbd>Ctrl+F7</kbd></button>}
             </div>
             <div className="warehouse-supplier-toolbar">
               <label className="warehouse-supplier-search">
                 <span>{t("warehouseDocument.supplierSearch")}</span>
-                <input ref={searchRef} autoFocus value={query} onChange={(event) => setQuery(event.target.value)} />
+                <input ref={searchRef} autoFocus value={query} placeholder={t("sale.customer.placeholder")} onChange={(event) => setQuery(event.target.value)} />
               </label>
               {tableTheme && <ErpFilterChips locale={locale} focusRef={searchRef} chips={query.trim() ? [{
                 key: "search", label: t("warehouseDocument.supplierSearch"), value: query.trim(), onRemove: () => setQuery("")
@@ -293,11 +295,11 @@ export function WarehouseSupplierDialog({
               </div>
             </div>
             {status && <p className="product-create-status" role="alert">{status}</p>}
-            <footer className="warehouse-supplier-selection-footer">
-              <p><kbd>Insert</kbd> {t("warehouseDocument.supplierSelectHint")}</p>
-              <div className="filter-actions erp-dialog-actions-row">
-                <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>{t("common.cancel")}</DialogDismissButton>
-                <button type="button" disabled={!canSelectSupplier} className="primary erp-dialog-action-confirm" onClick={selectActive}>{t("common.select")}</button>
+            <footer className="warehouse-supplier-selection-footer sale-customer-selection-footer erp-dialog-actions-row">
+              <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>{t("common.cancel")}</DialogDismissButton>
+              <p className="sale-dialog-hint erp-dialog-actions-group"><kbd>Insert</kbd> {t("warehouseDocument.supplierInsertHint")}</p>
+              <div className="sale-action-buttons erp-dialog-actions-group">
+                <button type="button" disabled={!canSelectSupplier} className="erp-dialog-action-confirm" onClick={selectActive}>{t("warehouseDocument.supplierSelectHint")}</button>
               </div>
             </footer>
           </div>

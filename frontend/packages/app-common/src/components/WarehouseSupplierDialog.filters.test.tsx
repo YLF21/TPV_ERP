@@ -74,7 +74,7 @@ describe("Warehouse supplier filter chips", () => {
     expect(container.querySelector(".warehouse-supplier-table-row.selected")).toHaveTextContent("P001");
     expect(onSelected).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("row", { name: /P002/ }));
-    expect(screen.getByRole("button", { name: "Seleccionar" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Seleccionar proveedor" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: /Nuevo proveedor/ })).not.toBeInTheDocument();
   });
 

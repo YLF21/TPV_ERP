@@ -28,7 +28,7 @@ vi.mock("../api/client", async (importOriginal) => {
 
 const products = [{ id: "product-1", code: "A001", barcode: "841000000001", name: "Cafe molido", salePrice: 4.5 }];
 const warehouses = [{ id: "warehouse-1", name: "GENERAL" }];
-const customers = [{ id: "customer-1", fiscalName: "Cliente SL", documentNumber: "B00000000" }];
+const customers = [{ id: "customer-1", clientId: "C-001-000001", fiscalName: "Cliente SL", documentNumber: "B00000000", active: true }];
 const suppliers = [{ id: "supplier-1", legalName: "Proveedor SL", documentNumber: "B12345678" }];
 const lines = [
   {
@@ -96,7 +96,233 @@ describe("WarehouseDocumentDialog", () => {
     cleanup();
     localStorage.clear();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     Reflect.deleteProperty(window, "tpvDesktop");
+  });
+
+  it.each(["venta", "gestion"] as const)("prints with F5 in %s without repeating or saving the document", async app => {
+    const hardware = installHardwareBridge();
+    const save = vi.fn();
+    const confirm = vi.fn();
+    const view = render(<WarehouseDocumentDialog app={app} mode="output" open products={products}
+      warehouses={warehouses} customers={customers} suppliers={suppliers} document={existingDocument}
+      persistence={{ save, confirm }} onClose={vi.fn()} onConfirmed={vi.fn()} />);
+    const search = view.getByRole("textbox", { name: "Buscar producto" });
+    fireEvent.keyDown(search, { key: "F5", ctrlKey: true });
+    fireEvent.keyDown(search, { key: "F5", repeat: true });
+    expect(hardware.getHardwareConfig).not.toHaveBeenCalled();
+    fireEvent.keyDown(search, { key: "F5" });
+    fireEvent.keyDown(search, { key: "F5" });
+    await waitFor(() => expect(hardware.printA4Document).toHaveBeenCalledOnce());
+    expect(hardware.getHardwareConfig).toHaveBeenCalledOnce();
+    expect(save).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it.each(["input", "output", "transfer"] as const)("exports the current %s document with F6 without saving it", async mode => {
+    const BaseURL = URL;
+    const createObjectURL = vi.fn(() => "blob:warehouse-export");
+    vi.stubGlobal("URL", class extends BaseURL {
+      static createObjectURL = createObjectURL;
+      static revokeObjectURL = vi.fn();
+    });
+    const download = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    vi.mocked(apiRequest).mockResolvedValue(new Blob(["export"]) as never);
+    const save = vi.fn();
+    const confirm = vi.fn();
+    const view = render(<WarehouseDocumentDialog app="gestion" mode={mode} open token="token"
+      products={products} warehouses={[...warehouses, { id: "warehouse-2", name: "SEGUNDO" }]}
+      customers={customers} suppliers={suppliers}
+      document={{ ...existingDocument, targetWarehouseId: "warehouse-2" }}
+      persistence={{ save, confirm }} onClose={vi.fn()} onConfirmed={vi.fn()} />);
+    const search = view.getByRole("textbox", { name: "Buscar producto" });
+    fireEvent.keyDown(search, { key: "F6", repeat: true });
+    expect(download).not.toHaveBeenCalled();
+    fireEvent.keyDown(search, { key: "F6" });
+    await waitFor(() => expect(download).toHaveBeenCalledOnce());
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    expect(view.container.querySelectorAll("tr[data-line-index]")).toHaveLength(1);
+    expect(save).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+    if (mode === "transfer") expect(apiRequest).toHaveBeenCalledWith("/warehouse-transfers/export.xlsx",
+      expect.objectContaining({ method: "POST", responseType: "blob" }));
+  });
+
+  it("opens the price list with Alt+P and keeps list navigation inside the selector", async () => {
+    const onClose = vi.fn();
+    const save = vi.fn().mockResolvedValue(existingDocument);
+    const view = render(<WarehouseDocumentDialog app="gestion" mode="output" open token="token"
+      products={products} warehouses={warehouses} customers={customers} suppliers={suppliers}
+      document={existingDocument} persistence={{ save, confirm: vi.fn() }} onClose={onClose} onConfirmed={vi.fn()} />);
+    const search = view.getByRole("textbox", { name: "Buscar producto" });
+    fireEvent.keyDown(search, { key: "p", altKey: true });
+    const option = view.getByRole("option", { name: "Precio de venta" });
+    fireEvent.keyDown(option, { key: "End" });
+    expect(globalThis.document.activeElement?.textContent).toBe("Precio de oferta");
+    expect(view.queryByRole("textbox", { name: "Buscar cliente" })).toBeNull();
+    fireEvent.keyDown(globalThis.document.activeElement!, { key: "Enter" });
+    expect(view.queryByRole("listbox", { name: "Usar precio" })).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(view.getByRole("button", { name: "Guardar F9" }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ priceSource: "OFFER" }),
+      existingDocument.id, undefined));
+    fireEvent.keyDown(search, { key: "p", altKey: true });
+    fireEvent.keyDown(view.getByRole("option", { name: "Precio de oferta" }), { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it.each(["BORRADOR", "CONFIRMADA"])("only clears all lines in an editable document (%s)", status => {
+    const save = vi.fn();
+    const view = render(<WarehouseDocumentDialog app="venta" mode="output" open products={products}
+      warehouses={warehouses} customers={customers} suppliers={suppliers} document={{ ...existingDocument, status }}
+      persistence={{ save, confirm: vi.fn() }} onClose={vi.fn()} onConfirmed={vi.fn()} />);
+    const dialog = view.getByRole("dialog");
+    fireEvent.keyDown(dialog, { key: "Delete", ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(dialog, { key: "a", ctrlKey: true });
+    fireEvent.keyDown(dialog, { key: "A", ctrlKey: true, shiftKey: true, repeat: true });
+    expect(view.container.querySelectorAll("tr[data-line-index]")).toHaveLength(1);
+    fireEvent.keyDown(dialog, { key: "A", ctrlKey: true, shiftKey: true });
+    expect(view.container.querySelectorAll("tr[data-line-index]")).toHaveLength(status === "BORRADOR" ? 0 : 1);
+    if (status === "CONFIRMADA") {
+      fireEvent.keyDown(dialog, { key: "I", ctrlKey: true, shiftKey: true });
+      fireEvent.keyDown(dialog, { key: "p", altKey: true });
+      expect(view.container.querySelector("input[type=file]")).toBeNull();
+      expect(view.queryByRole("listbox", { name: "Usar precio" })).toBeNull();
+    }
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("isolates document shortcuts while importing Excel and closes only the active menu with Escape", async () => {
+    const hardware = installHardwareBridge();
+    const onClose = vi.fn();
+    const view = render(<WarehouseDocumentDialog app="gestion" mode="output" open token="token"
+      products={products} warehouses={warehouses} customers={customers} suppliers={suppliers}
+      document={existingDocument} onClose={onClose} onConfirmed={vi.fn()} />);
+    const search = view.getByRole("textbox", { name: "Buscar producto" });
+    fireEvent.keyDown(search, { key: "i", ctrlKey: true });
+    expect(view.container.querySelector("input[type=file]")).toBeNull();
+    fireEvent.keyDown(search, { key: "I", ctrlKey: true, shiftKey: true });
+    const fileInput = await waitFor(() => {
+      const input = view.container.querySelector<HTMLInputElement>("input[type=file]");
+      expect(input).not.toBeNull();
+      return input!;
+    });
+    fireEvent.keyDown(fileInput, { key: "F5" });
+    fireEvent.keyDown(fileInput, { key: "F6" });
+    fireEvent.keyDown(fileInput, { key: "A", ctrlKey: true, shiftKey: true });
+    expect(hardware.getHardwareConfig).not.toHaveBeenCalled();
+    expect(view.container.querySelectorAll("tr[data-line-index]")).toHaveLength(1);
+    fireEvent.keyDown(fileInput, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(view.getByRole("button", { name: "Cerrar importador" }));
+    expect(view.container.querySelector("input[type=file]")).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "Archivo" }));
+    fireEvent.keyDown(view.getByRole("button", { name: "Importar Excel Ctrl+Shift+I" }), { key: "Escape" });
+    expect(view.queryByRole("button", { name: "Importar Excel Ctrl+Shift+I" })).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it.each(["input", "output", "transfer"] as const)("changes the header price source in %s while preserving manual prices", async mode => {
+    const pricedProducts = [
+      { ...products[0], purchasePrice: 2, memberPrice: 3, wholesalePrice: 2.5, offerPrice: 3.5 },
+      { ...products[0], id: "product-2", code: "A002", memberPrice: 6 }
+    ];
+    const document = { ...existingDocument, targetWarehouseId: "warehouse-2", lines: [
+      { productId: "product-1", quantity: 2, purchaseUnitPrice: 2, priceOverridden: false },
+      { productId: "product-2", quantity: 1, purchaseUnitPrice: 7.9, priceOverridden: true }
+    ] };
+    const save = vi.fn().mockResolvedValue(document);
+    const confirm = vi.fn();
+    const view = render(<WarehouseDocumentDialog mode={mode} open app="gestion" token="token"
+      products={pricedProducts} warehouses={[...warehouses, { id: "warehouse-2", name: "SEGUNDO" }]}
+      customers={customers} suppliers={suppliers} document={document}
+      persistence={{ save, confirm }} onClose={vi.fn()} onConfirmed={vi.fn()} />);
+    fireEvent.click(view.getByRole("button", { name: "Usar precio" }));
+    expect(view.getAllByRole("option")).toHaveLength(5);
+    fireEvent.click(view.getByRole("option", { name: "Precio de miembro" }));
+    expect(view.getByRole("button", { name: "Usar precio" }).textContent).toContain("Precio de miembro");
+    expect(save).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+    fireEvent.click(view.getByRole("button", { name: "Guardar F9" }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      priceSource: "MEMBER",
+      lines: [
+        expect.objectContaining({ productId: "product-1", unitPrice: 3, quantity: 2, priceOverridden: false }),
+        expect.objectContaining({ productId: "product-2", unitPrice: 7.9, quantity: 1, priceOverridden: true })
+      ]
+    }), document.id, undefined));
+  });
+
+  it("keeps the header price selector disabled for confirmed documents", () => {
+    const view = render(<WarehouseDocumentDialog mode="output" open app="venta" products={products}
+      warehouses={warehouses} customers={customers} suppliers={suppliers}
+      document={{ ...existingDocument, status: "CONFIRMADA", priceSource: "SALE" }}
+      onClose={vi.fn()} onConfirmed={vi.fn()} />);
+    expect(view.getByRole("button", { name: "Usar precio" }).hasAttribute("disabled")).toBe(true);
+    expect(view.getByRole("button", { name: "Usar precio" }).textContent).toContain("Precio de venta");
+    expect(view.queryByRole("textbox", { name: "Código de cliente" })).toBeNull();
+    expect(view.getByRole("button", { name: /^Cliente/ }).hasAttribute("disabled")).toBe(true);
+    fireEvent.keyDown(view.getByRole("button", { name: /^Cliente/ }), { key: "End" });
+    expect(view.queryByRole("textbox", { name: "Buscar cliente" })).toBeNull();
+  });
+
+  it.each(["venta", "gestion"] as const)("selects an output customer from the list in %s without leaking document shortcuts", async app => {
+    vi.mocked(apiRequest).mockResolvedValue(customers);
+    const save = vi.fn().mockResolvedValue(existingDocument);
+    const onClose = vi.fn();
+    const view = render(<WarehouseDocumentDialog mode="output" open app={app} token="token"
+      products={products} warehouses={warehouses} customers={customers} suppliers={suppliers}
+      document={existingDocument} persistence={{ save, confirm: vi.fn() }} onClose={onClose} onConfirmed={vi.fn()} />);
+    expect(view.queryByRole("textbox", { name: "Código de cliente" })).toBeNull();
+    expect(view.getByRole("button", { name: /^Cliente/ }).textContent).toContain("FIN");
+    fireEvent.click(view.getByRole("button", { name: /^Cliente/ }));
+    const search = await view.findByRole("textbox", { name: "Buscar cliente" });
+    await view.findByRole("button", { name: /C-001-000001 · Cliente SL/ });
+    fireEvent.keyDown(search, { key: "s", ctrlKey: true });
+    expect(save).not.toHaveBeenCalled();
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(view.queryByRole("textbox", { name: "Buscar cliente" })).toBeNull();
+    const productSearch = view.getByRole("textbox", { name: "Buscar producto" });
+    fireEvent.keyDown(productSearch, { key: "End", ctrlKey: true });
+    expect(view.queryByRole("textbox", { name: "Buscar cliente" })).toBeNull();
+    fireEvent.keyDown(productSearch, { key: "End" });
+    const row = await view.findByRole("button", { name: /C-001-000001 · Cliente SL/ });
+    fireEvent.doubleClick(row);
+    expect(view.queryByRole("textbox", { name: "Buscar cliente" })).toBeNull();
+    expect(view.getByRole("button", { name: /^Cliente/ }).textContent).toContain("Cliente SL - B00000000");
+    fireEvent.click(view.getByRole("button", { name: "Guardar F9" }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      partnerId: "customer-1", partnerText: "Cliente SL - B00000000"
+    }), existingDocument.id, undefined));
+  });
+
+  it("clears the output customer through the list without manual input", async () => {
+    const view = render(<WarehouseDocumentDialog mode="output" open app="venta" token="token" canConfirm
+      products={products} warehouses={warehouses} customers={customers} suppliers={suppliers}
+      document={existingDocument} onClose={vi.fn()} onConfirmed={vi.fn()} />);
+    vi.mocked(apiRequest).mockResolvedValue(customers);
+    fireEvent.click(view.getByRole("button", { name: /^Cliente/ }));
+    fireEvent.doubleClick(await view.findByRole("button", { name: "Sin cliente" }));
+    expect(view.getByRole("button", { name: /^Cliente/ }).textContent).toContain("Sin cliente");
+    expect(view.queryByRole("textbox", { name: "Código de cliente" })).toBeNull();
+    vi.mocked(apiRequest).mockResolvedValue(existingDocument);
+    fireEvent.click(view.getByRole("button", { name: "Guardar F9" }));
+    await waitFor(() => expect(vi.mocked(apiRequest)).toHaveBeenLastCalledWith("/warehouse-outputs/output-1", expect.objectContaining({
+      body: expect.objectContaining({ destination: "" })
+    })));
+  });
+
+  it("shows the saved customer and preserves unmatched legacy destinations", async () => {
+    const save = vi.fn().mockResolvedValue(existingDocument);
+    const props = { mode: "output" as const, open: true, token: "token", products, warehouses, customers, suppliers,
+      persistence: { save, confirm: vi.fn() }, onClose: vi.fn(), onConfirmed: vi.fn() };
+    const view = render(<WarehouseDocumentDialog {...props} document={{ ...existingDocument, destination: "Cliente SL - B00000000" }} />);
+    expect(view.getByRole("button", { name: /^Cliente/ }).textContent).toContain("Cliente SL - B00000000");
+    view.rerender(<WarehouseDocumentDialog {...props} document={{ ...existingDocument, destination: "Destino histórico" }} />);
+    expect(view.getByRole("button", { name: /^Cliente/ }).textContent).toContain("Destino histórico");
+    fireEvent.click(view.getByRole("button", { name: "Guardar F9" }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ partnerText: "Destino histórico" }), existingDocument.id, undefined));
   });
 
   it.each(["venta", "gestion", "pda"] as const)("scopes the warehouse supplier theme and chips correctly for %s", app => {
@@ -130,7 +356,7 @@ describe("WarehouseDocumentDialog", () => {
     expect(html).toContain("Archivo");
     expect(html).toMatch(/<span>Guardar<\/span>\s*<kbd>F9<\/kbd>/);
     expect(html).toContain("Salir (Esc)");
-    expect(html).toContain("Cliente/destino");
+    expect(html).toContain("<small>Cliente</small>");
     expect(html).toContain("Descuento total del documento %");
     expect(html).toContain("Importe total");
     expect(html).not.toContain("Acciones");
@@ -176,11 +402,11 @@ describe("WarehouseDocumentDialog", () => {
     const view = render(<WarehouseDocumentDialog {...props} />);
 
     fireEvent.click(view.getByRole("button", { name: "Archivo" }));
-    expect(view.getByRole("button", { name: "Importar Excel" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Importar Excel Ctrl+Shift+I" })).toBeTruthy();
 
     view.rerender(<WarehouseDocumentDialog {...props} defaultWarehouseId="warehouse-1" />);
 
-    expect(view.getByRole("button", { name: "Importar Excel" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Importar Excel Ctrl+Shift+I" })).toBeTruthy();
   });
 
   it("still refreshes a new server snapshot of the same document", () => {
@@ -231,7 +457,7 @@ describe("WarehouseDocumentDialog", () => {
     );
 
     expect(html).toContain("File");
-    expect(html).toContain("Customer/destination");
+    expect(html).toContain("<small>Customer</small>");
     expect(html).toContain("Total document discount %");
     expect(html).toContain("0,00");
     expect(html).not.toContain("Cliente/destino");
@@ -280,7 +506,7 @@ describe("WarehouseDocumentDialog", () => {
     );
 
     const confirmButton = await waitFor(() => {
-      const button = getByRole("button", { name: "Confirmar" }) as HTMLButtonElement;
+      const button = getByRole("button", { name: "Confirmar F10" }) as HTMLButtonElement;
       expect(button.disabled).toBe(true);
       return button;
     });
@@ -290,7 +516,7 @@ describe("WarehouseDocumentDialog", () => {
     expect(apiRequest).not.toHaveBeenCalled();
   });
 
-  it.each(["Guardar F9", "Confirmar"])("retains the draft and identifies a save conflict from %s without confirming", async (action) => {
+  it.each(["Guardar F9", "Confirmar F10"])("retains the draft and identifies a save conflict from %s without confirming", async (action) => {
     vi.mocked(apiRequest).mockRejectedValue(new ApiError("internal SQL detail", 409, { code: "DATA_INTEGRITY_CONFLICT" }));
     const onConfirmed = vi.fn();
     const { getByRole, findByText } = render(
@@ -318,8 +544,8 @@ describe("WarehouseDocumentDialog", () => {
         customers={customers} suppliers={suppliers} token="token" canConfirm document={saved}
         onClose={vi.fn()} onConfirmed={vi.fn()} />
     );
-    await waitFor(() => expect((getByRole("button", { name: "Confirmar" }) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(getByRole("button", { name: "Confirmar" }));
+    await waitFor(() => expect((getByRole("button", { name: "Confirmar F10" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(getByRole("button", { name: "Confirmar F10" }));
     expect(await findByText(/Recarga el listado y comprueba/)).toBeTruthy();
     expect(apiRequest).toHaveBeenNthCalledWith(1, "/warehouse-inputs/input-1", expect.objectContaining({ method: "PUT" }));
     expect(apiRequest).toHaveBeenNthCalledWith(2, "/warehouse-inputs/input-1/confirm", expect.objectContaining({ method: "POST" }));
@@ -896,7 +1122,7 @@ describe("WarehouseDocumentDialog", () => {
     );
 
     fireEvent.click(getByRole("button", { name: "Archivo" }));
-    fireEvent.click(getByRole("button", { name: "Importar Excel" }));
+    fireEvent.click(getByRole("button", { name: "Importar Excel Ctrl+Shift+I" }));
     const fileInput = container.querySelector<HTMLInputElement>("input[type=file]");
     expect(fileInput).not.toBeNull();
     fireEvent.change(fileInput!, { target: { files: [new File(["xlsx"], "productos.xlsx")] } });
@@ -1072,8 +1298,8 @@ describe("WarehouseDocumentDialog", () => {
       />
     );
 
-    await waitFor(() => expect((getByRole("button", { name: "Print" }) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(getByRole("button", { name: "Print" }));
+    await waitFor(() => expect((getByRole("button", { name: "Print F5" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(getByRole("button", { name: "Print F5" }));
 
     await waitFor(() => expect(hardware.printA4Document).toHaveBeenCalledOnce());
     expect(hardware.printA4Document).toHaveBeenCalledWith(
@@ -1118,7 +1344,7 @@ describe("WarehouseDocumentDialog", () => {
       />
     );
 
-    const printButton = await waitFor(() => getByRole("button", { name: "Print" }));
+    const printButton = await waitFor(() => getByRole("button", { name: "Print F5" }));
     await act(async () => {
       printButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       printButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -1156,7 +1382,7 @@ describe("WarehouseDocumentDialog", () => {
       />
     );
 
-    fireEvent.click(await waitFor(() => getByRole("button", { name: "Print" })));
+    fireEvent.click(await waitFor(() => getByRole("button", { name: "Print F5" })));
 
     await waitFor(() => expect(getByText("The document could not be printed")).toBeTruthy());
     expect(queryByText(hardwareMessage)).toBeNull();
@@ -1191,16 +1417,16 @@ describe("WarehouseDocumentDialog", () => {
       />
     );
 
-    fireEvent.click(await waitFor(() => getByRole("button", { name: "Print" })));
+    fireEvent.click(await waitFor(() => getByRole("button", { name: "Print F5" })));
 
     expect(open).toHaveBeenCalledWith("", "_blank", "popup=yes,width=1040,height=820");
     expect(write).toHaveBeenCalledWith(expect.stringContaining('<html lang="en">'));
     expect(print).toHaveBeenCalledOnce();
     expect(getByText("Print preview")).toBeTruthy();
 
-    await waitFor(() => expect((getByRole("button", { name: "Print" }) as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect((getByRole("button", { name: "Print F5" }) as HTMLButtonElement).disabled).toBe(false));
     open.mockReturnValue(null);
-    fireEvent.click(getByRole("button", { name: "Print" }));
+    fireEvent.click(getByRole("button", { name: "Print F5" }));
     expect(getByText("The browser blocked the print preview")).toBeTruthy();
   });
 
@@ -1228,7 +1454,7 @@ describe("WarehouseDocumentDialog", () => {
       />
     );
 
-    const printButton = await waitFor(() => getByRole("button", { name: "Print" }));
+    const printButton = await waitFor(() => getByRole("button", { name: "Print F5" }));
     await act(async () => {
       printButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       printButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -1262,7 +1488,7 @@ describe("WarehouseDocumentDialog", () => {
 
     fireEvent.click(getByRole("button", { name: "File" }));
     const previewButton = getByRole("button", { name: "Preview Ctrl+P" });
-    const printButton = getAllByRole("button", { name: "Print" }).at(-1) as HTMLButtonElement;
+    const printButton = getAllByRole("button", { name: "Print F5" }).at(-1) as HTMLButtonElement;
     await act(async () => {
       previewButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       previewButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -1297,7 +1523,7 @@ describe("WarehouseDocumentDialog", () => {
 
     fireEvent.click(await waitFor(() => getByRole("button", { name: "Save F9" })));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledOnce());
-    fireEvent.click(getByRole("button", { name: "Print" }));
+    fireEvent.click(getByRole("button", { name: "Print F5" }));
 
     await waitFor(() => expect(hardware.printA4Document).toHaveBeenCalledOnce());
     expect(hardware.printA4Document).toHaveBeenCalledWith(
@@ -1330,7 +1556,7 @@ describe("WarehouseDocumentDialog", () => {
       />
     );
 
-    fireEvent.click(await waitFor(() => getByRole("button", { name: "Print" })));
+    fireEvent.click(await waitFor(() => getByRole("button", { name: "Print F5" })));
 
     expect(getByText("Product not found")).toBeTruthy();
     expect(hardware.getHardwareConfig).not.toHaveBeenCalled();

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import { useTableInitialFocus } from "./useTableInitialFocus";
 import { useTableArrowRepeat } from "./useTableArrowRepeat";
 import { ensureTableRowVisible } from "./ensureTableRowVisible";
@@ -23,6 +23,7 @@ import { WarehouseSupplierDialog } from "./WarehouseSupplierDialog";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
 import "./WarehouseDocumentClassicTables.css";
+import "./WarehouseDocumentControls.css";
 import {
   type WarehouseDocumentLineDraft,
   type WarehouseImportProduct
@@ -35,8 +36,11 @@ import {
 } from "../warehouse/warehouseDocumentPrinting";
 
 export type WarehouseDocumentMode = "input" | "output" | "transfer";
+const WarehouseCustomerDialog = lazy(() => import("./WarehouseCustomerDialog")
+  .then(module => ({ default: module.WarehouseCustomerDialog })));
 export type WarehouseInputDocumentType = "ENTRADA_ALMACEN" | "ALBARAN_ENTRADA" | "FACTURA_ENTRADA";
 export type WarehouseInputPriceSource = "PURCHASE" | "SALE" | "MEMBER" | "WHOLESALE" | "OFFER";
+const documentPriceSources: readonly WarehouseInputPriceSource[] = ["PURCHASE", "SALE", "MEMBER", "WHOLESALE", "OFFER"];
 
 export type WarehouseOption = {
   id: string;
@@ -47,6 +51,8 @@ export type WarehouseOption = {
 
 export type WarehouseCustomerOption = {
   id: string;
+  clientId?: string | null;
+  active?: boolean;
   fiscalName?: string | null;
   nombreFiscal?: string | null;
   documentNumber?: string | null;
@@ -408,6 +414,9 @@ export function WarehouseDocumentDialog({
   const [documentVersion, setDocumentVersion] = useState<number | undefined>();
   const [partnerId, setPartnerId] = useState("");
   const [partnerText, setPartnerText] = useState("");
+  const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
+  const [updatedCustomers, setUpdatedCustomers] = useState<WarehouseCustomerOption[]>([]);
+  const customerOptions = [...customers.filter(customer => !updatedCustomers.some(updated => updated.id === customer.id)), ...updatedCustomers];
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [externalNumber, setExternalNumber] = useState("");
   const [documentDiscountPercent, setDocumentDiscountPercent] = useState("0");
@@ -495,7 +504,7 @@ export function WarehouseDocumentDialog({
 
   useTableInitialFocus(linesTableRef, "tbody tr[data-line-index]", {
     enabled: open && app !== "pda" && lineEditorIndex === null && quickLineEditMode === null
-      && !productSearchOpen && !supplierDialogOpen && !excelImportOpen,
+      && !productSearchOpen && !supplierDialogOpen && !customerDialogOpen && !excelImportOpen,
     ready: initializedDocumentRef.current?.document === document,
     scopeKey: `${open}:${mode}:${document?.id ?? "new"}`,
     onSelect: () => setSelectedLineIndex(0),
@@ -506,7 +515,7 @@ export function WarehouseDocumentDialog({
     const container = linesTableRef.current;
     const active = globalThis.document.activeElement;
     if (!container || !active || lineEditorIndex !== null || quickLineEditMode !== null
-      || productSearchOpen || supplierDialogOpen || excelImportOpen) return false;
+      || productSearchOpen || supplierDialogOpen || customerDialogOpen || excelImportOpen) return false;
     const focusedRow = active instanceof HTMLElement ? active.closest<HTMLElement>("tr[data-line-index]") : null;
     if (active !== productSearchRef.current && (!focusedRow || !container.contains(focusedRow))) return false;
     const current = focusedRow ? Number(focusedRow.dataset.lineIndex) : selectedLineIndex ?? 0;
@@ -554,8 +563,14 @@ export function WarehouseDocumentDialog({
     setTargetWarehouseId(document?.targetWarehouseId
       ?? warehouses.find((warehouse) => warehouse.active !== false && warehouse.id !== initialWarehouse)?.id ?? "");
     setDocumentVersion(document?.version);
-    setPartnerId(document?.supplierId ?? "");
+    // Output documents store the destination text. Recover the selection only when
+    // the full saved name/document identifies exactly one customer.
+    const destinationCustomers = mode === "output" && document?.destination
+      ? customerOptions.filter(customer => partnerName(customer) === document.destination) : [];
+    const destinationCustomer = destinationCustomers.length === 1 ? destinationCustomers[0] : undefined;
+    setPartnerId(mode === "output" ? destinationCustomer?.id ?? "" : document?.supplierId ?? "");
     setPartnerText(mode === "input" ? document?.origin ?? "" : document?.destination ?? "");
+    setCustomerDialogOpen(false);
     setDate(document?.date ?? new Date().toISOString().slice(0, 10));
     setExternalNumber(document?.externalNumber ?? "");
     setDocumentDiscountPercent(String(document?.globalDiscount ?? "0"));
@@ -724,7 +739,7 @@ export function WarehouseDocumentDialog({
 
   const title = titleOverride ?? t(mode === "transfer" ? "warehouse.transfer.create" : mode === "input" ? "stock.nav.inputWarehouse" : "stock.nav.outputWarehouse");
   const partnerLabel = t(mode === "transfer" ? "warehouse.transfer.target" : mode === "input" ? "warehouseDocument.supplier" : "warehouseDocument.customer");
-  const partnerOptions = mode === "input" ? localSuppliers : customers;
+  const partnerOptions = mode === "input" ? localSuppliers : customerOptions;
   const draft = {
     warehouseId, targetWarehouseId, partnerId, partnerText, date, externalNumber, concept, lines,
     documentType, priceSource: documentPriceMode, globalDiscount: documentDiscountPercent,
@@ -898,6 +913,7 @@ export function WarehouseDocumentDialog({
   }
 
   function openPartnerList() {
+    if (readOnly) return;
     setFileMenuOpen(false);
     if (mode === "transfer") {
       const trigger = dialogRef.current?.querySelector<HTMLButtonElement>("#warehouse-document-target .erp-select__trigger");
@@ -909,9 +925,35 @@ export function WarehouseDocumentDialog({
       setSupplierDialogOpen(true);
       return;
     }
-    const trigger = dialogRef.current?.querySelector<HTMLElement>("[data-warehouse-partner-trigger]");
+    setCustomerDialogOpen(true);
+  }
+
+  function openExcelImport() {
+    if (readOnly) return;
+    setFileMenuOpen(false);
+    setExcelImportOpen(true);
+  }
+
+  function openPriceSelector() {
+    if (readOnly) return;
+    setFileMenuOpen(false);
+    setPriceMenuOpen(false);
+    const trigger = dialogRef.current?.querySelector<HTMLButtonElement>(".warehouse-document-price-source .erp-select__trigger");
     trigger?.focus();
-    setStatus(t("warehouseDocument.status.customerList"));
+    if (trigger?.getAttribute("aria-expanded") !== "true") trigger?.click();
+  }
+
+  function selectCustomer(customer: WarehouseCustomerOption | null) {
+    if (customer) rememberCustomer(customer);
+    setPartnerId(customer?.id ?? "");
+    setPartnerText(customer ? partnerName(customer) : "");
+  }
+
+  function rememberCustomer(customer: WarehouseCustomerOption) {
+    setUpdatedCustomers(current => [...current.filter(candidate => candidate.id !== customer.id), customer]);
+    if (customer.id === partnerId) {
+      setPartnerText(partnerName(customer));
+    }
   }
 
   function clearProductSearch() {
@@ -920,7 +962,7 @@ export function WarehouseDocumentDialog({
   }
 
   function focusProductSearch() {
-    if (!open || readOnly || linkedLinesLocked || productSearchOpen || supplierDialogOpen
+    if (!open || readOnly || linkedLinesLocked || productSearchOpen || supplierDialogOpen || customerDialogOpen
         || lineEditorIndex !== null || quickLineEditMode !== null || excelImportOpen
        ) return;
     window.requestAnimationFrame(() => productSearchRef.current?.focus());
@@ -1640,7 +1682,7 @@ export function WarehouseDocumentDialog({
   }
 
   async function saveDraft() {
-    if (submitting) {
+    if (!canSaveDraft) {
       return;
     }
     setSubmitting(true);
@@ -1697,6 +1739,10 @@ export function WarehouseDocumentDialog({
     return focusRelativeEnterTarget(dialogRef.current, current, intent, warehouseControlSelector);
   }
 
+  function menuLabel(label: string, shortcut = "") {
+    return app === "pda" ? label : <ShortcutButtonLabel label={label} shortcut={shortcut} />;
+  }
+
   return (
     <div
       ref={dialogRef}
@@ -1705,9 +1751,36 @@ export function WarehouseDocumentDialog({
       aria-modal="true"
       aria-labelledby="warehouse-document-title"
       onKeyDown={(event) => {
+        if (event.defaultPrevented || event.nativeEvent.isComposing
+          || customerDialogOpen || supplierDialogOpen || productSearchOpen || excelImportOpen
+          || lineEditorIndex !== null || quickLineEditMode !== null) return;
         const target = event.target as HTMLElement;
         const isProductSearch = target === productSearchRef.current;
         const isTextControl = target.matches("input, textarea, select");
+        if (app !== "pda") {
+          const key = event.key.toLowerCase();
+          const plain = !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
+          const controlShift = event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey;
+          const altOnly = event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey;
+          const action = plain && key === "f5" ? "print"
+            : plain && key === "f6" ? "export"
+            : controlShift && key === "a" ? "clear"
+            : controlShift && key === "i" ? "import"
+            : altOnly && key === "p" ? "price" : null;
+          if (action) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (event.repeat || submitting) return;
+            if (action === "print" && !printing) void printDocument();
+            else if (action === "export" && !exporting) void exportDocumentExcel();
+            else if (!readOnly) {
+              if (action === "clear") clearAllLines();
+              else if (action === "import") openExcelImport();
+              else if (action === "price") openPriceSelector();
+            }
+            return;
+          }
+        }
         if (app !== "pda" && (event.key === "ArrowUp" || event.key === "ArrowDown")
           && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey
           && (isProductSearch || (target.matches("tr[data-line-index]") && linesTableRef.current?.contains(target)))) {
@@ -1715,15 +1788,23 @@ export function WarehouseDocumentDialog({
           repeatLineArrow(event);
         } else if (event.key === "Escape") {
           event.preventDefault();
+          event.stopPropagation();
+          if (app !== "pda" && fileMenuOpen) {
+            setFileMenuOpen(false);
+            setPriceMenuOpen(false);
+            fileMenuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+            return;
+          }
           onClose();
-        } else if (event.ctrlKey && event.key.toLocaleLowerCase() === "p") {
+        } else if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.key.toLocaleLowerCase() === "p") {
           event.preventDefault();
           previewDocument();
-        } else if (event.key === "End" && mode !== "output" && !readOnly) {
+        } else if (event.key === "End" && !readOnly
+            && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
           event.preventDefault();
           event.stopPropagation();
           openPartnerList();
-        } else if (event.key === "Delete" && !readOnly && !isTextControl) {
+        } else if (event.key === "Delete" && !event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && !readOnly && !isTextControl) {
           event.preventDefault();
           setProductSearchOpen(true);
         } else if (!readOnly && mode !== "output" && (isProductSearch || !isTextControl) && event.key === "Home") {
@@ -1811,17 +1892,20 @@ export function WarehouseDocumentDialog({
             <button type="button" onClick={() => setFileMenuOpen((current) => !current)}>{t("warehouseDocument.menu.file")}</button>
             {fileMenuOpen && (
               <div className="warehouse-document-menu" role="menu">
-                <button type="button" onClick={openPartnerList}>{partnerLabel}</button>
-                <button type="button" disabled={!canSaveDraft} onClick={() => { setFileMenuOpen(false); void saveDraft(); }}>{t("common.save")}</button>
-                <button type="button" disabled={!canSubmitConfirmation} onClick={() => { setFileMenuOpen(false); void confirmDocument(); }}>{t("common.confirm")}</button>
-                <button type="button" disabled={printing} onClick={previewDocument}>{app === "pda" ? t("warehouseDocument.menu.previewShortcut") : <ShortcutButtonLabel label={t("warehouseDocument.menu.previewShortcut")} shortcut="Ctrl+P" />}</button>
-                <button type="button" disabled={printing} onClick={printDocument}>{t("salesReport.print")}</button>
-                <button type="button" disabled={readOnly} onClick={clearAllLines}>{t("warehouseDocument.menu.clearLines")}</button>
-                <button type="button" disabled={readOnly} onClick={clearAllDiscounts}>{t("warehouseDocument.menu.clearDiscounts")}</button>
-                <button type="button" disabled={readOnly} onClick={() => { setFileMenuOpen(false); setExcelImportOpen(true); }}>{t("warehouseDocument.importExcel")}</button>
-                <button type="button" disabled={exporting} onClick={() => void exportDocumentExcel()}>{t("warehouseDocument.menu.exportExcel")}</button>
+                <button type="button" onClick={openPartnerList}>{menuLabel(partnerLabel, t("warehouseDocument.shortcut.end"))}</button>
+                {app !== "pda" && <div className="sale-command-menu-separator" role="separator" />}
+                <button type="button" disabled={!canSaveDraft} onClick={() => { setFileMenuOpen(false); void saveDraft(); }}>{menuLabel(t("common.save"), "F9")}</button>
+                <button type="button" disabled={!canSubmitConfirmation} onClick={() => { setFileMenuOpen(false); void confirmDocument(); }}>{menuLabel(t("common.confirm"), "F10")}</button>
+                <button type="button" disabled={printing} onClick={previewDocument}>{menuLabel(t("warehouseDocument.menu.previewShortcut"), "Ctrl+P")}</button>
+                <button type="button" disabled={printing} aria-keyshortcuts={app === "pda" ? undefined : "F5"} onClick={printDocument}>{menuLabel(t("salesReport.print"), "F5")}</button>
+                {app !== "pda" && <div className="sale-command-menu-separator" role="separator" />}
+                <button type="button" disabled={readOnly} aria-keyshortcuts={app === "pda" ? undefined : "Control+Shift+A"} onClick={clearAllLines}>{menuLabel(t("warehouseDocument.menu.clearLines"), t("warehouseDocument.shortcut.clearLines"))}</button>
+                <button type="button" disabled={readOnly} onClick={clearAllDiscounts}>{menuLabel(t("warehouseDocument.menu.clearDiscounts"), "Ctrl+Shift+D")}</button>
+                {app !== "pda" && <div className="sale-command-menu-separator" role="separator" />}
+                <button type="button" disabled={readOnly} aria-keyshortcuts={app === "pda" ? undefined : "Control+Shift+I"} onClick={openExcelImport}>{menuLabel(t("warehouseDocument.importExcel"), "Ctrl+Shift+I")}</button>
+                <button type="button" disabled={exporting} aria-keyshortcuts={app === "pda" ? undefined : "F6"} onClick={() => void exportDocumentExcel()}>{menuLabel(t("warehouseDocument.menu.exportExcel"), "F6")}</button>
                 <div className="warehouse-document-submenu">
-                  <button type="button" disabled={readOnly} aria-expanded={priceMenuOpen} onClick={() => setPriceMenuOpen((current) => !current)}>{t("warehouseDocument.menu.usePrice")}</button>
+                  <button type="button" disabled={readOnly} aria-keyshortcuts={app === "pda" ? undefined : "Alt+P"} aria-expanded={priceMenuOpen} onClick={() => setPriceMenuOpen((current) => !current)}>{menuLabel(t("warehouseDocument.menu.usePrice"), "Alt+P")}</button>
                   {priceMenuOpen && (
                     <div className="warehouse-document-submenu-panel" role="menu">
                       <button type="button" onClick={() => selectDocumentPriceSource("PURCHASE")}>{t("sharedExcel.price.purchase")}</button>
@@ -1832,13 +1916,14 @@ export function WarehouseDocumentDialog({
                     </div>
                   )}
                 </div>
-                <button type="button" onClick={onClose}>{t("warehouseDocument.menu.exit")}</button>
+                {app !== "pda" && <div className="sale-command-menu-separator" role="separator" />}
+                <button type="button" onClick={onClose}>{menuLabel(t("warehouseDocument.menu.exit"), "Esc")}</button>
               </div>
             )}
           </div>
-          <button type="button" disabled={printing} onClick={printDocument}>{t("salesReport.print")}</button>
+          <button type="button" disabled={printing} aria-keyshortcuts={app === "pda" ? undefined : "F5"} onClick={printDocument}>{menuLabel(t("salesReport.print"), "F5")}</button>
           <button type="button" className="erp-dialog-action-confirm" disabled={!canSaveDraft} onClick={() => void saveDraft()}>{app === "pda" ? t("warehouseDocument.menu.saveShortcut") : <ShortcutButtonLabel label={t("warehouseDocument.menu.saveShortcut")} shortcut="F9" />}</button>
-          <button type="button" className="erp-dialog-action-confirm" disabled={!canSubmitConfirmation} onClick={() => void confirmDocument()}>{t("common.confirm")}</button>
+          <button type="button" className="erp-dialog-action-confirm" disabled={!canSubmitConfirmation} aria-keyshortcuts="F10" onClick={() => void confirmDocument()}>{menuLabel(t("common.confirm"), "F10")}</button>
           {app === "pda" ? <button type="button" className="erp-dialog-action-cancel" onClick={onClose}>{t("warehouseDocument.menu.exitShortcut")}</button> : <WindowCloseButton aria-label={t("common.close")} title={t("warehouseDocument.menu.exitShortcut")} onLight onClick={onClose} >{t("warehouseDocument.menu.exit")}</WindowCloseButton>}
         </header>
 
@@ -1918,48 +2003,21 @@ export function WarehouseDocumentDialog({
               </label>
             )}
 
-            {mode !== "transfer" && <div className={`warehouse-document-partner-panel${mode === "input" ? " warehouse-document-supplier-panel" : ""}`}>
-              {mode === "input" ? (
-                <button
-                  type="button"
-                  className="warehouse-document-partner-card"
-                  disabled={readOnly}
-                  data-warehouse-partner-trigger
-                  onClick={openPartnerList}
-    >
-      <span className="warehouse-document-partner-copy">
-        <small>{t("warehouseDocument.partner.supplierCard")}</small>
-        <strong>{selectedPartner ? partnerName(selectedPartner) : partnerText || t("warehouseDocument.noSupplier")}</strong>
-      </span>
-      <kbd>{t("warehouseDocument.shortcut.end")}</kbd>
-    </button>
-              ) : (
-                <>
-                  <span>{t("warehouseDocument.partner.output")}</span>
-                  <div className="warehouse-document-field">
-                    <ErpSelect
-                      aria-label={partnerLabel}
-                      value={partnerId}
-                      disabled={readOnly}
-                      options={[
-                        { value: "", label: t("common.select") },
-                        ...partnerOptions.map((option) => ({ value: option.id, label: partnerName(option) }))
-                      ]}
-                      onChange={(next) => {
-                        const selected = partnerOptions.find((option) => option.id === next);
-                        setPartnerId(next);
-                        setPartnerText(selected ? partnerName(selected) : "");
-                      }}
-                      onCommit={() => moveFromActiveControl("next")}
-                      onNavigatePrevious={() => moveFromActiveControl("previous")}
-                    />
-                  </div>
-                  <button type="button" disabled={readOnly} data-warehouse-partner-trigger onClick={openPartnerList}>
-                    {interpolateMessage(t("warehouseDocument.partnerList"), { partner: partnerLabel.toLocaleLowerCase(locale) })}
-                  </button>
-                  <p>{selectedPartner ? partnerName(selectedPartner) : partnerText || t("warehouseDocument.noPartner")}</p>
-                </>
-              )}
+            {mode !== "transfer" && <div className="warehouse-document-partner-panel warehouse-document-card-panel">
+              <button
+                type="button"
+                className="warehouse-document-partner-card"
+                disabled={readOnly}
+                data-warehouse-partner-trigger
+                onClick={openPartnerList}
+              >
+                <span className="warehouse-document-partner-copy">
+                  <small>{partnerLabel}</small>
+                  <strong>{selectedPartner ? partnerName(selectedPartner) : partnerText
+                    || t(mode === "input" ? "warehouseDocument.noSupplier" : "sale.customer.none")}</strong>
+                </span>
+                <kbd>{t("warehouseDocument.shortcut.end")}</kbd>
+              </button>
             </div>}
 
             <label className="warehouse-document-discount">
@@ -2023,9 +2081,18 @@ export function WarehouseDocumentDialog({
                   <span>{t("salesReport.column.status")}</span>
                   <strong>{warehouseDocumentStatusLabel(documentStatus, t)}</strong>
                 </div>
-                <div className="warehouse-document-state">
+                <div className="warehouse-document-state warehouse-document-price-source">
                   <span>{t("warehouseDocument.menu.usePrice")}</span>
-                  <strong>{priceSourceLabel(documentPriceMode, t)}</strong>
+                  <ErpSelect
+                    aria-label={t("warehouseDocument.menu.usePrice")}
+                    maxPopoverWidth="trigger"
+                    value={documentPriceMode}
+                    disabled={readOnly}
+                    options={documentPriceSources.map((source) => ({ value: source, label: priceSourceLabel(source, t) }))}
+                    onChange={(value) => selectDocumentPriceSource(value as WarehouseInputPriceSource)}
+                    onCommit={focusProductSearch}
+                    onNavigatePrevious={() => moveFromActiveControl("previous")}
+                  />
                 </div>
               </div>
             </div>
@@ -2209,6 +2276,25 @@ export function WarehouseDocumentDialog({
             if (product) addProductToDocument(product);
           }}
         />
+      )}
+      {mode === "output" && customerDialogOpen && (
+        <Suspense fallback={null}><WarehouseCustomerDialog
+          token={token}
+          session={session}
+          locale={locale}
+          selectedCustomerId={partnerId}
+          onChanged={rememberCustomer}
+          onSelect={(customer) => {
+            selectCustomer(customer);
+            setCustomerDialogOpen(false);
+            window.requestAnimationFrame(() => productSearchRef.current?.focus());
+          }}
+          onClose={() => {
+            setCustomerDialogOpen(false);
+            window.requestAnimationFrame(() => dialogRef.current
+              ?.querySelector<HTMLElement>("[data-warehouse-partner-trigger]")?.focus());
+          }}
+        /></Suspense>
       )}
       {mode === "input" && (
         <WarehouseSupplierDialog

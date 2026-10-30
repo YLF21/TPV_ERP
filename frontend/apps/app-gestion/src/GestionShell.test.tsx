@@ -140,6 +140,7 @@ describe("GestionShell", () => {
 
     expect(screen.getByRole("button", { name: "Inventario" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("button", { name: "Stock" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Stock" })).not.toHaveClass("selected");
   });
 
   it("keeps only one grouped module expanded", () => {
@@ -253,6 +254,8 @@ describe("GestionShell", () => {
 
     const search = screen.getByRole("searchbox", { name: "gestion.navigationSearch" });
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(search).not.toHaveFocus();
+    expect(fireEvent.keyDown(window, { key: "f", ctrlKey: true })).toBe(false);
     expect(search).toHaveFocus();
     fireEvent.change(search, { target: { value: "ticket" } });
     fireEvent.click(screen.getByRole("button", { name: "Ventas / Tickets" }));

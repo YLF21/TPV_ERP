@@ -159,9 +159,11 @@ export function GestionShell({
 
   useEffect(() => {
     function focusNavigationSearch(event: KeyboardEvent) {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "k") {
+      if (!event.defaultPrevented && !event.altKey && !event.shiftKey && !event.isComposing
+          && (event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "f") {
         event.preventDefault();
         searchRef.current?.focus();
+        searchRef.current?.select();
       }
     }
     window.addEventListener("keydown", focusNavigationSearch);
@@ -183,6 +185,7 @@ export function GestionShell({
             ref={searchRef}
             id="gestion-navigation-search"
             type="search"
+            aria-keyshortcuts="Control+F Meta+F"
             value={navigationQuery}
             placeholder={t("gestion.navigationSearchPlaceholder")}
             onChange={(event) => setNavigationQuery(event.target.value)}
@@ -193,7 +196,7 @@ export function GestionShell({
               }
             }}
           />
-          <kbd>Ctrl K</kbd>
+          <kbd>Ctrl + F</kbd>
         </div>
         <nav aria-label={t("gestion.navigation") }>
           {normalizedQuery ? (
@@ -223,7 +226,7 @@ export function GestionShell({
               <div className={`gestion-nav-item ${hasChildren ? "group" : "direct"}`} key={item.key}>
                 <button
                   type="button"
-                  className={`${hasChildren ? "" : centeredDestination ? "gestion-nav-destination" : "gestion-nav-standard"}${item.key === activeKey || groupActive ? " selected" : ""}`.trim() || undefined}
+                  className={`${hasChildren ? "" : centeredDestination ? "gestion-nav-destination" : "gestion-nav-standard"}${item.key === activeKey ? " selected" : ""}`.trim() || undefined}
                   aria-current={item.key === activeKey ? "page" : undefined}
                   aria-expanded={hasChildren ? groupOpen : undefined}
                   onClick={() => {
