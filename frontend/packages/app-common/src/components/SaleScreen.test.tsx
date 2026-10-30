@@ -117,6 +117,7 @@ type CheckoutMockProps = {
   showIndividualActions?: boolean;
   sale?: {
     customerId: string | null;
+    customerAddressId?: string | null;
     internalComment?: string;
     lines: Array<{
       productId: string;
@@ -1166,7 +1167,7 @@ describe("SaleScreen", () => {
     expect(screen.queryByText("MAYORISTA")).not.toBeInTheDocument();
   });
 
-  it("recovers a parked wholesale sale, keeps wholesale in quote payloads, and returns to VENTA when cleared", async () => {
+  it("recovers a parked wholesale sale with its chosen contact and returns to VENTA when cleared", async () => {
     const quoteBodies: Record<string, unknown>[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
       const path = new URL(url, "http://localhost").pathname;
@@ -1188,7 +1189,8 @@ describe("SaleScreen", () => {
           sale: {
             document: {
               wholesaleMode: true,
-              clienteId: null,
+              clienteId: customers[0].id,
+              customerAddressId: "parked-contact",
               comentarioInterno: null,
               lineas: [{ productoId: products[0].id, cantidad: 1, descuento: 0 }],
             },
@@ -1197,6 +1199,9 @@ describe("SaleScreen", () => {
       }
       if (path.endsWith("/parked-sales/parked-wholesale/recoveries/recovery-1/acknowledge")) {
         return new Response(null, { status: 204 });
+      }
+      if (path.endsWith("/customers/sale-options")) {
+        return new Response(JSON.stringify([{ ...customers[0], addresses: [{ id: "parked-contact", address: { address: "CALLE APARCADA", country: "ES" } }] }]), { status: 200 });
       }
       if (path.endsWith("/pos/sales/quote")) {
         quoteBodies.push(JSON.parse(String(options?.body)));
@@ -1217,6 +1222,8 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(screen.getByText("MAYORISTA")).toBeInTheDocument());
     await waitFor(() => expect(quoteBodies.length).toBeGreaterThan(0));
     expect(quoteBodies.at(-1)?.wholesaleMode).toBe(true);
+    expect(quoteBodies.at(-1)?.customerAddressId).toBe("parked-contact");
+    expect(checkoutProps.current?.sale?.customerAddressId).toBe("parked-contact");
 
     fireEvent.keyDown(window, { key: "F4", ctrlKey: true });
     const clearDialog = await screen.findByRole("dialog", { name: "Eliminar venta actual" });
@@ -4093,6 +4100,7 @@ describe("SaleScreen", () => {
   });
 
   it("supports F5 creation, Ctrl+F7 editing and Enter debt collection from the customer list", async () => {
+    const addresses = [{ id: "contact-1", address: { address: "CALLE PRUEBA", city: "MOGÁN", province: "LAS PALMAS", country: "ES" }, phone: "600111222" }];
     const customer = {
       ...customers[0],
       documentType: "NIF",
@@ -4105,8 +4113,13 @@ describe("SaleScreen", () => {
       creditBlocked: false,
       blockOnOverdue: false,
       isMember: false,
+      version: 7,
+      addressSyncStatus: "SYNCED",
+      addresses,
     };
-    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    let savedCustomer = customer;
+    const customerUpdates: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/products/sale")) {
         return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
@@ -4117,7 +4130,19 @@ describe("SaleScreen", () => {
       if (path.endsWith("/commercial-contact-channels")) {
         return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
       }
+      if (path.endsWith("/customers/customer-1/addresses/refresh")) {
+        return new Response(JSON.stringify({ ...customer, version: 8 }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/customers/sale-options/customer-1")) {
+        return new Response(JSON.stringify(savedCustomer), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
       if (path.endsWith("/customers/customer-1")) {
+        if (options?.method === "PUT") {
+          const update = JSON.parse(String(options.body));
+          customerUpdates.push(update);
+          savedCustomer = { ...customer, ...update };
+          return new Response(JSON.stringify(savedCustomer), { status: 200, headers: { "Content-Type": "application/json" } });
+        }
         return new Response(JSON.stringify(customer), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       if (path.endsWith("/customer-receivables")) {
@@ -4159,14 +4184,80 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(customerDialogAfterCreate, { key: "F7", ctrlKey: true });
     const edit = await screen.findByRole("dialog", { name: "Modificar cliente" });
     expect(await within(edit).findByDisplayValue("Cliente Pruebas SL")).toBeVisible();
-    fireEvent.click(within(edit).getByRole("button", { name: "Cerrar" }));
+    await waitFor(() => expect(within(edit).getByRole("button", { name: "Guardar" })).toBeEnabled());
+    fireEvent.change(within(edit).getByLabelText("Nombre o razón social"), { target: { value: "Cliente actualizado desde venta" } });
+    fireEvent.click(within(edit).getByRole("button", { name: "Guardar" }));
 
     const customerDialogAfterEdit = await screen.findByRole("dialog", { name: "Seleccionar cliente" });
+    expect(within(customerDialogAfterEdit).getByText("Cliente actualizado desde venta")).toBeVisible();
+    expect(customerUpdates).toEqual([expect.objectContaining({
+      fiscalName: "Cliente actualizado desde venta",
+      expectedVersion: 8,
+      addresses: [expect.objectContaining({ id: "contact-1", phone: "600111222" })],
+    })]);
     fireEvent.keyDown(customerDialogAfterEdit, { key: "Enter" });
     const receivables = await screen.findByRole("dialog", { name: "Documentos pendientes del cliente" });
     expect(await within(receivables).findByText("FV-1")).toBeVisible();
     await waitFor(() => expect(receivables).toHaveTextContent("40,00 €"));
     expect(checkoutProps.current?.sale?.customerId).toBeNull();
+  });
+
+  it.each(["Insert", "doubleClick", "button"] as const)("requires choosing a contact before applying a customer via %s", async activation => {
+    const addresses = [
+      { id: "address-default", address: { address: "CALLE PRINCIPAL", city: "MOGÁN", country: "ES" }, phone: "600111222" },
+      { id: "address-secondary", address: { address: "CALLE SECUNDARIA", city: "MADRID", country: "ES" }, phone: "600333444" },
+    ];
+    const customer = { ...customers[0], addresses };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      const body = path.includes("/customers/sale-options/search") ? [customer] : [];
+      return new Response(JSON.stringify(body), { status: 200 });
+    }));
+    renderSaleScreen();
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Buscar producto" })).toBeEnabled());
+    fireEvent.keyDown(window, { key: "End" });
+    const list = await screen.findByRole("dialog", { name: "Seleccionar cliente" });
+    const customerRow = await within(list).findByRole("button", { name: /C-001.*Cliente Pruebas SL/ });
+    fireEvent.click(customerRow);
+    const activate = () => {
+      if (activation === "Insert") fireEvent.keyDown(screen.getByRole("dialog", { name: "Seleccionar cliente" }), { key: "Insert" });
+      else if (activation === "doubleClick") fireEvent.doubleClick(screen.getByRole("button", { name: /C-001.*Cliente Pruebas SL/ }));
+      else fireEvent.click(screen.getByRole("button", { name: "Seleccionar cliente" }));
+    };
+    activate();
+    const addressDialog = await screen.findByRole("dialog", { name: "Seleccionar dirección" });
+    expect(checkoutProps.current?.sale?.customerId).toBeNull();
+    expect(within(addressDialog).getByText("CALLE PRINCIPAL")).toBeVisible();
+    fireEvent.keyDown(addressDialog, { key: "Escape" });
+    expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeVisible();
+    expect(checkoutProps.current?.sale?.customerId).toBeNull();
+    activate();
+    const reopened = await screen.findByRole("dialog", { name: "Seleccionar dirección" });
+    const secondary = within(reopened).getByText("CALLE SECUNDARIA").closest("tr")!;
+    fireEvent.click(secondary);
+    fireEvent.keyDown(secondary, { key: "Insert" });
+    await waitFor(() => expect(checkoutProps.current?.sale).toEqual(expect.objectContaining({ customerId: customer.id, customerAddressId: "address-secondary" })));
+    expect(screen.queryByRole("dialog", { name: "Seleccionar dirección" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Seleccionar cliente" })).not.toBeInTheDocument();
+    expect(screen.getByText("CALLE SECUNDARIA · MADRID")).toBeVisible();
+    expect(addresses[0].id).toBe("address-default");
+  });
+
+  it("uses the only contact directly and carries its identity into pending documents", async () => {
+    const customer = { ...customers[0], customerAddressId: "only-address", addresses: [{ id: "only-address", address: { address: "CALLE ÚNICA", country: "ES" } }] };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(
+      new URL(url, "http://localhost").pathname.includes("/customers/sale-options/search") ? [customer] : [],
+    ), { status: 200 })));
+    renderSaleScreen();
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Buscar producto" })).toBeEnabled());
+    fireEvent.keyDown(window, { key: "End" });
+    const list = await screen.findByRole("dialog", { name: "Seleccionar cliente" });
+    const customerRow = await within(list).findByRole("button", { name: /C-001.*Cliente Pruebas SL/ });
+    fireEvent.doubleClick(customerRow);
+    await waitFor(() => expect(checkoutProps.current?.sale?.customerAddressId).toBe("only-address"));
+    expect(screen.queryByRole("dialog", { name: "Seleccionar dirección" })).not.toBeInTheDocument();
+    const draft = pendingSaleDraftForCustomer([], customer, "warehouse", new Date(2026, 9, 29), "checkout");
+    expect(draft.customerAddressId).toBe("only-address");
   });
 
   it("loads the sale catalog from the fiscal sale endpoint", async () => {
@@ -5426,6 +5517,7 @@ describe("SaleScreen", () => {
   });
 
   it("copies and locks the historical customer, allows new positive lines, and clears replay after finalization", async () => {
+    const historicalContact = { id: "historical-address", address: { address: "CALLE HISTÓRICA", city: "MOGÁN", country: "ES" }, phone: "600999888" };
     const importedCustomer: SaleCustomer = {
       ...customers[1],
       activeMember: true,
@@ -5448,7 +5540,8 @@ describe("SaleScreen", () => {
         });
       }
       if (path.endsWith("/tickets/previous-current-terminal/import-preview")) {
-        return new Response(JSON.stringify(previousTicketPreview({ customerId: importedCustomer.id })), {
+        return new Response(JSON.stringify(previousTicketPreview({ customerId: importedCustomer.id,
+          customerAddressId: historicalContact.id, customerContactSnapshot: historicalContact })), {
           status: 200, headers: { "Content-Type": "application/json" },
         });
       }
@@ -5484,10 +5577,12 @@ describe("SaleScreen", () => {
 
     await waitFor(() => expect(checkoutProps.current?.sale).toMatchObject({
       customerId: importedCustomer.id,
+      customerAddressId: historicalContact.id,
       lines: [],
       previousTicketImport: { ticketId: "previous-ticket" },
     }));
     const customerSummary = screen.getByRole("button", { name: /Cliente: Maria Lopez/ });
+    expect(within(customerSummary).getByText("CALLE HISTÓRICA · MOGÁN")).toBeInTheDocument();
     expect(customerSummary).toBeDisabled();
     await waitFor(() => expect(within(customerSummary).getByText(/Disponible:\s*12,50/)).toBeInTheDocument());
     expect(within(customerSummary).getByText(/34,25/)).toBeInTheDocument();
@@ -6023,6 +6118,8 @@ describe("SaleScreen", () => {
     fireEvent.click(within(customerKeyboard).getByRole("button", { name: "A" }));
     expect(customerName).toHaveValue("A");
     fireEvent.click(within(createDialog).getByRole("button", { name: "Cerrar" }));
+    const discardCustomer = await screen.findByRole("alertdialog", { name: "Cerrar" });
+    fireEvent.click(within(discardCustomer).getByRole("button", { name: "Confirmar" }));
     const restoredCustomers = await screen.findByRole("dialog", { name: "Seleccionar cliente" });
     fireEvent.click(within(restoredCustomers.querySelector("header")!).getByRole("button", { name: "Cerrar" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
