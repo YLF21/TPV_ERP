@@ -10,6 +10,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -37,6 +38,9 @@ public class UserSession {
     @Column(name = "creada_en", nullable = false)
     private Instant creadaEn;
 
+    @Column(name = "ultima_actividad_en", nullable = false)
+    private Instant ultimaActividadEn;
+
     @Column(name = "revocada_en")
     private Instant revocadaEn;
 
@@ -60,6 +64,7 @@ public class UserSession {
         this.terminalBindingId = terminal == null ? null : terminal.getCurrentBindingId();
         this.tokenHash = required(tokenHash, "tokenHash");
         this.creadaEn = Objects.requireNonNull(creadaEn, "creadaEn");
+        this.ultimaActividadEn = creadaEn;
     }
 
     public void revocar(UserAccount revocadaPor, String motivo, Instant cuando) {
@@ -89,6 +94,25 @@ public class UserSession {
 
     public boolean isActiva() {
         return revocadaEn == null;
+    }
+
+    public Instant getCreadaEn() {
+        return creadaEn;
+    }
+
+    public boolean isExpired(Instant now, Duration maximumLifetime) {
+        Objects.requireNonNull(now, "now");
+        Objects.requireNonNull(maximumLifetime, "maximumLifetime");
+        return !now.isBefore(ultimaActividadEn.plus(maximumLifetime));
+    }
+
+    public boolean recordActivity(Instant now) {
+        var value = Objects.requireNonNull(now, "now");
+        if (!value.isBefore(ultimaActividadEn.plus(Duration.ofMinutes(5)))) {
+            ultimaActividadEn = value;
+            return true;
+        }
+        return false;
     }
 
     public boolean hasCurrentTerminalBinding() {

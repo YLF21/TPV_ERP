@@ -2,6 +2,8 @@ package com.tpverp.backend.security.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
@@ -13,7 +15,11 @@ import com.tpverp.backend.security.domain.UserSessionRepository;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.Terminal;
 import com.tpverp.backend.terminal.TerminalType;
+import com.tpverp.backend.terminal.TerminalRepository;
 import java.time.Instant;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -55,6 +61,28 @@ class BearerSessionFilterTest {
     }
 
     @Test
+    void authenticatedRequestTouchesSessionAndTerminalAtomically() throws Exception {
+        var sessions = org.mockito.Mockito.mock(UserSessionRepository.class);
+        var terminals = org.mockito.Mockito.mock(TerminalRepository.class);
+        var authentication = org.mockito.Mockito.mock(AuthenticationService.class);
+        var now = Instant.parse("2026-08-01T10:00:00Z");
+        var terminal = new Terminal(store(), "PDA", TerminalType.PDA, "hash");
+        var user = new UserAccount(terminal.getTienda(), "USER", "hash", new Role(terminal.getTienda(), "PDA"));
+        var session = new UserSession(user, terminal, "token-hash", now.minusSeconds(60));
+        when(authentication.hash("token")).thenReturn("token-hash");
+        when(sessions.findByTokenHashAndRevocadaEnIsNull("token-hash")).thenReturn(Optional.of(session));
+        var request = new MockHttpServletRequest("GET", "/api/v1/pda-work");
+        request.addHeader("Authorization", "Bearer token");
+
+        invoke(new BearerSessionFilter(sessions, authentication, Clock.fixed(now, ZoneOffset.UTC),
+                Duration.ofHours(12), terminals), request);
+
+        verify(sessions).touchActivity(session.getId(), now, now.minus(Duration.ofMinutes(5)));
+        verify(terminals).touchLastSeen(terminal.getId(), now, now.minus(Duration.ofMinutes(5)));
+        verify(sessions, never()).save(session);
+    }
+
+    @Test
     void installationSessionDoesNotInventOperationalStoreContext() throws Exception {
         var sessions = org.mockito.Mockito.mock(UserSessionRepository.class);
         var authentication = org.mockito.Mockito.mock(AuthenticationService.class);
@@ -73,6 +101,7 @@ class BearerSessionFilterTest {
         assertThat(authenticated).isNotNull();
         assertThat(authenticated.getDetails()).isEqualTo(new OperationalSessionContext(
                 session.getId(), null, null));
+        verify(sessions, never()).save(session);
     }
 
     @Test
@@ -93,6 +122,24 @@ class BearerSessionFilterTest {
         request.addHeader("Authorization", "Bearer token");
 
         invoke(new BearerSessionFilter(sessions, authentication), request);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    void rejectsExpiredSession() throws Exception {
+        var sessions = org.mockito.Mockito.mock(UserSessionRepository.class);
+        var authentication = org.mockito.Mockito.mock(AuthenticationService.class);
+        var terminal = new Terminal(store(), "PDA", TerminalType.PDA, "hash");
+        var user = new UserAccount(terminal.getTienda(), "USER", "hash", new Role(terminal.getTienda(), "PDA"));
+        var session = new UserSession(user, terminal, "token-hash", Instant.parse("2026-08-01T00:00:00Z"));
+        when(authentication.hash("token")).thenReturn("token-hash");
+        when(sessions.findByTokenHashAndRevocadaEnIsNull("token-hash")).thenReturn(Optional.of(session));
+        var request = new MockHttpServletRequest("GET", "/api/v1/pda-work");
+        request.addHeader("Authorization", "Bearer token");
+
+        invoke(new BearerSessionFilter(sessions, authentication,
+                Clock.fixed(Instant.parse("2026-08-01T12:00:00Z"), ZoneOffset.UTC), Duration.ofHours(12)), request);
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }

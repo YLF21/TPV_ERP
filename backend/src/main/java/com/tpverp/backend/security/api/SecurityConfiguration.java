@@ -4,11 +4,14 @@ import com.tpverp.backend.installation.InstallationStatusService;
 import com.tpverp.backend.catalog.ProductEditAuthorizationService;
 import com.tpverp.backend.security.application.AuthenticationService;
 import com.tpverp.backend.security.domain.UserSessionRepository;
+import com.tpverp.backend.terminal.TerminalRepository;
 import com.tpverp.backend.shared.access.OperationalAccessFilter;
 import com.tpverp.backend.shared.access.OperationalAccessPolicy;
 import jakarta.servlet.DispatcherType;
 import java.util.ArrayList;
 import java.util.List;
+import java.time.Clock;
+import java.time.Duration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -28,12 +31,16 @@ class SecurityConfiguration {
 	SecurityFilterChain securityFilterChain(
 			HttpSecurity http,
 			UserSessionRepository sesionRepository,
+			TerminalRepository terminalRepository,
 			AuthenticationService authenticationService,
 			ProductEditAuthorizationService productEditAuthorizations,
 			InstallationStatusService installationStatusService,
+			Clock clock,
 			Environment environment) throws Exception {
 
-		var bearerFilter = new BearerSessionFilter(sesionRepository, authenticationService);
+		var bearerFilter = new BearerSessionFilter(sesionRepository, authenticationService, clock,
+				Duration.ofHours(12), terminalRepository);
+		var publicPdaRateLimitFilter = new PublicPdaRateLimitFilter(clock);
 		var temporaryPasswordFilter = new TemporaryPasswordFilter();
 		var productEditAuthorizationFilter = new ProductEditAuthorizationFilter(productEditAuthorizations);
 		var operationalFilter = new OperationalAccessFilter(
@@ -54,6 +61,7 @@ class SecurityConfiguration {
 						.requestMatchers(publicPaths.toArray(String[]::new)).permitAll()
 						.anyRequest().authenticated())
 				.addFilterBefore(bearerFilter, UsernamePasswordAuthenticationFilter.class)
+				.addFilterBefore(publicPdaRateLimitFilter, BearerSessionFilter.class)
 				.addFilterAfter(productEditAuthorizationFilter, BearerSessionFilter.class)
 				.addFilterAfter(temporaryPasswordFilter, ProductEditAuthorizationFilter.class)
 				.addFilterAfter(operationalFilter, TemporaryPasswordFilter.class)

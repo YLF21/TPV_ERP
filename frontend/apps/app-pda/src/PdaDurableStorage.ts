@@ -1,7 +1,7 @@
 const DATABASE_NAME = "tpverp-pda";
 const DATABASE_VERSION = 1;
 const STORE_NAME = "device-data";
-const STORAGE_ERROR_EVENT = "pda-durable-storage-error";
+export const PDA_STORAGE_ERROR_EVENT = "pda-durable-storage-error";
 
 export type PdaDurableStorage = {
   read<T>(key: string): Promise<T | undefined>;
@@ -10,9 +10,11 @@ export type PdaDurableStorage = {
   clear(): Promise<void>;
 };
 
-function emitStorageError(operation: string, cause: unknown) {
+export function reportPdaStorageError(operation: string, cause: unknown) {
   if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent(STORAGE_ERROR_EVENT, { detail: { operation, cause } }));
+  const quotaExceeded = cause instanceof DOMException
+    && (cause.name === "QuotaExceededError" || cause.name === "NS_ERROR_DOM_QUOTA_REACHED");
+  window.dispatchEvent(new CustomEvent(PDA_STORAGE_ERROR_EVENT, { detail: { operation, cause, quotaExceeded } }));
 }
 
 function requestResult<T>(request: IDBRequest<T>) {
@@ -115,24 +117,24 @@ export async function readPdaDurableValue<T>(key: string): Promise<T | undefined
     await pendingWrite;
     return await storage.read<T>(key);
   } catch (cause) {
-    emitStorageError("read", cause);
+    reportPdaStorageError("read", cause);
     return undefined;
   }
 }
 
 export function queuePdaDurableWrite<T>(key: string, value: T) {
-  pendingWrite = pendingWrite
+  const operation = pendingWrite
     .catch(() => undefined)
-    .then(() => storage.write(key, value))
-    .catch((cause) => emitStorageError("write", cause));
-  return pendingWrite;
+    .then(() => storage.write(key, value));
+  pendingWrite = operation.catch((cause) => reportPdaStorageError("write", cause));
+  return operation.then(() => true).catch(() => false);
 }
 
 export function queuePdaDurableRemove(key: string) {
   pendingWrite = pendingWrite
     .catch(() => undefined)
     .then(() => storage.remove(key))
-    .catch((cause) => emitStorageError("remove", cause));
+    .catch((cause) => reportPdaStorageError("remove", cause));
   return pendingWrite;
 }
 
@@ -140,7 +142,7 @@ export function clearPdaDurableStorage() {
   pendingWrite = pendingWrite
     .catch(() => undefined)
     .then(() => storage.clear())
-    .catch((cause) => emitStorageError("clear", cause));
+    .catch((cause) => reportPdaStorageError("clear", cause));
   return pendingWrite;
 }
 

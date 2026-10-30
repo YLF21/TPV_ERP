@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defaultHardwareConfig } from "@tpverp/app-common";
+import { defaultHardwareConfig } from "../../../packages/app-common/src/hardware/hardware";
 import { PdaProductLookup } from "./PdaProductLookup";
 
 const apiRequestMock = vi.hoisted(() => vi.fn());
@@ -10,9 +10,13 @@ const hardwareMock = vi.hoisted(() => ({
   printProductLabel: vi.fn()
 }));
 
-vi.mock("@tpverp/app-common", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@tpverp/app-common")>()),
-  apiRequest: apiRequestMock,
+vi.mock("../../../packages/app-common/src/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../packages/app-common/src/api/client")>()),
+  apiRequest: apiRequestMock
+}));
+
+vi.mock("../../../packages/app-common/src/hardware/hardware", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../packages/app-common/src/hardware/hardware")>()),
   getHardwareBridge: () => hardwareMock
 }));
 

@@ -22,8 +22,9 @@ public class PdaWorkEvidence {
     public PdaWorkEvidence(UUID workId,String name,String contentType,byte[] content,String storageReference,UUID createdBy,Instant createdAt){
         this.id=UUID.randomUUID();this.workId=Objects.requireNonNull(workId);this.name=required(name);this.contentType=required(contentType);
         this.content=content==null?null:content.clone();this.storageReference=optional(storageReference);
-        if(this.content==null&&this.storageReference==null)throw new IllegalArgumentException("La evidencia necesita contenido o referencia");
-        this.size=this.content==null?0:this.content.length;if(size>10_485_760)throw new IllegalArgumentException("La evidencia supera 10 MB");
+        if(this.storageReference!=null)throw new IllegalArgumentException("No se admiten referencias externas de evidencia");
+        if(this.content==null||this.content.length==0)throw new IllegalArgumentException("La evidencia necesita contenido");
+        this.size=this.content.length;if(size>2_097_152)throw new IllegalArgumentException("La evidencia supera 2 MB");
         this.createdBy=Objects.requireNonNull(createdBy);this.createdAt=Objects.requireNonNull(createdAt);
     }
     private static String optional(String v){return v==null||v.isBlank()?null:v.trim();}
