@@ -1,0 +1,187 @@
+/* Shared desktop editor: keep the controls separate from the scrolling lines. */
+@layer erp-desktop-window-corners {
+  .erp-classic-tables .warehouse-document-menu {
+    width: 360px !important;
+    max-width: calc(100vw - 24px) !important;
+    padding: 4px !important;
+    gap: 0 !important;
+    border-radius: var(--erp-window-radius) !important;
+  }
+
+  .erp-classic-tables .warehouse-document-menu button {
+    min-height: 34px !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 106px;
+    align-items: center;
+    gap: 10px !important;
+    padding: 0 0 0 10px !important;
+    border: 0 !important;
+    border-radius: 5px !important;
+    font-size: 12px !important;
+    line-height: 1.2 !important;
+  }
+
+  .erp-classic-tables .warehouse-document-menu button > kbd {
+    font-size: 10px !important;
+    font-weight: 700 !important;
+  }
+
+  .erp-classic-tables .warehouse-document-submenu-panel button {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 5px 10px !important;
+  }
+
+  .erp-classic-tables .warehouse-document-sidebar .warehouse-document-field > span:first-child {
+    background: transparent !important;
+  }
+
+  .erp-classic-tables .warehouse-document-dialog :is(
+    .warehouse-document-total, .warehouse-document-discount,
+    .warehouse-document-meta > label, .warehouse-document-state,
+    .warehouse-document-table-scroll, .erp-select__popover
+  ) {
+    border-radius: var(--erp-window-radius) !important;
+  }
+
+  .erp-classic-tables .warehouse-document-table thead tr:first-child th:first-child {
+    border-top-left-radius: 5px !important;
+  }
+
+  .erp-classic-tables .warehouse-document-table thead tr:first-child th:last-child {
+    border-top-right-radius: 5px !important;
+  }
+
+  /* Only the trigger draws the frame; the wrapper also receives legacy input styles. */
+  .erp-classic-tables .warehouse-document-dialog .erp-select {
+    border: 0 !important;
+    border-radius: var(--erp-window-radius) !important;
+    background: transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  .erp-classic-tables .warehouse-document-dialog .erp-select > .erp-select__trigger {
+    overflow: hidden;
+    border-radius: var(--erp-window-radius) !important;
+  }
+
+  .erp-classic-tables .warehouse-document-dialog .erp-select > .erp-select__trigger:focus-visible {
+    outline: 2px solid var(--tpv-business-blue) !important;
+    outline-offset: 1px;
+  }
+
+  .erp-classic-tables .warehouse-document-dialog .erp-select__arrow {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  .erp-classic-tables .warehouse-document-dialog .erp-select__trigger:is(
+    [aria-expanded="true"], :hover, :focus-visible
+  ):not(:disabled) .erp-select__arrow {
+    background: #0065fe !important;
+  }
+
+  .erp-classic-tables :is(
+    .warehouse-document-product-search > label,
+    .warehouse-document-meta > label > span,
+    .warehouse-document-state > span
+  ) {
+    font-family: inherit !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    line-height: 16px !important;
+    color: var(--tpv-business-muted) !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+  }
+
+  .erp-classic-tables .warehouse-document-context-bar .warehouse-document-product-search {
+    padding: 7px 0 !important;
+    gap: 4px !important;
+    align-content: start !important;
+  }
+
+  .erp-classic-tables .warehouse-document-product-search > div {
+    height: auto !important;
+    gap: 6px !important;
+    border: 0 !important;
+    background: transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  .erp-classic-tables :is(.warehouse-document-product-search input, .warehouse-document-meta input) {
+    box-sizing: border-box;
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 8px !important;
+    border: 1px solid var(--tpv-business-border) !important;
+    border-radius: var(--erp-window-radius, 6px) !important;
+    background: #fff !important;
+    color: var(--tpv-business-ink) !important;
+    font: inherit !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  .erp-classic-tables :is(.warehouse-document-product-search input, .warehouse-document-meta input):focus {
+    border-color: var(--tpv-v3-blue) !important;
+  }
+
+  .erp-classic-tables :is(
+    .warehouse-document-product-search button,
+    .warehouse-document-state > strong,
+    .warehouse-document-price-source .erp-select__trigger
+  ) {
+    box-sizing: border-box;
+    height: 34px !important;
+    min-height: 34px !important;
+  }
+
+  .erp-classic-tables .warehouse-document-price-source .erp-select__trigger {
+    grid-template-columns: minmax(0, 1fr) 34px !important;
+  }
+
+  .erp-classic-tables .warehouse-document-price-source .erp-select__value {
+    color: inherit !important;
+    font: inherit !important;
+    text-transform: none !important;
+  }
+
+}
+
+/* Use the predeclared Gestión accent layer so keyboard selection also overrides
+   its generic pale hover colour. The selectors remain local to this editor. */
+@layer gestion-accents {
+  .erp-classic-tables .warehouse-document-file-menu button:is(:hover, :focus-visible):not(:disabled) {
+    background: #0065fe !important;
+    border-color: #0065fe !important;
+    color: #fff !important;
+  }
+
+  .erp-classic-tables .warehouse-document-dialog .erp-select__option:is(
+    [aria-selected="true"], [data-active="true"], :hover, :focus-visible
+  ):not(:disabled) {
+    background: #0065fe !important;
+    color: #fff !important;
+  }
+
+  /* This is a table selection, with the same readable debt colours as Sales. */
+  .warehouse-document-overlay .sale-customer-table-row:is(.selected, :focus-visible) {
+    background: #dcecf9 !important;
+    color: #10253e !important;
+  }
+
+  .warehouse-document-overlay .sale-customer-selection-dialog .sale-customer-selection-footer .sale-action-buttons button.erp-dialog-action-confirm {
+    background: #07254f !important;
+    border-color: #07254f !important;
+    color: #fff !important;
+    font-size: 14px !important;
+    font-weight: 850 !important;
+    height: 34px !important;
+    padding: 0 14px !important;
+  }
+}

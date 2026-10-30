@@ -110,9 +110,16 @@
       color: inherit !important;
     }
 
-    /* The sidebar itself is blue, so retain a visible active boundary. */
+    /* Sidebar selection uses the approved pale-blue fill on navy. */
     html[data-app="gestion"] .gestion-nav :where(button[aria-current="page"]) {
-      box-shadow: inset 0 0 0 2px #ffffffb3 !important;
+      border-color: #dfedfc !important;
+      background: #dfedfc !important;
+      color: #0b2b50 !important;
+      box-shadow: none !important;
+    }
+
+    html[data-app="gestion"] .gestion-nav button[aria-current="page"]:focus-visible {
+      outline-color: #0b2b50 !important;
     }
 
     html[data-app="gestion"] :where(input[type="checkbox"], input[type="radio"]) {

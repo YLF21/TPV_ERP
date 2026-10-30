@@ -31,7 +31,7 @@ const technicalVisibleLiterals = new Set([
   "8 h",
   "24 h",
   "48 h",
-  "Ctrl K"
+  "Ctrl + F"
 ]);
 const translationKeySetters = new Set(["setErrorKey", "setExportErrorKey"]);
 

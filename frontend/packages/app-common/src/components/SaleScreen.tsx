@@ -110,7 +110,8 @@ import { SaleProductSalesHistoryDialog } from "./SaleProductSalesHistoryDialog";
 import { SaleCustomerCreateDialog, canCreateSaleCustomer } from "./SaleCustomerCreateDialog";
 import { SaleCustomerAddressDialog } from "./SaleCustomerAddressDialog";
 import type { CustomerContactAddress } from "./customerContactAddresses";
-import { SaleCustomerList, type SaleCustomerSortColumn } from "./SaleCustomerList";
+import type { SaleCustomerSortColumn } from "./SaleCustomerList";
+import { SaleCustomerSelectionContent } from "./SaleCustomerSelectionContent";
 import { SaleCustomerReceivablesDialog } from "./SaleCustomerReceivablesDialog";
 import { SaleCashDrawerAuthorizationDialog } from "./SaleCashDrawerAuthorizationDialog";
 import {
@@ -7005,22 +7006,15 @@ function SaleScreenContent({
           className="sale-customer-selection-dialog"
           wide
         >
-          <div className="sale-customer-action-bar" aria-label={t("sale.customer.actions")}>
-            {saleCustomerCreationAllowed && <button type="button" onClick={() => {
+          <SaleCustomerSelectionContent
+            selectedCustomer={selectedCustomerResult()}
+            onCreate={saleCustomerCreationAllowed ? () => {
               setCustomerCreateOpen(true);
               setCustomerEditId(null);
-            }}><span>{t("sale.customer.create")}</span><kbd>F5</kbd></button>}
-            {saleCustomerEditAllowed && <button type="button" disabled={!selectedCustomerResult()} onClick={openSelectedCustomerEditor}>
-              <span>{t("sale.customer.edit")}</span><kbd>Ctrl+F7</kbd>
-            </button>}
-            {saleCustomerReceivablesAllowed && <button
-              type="button"
-              className="debt-action"
-              disabled={!selectedCustomerResult() || Number(selectedCustomerResult()?.outstandingDebt ?? 0) <= 0}
-              onClick={openSelectedCustomerReceivables}
-            ><span>{t("sale.customer.collectDebt")}</span><kbd>Enter</kbd></button>}
-          </div>
-          <SaleCustomerList
+            } : undefined}
+            onEdit={saleCustomerEditAllowed ? openSelectedCustomerEditor : undefined}
+            onCollectDebt={saleCustomerReceivablesAllowed ? openSelectedCustomerReceivables : undefined}
+            onClose={closeCustomerDialog}
             locale={locale}
             inputRef={customerSearchInputRef}
             customers={customerResults}
@@ -7035,19 +7029,10 @@ function SaleScreenContent({
             onSort={(column) => setCustomerSort((current) => nextTableSort(current, column))}
             includeNoCustomer={!pendingCustomerContinuation}
             noCustomerId={noCustomerSelectionId}
-          />
-          {interfaceMode === "TOUCH" && <TouchAlphaKeyboard locale={locale} value={customerQuery}
-            onChange={setCustomerQuery} inputRef={customerSearchInputRef} />}
-          <footer className="sale-customer-selection-footer erp-dialog-actions-row">
-            <DialogDismissButton className="erp-dialog-action-cancel erp-dialog-dismiss" type="button" onClick={closeCustomerDialog}>{t("sale.dialog.close")}</DialogDismissButton>
-            <p className="sale-dialog-hint erp-dialog-actions-group"><kbd>Insert</kbd> {t("sale.customer.insertHint")}</p>
-            <div className="sale-action-buttons erp-dialog-actions-group">
-              <button className="erp-dialog-action-confirm" type="button" disabled={selectedCustomerResult() === undefined} onClick={() => {
-                const customer = selectedCustomerResult();
-                if (customer !== undefined) chooseSaleCustomer(customer);
-              }}>{t("sale.customer.select")}</button>
-            </div>
-          </footer>
+          >
+            {interfaceMode === "TOUCH" && <TouchAlphaKeyboard locale={locale} value={customerQuery}
+              onChange={setCustomerQuery} inputRef={customerSearchInputRef} />}
+          </SaleCustomerSelectionContent>
         </SaleActionDialog>
       )}
 

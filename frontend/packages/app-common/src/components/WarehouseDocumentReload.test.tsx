@@ -63,8 +63,8 @@ describe("saved warehouse document product resolution", () => {
       method: "PUT", body: expect.objectContaining({ expectedExcelImportSnapshotToken: "WXP1.D.saved",
         lines: [expect.objectContaining({ productId: created.id, quantity: 6, unitPrice: 2.15, discount: 5, productName: "Nombre del documento" })] })
     })));
-    await waitFor(() => expect(view.getByRole("button", { name: "Confirmar" })).not.toBeDisabled());
-    fireEvent.click(view.getByRole("button", { name: "Confirmar" }));
+    await waitFor(() => expect(view.getByRole("button", { name: "Confirmar F10" })).not.toBeDisabled());
+    fireEvent.click(view.getByRole("button", { name: "Confirmar F10" }));
     await waitFor(() => expect(confirmed).toHaveBeenCalledOnce());
     const paths = vi.mocked(apiRequest).mock.calls.map(([path]) => path);
     expect(paths).not.toContain("/products/warehouse-options");
@@ -97,7 +97,7 @@ describe("saved warehouse document product resolution", () => {
     const view = render(<WarehouseDocumentDialog {...base} document={saved} />);
     await waitFor(() => expect(view.container.querySelector(".warehouse-document-status")?.textContent).not.toBe(""));
     expect(view.getByRole("button", { name: "Guardar F9" })).toBeDisabled();
-    expect(view.getByRole("button", { name: "Confirmar" })).toBeDisabled();
+    expect(view.getByRole("button", { name: "Confirmar F10" })).toBeDisabled();
     expect(view.getByText("NEW-001")).toBeInTheDocument();
     expect(vi.mocked(apiRequest).mock.calls.filter(([path]) => path === "/products/warehouse-options")).toHaveLength(1);
   });

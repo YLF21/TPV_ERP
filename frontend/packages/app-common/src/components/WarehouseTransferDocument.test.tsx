@@ -46,11 +46,11 @@ describe("Warehouse transfer document shared workspace", () => {
     expect(screen.getByRole("button", { name: "Almacén de destino" })).toHaveTextContent("Destino");
     expect(screen.queryByText("Proveedor")).not.toBeInTheDocument();
     const menu = view.menu();
-    for (const name of ["Almacén de destino", "Guardar", "Confirmar", "Vista previa Ctrl+P", "Imprimir",
-      "Eliminar todos los artículos", "Eliminar todos los descuentos", "Importar Excel", "Exportar Excel", "Usar precio", "Salir"]) {
+    for (const name of ["Almacén de destino FIN", "Guardar F9", "Confirmar F10", "Vista previa Ctrl+P", "Imprimir F5",
+      "Eliminar todos los artículos Ctrl+Shift+A", "Eliminar todos los descuentos Ctrl+Shift+D", "Importar Excel Ctrl+Shift+I", "Exportar Excel F6", "Usar precio Alt+P", "Salir Esc"]) {
       expect(menu.getByRole("button", { name })).toBeInTheDocument();
     }
-    fireEvent.click(menu.getByRole("button", { name: "Usar precio" }));
+    fireEvent.click(menu.getByRole("button", { name: "Usar precio Alt+P" }));
     for (const name of ["Precio de compra", "Precio de venta", "Precio de miembro", "Precio mayorista", "Precio de oferta"]) {
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
     }
@@ -77,10 +77,10 @@ describe("Warehouse transfer document shared workspace", () => {
 
   it("clears line and document discounts, then clears all items without writing", () => {
     const view = setup();
-    fireEvent.click(view.menu().getByRole("button", { name: "Eliminar todos los descuentos" }));
+    fireEvent.click(view.menu().getByRole("button", { name: "Eliminar todos los descuentos Ctrl+Shift+D" }));
     expect(view.container.querySelector("tbody tr")!.textContent).toContain("20,00");
     expect(screen.getByLabelText("Descuento total del documento %")).toHaveValue(0);
-    fireEvent.click(view.menu().getByRole("button", { name: "Eliminar todos los artículos" }));
+    fireEvent.click(view.menu().getByRole("button", { name: "Eliminar todos los artículos Ctrl+Shift+A" }));
     expect(screen.queryByText("Cafe")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Guardar F9" })).toBeDisabled();
     expect(view.persistence.save).not.toHaveBeenCalled();
@@ -92,7 +92,7 @@ describe("Warehouse transfer document shared workspace", () => {
     expect(openWarehouseDocumentPreview).toHaveBeenCalledOnce();
     expect(view.persistence.save).not.toHaveBeenCalled();
     expect(view.persistence.confirm).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar F10" }));
     await waitFor(() => expect(view.persistence.confirm).toHaveBeenCalledWith(view.saved));
     expect(view.persistence.save).toHaveBeenCalledOnce();
     expect(view.onConfirmed).toHaveBeenCalledWith(expect.objectContaining({ status: "CONFIRMADA" }));
@@ -103,11 +103,11 @@ describe("Warehouse transfer document shared workspace", () => {
     vi.stubGlobal("URL", class extends URL { static createObjectURL = vi.fn(() => "blob:export"); static revokeObjectURL = vi.fn(); });
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     const view = setup();
-    fireEvent.click(view.menu().getByRole("button", { name: "Importar Excel" }));
+    fireEvent.click(view.menu().getByRole("button", { name: "Importar Excel Ctrl+Shift+I" }));
     expect(vi.mocked(SharedExcelImportDialog).mock.calls.at(-1)?.[0]).toMatchObject({ open: true,
       context: "WAREHOUSE_TRANSFER", requireQuantity: true, showDocumentPriceSource: true,
       warehouseId: "origin", documentDate: "2026-09-23", supplier: null });
-    fireEvent.click(view.menu().getByRole("button", { name: "Exportar Excel" }));
+    fireEvent.click(view.menu().getByRole("button", { name: "Exportar Excel F6" }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/warehouse-transfers/export.xlsx", expect.objectContaining({
       method: "POST", responseType: "blob", body: expect.objectContaining({ sourceWarehouseId: "origin", targetWarehouseId: "target",
         number: "TR-2026-000001", locale: "es", lines: [expect.objectContaining({ quantity: 2, unitPrice: 10, discount: 10 })] })

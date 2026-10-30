@@ -60,7 +60,7 @@ type ErpSelectProps = {
   id?: string;
   className?: string;
   placeholder?: string;
-  maxPopoverWidth?: number;
+  maxPopoverWidth?: number | "trigger";
   title?: string;
   /** Optional editable text; selection still uses the same accessible option menu. */
   editable?: { text: string; onChange: (text: string) => void; label: string; maxLength?: number };
@@ -170,11 +170,12 @@ export function ErpSelect({
       const trigger = editable ? rootRef.current : triggerRef.current;
       const popover = popoverRef.current;
       if (!trigger || !popover) return;
+      const triggerBounds = trigger.getBoundingClientRect();
       const layout = erpSelectPopoverLayout(
-        trigger.getBoundingClientRect(),
+        triggerBounds,
         popover.getBoundingClientRect(),
         { width: window.innerWidth, height: window.innerHeight },
-        maxPopoverWidth,
+        maxPopoverWidth === "trigger" ? triggerBounds.width : maxPopoverWidth,
       );
       popover.style.top = `${layout.top}px`;
       popover.style.left = `${layout.left}px`;

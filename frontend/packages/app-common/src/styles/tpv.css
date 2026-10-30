@@ -24104,12 +24104,13 @@ textarea:focus,
 .warehouse-document-context-bar {
   display: grid;
   flex: 0 0 auto;
-  grid-template-columns: minmax(0, 1fr) minmax(480px, 510px);
+  grid-template-columns: minmax(0, 1fr) minmax(560px, 600px);
   align-items: start;
   gap: 10px;
   padding: 8px 10px;
   border: 1px solid var(--tpv-business-border-soft);
-  border-bottom: 0;
+  margin-bottom: 10px;
+  border-radius: 6px;
   background: var(--tpv-business-panel-muted);
 }
 
@@ -24164,7 +24165,7 @@ textarea:focus,
 
 .warehouse-document-context-bar .warehouse-document-meta {
   display: grid;
-  grid-template-columns: 1.05fr 1fr 1fr;
+  grid-template-columns: 1fr .85fr 1.35fr;
   align-items: stretch;
   gap: 8px;
   min-width: 0;
@@ -24626,7 +24627,7 @@ textarea:focus,
   cursor: pointer;
 }
 
-.warehouse-document-partner-panel.warehouse-document-supplier-panel {
+.warehouse-document-partner-panel.warehouse-document-card-panel {
   gap: 0;
   padding: 0;
   border: 0;
