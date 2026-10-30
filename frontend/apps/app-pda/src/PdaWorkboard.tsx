@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { ApiConnectionError, ApiError, apiRequest, type LocaleCode } from "@tpverp/app-common";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { ApiConnectionError, ApiError, apiRequest } from "../../../packages/app-common/src/api/client";
+import type { LocaleCode } from "../../../packages/app-common/src/types";
 import {
-  hydratePdaWorkDraft, hydratePdaWorkQueue, isAssignedToCurrentUser, isQueueConflict,
+  classifyQueueError, hydratePdaWorkDraft, hydratePdaWorkQueue, isAssignedToCurrentUser, isQueueConflict,
   nextQueueWakeup, queueRetryDelay, readPdaWorkDraft, readPdaWorkQueue, rememberLastWork,
-  sendQueuedWork, shouldRetryQueueError, writePdaWorkDraft, writePdaWorkQueue, type WorkQueueEntry
+  persistPdaWorkQueue, sendQueuedWork, shouldRetryQueueError, writePdaWorkDraft, writePdaWorkQueue, type WorkQueueEntry
 } from "./PdaWorkQueue";
+import { flushPdaObservations, observePdaEvent } from "./PdaObservability";
 
 export { readPdaWorkQueue, writePdaWorkQueue } from "./PdaWorkQueue";
 
@@ -27,14 +29,21 @@ const LAST_SYNC_KEY="tpverp.pda.lastSyncAt.v1";
 function queueEntry(action:"finish"|"cancel", item:WorkItem):WorkQueueEntry { return {id:crypto.randomUUID(),createdAt:new Date().toISOString(),action,workId:item.id,attempts:0,state:"pending",version:item.version}; }
 function queueErrorText(error:unknown){return error instanceof ApiError||error instanceof ApiConnectionError?error.message:"sync_error"}
 function isOpenWork(item:WorkItem){return item.status==="OPEN"||item.status==="PENDING"||item.status==="IN_PROGRESS"}
+function observeQueueFailure(token:string,entry:WorkQueueEntry,cause:unknown){
+ const kind=classifyQueueError(cause);const traceId=cause instanceof ApiError?cause.traceId:undefined;
+ const type=kind==="conflict"?"SYNC_CONFLICT":kind==="offline"||kind==="server"?"SYNC_FAILURE":"TASK_BLOCKED";
+ const code=kind==="conflict"?"PDA_QUEUE_SYNC_CONFLICT":kind==="offline"?"PDA_QUEUE_SYNC_OFFLINE":kind==="server"?"PDA_QUEUE_SYNC_SERVER":"PDA_QUEUE_TASK_BLOCKED";
+ void observePdaEvent(token,{type,code,workId:entry.workId,traceId});
+}
 
-export function PdaWorkboard({token,locale,warehouses}:{token?:string;locale:LocaleCode;warehouses:WarehouseOption[]}){
+export function PdaWorkboard({token,userId,locale,warehouses}:{token?:string;userId?:string;locale:LocaleCode;warehouses:WarehouseOption[]}){
  const c=copy[locale];
  const [tab,setTab]=useState<"dashboard"|WorkType>("dashboard");
  const [items,setItems]=useState<WorkItem[]>([]); const [form,setForm]=useState<CreateWork>(()=>readPdaWorkDraft<CreateWork>()??emptyForm);
  const [queue,setQueue]=useState<WorkQueueEntry[]>(()=>readPdaWorkQueue()); const [online,setOnline]=useState(navigator.onLine);
  const [persistenceReady,setPersistenceReady]=useState(false);
  const [busy,setBusy]=useState(false); const [fefo,setFefo]=useState<FefoAllocation[]>([]); const [message,setMessage]=useState(""); const [error,setError]=useState(""); const [syncing,setSyncing]=useState(false);
+ const syncLockRef=useRef(false);
  const [now,setNow]=useState(Date.now()); const [lastSync,setLastSync]=useState(()=>localStorage.getItem(LAST_SYNC_KEY)??"");
  const localeTag=locale==="zh"?"zh-CN":locale==="en"?"en-GB":"es-ES"; const date=useMemo(()=>new Intl.DateTimeFormat(localeTag,{dateStyle:"medium",timeStyle:"short"}),[localeTag]);
  const warehouseName=(id?:string|null)=>warehouses.find(x=>x.id===id)?.name??warehouses.find(x=>x.id===id)?.nombre??id??"—";
@@ -44,26 +53,50 @@ export function PdaWorkboard({token,locale,warehouses}:{token?:string;locale:Loc
  useEffect(()=>{if(!persistenceReady)return;const timer=window.setTimeout(()=>writePdaWorkDraft(form),300);return()=>clearTimeout(timer)},[form,persistenceReady]);
  useEffect(()=>{const failed=()=>setError(c.storageError);window.addEventListener("pda-durable-storage-error",failed);return()=>window.removeEventListener("pda-durable-storage-error",failed)},[c.storageError]);
  useEffect(()=>{const clock=window.setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(clock)},[]);
- function persistQueue(values:WorkQueueEntry[]){setQueue(values);writePdaWorkQueue(values)}
- const syncQueue=useCallback(async(force=false)=>{if(!token||!navigator.onLine||syncing)return;const current=readPdaWorkQueue();const due=current.filter(entry=>entry.state!=="conflict"&&(force||!entry.nextRetryAt||new Date(entry.nextRetryAt).getTime()<=Date.now()));if(!due.length)return;setSyncing(true);setError("");let next=[...current];let changed=false;for(const entry of due){try{const value=await sendQueuedWork<WorkItem>(entry,token);next=next.filter(item=>item.id!==entry.id);changed=true;setItems(values=>entry.action==="create"?[value,...values]:values.map(item=>item.id===value.id?value:item));rememberLastWork(value)}catch(cause){const attempts=entry.attempts+1;const conflict=isQueueConflict(cause)||!shouldRetryQueueError(cause);next=next.map(item=>item.id===entry.id?{...item,attempts,state:conflict?"conflict":"pending",lastError:queueErrorText(cause),nextRetryAt:conflict?null:new Date(Date.now()+queueRetryDelay(attempts)).toISOString()}:item);changed=true;}}if(changed)persistQueue(next);if(next.length===0){const value=new Date().toISOString();localStorage.setItem(LAST_SYNC_KEY,value);setLastSync(value);setMessage(c.synced);await load()}setSyncing(false)},[c.synced,load,syncing,token]);
- useEffect(()=>{const up=()=>{setOnline(true);void syncQueue()},down=()=>setOnline(false);window.addEventListener("online",up);window.addEventListener("offline",down);return()=>{window.removeEventListener("online",up);window.removeEventListener("offline",down)}},[syncQueue]);
+ async function persistQueue(values:WorkQueueEntry[]){const saved=await persistPdaWorkQueue(values);if(saved)setQueue(values);else setError(c.storageError);return saved}
+ const syncQueue=useCallback(async(force=false)=>{
+  if(!token||!navigator.onLine||syncLockRef.current)return;
+  const current=readPdaWorkQueue();
+  const due=current.filter(entry=>(entry.state==="pending"||entry.state==="retrying")&&(force||!entry.nextRetryAt||new Date(entry.nextRetryAt).getTime()<=Date.now()));
+  if(!due.length)return;
+  syncLockRef.current=true;setSyncing(true);setError("");let next=[...current];let changed=false;
+  try{
+   for(const entry of due){
+    const startedAt=performance.now();
+    try{
+     const value=await sendQueuedWork<WorkItem>(entry,token);
+     next=next.filter(item=>item.id!==entry.id);changed=true;
+     setItems(values=>entry.action==="create"?[value,...values.filter(item=>item.id!==value.id)]:values.map(item=>item.id===value.id?value:item));rememberLastWork(value);
+     void observePdaEvent(token,{type:"REQUEST_LATENCY",code:"PDA_QUEUE_SYNC_LATENCY",workId:entry.workId,durationMs:performance.now()-startedAt});
+     void observePdaEvent(token,{type:"RECOVERED",code:"PDA_QUEUE_SYNC_RECOVERED",workId:entry.workId});
+    }catch(cause){
+     const attempts=entry.attempts+1;const failureKind=classifyQueueError(cause);const retryable=shouldRetryQueueError(cause);const state=failureKind==="conflict"?"conflict":retryable?"retrying":"blocked";
+     next=next.map(item=>item.id===entry.id?{...item,attempts,state,failureKind,lastError:queueErrorText(cause),nextRetryAt:retryable?new Date(Date.now()+queueRetryDelay(attempts)).toISOString():null}:item);changed=true;
+     observeQueueFailure(token,entry,cause);
+    }
+   }
+    if(changed){const latest=readPdaWorkQueue();const originalIds=new Set(current.map(entry=>entry.id));const latestIds=new Set(latest.map(entry=>entry.id));next=[...next.filter(entry=>latestIds.has(entry.id)),...latest.filter(entry=>!originalIds.has(entry.id))];await persistQueue(next)}
+   if(next.length===0){const value=new Date().toISOString();localStorage.setItem(LAST_SYNC_KEY,value);setLastSync(value);setMessage(c.synced);await load()}
+  }finally{syncLockRef.current=false;setSyncing(false)}
+ },[c.synced,load,token]);
+  useEffect(()=>{const up=()=>{setOnline(true);void flushPdaObservations(token);void syncQueue()},down=()=>setOnline(false);window.addEventListener("online",up);window.addEventListener("offline",down);return()=>{window.removeEventListener("online",up);window.removeEventListener("offline",down)}},[syncQueue,token]);
  useEffect(()=>{if(!online||!token)return;const delay=nextQueueWakeup(queue);if(delay==null)return;const timer=window.setTimeout(()=>void syncQueue(),Math.min(delay,2_147_000_000));return()=>clearTimeout(timer)},[online,queue,syncQueue,token]);
  function select(next:"dashboard"|WorkType){setTab(next);if(next!=="dashboard")setForm({...emptyForm,type:next})}
- function enqueue(entry:WorkQueueEntry){persistQueue([...readPdaWorkQueue(),entry]);setMessage(c.queuedMessage)}
- async function submit(event:FormEvent){event.preventDefault();if(!token||!form.title.trim())return;setBusy(true);setError("");setMessage("");const payload={...form,title:form.title.trim(),quantity:form.quantity==null?null:Number(form.quantity)};if(!navigator.onLine){enqueue({id:crypto.randomUUID(),createdAt:new Date().toISOString(),action:"create",payload,attempts:0,state:"pending"});setForm({...emptyForm,type:form.type});setBusy(false);return}try{const saved=await apiRequest<WorkItem>("/pda-work",{token,body:payload});setItems(current=>[saved,...current]);rememberLastWork(saved);setForm({...emptyForm,type:form.type});setMessage(c.saved)}catch(cause){if(shouldRetryQueueError(cause)){enqueue({id:crypto.randomUUID(),createdAt:new Date().toISOString(),action:"create",payload,attempts:1,state:"pending",lastError:queueErrorText(cause),nextRetryAt:new Date(Date.now()+queueRetryDelay(1)).toISOString()});setForm({...emptyForm,type:form.type})}else setError(c.error)}finally{setBusy(false)}}
- async function close(item:WorkItem,action:"finish"|"cancel"){if(!token)return;rememberLastWork(item);if(!navigator.onLine){enqueue(queueEntry(action,item));setItems(values=>values.map(value=>value.id===item.id?{...value,status:action==="finish"?"DONE":"CANCELLED"}:value));return}setBusy(true);setError("");try{const value=await apiRequest<WorkItem>(`/pda-work/${encodeURIComponent(item.id)}/${action}`,{method:"POST",token,...(item.version==null?{}:{body:{version:item.version}})});setItems(current=>current.map(entry=>entry.id===item.id?value:entry));rememberLastWork(value)}catch(cause){if(shouldRetryQueueError(cause)||isQueueConflict(cause))enqueue({...queueEntry(action,item),state:isQueueConflict(cause)?"conflict":"pending",attempts:1,lastError:queueErrorText(cause),nextRetryAt:isQueueConflict(cause)?null:new Date(Date.now()+queueRetryDelay(1)).toISOString()});else setError(c.error)}finally{setBusy(false)}}
+ async function enqueue(entry:WorkQueueEntry){const saved=await persistQueue([...readPdaWorkQueue().filter(value=>value.id!==entry.id),entry]);if(saved)setMessage(c.queuedMessage);return saved}
+ async function submit(event:FormEvent){event.preventDefault();if(!token||!form.title.trim())return;setBusy(true);setError("");setMessage("");const clientRequestId=crypto.randomUUID();const payload={...form,title:form.title.trim(),quantity:form.quantity==null?null:Number(form.quantity)};const queued={id:clientRequestId,clientRequestId,createdAt:new Date().toISOString(),action:"create" as const,payload,attempts:0,state:"pending" as const};if(!navigator.onLine){if(await enqueue(queued))setForm({...emptyForm,type:form.type});setBusy(false);return}try{const saved=await apiRequest<WorkItem>("/pda-work",{token,body:{...payload,clientRequestId}});setItems(current=>[saved,...current.filter(item=>item.id!==saved.id)]);rememberLastWork(saved);setForm({...emptyForm,type:form.type});setMessage(c.saved)}catch(cause){if(shouldRetryQueueError(cause)){if(await enqueue({...queued,attempts:1,state:"retrying",failureKind:classifyQueueError(cause),lastError:queueErrorText(cause),nextRetryAt:new Date(Date.now()+queueRetryDelay(1)).toISOString()}))setForm({...emptyForm,type:form.type})}else setError(c.error)}finally{setBusy(false)}}
+ async function close(item:WorkItem,action:"finish"|"cancel"){if(!token)return;rememberLastWork(item);if(!navigator.onLine){if(await enqueue(queueEntry(action,item)))setItems(values=>values.map(value=>value.id===item.id?{...value,status:action==="finish"?"DONE":"CANCELLED"}:value));return}setBusy(true);setError("");try{const value=await apiRequest<WorkItem>(`/pda-work/${encodeURIComponent(item.id)}/${action}`,{method:"POST",token,...(item.version==null?{}:{body:{version:item.version}})});setItems(current=>current.map(entry=>entry.id===item.id?value:entry));rememberLastWork(value)}catch(cause){const failureKind=classifyQueueError(cause);if(shouldRetryQueueError(cause)||isQueueConflict(cause))await enqueue({...queueEntry(action,item),state:isQueueConflict(cause)?"conflict":"retrying",failureKind,attempts:1,lastError:queueErrorText(cause),nextRetryAt:isQueueConflict(cause)?null:new Date(Date.now()+queueRetryDelay(1)).toISOString()});else setError(c.error)}finally{setBusy(false)}}
  async function receiveLot(){if(!token||!form.warehouseId||!form.productCode?.trim()||!form.lotNumber?.trim()||form.quantity==null)return;setBusy(true);setError("");try{await apiRequest("/pda-inventory/lots",{method:"POST",token,body:{warehouseId:form.warehouseId,productId:form.productId||null,productCode:form.productCode.trim(),lotNumber:form.lotNumber.trim(),expiryDate:form.expiryDate||null,supplierId:null,supplierReference:form.reference||null,quantity:Number(form.quantity)}});setMessage(c.saved);await planFefo()}catch{setError(c.error)}finally{setBusy(false)}}
  async function planFefo(){if(!token||!form.warehouseId||!form.productCode?.trim()||!form.quantity||Number(form.quantity)<=0)return;setBusy(true);setError("");try{setFefo(await apiRequest<FefoAllocation[]>(`/pda-inventory/lots/fefo?warehouseId=${encodeURIComponent(form.warehouseId)}&productCode=${encodeURIComponent(form.productCode.trim())}&quantity=${encodeURIComponent(String(form.quantity))}`,{token}))}catch{setError(c.error)}finally{setBusy(false)}}
  async function photo(file?:File){if(!file)return;if(file.size>700_000){setError(c.photoTooLarge);return}const data=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(reader.error);reader.readAsDataURL(file)});setForm(current=>({...current,evidenceName:file.name,evidenceType:file.type,evidenceData:data}))}
  async function startWork(item:WorkItem){if(!token||!navigator.onLine)return;setBusy(true);setError("");try{const value=await apiRequest<WorkItem>(`/pda-work/${encodeURIComponent(item.id)}/start`,{method:"POST",token,...(item.version==null?{}:{body:{version:item.version}})});setItems(current=>current.map(entry=>entry.id===item.id?value:entry));rememberLastWork(value)}catch{setError(c.error)}finally{setBusy(false)}}
  async function validateLocation(item:WorkItem,role:"SOURCE"|"DESTINATION"){if(!token||!navigator.onLine)return;const expected=role==="SOURCE"?item.sourceLocation:item.destinationLocation;const code=window.prompt(role==="SOURCE"?c.validateSource:c.validateDestination,expected??"")?.trim();if(!code)return;setBusy(true);setError("");try{const value=await apiRequest<WorkItem>(`/pda-work/${encodeURIComponent(item.id)}/validate-location`,{method:"POST",token,body:{code,role,version:item.version}});setItems(current=>current.map(entry=>entry.id===item.id?value:entry));rememberLastWork(value)}catch{setError(c.error)}finally{setBusy(false)}}
  async function uploadEvidence(item:WorkItem,file?:File){if(!token||!file)return;if(file.size>700_000){setError(c.photoTooLarge);return}const data=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(reader.error);reader.readAsDataURL(file)});setBusy(true);setError("");try{await apiRequest(`/pda-work/${encodeURIComponent(item.id)}/evidences`,{method:"POST",token,body:{name:file.name,contentType:file.type||"application/octet-stream",data,version:item.version}});await load()}catch{setError(c.error)}finally{setBusy(false)}}
- function retry(id:string){persistQueue(readPdaWorkQueue().map(entry=>entry.id===id?{...entry,state:"pending",nextRetryAt:null,lastError:null}:entry));void syncQueue(true)}
- function discard(id:string){persistQueue(readPdaWorkQueue().filter(entry=>entry.id!==id))}
- const ownItems=items.filter(item=>isAssignedToCurrentUser(item,token)); const visible=tab==="dashboard"?ownItems:ownItems.filter(item=>item.type===tab);
+ async function retry(id:string){const selected=readPdaWorkQueue().find(entry=>entry.id===id);if(!selected||!token)return;let version=selected.version;if(selected.state==="conflict"&&selected.workId){try{const latest=await apiRequest<WorkItem>(`/pda-work/${encodeURIComponent(selected.workId)}`,{token});version=latest.version;setItems(values=>[...values.filter(item=>item.id!==latest.id),latest])}catch(cause){const failureKind=classifyQueueError(cause);persistQueue(readPdaWorkQueue().map(entry=>entry.id===id?{...entry,state:"blocked",failureKind,lastError:queueErrorText(cause),nextRetryAt:null}:entry));return}}persistQueue(readPdaWorkQueue().map(entry=>entry.id===id?{...entry,version,state:"pending",failureKind:null,nextRetryAt:null,lastError:null}:entry));await syncQueue(true)}
+ async function discard(id:string){if(!window.confirm(c.discard))return;if(await persistQueue(readPdaWorkQueue().filter(entry=>entry.id!==id)))await load()}
+ const ownItems=items.filter(item=>isAssignedToCurrentUser(item,userId)); const visible=tab==="dashboard"?ownItems:ownItems.filter(item=>item.type===tab);
  const open=ownItems.filter(isOpenWork).length,done=ownItems.filter(x=>x.status==="DONE").length,urgent=ownItems.filter(x=>isOpenWork(x)&&x.priority==="CRITICAL").length;
- const expiring=ownItems.filter(x=>x.type==="LOT_CHECK"&&isOpenWork(x)&&x.expiryDate&&new Date(x.expiryDate).getTime()<Date.now()+30*86400000).length; const conflicts=queue.filter(x=>x.state==="conflict").length;
- const retryAt=queue.filter(x=>x.state!=="conflict"&&x.nextRetryAt).map(x=>new Date(x.nextRetryAt!).getTime()).sort((a,b)=>a-b)[0];
+ const expiring=ownItems.filter(x=>x.type==="LOT_CHECK"&&isOpenWork(x)&&x.expiryDate&&new Date(x.expiryDate).getTime()<Date.now()+30*86400000).length; const conflicts=queue.filter(x=>x.state==="conflict"||x.state==="blocked").length;
+ const retryAt=queue.filter(x=>(x.state==="pending"||x.state==="retrying")&&x.nextRetryAt).map(x=>new Date(x.nextRetryAt!).getTime()).sort((a,b)=>a-b)[0];
  return <section className="pda-workboard">
   <header><div><span>{online?c.online:c.offline}</span><h2>{c.title}</h2><p>{c.subtitle}</p>{lastSync&&<small>{c.lastSync}: {date.format(new Date(lastSync))}</small>}</div><div><button disabled={busy} onClick={()=>void load()}>{c.refresh}</button><button disabled={syncing||queue.length===0||!online} onClick={()=>void syncQueue(true)}>{syncing?c.syncing:c.sync} ({queue.length})</button></div></header>
   <nav>{[["dashboard",c.dashboard],["INCIDENT",c.incident],["PICKING",c.picking],["REPLENISHMENT",c.replenishment],["LOT_CHECK",c.lot],["TASK",c.task]].map(([value,label])=><button key={value} className={tab===value?"active":""} onClick={()=>select(value as "dashboard"|WorkType)}>{label}</button>)}</nav>

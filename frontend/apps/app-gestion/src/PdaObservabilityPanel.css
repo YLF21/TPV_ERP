@@ -1,0 +1,37 @@
+.gestion-terminal-workspace:is(.is-devices,.is-observability) { grid-template-rows: auto minmax(0,1fr); }
+.gestion-terminal-devices-view { min-height: 0; display: grid; grid-template-rows: auto auto minmax(0,1fr); gap: 12px; }
+.gestion-pda-observability { min-height: 0; display: grid; grid-template-rows: auto auto auto minmax(0,1fr) auto; gap: 12px; padding: 16px; border: 1px solid var(--gestion-border-dark); background: #fff; overflow: auto; }
+.gestion-pda-observability > header { display: flex; justify-content: space-between; gap: 18px; align-items: start; }
+.gestion-pda-observability > header div { display: grid; gap: 3px; }
+.gestion-pda-observability > header span { color: var(--gestion-muted); font-size: var(--gestion-font-micro); font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.gestion-pda-observability h3 { margin: 0; color: var(--gestion-navy); font-size: 20px; }
+.gestion-pda-observability p { margin: 0; color: var(--gestion-muted); }
+.gestion-pda-observability button, .gestion-pda-observability select { min-height: 36px; border: 1px solid var(--gestion-border-dark); background: #fff; color: var(--gestion-navy); font-weight: 800; }
+.gestion-pda-observability :is(button,select):focus-visible,.gestion-terminal-view-tabs button:focus-visible { outline: 3px solid #59a9df; outline-offset: 2px; }
+.gestion-pda-observability button:disabled { cursor: not-allowed; opacity: .55; }
+.gestion-pda-observability > header button { padding: 0 14px; }
+.gestion-pda-observability-filters { display: grid; grid-template-columns: repeat(3,minmax(160px,260px)); gap: 10px; padding: 12px; background: #f4f7fa; }
+.gestion-pda-observability-filters label { display: grid; gap: 5px; color: var(--gestion-muted); font-size: var(--gestion-font-label); font-weight: 800; }
+.gestion-pda-observability-filters select { width: 100%; padding: 0 9px; }
+.gestion-pda-observability-kpis { display: grid; grid-template-columns: repeat(4,minmax(140px,1fr)); gap: 10px; }
+.gestion-pda-observability-kpis :is(button,article) { min-height: 92px; display: grid; align-content: center; gap: 4px; padding: 11px 13px; border: 1px solid var(--gestion-border); background: #f8fafc; text-align: left; }
+.gestion-pda-observability-kpis button { cursor: pointer; }
+.gestion-pda-observability-kpis button.selected { border-color: #277ab8; box-shadow: inset 0 -3px #277ab8; background: #ebf5fc; }
+.gestion-pda-observability-kpis .danger strong { color: #a22e2e; }.gestion-pda-observability-kpis .warning strong { color: #895510; }
+.gestion-pda-observability-kpis span { color: var(--gestion-muted); font-size: var(--gestion-font-label); }.gestion-pda-observability-kpis strong { font-size: 24px; }.gestion-pda-observability-kpis small { color: var(--gestion-muted); }
+.gestion-pda-observability-table-wrap { min-height: 180px; overflow: auto; border: 1px solid var(--gestion-border); }
+.gestion-pda-observability table { width: 100%; border-collapse: collapse; }
+.gestion-pda-observability th,.gestion-pda-observability td { padding: 9px 10px; border-bottom: 1px solid var(--gestion-border); text-align: left; vertical-align: top; }
+.gestion-pda-observability th { position: sticky; top: 0; background: var(--gestion-navy); color: #fff; font-size: var(--gestion-font-micro); text-transform: uppercase; }
+.gestion-pda-observability td small { display: block; margin-top: 3px; color: var(--gestion-muted); overflow-wrap: anywhere; }
+.gestion-pda-observability-empty,.gestion-pda-observability-loading { padding: 28px; text-align: center; }
+.gestion-pda-observability-loading { align-self: center; color: var(--gestion-muted); font-weight: 800; }
+.gestion-pda-observability-loading::before { content: ""; display: block; width: 28px; height: 28px; margin: 0 auto 10px; border: 3px solid #cbd8e5; border-top-color: #277ab8; border-radius: 50%; animation: gestion-pda-observability-spin .75s linear infinite; }
+.gestion-pda-observability-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px; border: 1px solid #dba0a0; background: #fff0f0; color: #8d2525; }
+.gestion-pda-observability > footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--gestion-muted); font-size: var(--gestion-font-label); }
+.gestion-pda-observability > footer div { display: flex; align-items: center; gap: 8px; }.gestion-pda-observability > footer button { padding: 0 10px; }
+.gestion-terminal-view-tabs { display: flex; gap: 6px; }.gestion-terminal-view-tabs button { min-height: 36px; padding: 0 14px; border: 1px solid var(--gestion-border-dark); background: #fff; color: var(--gestion-navy); font-weight: 850; }.gestion-terminal-view-tabs button.active { background: var(--gestion-navy); color: #fff; }
+@keyframes gestion-pda-observability-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .gestion-pda-observability-loading::before { animation: none; border-top-color: #277ab8; } }
+@media (max-width: 900px) { .gestion-pda-observability-kpis { grid-template-columns: repeat(2,minmax(0,1fr)); }.gestion-pda-observability-filters { grid-template-columns: 1fr; } }
+@media (max-width: 520px) { .gestion-pda-observability-kpis { grid-template-columns: 1fr; }.gestion-pda-observability > header,.gestion-pda-observability > footer { align-items: stretch; flex-direction: column; } }

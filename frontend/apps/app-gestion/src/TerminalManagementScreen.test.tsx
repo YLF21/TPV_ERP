@@ -46,6 +46,51 @@ describe("TerminalManagementScreen", () => {
     return screen.getByText("gestion.terminals.lastIp").parentElement!.querySelector("dd")!.textContent;
   }
 
+  it("opens PDA observability from the terminal workspace without loading it in the device view", async () => {
+    backend();
+    const devicesBackend = vi.mocked(apiRequest).getMockImplementation()!;
+    vi.mocked(apiRequest).mockImplementation((route, options) => route.startsWith("/pda-observability?") ? Promise.resolve({
+      generatedAt: "2026-10-29T10:30:00Z", windowFrom: "2026-10-28T10:30:00Z",
+      summary: { syncFailures: 0, syncConflicts: 0, blockedWork: 0, inactiveTerminals: 0, averageLatencyMs: 0, p95LatencyMs: 0 },
+      syncFailures: [], blockedWork: [], inactiveTerminals: [],
+      performance: { sampleCount: 0, averageLatencyMs: 0, p95LatencyMs: 0, maxLatencyMs: 0 },
+      page: 0, size: 50, totalEvents: 0, totalPages: 0,
+    }) : devicesBackend(route, options));
+    render(<TerminalManagementScreen session={admin} t={key} />);
+    await screen.findByRole("button", { name: /002 · Caja terraza/ });
+    expect(vi.mocked(apiRequest).mock.calls.some(([route]) => route.startsWith("/pda-observability?"))).toBe(false);
+
+    fireEvent.click(screen.getByRole("tab", { name: "gestion.pdaObservability.navigation" }));
+    expect(await screen.findByRole("heading", { name: "gestion.pdaObservability.title" })).toBeTruthy();
+    expect(vi.mocked(apiRequest).mock.calls.some(([route]) => route === "/pda-observability?windowHours=24&page=0&size=50")).toBe(true);
+    expect(screen.queryByText("gestion.terminals.serverConnection.title")).toBeNull();
+  });
+
+  it("supports roving focus and arrow-key navigation between terminal views", async () => {
+    backend();
+    const devicesBackend = vi.mocked(apiRequest).getMockImplementation()!;
+    vi.mocked(apiRequest).mockImplementation((route, options) => route.startsWith("/pda-observability?") ? Promise.resolve({
+      generatedAt: "2026-10-29T10:30:00Z", windowFrom: "2026-10-28T10:30:00Z",
+      summary: { syncFailures: 0, syncConflicts: 0, blockedWork: 0, inactiveTerminals: 0, averageLatencyMs: 0, p95LatencyMs: 0 },
+      syncFailures: [], blockedWork: [], inactiveTerminals: [],
+      performance: { sampleCount: 0, averageLatencyMs: 0, p95LatencyMs: 0, maxLatencyMs: 0 },
+      page: 0, size: 50, totalEvents: 0, totalPages: 0,
+    }) : devicesBackend(route, options));
+    render(<TerminalManagementScreen session={admin} t={key} />);
+    await screen.findByRole("button", { name: /002 · Caja terraza/ });
+
+    const devices = screen.getByRole("tab", { name: "gestion.pdaObservability.devices" }) as HTMLButtonElement;
+    const observability = screen.getByRole("tab", { name: "gestion.pdaObservability.navigation" }) as HTMLButtonElement;
+    expect(devices.tabIndex).toBe(0); expect(observability.tabIndex).toBe(-1);
+    devices.focus(); fireEvent.keyDown(devices, { key: "ArrowRight" });
+    expect(observability.getAttribute("aria-selected")).toBe("true");
+    expect(observability.tabIndex).toBe(0); expect(devices.tabIndex).toBe(-1);
+    expect(document.activeElement).toBe(observability);
+    fireEvent.keyDown(observability, { key: "ArrowRight" });
+    expect(devices.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(devices);
+  });
+
   it("shows the selected terminal IP and does not substitute a server address for missing IPs", async () => {
     const state = backend(); state.slotIp = null;
     render(<TerminalManagementScreen session={admin} t={key} />);

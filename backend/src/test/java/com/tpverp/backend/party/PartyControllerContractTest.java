@@ -86,14 +86,14 @@ class PartyControllerContractTest {
                         "memberBalance",
                         "creditEnabled", "creditLimit", "paymentTermDays",
                         "creditBlocked", "blockOnOverdue", "outstandingDebt",
-                        "overdueDebt", "availableCredit");
+                        "overdueDebt", "availableCredit", "addresses");
     }
 
     @Test
     void saleCustomerSearchViewExposesSelectionAndDebtState() {
         assertThat(Arrays.stream(CustomerService.SaleCustomerSearchView.class.getRecordComponents())
                 .map(component -> component.getName()))
-                .contains("active", "outstandingDebt", "overdueDebt", "availableCredit");
+                .contains("active", "outstandingDebt", "overdueDebt", "availableCredit", "addresses");
     }
 
     private String path(Class<?> controller) {
