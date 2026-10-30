@@ -489,6 +489,7 @@ export function SalesDocumentScreen({
       type: documentType,
       date: issueDate,
       customerId: customer.id,
+      ...(customer.customerAddressId ? { customerAddressId: customer.customerAddressId } : {}),
       dueDate,
       ...(wholesaleMode ? { wholesaleMode: true } : {}),
       // Sales-document percentages use the same backend allocator as Ctrl+/.
@@ -703,11 +704,15 @@ export function SalesDocumentScreen({
   }
 
   async function importDocumentDraft(detail: SalesDocumentDraftDetail) {
-    const importedCustomer = customers.find((option) => option.id === detail.customerId) ?? {
-      id: detail.customerId,
-      fiscalName: detail.customerName ?? null,
-      activeMember: false,
-    } satisfies SaleCustomer;
+    const importedCustomer: SaleCustomer = {
+      ...(customers.find((option) => option.id === detail.customerId) ?? {
+        id: detail.customerId,
+        fiscalName: detail.customerName ?? null,
+        activeMember: false,
+      }),
+      customerAddressId: detail.customerAddressId ?? null,
+      customerContactSnapshot: detail.customerContactSnapshot ?? null,
+    };
     const importedLines = detail.lines.map((line) => {
       const catalogProduct = products.find((product) => product.id === line.productId);
       const storedPrice = Number(line.unitPrice);

@@ -28,6 +28,7 @@ export type PendingSaleDraft = {
   type: PendingDocumentType;
   date: string;
   customerId: string;
+  customerAddressId?: string | null;
   wholesaleMode?: boolean;
   dueDate: string;
   globalDiscount: string;

@@ -128,7 +128,8 @@ public class CustomerPendingSaleService {
         requireDirectPaymentMethodsAllowed(sale);
         var amount = positive(request.amount(), "amount");
         var terminalId = currentTerminal.terminalId(authentication);
-        var quoted = effectiveQuote(sourceDraftId, sale, authentication);
+        var frozenContact = frozenCardContact(sourceDraftId, sale, terminalId);
+        var quoted = effectiveQuote(sourceDraftId, sale, authentication, frozenContact);
         var total = quoted.document().getTotal();
         requireQuotedTotal(sale, total);
         if (quoted.persistedUnchanged()) {
@@ -156,8 +157,9 @@ public class CustomerPendingSaleService {
         var configuration = configurations.required(terminalId);
         requireIntegratedCardConfiguration(
                 configuration, terminalId, organization.currentStore().getId());
-        var result = terminalOperations.charge(
-                sale.checkoutId(), hash, amount, configuration);
+        var contact = quoted.document().getCustomerContact();
+        var result = contact == null ? terminalOperations.charge(sale.checkoutId(), hash, amount, configuration)
+                : terminalOperations.charge(sale.checkoutId(), hash, amount, configuration, contact);
         if (creditAuthorization.pendingReceivable() != null) {
             recordPendingCardAuthorization(
                     sale.checkoutId(),
@@ -243,7 +245,9 @@ public class CustomerPendingSaleService {
             requireDirectPaymentMethodsAllowed(request);
         }
 
-        var quoted = effectiveQuote(sourceDraftId, request, authentication);
+        var frozenContact = frozenCardContact(sourceDraftId, request, terminalId);
+        var effectiveCommand = request.toCommand().withFrozenCustomerContact(frozenContact);
+        var quoted = effectiveQuote(sourceDraftId, request, authentication, frozenContact);
         var total = quoted.document().getTotal();
         requireQuotedTotal(request, total);
         var mutationAuthorization = quoted.persistedUnchanged()
@@ -321,9 +325,9 @@ public class CustomerPendingSaleService {
                 document = completionMode
                         == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT
                         ? documents.createPendingSaleDraft(
-                                request.toCommand(), request.dueDate(), authentication)
+                                effectiveCommand, request.dueDate(), authentication)
                         : documents.createPendingSale(
-                                request.toCommand(), request.dueDate(), commands, authentication);
+                                effectiveCommand, request.dueDate(), commands, authentication);
                 if (completionMode
                         == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT) {
                     authorizationManifests.record(
@@ -334,7 +338,7 @@ public class CustomerPendingSaleService {
                 document = quoted.persistedUnchanged()
                         ? quoted.document()
                         : documents.updatePendingSaleDraft(
-                                sourceDraftId, request.draftVersion(), request.toCommand(),
+                                sourceDraftId, request.draftVersion(), effectiveCommand,
                                 request.dueDate(), authentication);
                 if (mutationAuthorization.replaceManifest()) {
                     authorizationManifests.replace(
@@ -344,7 +348,7 @@ public class CustomerPendingSaleService {
                 document = documents.completePendingSaleDraft(
                         sourceDraftId,
                         request.draftVersion(),
-                        quoted.persistedUnchanged() ? null : request.toCommand(),
+                        quoted.persistedUnchanged() ? null : effectiveCommand,
                         request.dueDate(),
                         commands,
                         authentication);
@@ -484,19 +488,46 @@ public class CustomerPendingSaleService {
         return new DraftMutationAuthorization(proof, true);
     }
 
+    private DocumentCustomerContact frozenCardContact(UUID sourceDraftId,
+            CustomerPendingSaleController.CreateRequest request, UUID terminalId) {
+        if (integratedCardPayment(request).isEmpty()) return null;
+        var stored = terminalOperations.find(request.checkoutId());
+        if (stored.isEmpty() || stored.orElseThrow().getSaleCustomerContactSnapshot() == null) return null;
+        var operation = stored.orElseThrow();
+        var expected = CustomerPendingSaleRequestHasher.hash(request, request.quotedTotal(), sourceDraftId);
+        if (!terminalId.equals(operation.getTerminalId())
+                || !organization.currentStore().getId().equals(operation.getStoreId())
+                || !expected.equals(operation.getRequestHash())) {
+            throw new IllegalStateException("pending_sale_checkout_request_mismatch");
+        }
+        return operation.getSaleCustomerContactSnapshot();
+    }
+
+    private EffectiveQuote effectiveQuote(UUID sourceDraftId, CustomerPendingSaleController.CreateRequest request,
+            Authentication authentication) {
+        return effectiveQuote(sourceDraftId, request, authentication, null);
+    }
+
     private EffectiveQuote effectiveQuote(
             UUID sourceDraftId,
             CustomerPendingSaleController.CreateRequest request,
-            Authentication authentication) {
+            Authentication authentication, DocumentCustomerContact frozenContact) {
+        var command = request.toCommand().withFrozenCustomerContact(frozenContact);
         if (sourceDraftId == null) {
-            return new EffectiveQuote(authoritativeQuote(request, authentication), false);
+            return new EffectiveQuote(frozenContact == null ? authoritativeQuote(request, authentication)
+                    : documents.quotePendingSale(command, request.dueDate(), authentication), false);
         }
         var persisted = documents.pendingSaleDraft(
                 sourceDraftId, request.draftVersion(), authentication);
-        if (documents.pendingSaleDraftMatches(persisted, request)) {
+        if (documents.pendingSaleDraftMatches(persisted, request)
+                && (frozenContact == null || frozenContact.equals(persisted.getCustomerContact()))) {
             return new EffectiveQuote(persisted, true);
         }
-        return new EffectiveQuote(authoritativeQuote(request, authentication), false);
+        var retained = DocumentCustomerContact.retainedFor(persisted, command);
+        var quoted = retained == null ? authoritativeQuote(request, authentication)
+                : documents.quotePendingSale(request.toCommand().withoutCustomerAddressId(), request.dueDate(), authentication);
+        if (retained != null) quoted.setCustomerContact(retained);
+        return new EffectiveQuote(quoted, false);
     }
 
     private CreditAssessment assessCredit(

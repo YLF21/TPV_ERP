@@ -15,7 +15,9 @@ import com.tpverp.backend.security.application.AuthenticationService;
 import com.tpverp.backend.security.domain.*;
 import com.tpverp.backend.shared.access.OperationalMode;
 import com.tpverp.backend.shared.api.ApiExceptionHandler;
+import com.tpverp.backend.terminal.TerminalRepository;
 import java.time.Instant;
+import java.time.Clock;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Bean;
@@ -100,6 +102,8 @@ class InitialSetupSecurityTest {
         @Bean UserSessionRepository sessions() { return mock(UserSessionRepository.class); }
         @Bean AuthenticationService authentication() { return mock(AuthenticationService.class); }
         @Bean ProductEditAuthorizationService products() { return mock(ProductEditAuthorizationService.class); }
+        @Bean TerminalRepository terminals() { return mock(TerminalRepository.class); }
+        @Bean Clock clock() { return Clock.systemUTC(); }
         @Bean LicenseSaasLinkService linking() { return mock(LicenseSaasLinkService.class); }
         @Bean LicenseService licenses() { return mock(LicenseService.class); }
         @Bean LicenseSaasValidationService validation() { return mock(LicenseSaasValidationService.class); }

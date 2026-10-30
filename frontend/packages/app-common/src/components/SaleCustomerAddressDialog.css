@@ -1,0 +1,28 @@
+.sale-customer-address-overlay { position:fixed; inset:0; z-index:1200; display:grid; place-items:center; padding:16px; box-sizing:border-box; background:#0b223a66; }
+.sale-customer-address-dialog { display:flex; flex-direction:column; width:min(760px,100%); max-height:calc(100dvh - 32px); min-height:0; overflow:hidden; box-sizing:border-box; border:1px solid #12385f; border-radius:2px; background:#fff; color:#12385f; box-shadow:0 14px 40px #10233833; }
+.sale-customer-address-dialog > header { display:flex; flex:0 0 auto; align-items:center; justify-content:space-between; gap:16px; min-height:58px; padding:10px 16px; background:#0a2a52; }
+.sale-customer-address-dialog > header h2 { margin:0; color:#fff; font-size:18px; line-height:1.3; }
+.sale-customer-address-dialog > header p { margin:2px 0 0; color:#e4edf7; font-size:12px; }
+.sale-customer-address-dialog > header .erp-window-close { flex:0 0 auto; color:#fff; }
+.sale-customer-address-content { display:flex; flex:1 1 auto; flex-direction:column; min-height:0; padding:14px 16px 10px; }
+.sale-customer-address-customer { display:flex; gap:10px; align-items:baseline; margin:0 0 10px; font-size:13px; color:#435c77; }
+.sale-customer-address-customer strong { color:#12385f; }
+.sale-customer-address-list { min-height:0; max-height:min(330px,50dvh); overflow:auto; border:1px solid #bdcad7; }
+.sale-customer-address-list table { width:100%; min-width:540px; border-collapse:collapse; table-layout:fixed; font-size:13px; }
+.sale-customer-address-list th { position:sticky; top:0; z-index:1; height:34px; padding:5px 9px; border-bottom:1px solid #0a2a52; background:#12385f; color:#fff; text-align:left; font-weight:700; }
+.sale-customer-address-list th:nth-child(1) { width:45%; }
+.sale-customer-address-list th:nth-child(2) { width:34%; }
+.sale-customer-address-list th:nth-child(3) { width:21%; }
+.sale-customer-address-list td { height:36px; padding:5px 9px; border-bottom:1px solid #dce5ee; overflow-wrap:anywhere; }
+.sale-customer-address-list tr:nth-child(even) { background:#f2f6fa; }
+.sale-customer-address-list tbody tr { cursor:pointer; }
+.sale-customer-address-list tbody tr:hover { background:#e8f1fa; }
+.sale-customer-address-list tbody tr.selected { background:#d8e9fb; outline:1px solid #1f5a94; outline-offset:-1px; font-weight:700; }
+.sale-customer-address-list td small { display:block; margin-top:1px; color:#365d82; font-size:11px; font-weight:400; }
+.sale-customer-address-hint { margin:8px 0 0; color:#53677c; font-size:11px; }
+.sale-customer-address-dialog > footer { display:flex; flex:0 0 auto; justify-content:flex-end; gap:8px; padding:12px 16px; border-top:1px solid #d9e1e9; background:#fff; }
+.sale-customer-address-dialog > footer button { min-height:34px; padding:5px 14px; border-radius:1px; font-size:13px; font-weight:700; }
+.sale-customer-address-dialog > footer .erp-dialog-action-confirm { border:1px solid #12385f; background:#12385f; color:#fff; }
+.sale-customer-address-dialog > footer .erp-dialog-action-confirm:disabled { opacity:.55; cursor:default; }
+.sale-customer-address-dialog > footer .erp-dialog-action-cancel { border:1px solid #aebfd2; background:#f5f8fb; color:#0a2a52; }
+.sale-customer-address-dialog :is(button,tbody tr):focus-visible { outline:2px solid #0065fe; outline-offset:-2px; }

@@ -136,4 +136,32 @@ describe("Venta member editor", () => {
     expect(within(dialog).queryByRole("button", { name: "Guardar" })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole("button", { name: "Desactivar" })).not.toBeInTheDocument();
   });
+
+  it("saves the member number together with pending customer and address edits", async () => {
+    const dialog = await editMember();
+    fireEvent.change(within(dialog).getByLabelText("Nombre o razón social"), { target: { value: "Nombre conservado" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Contacto y dirección" }));
+    fireEvent.click(screen.getByRole("option", { name: "CALLE SEGUNDA · 600333444" }));
+    fireEvent.change(within(dialog).getByLabelText("Notas"), { target: { value: "Nota conservada" } });
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Fidelización" }));
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Ajustes de miembro" }));
+    const numberCard = dialog.querySelector(".member-loyalty-card--number")!;
+    fireEvent.change(within(numberCard as HTMLElement).getByLabelText("Número de miembro"), { target: { value: "CARNET-123" } });
+    fireEvent.click(within(numberCard as HTMLElement).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/customers/customer-1", expect.objectContaining({ method: "PUT", body: expect.objectContaining({
+      fiscalName: "Nombre conservado", numMember: "CARNET-123", isMember: true, expectedVersion: 7,
+      addresses: [uppercaseA, { ...uppercaseB, notes: "Nota conservada" }],
+    }) })));
+  });
+
+  it("does not discard an unsaved member number when closing the loyalty tab", async () => {
+    const dialog = await editMember();
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Fidelización" }));
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Ajustes de miembro" }));
+    const numberCard = dialog.querySelector(".member-loyalty-card--number")!;
+    fireEvent.change(within(numberCard as HTMLElement).getByLabelText("Número de miembro"), { target: { value: "SIN GUARDAR" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(request.mock.calls.some(([, options]) => options?.method === "PUT")).toBe(false);
+  });
 });

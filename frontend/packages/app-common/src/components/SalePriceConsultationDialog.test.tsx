@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SalePriceConsultationDialog } from "./SalePriceConsultationDialog";
@@ -107,11 +107,21 @@ describe("SalePriceConsultationDialog", () => {
   it("uses a fresh scanner burst instead of appending it to an unknown previous identifier", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ detail: "not found" }, 404));
     vi.stubGlobal("fetch", fetchMock);
-    const user = userEvent.setup();
     render(<SalePriceConsultationDialog locale="es" token="token" onClose={vi.fn()} />);
-    fireEvent.change(screen.getByRole("textbox", { name: "Código del producto" }), { target: { value: "UNKNOWN" } });
+    const input = screen.getByRole("textbox", { name: "Código del producto" }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "UNKNOWN" } });
     expect(await screen.findByRole("alert", {}, { timeout: 2000 })).toBeVisible();
-    await user.keyboard("8410000000011{Enter}");
+    // Model hardware timestamps independently of CPU load in the full test suite.
+    let timestamp = 1000;
+    for (const key of [..."8410000000011", "Enter"]) {
+      const event = createEvent.keyDown(input, { key, bubbles: true, cancelable: true });
+      Object.defineProperty(event, "timeStamp", { value: timestamp });
+      timestamp += 5;
+      fireEvent(input, event);
+      if (key !== "Enter" && !event.defaultPrevented) {
+        fireEvent.change(input, { target: { value: input.value + key } });
+      }
+    }
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(new URL(String(fetchMock.mock.calls[1][0]), "http://localhost").searchParams.get("identifier")).toBe("8410000000011");
     expect(screen.getByRole("textbox", { name: "Código del producto" })).toHaveValue("");

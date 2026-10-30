@@ -877,7 +877,7 @@ function GestionScreen({
   } else if (effectiveModule === "users" && modules.includes("gestion.users")) {
     content = <SecurityAdministrationScreen mode="users" session={session} t={t} />;
   } else if (effectiveModule === "terminals" && (session.permissions.includes("ADMIN") || session.permissions.includes("TERMINALS_MANAGE"))) {
-    content = <TerminalManagementScreen session={session} t={t} />;
+    content = <TerminalManagementScreen session={session} t={t} locale={locale} />;
   } else if (effectiveModule === "roles" && modules.includes("gestion.roles")) {
     content = <SecurityAdministrationScreen mode="roles" session={session} t={t} />;
   } else if (effectiveModule === "backups" && canManageBackups) {
