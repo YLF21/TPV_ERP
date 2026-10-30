@@ -39,7 +39,12 @@ public class MemberPointsBootstrapAdminService {
         List<UUID> missing=companyStores.stream().map(SaasStore::getId)
             .filter(id->!installations.existsByStore_IdAndActiveTrue(id)).toList();
         if(!missing.isEmpty()) throw conflict("Tiendas sin instalacion vinculada: "+missing);
-        SaasMemberPointsBootstrap bootstrap=bootstraps.save(new SaasMemberPointsBootstrap(UUID.randomUUID(),company,clock.instant()));
+        Instant startedAt=clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+        SaasMemberPointsBootstrap pending=new SaasMemberPointsBootstrap(UUID.randomUUID(),company,startedAt);
+        // Every store must discover the same cutoff before producing its first snapshot.
+        // Normalize before returning it so PostgreSQL persistence cannot change equality.
+        pending.establishCutoff(startedAt);
+        SaasMemberPointsBootstrap bootstrap=bootstraps.save(pending);
         companyStores.forEach(store->expectedStores.save(new SaasMemberPointsBootstrapStore(UUID.randomUUID(),bootstrap,store.getId())));
         audit.log("START_MEMBER_POINTS_BOOTSTRAP_V21","COMPANY",companyId.toString(),"bootstrapId="+bootstrap.getId());
         return statuses.status(bootstrap);

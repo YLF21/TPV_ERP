@@ -65,7 +65,8 @@ public interface MemberPointsOperationRepository
                    operation.occurredAt as occurredAt,
                    operation.localPointsDelta as localPointsDelta,
                    operation.localDebtDelta as localDebtDelta,
-                   operation.storeSequence as storeSequence
+                   operation.storeSequence as storeSequence,
+                   operation.payloadHash as payloadHash
             from MemberPointsOperation operation
             where operation.companyId = :companyId
               and operation.storeId = :storeId
@@ -88,7 +89,8 @@ public interface MemberPointsOperationRepository
                    operation.occurredAt as occurredAt,
                    operation.localPointsDelta as localPointsDelta,
                    operation.localDebtDelta as localDebtDelta,
-                   operation.storeSequence as storeSequence
+                   operation.storeSequence as storeSequence,
+                   operation.payloadHash as payloadHash
             from MemberPointsOperation operation
             where operation.companyId = :companyId
               and operation.storeId = :storeId
@@ -114,5 +116,6 @@ public interface MemberPointsOperationRepository
         long getLocalPointsDelta();
         long getLocalDebtDelta();
         long getStoreSequence();
+        String getPayloadHash();
     }
 }

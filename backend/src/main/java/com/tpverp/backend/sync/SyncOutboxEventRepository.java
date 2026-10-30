@@ -12,6 +12,31 @@ import org.springframework.data.repository.query.Param;
 
 public interface SyncOutboxEventRepository extends JpaRepository<SyncOutboxEvent, UUID> {
 
+    // Read JSON as text so epoch decimals are not rounded by Map<String,Object>/Double.
+    @Query(value = """
+            select event_id as eventId, empresa_id as companyId, tienda_id as storeId,
+                   store_sequence as storeSequence, tipo_entidad as entityType,
+                   entidad_id as entityId, operacion as operation, payload::text as payload
+            from sync_outbox
+            where tipo_entidad = 'MEMBER_POINTS_OPERATION'
+              and (entidad_id in (:operationIds)
+                   or payload->>'operationId' in (:operationIdTexts))
+            """, nativeQuery = true)
+    List<PointsContractOriginal> findPointsContractOriginals(
+            @Param("operationIds") List<UUID> operationIds,
+            @Param("operationIdTexts") List<String> operationIdTexts);
+
+    interface PointsContractOriginal {
+        UUID getEventId();
+        UUID getCompanyId();
+        UUID getStoreId();
+        Long getStoreSequence();
+        String getEntityType();
+        UUID getEntityId();
+        String getOperation();
+        String getPayload();
+    }
+
     List<SyncOutboxEvent> findByStatusOrderByCreatedAtAsc(SyncOutboxStatus status);
 
     @Query("""

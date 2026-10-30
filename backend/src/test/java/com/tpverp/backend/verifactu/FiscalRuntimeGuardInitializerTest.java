@@ -234,14 +234,14 @@ class FiscalRuntimeGuardInitializerTest {
     }
 
     @Test
-    void packagedManifestCanAdvanceAnExistingV281Database() {
+    void packagedManifestCanAdvanceAnExistingV284Database() {
         var manifest = FiscalReleaseManifest.load();
         boolean development = manifest.capability() == FiscalProductCapability.DUAL;
         var jdbc = jdbc(marker("SANDBOX", manifest.capability().name(),
-                development ? "tpv-erp-dev-v281" : "tpv-erp-1.0.0-v281",
-                "V281", null, null, null, development ? 38 : 39, development ? 0 : 1));
+                development ? "tpv-erp-dev-v284" : "tpv-erp-1.0.0-v284",
+                "V284", null, null, null, development ? 39 : 40, development ? 0 : 1));
         when(jdbc.queryForList(anyString(), eq(String.class)))
-                .thenReturn(List.of("281", "282", "283", "284"));
+                .thenReturn(List.of("284", "285"));
         var runtime = org.mockito.Mockito.mock(FiscalRuntimeProperties.class);
         when(runtime.releaseManifest()).thenReturn(manifest);
         when(runtime.runtimeClass()).thenReturn(FiscalRuntimeClass.SANDBOX);

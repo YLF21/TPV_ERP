@@ -23,6 +23,7 @@ public class MemberPointsBootstrapCaptureService {
     private final MemberPointsBootstrapSnapshotRepository snapshots;
     private final MemberPointsBootstrapSnapshotAccountRepository snapshotAccounts;
     private final MemberPointsBootstrapSnapshotOperationRepository snapshotOperations;
+    private final MemberPointsBootstrapContractResolver contracts;
     private final Clock clock;
 
     public MemberPointsBootstrapCaptureService(
@@ -32,6 +33,7 @@ public class MemberPointsBootstrapCaptureService {
             MemberPointsBootstrapSnapshotRepository snapshots,
             MemberPointsBootstrapSnapshotAccountRepository snapshotAccounts,
             MemberPointsBootstrapSnapshotOperationRepository snapshotOperations,
+            MemberPointsBootstrapContractResolver contracts,
             Clock clock) {
         this.members = members;
         this.operations = operations;
@@ -39,6 +41,7 @@ public class MemberPointsBootstrapCaptureService {
         this.snapshots = snapshots;
         this.snapshotAccounts = snapshotAccounts;
         this.snapshotOperations = snapshotOperations;
+        this.contracts = contracts;
         this.clock = clock;
     }
 
@@ -114,15 +117,11 @@ public class MemberPointsBootstrapCaptureService {
             slice = operations.findBootstrapOperations(
                     freeze.companyId(), freeze.storeId(), freeze.cutSequence(),
                     PageRequest.of(page++, MemberPointsBootstrapCanonicalizer.CHUNK_SIZE));
+            var hashes = contracts.resolve(freeze.companyId(), freeze.storeId(), slice.getContent());
             slice.forEach(row -> result.add(
                     new MemberPointsBootstrapCanonicalizer.OperationValue(
                             row.getOperationId(),
-                            MemberPointsContractCanonicalizer.contractHash(
-                                    row.getOperationId(), row.getMemberId(),
-                                    row.getOperationType(), row.getAmount(),
-                                    row.getSourceDocumentId(), row.getOriginalDocumentId(),
-                                    row.getOccurredAt(), row.getLocalPointsDelta(),
-                                    row.getLocalDebtDelta()),
+                            hashes.get(row.getOperationId()),
                             row.getStoreSequence())));
         } while (slice.hasNext());
         return List.copyOf(result);

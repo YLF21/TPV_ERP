@@ -1,5 +1,10 @@
 package com.tpverp.saas.sync;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
 import com.tpverp.saas.license.SaasCompany;
 import com.tpverp.saas.loyalty.MemberPointsAuthorityStatus;
 import com.tpverp.saas.loyalty.MemberPointsDebtAllocationStatus;
@@ -34,6 +39,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.DateTimeException;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HexFormat;
@@ -50,6 +56,8 @@ public class MemberPointsSyncProjector {
     public static final String ENTITY_TYPE = "MEMBER_POINTS_OPERATION";
 
     private static final Pattern INTEGER_PATTERN = Pattern.compile("-?(0|[1-9][0-9]*)");
+    private static final ObjectReader LEGACY_PAYLOAD_READER = new ObjectMapper()
+            .readerFor(JsonNode.class).with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
     private static final Set<String> PAYLOAD_FIELDS = Set.of(
             "schemaVersion",
             "operationId",
@@ -126,7 +134,7 @@ public class MemberPointsSyncProjector {
             throw badRequest("El evento no tiene tienda autenticada");
         }
 
-        ParsedOperation parsed = parse(payload);
+        ParsedOperation parsed = parse(payload, event.getPayload());
         if (storeSequence != null && storeSequence <= 0) {
             throw badRequest("storeSequence debe ser positivo");
         }
@@ -594,7 +602,7 @@ public class MemberPointsSyncProjector {
         return integer;
     }
 
-    private ParsedOperation parse(Map<String, Object> payload) {
+    private ParsedOperation parse(Map<String, Object> payload, String persistedPayload) {
         if (payload == null) {
             throw badRequest("payload debe ser un objeto JSON");
         }
@@ -621,7 +629,7 @@ public class MemberPointsSyncProjector {
         }
         UUID sourceDocumentId = parseOptionalUuid(payload.get("sourceDocumentId"), "sourceDocumentId");
         UUID originalDocumentId = parseOptionalUuid(payload.get("originalDocumentId"), "originalDocumentId");
-        Instant occurredAt = parseInstant(required(payload, "occurredAt"));
+        Instant occurredAt = parseInstant(required(payload, "occurredAt"), persistedPayload);
         BigDecimal localPointsDelta = parseInteger(required(payload, "localPointsDelta"), "localPointsDelta");
         BigDecimal localDebtDelta = parseInteger(required(payload, "localDebtDelta"), "localDebtDelta");
 
@@ -706,7 +714,30 @@ public class MemberPointsSyncProjector {
         }
     }
 
-    private Instant parseInstant(Object value) {
+    private Instant parseInstant(Object value, String persistedPayload) {
+        if (value instanceof Number) {
+            // Legacy outboxes serialized Instant as epoch seconds. Read the stored decimal
+            // directly: the request's untyped Map may already have rounded it to Double.
+            try {
+                JsonNode root = LEGACY_PAYLOAD_READER.readValue(persistedPayload);
+                JsonNode timestamp = root == null ? null : root.get("occurredAt");
+                if (timestamp == null || !timestamp.isNumber()) {
+                    throw badRequest("occurredAt heredado debe ser un numero de segundos epoch");
+                }
+                BigDecimal seconds = timestamp.decimalValue();
+                if (seconds.compareTo(BigDecimal.valueOf(Instant.MIN.getEpochSecond())) < 0
+                        || seconds.compareTo(BigDecimal.valueOf(Instant.MAX.getEpochSecond()).add(BigDecimal.ONE)) >= 0
+                        || seconds.stripTrailingZeros().scale() > 9) {
+                    throw badRequest("occurredAt heredado esta fuera del rango o precision de Instant");
+                }
+                long wholeSeconds = seconds.setScale(0, RoundingMode.DOWN).longValueExact();
+                long nanos = seconds.subtract(BigDecimal.valueOf(wholeSeconds))
+                        .movePointRight(9).longValueExact();
+                return Instant.ofEpochSecond(wholeSeconds, nanos);
+            } catch (JsonProcessingException | ArithmeticException | DateTimeException | IllegalArgumentException exception) {
+                throw badRequest("occurredAt heredado no es un Instant valido con precision de nanosegundos");
+            }
+        }
         if (!(value instanceof String text)) {
             throw badRequest("occurredAt debe ser texto ISO-8601");
         }

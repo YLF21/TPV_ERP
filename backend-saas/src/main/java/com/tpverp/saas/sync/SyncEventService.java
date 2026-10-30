@@ -170,6 +170,11 @@ public class SyncEventService {
         return new SyncEventReceipt(request.eventId(), true);
     }
 
+    // The guarded recovery service owns the transaction and the same locks as receive().
+    void projectPersisted(SaasSyncEvent event, SyncEventRequest request, java.time.Instant projectedAt) {
+        project(event, request, projectedAt);
+    }
+
     private void project(SaasSyncEvent event, SyncEventRequest request, java.time.Instant projectedAt) {
         try {
             projectEvent(event, request, projectedAt);
