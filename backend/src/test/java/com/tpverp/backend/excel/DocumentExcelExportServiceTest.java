@@ -59,15 +59,15 @@ class DocumentExcelExportServiceTest {
             assertThat(sheet.getRow(7).getCell(1).getStringCellValue()).isEqualTo("Producto");
             assertThat(sheet.getRow(7).getCell(3).getNumericCellValue()).isEqualTo(10.00);
             assertThat(sheet.getRow(7).getCell(3).getCellStyle().getDataFormatString()).contains("€");
-            assertThat(workbook.getFontAt(sheet.getRow(0).getCell(0).getCellStyle().getFontIndexAsInt()).getBold())
+            assertThat(workbook.getFontAt(sheet.getRow(0).getCell(0).getCellStyle().getFontIndex()).getBold())
                     .isTrue();
-            assertThat(workbook.getFontAt(sheet.getRow(6).getCell(0).getCellStyle().getFontIndexAsInt()).getBold())
+            assertThat(workbook.getFontAt(sheet.getRow(6).getCell(0).getCellStyle().getFontIndex()).getBold())
                     .isTrue();
             assertThat(sheet.getRow(0).getCell(0).getCellStyle().getFillPattern())
                     .isEqualTo(FillPatternType.NO_FILL);
             assertThat(sheet.getRow(0).getCell(1).getCellStyle().getFillPattern())
                     .isEqualTo(FillPatternType.NO_FILL);
-            assertThat(workbook.getFontAt(sheet.getRow(0).getCell(1).getCellStyle().getFontIndexAsInt()).getBold())
+            assertThat(workbook.getFontAt(sheet.getRow(0).getCell(1).getCellStyle().getFontIndex()).getBold())
                     .isTrue();
             assertThat(sheet.getRow(6).getCell(0).getCellStyle().getFillPattern())
                     .isEqualTo(FillPatternType.NO_FILL);

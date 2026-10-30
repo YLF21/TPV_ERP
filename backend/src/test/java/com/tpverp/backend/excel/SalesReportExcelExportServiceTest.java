@@ -40,6 +40,7 @@ import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -324,6 +325,50 @@ class SalesReportExcelExportServiceTest {
         verify(inputs).listPage(type, 200, null, from, to, authentication);
         verify(inputs).listPage(type, 200, "next", from, to, authentication);
         verifyNoInteractions(reports, documents);
+    }
+
+    @Test
+    void preservesWholeAndFractionalDiscountPercentagesInXlsxAndPdf() throws Exception {
+        var inputs = mock(WarehouseInputReportService.class);
+        var service = new SalesReportExcelExportService(mock(DocumentService.class), mock(DocumentReportService.class),
+                inputs, mock(WarehouseOutputService.class), mock(WarehouseRepository.class), currentOrganization(),
+                mock(DocumentAttributionResolver.class), mock(AuditService.class), mock(TicketReportService.class));
+        var type = WarehouseInputDocumentType.FACTURA_ENTRADA;
+        var discounts = List.of("0.00", "10.00", "10.50", "10.25", "100.00");
+        var rows = discounts.stream().map(discount -> {
+            var report = inputReport(type, "ENT-" + discount, "PROVEEDOR");
+            when(report.document().globalDiscount()).thenReturn(new BigDecimal(discount));
+            return report;
+        }).toList();
+        var authentication = new UsernamePasswordAuthenticationToken("reader", "unused",
+                List.of(new SimpleGrantedAuthority("GESTION_ALMACEN")));
+        when(inputs.listPage(type, 200, null, null, null, authentication))
+                .thenReturn(new PagedResult<>(rows, null, false));
+        var request = new SalesReportExportRequest("salesReport.inputInvoices",
+                new SalesReportExportRequest.Filters(null, null, null, null, null, null, null, null, null),
+                "", List.of(new SalesReportExportRequest.Column("globalDiscount", "Descuento")));
+        var expectedRatios = List.of(0d, 0.1d, 0.105d, 0.1025d, 1d);
+        var expectedText = List.of("0%", "10%", "10.5%", "10.25%", "100%");
+
+        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.export(request, authentication)))) {
+            var sheet = workbook.getSheetAt(0);
+            var styleIndexes = new java.util.HashSet<Short>();
+            for (int index = 0; index < discounts.size(); index++) {
+                var cell = sheet.getRow(9 + index).getCell(0);
+                assertThat(cell.getNumericCellValue()).isEqualTo(expectedRatios.get(index));
+                assertThat(new DataFormatter(Locale.US).formatCellValue(cell)).isEqualTo(expectedText.get(index));
+                assertThat(new DataFormatter(Locale.forLanguageTag("es-ES")).formatCellValue(cell))
+                        .isEqualTo(expectedText.get(index).replace('.', ','));
+                styleIndexes.add(cell.getCellStyle().getIndex());
+            }
+            assertThat(styleIndexes).hasSize(2);
+        }
+        try (var pdf = org.apache.pdfbox.Loader.loadPDF(
+                new SalesReportPdfExportService(service).export(request, authentication))) {
+            assertThat(new org.apache.pdfbox.text.PDFTextStripper().getText(pdf))
+                    .contains("0%", "10%", "10,5%", "10,25%", "100%")
+                    .doesNotContain("0,%", "10,%", "100,%");
+        }
     }
 
     @Test

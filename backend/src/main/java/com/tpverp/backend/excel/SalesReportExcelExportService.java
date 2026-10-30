@@ -397,6 +397,8 @@ public class SalesReportExcelExportService {
             currencyStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00 [$€-es-ES]"));
             var percentageStyle = workbook.createCellStyle();
             percentageStyle.setDataFormat(workbook.createDataFormat().getFormat("0.##%"));
+            var wholePercentageStyle = workbook.createCellStyle();
+            wholePercentageStyle.setDataFormat(workbook.createDataFormat().getFormat("0%"));
             int headerRowIndex = writeStoreInformation(sheet, workbook, request);
             var header = sheet.createRow(headerRowIndex);
             for (int column = 0; column < request.columns().size(); column++) {
@@ -416,8 +418,11 @@ public class SalesReportExcelExportService {
                                 .contains(request.columns().get(column).key())) {
                             cell.setCellStyle(currencyStyle);
                         } else if ("globalDiscount".equals(request.columns().get(column).key())) {
-                            cell.setCellValue(new BigDecimal(number.toString()).movePointLeft(2).doubleValue());
-                            cell.setCellStyle(percentageStyle);
+                            var percentage = new BigDecimal(number.toString());
+                            cell.setCellValue(percentage.movePointLeft(2).doubleValue());
+                            // Avoid a trailing decimal separator for whole percentages in POI 6 and PDF exports.
+                            cell.setCellStyle(percentage.stripTrailingZeros().scale() <= 0
+                                    ? wholePercentageStyle : percentageStyle);
                         }
                     } else {
                         cell.setCellValue(value == null ? "" : String.valueOf(value));
