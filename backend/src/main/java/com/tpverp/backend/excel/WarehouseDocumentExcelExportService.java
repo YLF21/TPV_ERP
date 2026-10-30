@@ -109,7 +109,9 @@ public class WarehouseDocumentExcelExportService {
             row++;
             moneyPair(sheet.createRow(row++), "Subtotal", input.getSubtotal(), money);
             var percentageStyle = workbook.createCellStyle();
-            percentageStyle.setDataFormat(workbook.createDataFormat().getFormat("0.##%"));
+            // POI 6 retains the decimal separator for optional decimals, even for whole percentages.
+            percentageStyle.setDataFormat(workbook.createDataFormat().getFormat(
+                    input.getGlobalDiscount().stripTrailingZeros().scale() <= 0 ? "0%" : "0.##%"));
             moneyPair(sheet.createRow(row++), "Descuento total del documento %", input.getGlobalDiscount().movePointLeft(2), percentageStyle);
             var total = sheet.createRow(row);
             moneyPair(total, "Total de compra", input.getTotal(), money);

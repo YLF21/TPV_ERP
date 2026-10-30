@@ -144,7 +144,7 @@ final class StockPdfRenderer {
 
         @Override
         public void cell(String reference, String formattedValue,
-                org.apache.poi.xssf.usermodel.XSSFComment comment) {
+                org.apache.poi.ss.usermodel.Comment comment) {
             int index = new CellReference(reference).getCol();
             if (index < values.length) values[index] = formattedValue;
         }
