@@ -65,6 +65,10 @@ import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import java.util.stream.Stream;
 
 class InvoiceJasperRendererTest {
 
@@ -75,6 +79,126 @@ class InvoiceJasperRendererTest {
             OBS-LINE-4: fin de observaciones""";
 
     @TempDir Path temporaryDirectory;
+
+    @Test
+    void reprintUsesDocumentContactInsteadOfCurrentCustomerAddress() {
+        var fixture = fixture();
+        var contact = new com.tpverp.backend.document.DocumentCustomerContact(UUID.randomUUID(),
+                new com.tpverp.backend.party.CustomerAddressEntry.Address(
+                        "Calle Elegida 88", "38001", "Santa Cruz", "Tenerife", "ES"), "922222222", "elegida@example.invalid");
+        // Emulate the persisted contact of the already confirmed invoice.
+        org.springframework.test.util.ReflectionTestUtils.setField(fixture.document(), "customerContact", contact);
+        var renderer = new InvoiceJasperRenderer(mock(DocumentTemplateRepository.class),
+                new DocumentTemplateArtifactStorage(temporaryDirectory), new SafeJrxmlCompiler(), new ObjectMapper(),
+                new BuiltInDocumentJrxmlCatalog(new SafeJrxmlCompiler()));
+        var data = renderer.data(fixture.document(), fixture.store(), fixture.company(), fixture.customer(),
+                new InvoicePresentationSnapshot(2, InvoiceFiscalProfile.IVA, "Gracias", List.of()), null, null);
+        assertThat(data.at("/customer/address/line1").asText()).isEqualTo("Calle Elegida 88");
+        assertThat(data.at("/customer/phone").asText()).isEqualTo("922222222");
+        assertThat(data.at("/customer/details").asText()).contains("Calle Elegida 88", "922222222")
+                .doesNotContain("Calle Cliente 2", "928000000");
+        assertThat(fixture.customer().getFiscalAddress().getAddress()).isEqualTo("Calle Cliente 2");
+    }
+
+    @ParameterizedTest(name = "{0} built-in v{1}")
+    @MethodSource("invoiceBuiltInVersions")
+    void renderedInvoiceKeepsSelectedAddressAfterCustomerMasterChanges(
+            DocumentTemplateFormat format, int version) throws Exception {
+        var fixture = fixture();
+        var contact = new com.tpverp.backend.document.DocumentCustomerContact(UUID.randomUUID(),
+                new com.tpverp.backend.party.CustomerAddressEntry.Address(
+                        "Calle Elegida 88", "38001", "Santa Cruz", "Tenerife", "ES"),
+                "922222222", "elegida@example.invalid");
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                fixture.document(), "customerContact", contact);
+        fixture.customer().update("CLIENTE DE PRUEBA SL", DocumentType.CIF, "B87654321",
+                new FiscalAddress("Calle Cliente 2", "35002", "Las Palmas", "Las Palmas", "ES"),
+                "928000000", null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var compiler = new SafeJrxmlCompiler();
+        var builtIns = new BuiltInDocumentJrxmlCatalog(compiler);
+        var renderer = new InvoiceJasperRenderer(mock(DocumentTemplateRepository.class),
+                new DocumentTemplateArtifactStorage(temporaryDirectory), compiler,
+                new ObjectMapper(), builtIns);
+        var presentation = invoiceBuiltInSnapshot(builtIns, format, version);
+
+        var original = renderer.renderDocument(fixture.document(), fixture.store(), fixture.company(),
+                fixture.customer(), presentation, null, null, format).orElseThrow().pdf();
+        assertSelectedCustomerAddress(original, format, version);
+
+        fixture.customer().update("CLIENTE DE PRUEBA SL", DocumentType.CIF, "B87654321",
+                new FiscalAddress("Calle Maestro Nueva 9", "28099", "Madrid", "Madrid", "ES"),
+                "911111111", null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var reprint = renderer.renderDocument(fixture.document(), fixture.store(), fixture.company(),
+                fixture.customer(), presentation, null, null, format).orElseThrow().pdf();
+        assertSelectedCustomerAddress(reprint, format, version);
+
+        var previewDirectory = System.getProperty("tpv.test.invoiceAddressPreviewDirectory");
+        if (version == 2 && previewDirectory != null && !previewDirectory.isBlank()) {
+            var directory = Files.createDirectories(Path.of(previewDirectory));
+            Files.write(directory.resolve("MOCK_CLIENTE_PRUEBA_FACTURA_" + format + ".pdf"), reprint);
+        }
+    }
+
+    @ParameterizedTest(name = "{0} built-in v{1} blank selected address")
+    @MethodSource("invoiceBuiltInVersions")
+    void renderedInvoiceDoesNotFillBlankSelectedAddressFromCustomerMaster(
+            DocumentTemplateFormat format, int version) throws Exception {
+        var fixture = fixture();
+        var contact = new com.tpverp.backend.document.DocumentCustomerContact(UUID.randomUUID(),
+                new com.tpverp.backend.party.CustomerAddressEntry.Address(
+                        null, null, null, null, null), null, null);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                fixture.document(), "customerContact", contact);
+        fixture.customer().update("CLIENTE DE PRUEBA SL", DocumentType.CIF, "B87654321",
+                new FiscalAddress("Calle Maestro 55", "35002", "Las Palmas", "Las Palmas", "ES"),
+                "928000000", null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var compiler = new SafeJrxmlCompiler();
+        var builtIns = new BuiltInDocumentJrxmlCatalog(compiler);
+        var renderer = new InvoiceJasperRenderer(mock(DocumentTemplateRepository.class),
+                new DocumentTemplateArtifactStorage(temporaryDirectory), compiler,
+                new ObjectMapper(), builtIns);
+        var presentation = invoiceBuiltInSnapshot(builtIns, format, version);
+
+        var bytes = renderer.renderDocument(fixture.document(), fixture.store(), fixture.company(),
+                fixture.customer(), presentation, null, null, format).orElseThrow().pdf();
+        try (var pdf = Loader.loadPDF(bytes)) {
+            var text = new PDFTextStripper().getText(pdf);
+            assertThat(text).as(format + " v" + version)
+                    .contains("CLIENTE DE PRUEBA SL", "B87654321", "FV-2026-1", "TOTAL")
+                    .doesNotContain("Calle Maestro 55", "35002", "928000000");
+            assertThat(text).containsAnyOf("12,10", "12.10");
+        }
+    }
+
+    private static Stream<Arguments> invoiceBuiltInVersions() {
+        return Stream.of(DocumentTemplateFormat.A4, DocumentTemplateFormat.TICKET_80)
+                .flatMap(format -> Stream.of(1, 2).map(version -> Arguments.of(format, version)));
+    }
+
+    private static InvoicePresentationSnapshot invoiceBuiltInSnapshot(
+            BuiltInDocumentJrxmlCatalog builtIns, DocumentTemplateFormat format, int version) {
+        var current = builtIns.reference(DocumentTemplateType.FACTURA_VENTA, format);
+        var reference = new InvoicePresentationSnapshot.TemplateReference(
+                null, current.code(), version, current.dataSchemaVersion(),
+                version == current.version() ? current.sha256() : null, true);
+        return new InvoicePresentationSnapshot(4, InvoiceFiscalProfile.IVA, null, List.of(),
+                format == DocumentTemplateFormat.A4 ? reference : null,
+                format == DocumentTemplateFormat.TICKET_80 ? reference : null, null);
+    }
+
+    private static void assertSelectedCustomerAddress(
+            byte[] bytes, DocumentTemplateFormat format, int version) throws Exception {
+        try (var pdf = Loader.loadPDF(bytes)) {
+            var text = new PDFTextStripper().getText(pdf);
+            assertThat(text).as(format + " v" + version)
+                    .contains("CLIENTE DE PRUEBA SL", "B87654321", "FV-2026-1", "TOTAL",
+                            "Calle Elegida 88", "38001", "Santa Cruz", "Tenerife")
+                    .doesNotContain("Calle Cliente 2", "35002", "928000000",
+                            "Calle Maestro Nueva 9", "28099", "Madrid", "911111111");
+            assertThat(text).containsAnyOf("12,10", "12.10");
+        }
+    }
+
 
     @Test
     void formatsPaymentMethodIdentifiersInStructuredInvoiceData() {

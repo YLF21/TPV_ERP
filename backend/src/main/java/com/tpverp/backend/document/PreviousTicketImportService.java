@@ -106,7 +106,7 @@ public class PreviousTicketImportService {
                                 ticket, line, currentCatalog.get(line.getProductoId()),
                                 pricingMode))
                         .toList(),
-                previewAdjustments(ticket, pricingMode));
+                previewAdjustments(ticket, pricingMode), ticket.getCustomerAddressId(), ticket.getCustomerContact());
     }
 
     @Transactional(readOnly = true)
@@ -182,7 +182,7 @@ public class PreviousTicketImportService {
                                 .map(adjustment -> DocumentAdjustmentSnapshot.from(
                                         adjustment, ticket.getLineas()))
                                 .toList()
-                        : List.of());
+                        : List.of(), ticket.getCustomerContact());
     }
 
     private static PreviousTicketImportPricingMode pricingMode(
@@ -855,7 +855,19 @@ public class PreviousTicketImportService {
             BigDecimal preservedManualDiscountAmount,
             List<HistoricalTicketReplayMetadata.HistoricalLoyaltyLine>
                     historicalLoyaltyLines,
-            List<DocumentAdjustmentSnapshot> adjustments) {
+            List<DocumentAdjustmentSnapshot> adjustments,
+            DocumentCustomerContact customerContact) {
+
+        public ResolvedImport(UUID ticketId, String ticketNumber, DocumentStatus status,
+                PreviousTicketImportPricingMode pricingMode, UUID customerId, String fingerprint,
+                BigDecimal baseTotal, BigDecimal taxTotal, BigDecimal total, List<DocumentLineCommand> commands,
+                int productLineCount, BigDecimal preservedManualDiscountAmount,
+                List<HistoricalTicketReplayMetadata.HistoricalLoyaltyLine> historicalLoyaltyLines,
+                List<DocumentAdjustmentSnapshot> adjustments) {
+            this(ticketId, ticketNumber, status, pricingMode, customerId, fingerprint, baseTotal, taxTotal,
+                    total, commands, productLineCount, preservedManualDiscountAmount, historicalLoyaltyLines,
+                    adjustments, null);
+        }
 
         public ResolvedImport(
                 UUID ticketId,

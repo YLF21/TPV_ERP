@@ -108,6 +108,8 @@ import { SaleProductConsultationDialog } from "./SaleProductConsultationDialog";
 import { SalePriceConsultationDialog } from "./SalePriceConsultationDialog";
 import { SaleProductSalesHistoryDialog } from "./SaleProductSalesHistoryDialog";
 import { SaleCustomerCreateDialog, canCreateSaleCustomer } from "./SaleCustomerCreateDialog";
+import { SaleCustomerAddressDialog } from "./SaleCustomerAddressDialog";
+import type { CustomerContactAddress } from "./customerContactAddresses";
 import { SaleCustomerList, type SaleCustomerSortColumn } from "./SaleCustomerList";
 import { SaleCustomerReceivablesDialog } from "./SaleCustomerReceivablesDialog";
 import { SaleCashDrawerAuthorizationDialog } from "./SaleCashDrawerAuthorizationDialog";
@@ -251,6 +253,9 @@ export type SaleLine = {
 
 export type SaleCustomer = {
   id: string;
+  addresses?: CustomerContactAddress[];
+  customerAddressId?: string | null;
+  customerContactSnapshot?: CustomerContactAddress | null;
   clientId?: string | null;
   fiscalName?: string | null;
   documentNumber?: string | null;
@@ -279,6 +284,8 @@ export type PreviousTicketImportPreview = {
   manualDiscountAuthorizationRequired: boolean;
   fingerprint: string;
   customerId?: string | null;
+  customerAddressId?: string | null;
+  customerContactSnapshot?: CustomerContactAddress | null;
   globalDiscount: number | string;
   baseTotal: number | string;
   taxTotal: number | string;
@@ -1587,6 +1594,7 @@ export function pendingSaleDraftForCustomer(
   return {
     checkoutId, warehouseId, type: "ALBARAN_VENTA", date: addLocalDays(now, 0),
     customerId: customer.id,
+    ...(customer.customerAddressId ? { customerAddressId: customer.customerAddressId } : {}),
     dueDate: addLocalDays(now, Math.max(0, customer.paymentTermDays ?? 30)),
     globalDiscount: "0.00",
     ...(wholesaleMode ? { wholesaleMode: true } : {}),
@@ -1837,6 +1845,7 @@ function SaleScreenContent({
   const [customerError, setCustomerError] = useState(false);
   const [customerCreateOpen, setCustomerCreateOpen] = useState(false);
   const [customerEditId, setCustomerEditId] = useState<string | null>(null);
+  const [customerAddressChoice, setCustomerAddressChoice] = useState<SaleCustomer | null>(null);
   const [customerReceivablesOpen, setCustomerReceivablesOpen] = useState<SaleCustomer | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<SaleCustomer | null>(savedTicket?.selectedCustomer ?? null);
   const [selectedCustomerResultId, setSelectedCustomerResultId] = useState("");
@@ -2169,6 +2178,8 @@ function SaleScreenContent({
   const saleCustomerReceivablesAllowed = hasPermission(session, "CUSTOMER_RECEIVABLES_READ")
     && hasPermission(session, "CUSTOMER_RECEIVABLES_PAY");
   const selectedLine = lines.find((line) => saleCartLineIdentity(line) === selectedLineId);
+  const selectedCustomerAddress = selectedCustomer?.customerContactSnapshot
+    ?? selectedCustomer?.addresses?.find(address => address.id === selectedCustomer.customerAddressId);
   useEffect(() => {
     if (previousTicketImportFocusRequest === 0) return;
     searchInputRef.current?.focus();
@@ -3592,6 +3603,8 @@ function SaleScreenContent({
           endPreviousTicketImport(t("sale.importPreviousTicket.error.customer"));
           return;
         }
+        customer = { ...customer, customerAddressId: preview.customerAddressId ?? null,
+          customerContactSnapshot: preview.customerContactSnapshot ?? null };
       }
       const draft: PendingPreviousTicketImport = {
         preview,
@@ -3954,6 +3967,7 @@ function SaleScreenContent({
     setPendingCustomerContinuation(continuePending);
     setCustomerCreateOpen(false);
     setCustomerEditId(null);
+    setCustomerAddressChoice(null);
     setCustomerReceivablesOpen(null);
     setCustomerLoading(true);
     setCustomerError(false);
@@ -3962,6 +3976,16 @@ function SaleScreenContent({
   }
 
   function chooseSaleCustomer(customer: SaleCustomer | null) {
+    if (customer && (customer.addresses?.length ?? 0) > 1) {
+      setCustomerAddressChoice(customer);
+      return;
+    }
+    applySaleCustomer(customer && customer.addresses?.[0]
+      ? { ...customer, customerAddressId: customer.addresses[0].id, customerContactSnapshot: customer.addresses[0] } : customer);
+  }
+
+  function applySaleCustomer(customer: SaleCustomer | null) {
+    setCustomerAddressChoice(null);
     setSelectedCustomer(customer);
     setLines((current) => applyMemberDiscounts(current, customer));
     setActionDialog(null);
@@ -3975,6 +3999,7 @@ function SaleScreenContent({
     setPendingCustomerContinuation(false);
     setCustomerCreateOpen(false);
     setCustomerEditId(null);
+    setCustomerAddressChoice(null);
     setCustomerReceivablesOpen(null);
     setActionDialog(null);
   }
@@ -4030,7 +4055,7 @@ function SaleScreenContent({
           currentIndex + (direction === "ArrowDown" ? 1 : -1)));
       if (nextIndex === currentIndex) return false;
       setSelectedCustomerResultId(customerSelectionIds[nextIndex]);
-  }, actionDialog === "customer" && !customerCreateOpen && !customerEditId && !customerReceivablesOpen);
+  }, actionDialog === "customer" && !customerCreateOpen && !customerEditId && !customerReceivablesOpen && !customerAddressChoice);
 
   function handleCustomerDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -4073,7 +4098,7 @@ function SaleScreenContent({
   }, [actionDialog, customerSelectionIds, selectedCustomerResultId]);
 
   useEffect(() => {
-    if (actionDialog !== "customer" || customerCreateOpen || customerEditId || customerReceivablesOpen) return;
+    if (actionDialog !== "customer" || customerCreateOpen || customerEditId || customerReceivablesOpen || customerAddressChoice) return;
     const generation = ++customerSearchGenerationRef.current;
     const timer = globalThis.setTimeout(() => {
       setCustomerLoading(true);
@@ -4091,7 +4116,7 @@ function SaleScreenContent({
         .finally(() => { if (generation === customerSearchGenerationRef.current) setCustomerLoading(false); });
     }, customerQuery ? 180 : 0);
     return () => globalThis.clearTimeout(timer);
-  }, [actionDialog, customerCreateOpen, customerEditId, customerQuery, customerReceivablesOpen,
+  }, [actionDialog, customerCreateOpen, customerEditId, customerQuery, customerReceivablesOpen, customerAddressChoice,
     pendingCustomerContinuation, session.accessToken]);
 
   async function beginPendingSale(customer: SaleCustomer) {
@@ -4441,6 +4466,7 @@ function SaleScreenContent({
     return {
       wholesaleMode,
       customerId: selectedCustomer?.id ?? null,
+      ...(selectedCustomer?.customerAddressId ? { customerAddressId: selectedCustomer.customerAddressId } : {}),
       lines: lines.filter((line) => !line.previousTicketImportOrigin).map((line) => ({
         productId: line.product.id,
         cartLineId: saleCartLineIdentity(line),
@@ -4842,6 +4868,7 @@ function SaleScreenContent({
       const options = await apiRequest<SaleCustomer[]>("/customers/sale-options", { token: session.accessToken });
       recoveredCustomer = options.find((candidate) => candidate.id === customerId) ?? null;
       if (!recoveredCustomer) throw new Error("recovered sale customer is no longer available");
+      recoveredCustomer = { ...recoveredCustomer, customerAddressId: opened.document.customerAddressId ?? null };
     }
     const linesWithCustomerPricing = applyMemberDiscounts(recoveredLines, recoveredCustomer);
     setLines(linesWithCustomerPricing);
@@ -6070,6 +6097,7 @@ function SaleScreenContent({
                   <strong>{selectedCustomer.clientId ?? t("sale.customer.noCode")}</strong>
                   <b title={selectedCustomer.fiscalName ?? undefined}>{selectedCustomer.fiscalName ?? t("sale.customer.unnamed")}</b>
                   {selectedCustomer.documentNumber && <small>{selectedCustomer.documentNumber}</small>}
+                  {selectedCustomerAddress?.address.address && <small>{[selectedCustomerAddress.address.address, selectedCustomerAddress.address.city].filter(Boolean).join(" · ")}</small>}
                 </span>
                 <span className="sale-customer-summary-values">
                   {selectedCustomer.activeMember && (
@@ -6967,7 +6995,7 @@ function SaleScreenContent({
         />
       )}
 
-      {actionDialog === "customer" && !customerCreateOpen && !customerEditId && (
+      {actionDialog === "customer" && !customerCreateOpen && !customerEditId && !customerAddressChoice && (
         <SaleActionDialog
           title={t("sale.customer.title")}
           closeLabel={t("sale.dialog.close")}
@@ -7022,6 +7050,18 @@ function SaleScreenContent({
           </footer>
         </SaleActionDialog>
       )}
+
+      {actionDialog === "customer" && customerAddressChoice && <SaleCustomerAddressDialog
+        key={customerAddressChoice.id}
+        locale={locale}
+        customer={customerAddressChoice}
+        addresses={customerAddressChoice.addresses ?? []}
+        onCancel={() => {
+          setCustomerAddressChoice(null);
+          queueMicrotask(() => customerSearchInputRef.current?.focus());
+        }}
+        onSelect={address => applySaleCustomer({ ...customerAddressChoice, customerAddressId: address.id, customerContactSnapshot: address })}
+      />}
 
       {actionDialog === "customer" && customerCreateOpen && (
         <SaleCustomerCreateDialog

@@ -261,7 +261,8 @@ class CustomerPendingSaleServiceTest {
                         request, new BigDecimal("30.00")), authentication))
                 .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
 
-        verifyNoInteractions(terminalOperations);
+        verify(terminalOperations).find(request.checkoutId());
+        org.mockito.Mockito.verifyNoMoreInteractions(terminalOperations);
     }
 
     @Test
@@ -289,7 +290,8 @@ class CustomerPendingSaleServiceTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("integrated_card_payment_method_required");
 
-        verifyNoInteractions(terminalOperations);
+        verify(terminalOperations).find(request.checkoutId());
+        org.mockito.Mockito.verifyNoMoreInteractions(terminalOperations);
         verify(configurations, never()).required(any());
     }
 
@@ -394,6 +396,41 @@ class CustomerPendingSaleServiceTest {
     }
 
     @Test
+    void freezesSelectedContactBeforeStartingPendingCardCharge() {
+        var request = request(List.of(payment(new BigDecimal("30.00"))),
+                new BigDecimal("100.00"));
+        var quoted = document(new BigDecimal("100.00"));
+        var contact = new DocumentCustomerContact(UUID.randomUUID(),
+                new com.tpverp.backend.party.CustomerAddressEntry.Address("Congelada", "35001", "Las Palmas", "Las Palmas", "ES"), "222", null);
+        when(quoted.getCustomerContact()).thenReturn(contact);
+        when(documents.quotePendingSale(any(), eq(request.dueDate()), eq(authentication))).thenReturn(quoted);
+        var configuration = configuration();
+        when(configurations.required(terminalId)).thenReturn(configuration);
+        when(terminalOperations.charge(eq(request.checkoutId()), any(),
+                eq(new BigDecimal("30.00")), any(), eq(contact)))
+                .thenReturn(new PaymentTerminalResult(
+                        PaymentTerminalOperationStatus.TIMEOUT, "TIMEOUT", null, null,
+                        "Resultado incierto"));
+
+        var result = service.chargeCard(
+                new CustomerPendingSaleController.CardChargeRequest(
+                        request, new BigDecimal("30.00")), authentication);
+
+        assertThat(result.status()).isEqualTo(PaymentTerminalOperationStatus.TIMEOUT);
+        verify(documents, never()).createPendingSale(any(), any(), any(), any());
+        verify(saleOperationSecurity).authorize(
+                eq(SaleOperationCode.CREATE_PENDING_RECEIVABLE),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(),
+                eq(authentication));
+        verify(audit).record(
+                eq("CUSTOMER_PENDING_RECEIVABLE_CARD_AUTHORIZED"),
+                eq(com.tpverp.backend.audit.AuditResult.EXITO),
+                org.mockito.ArgumentMatchers.argThat(details ->
+                        !details.toString().contains("authorizerPassword")));
+    }
+
+    @Test
     void createsPartialSalesInvoiceWithoutFakePendingPaymentAndLinksApprovedCard() {
         var request = request(List.of(payment(new BigDecimal("30.00"))),
                 new BigDecimal("100.00"));
@@ -417,6 +454,68 @@ class CustomerPendingSaleServiceTest {
         when(operation.matchesConfigurationIdentity(current)).thenReturn(true);
         when(documents.createPendingSale(any(), eq(request.dueDate()), any(), eq(authentication)))
                 .thenReturn(saved);
+        var view = org.mockito.Mockito.mock(CustomerReceivableView.class);
+        when(views.receivableView(saved, request.date())).thenReturn(view);
+
+        assertThat(service.create(request, authentication)).isSameAs(view);
+        verify(terminalOperations).linkDocument(
+                request.checkoutId(), saved.getId(), payment.getId());
+        verify(documents).createPendingSale(any(), eq(request.dueDate()),
+                org.mockito.ArgumentMatchers.argThat(commands ->
+                        commands.size() == 1
+                                && commands.getFirst().requestId().equals(request.checkoutId())
+                                && commands.getFirst().importe().compareTo(new BigDecimal("30.00")) == 0),
+                eq(authentication));
+        verify(saleOperationSecurity).authorize(
+                eq(SaleOperationCode.CREATE_PENDING_RECEIVABLE),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(),
+                eq(authentication));
+        verify(saleOperationSecurity, never()).authorize(
+                eq(SaleOperationCode.CONFIRM_MANUAL_CARD_PAYMENT),
+                any(), any(), eq(authentication));
+    }
+
+    @Test
+    void finalizesApprovedCardUsingFrozenContactAfterAddressRemoval() {
+        var contact = new DocumentCustomerContact(UUID.randomUUID(),
+                new com.tpverp.backend.party.CustomerAddressEntry.Address("Direccion cobrada", "35001", "Las Palmas", "Las Palmas", "ES"), "222", null);
+        var base = request(List.of(payment(new BigDecimal("30.00"))), new BigDecimal("100.00"));
+        var request = new CustomerPendingSaleController.CreateRequest(base.checkoutId(), base.warehouseId(), base.type(), base.date(),
+                base.customerId(), base.dueDate(), base.globalDiscount(), base.lines(), base.payments(), base.quotedTotal(),
+                base.creditOverride(), base.completionMode(), base.internalComment(), base.authorizerUsername(),
+                base.authorizerPassword(), base.operationAuthorizations(), base.draftVersion(), base.documentDiscountPercent(),
+                base.wholesaleMode(), contact.id());
+        var quoted = document(new BigDecimal("100.00"));
+        var saved = document(new BigDecimal("100.00"));
+        var payment = org.mockito.Mockito.mock(DocumentPayment.class);
+        when(payment.getRequestId()).thenReturn(request.checkoutId());
+        when(payment.getId()).thenReturn(UUID.randomUUID());
+        when(saved.getPagos()).thenReturn(List.of(payment));
+        when(documents.quotePendingSale(any(), eq(request.dueDate()), eq(authentication)))
+                .thenAnswer(invocation -> {
+                    var command = (DocumentCommand) invocation.getArgument(0);
+                    assertThat(command.customerContactSnapshot()).isEqualTo(contact);
+                    return quoted;
+                });
+        when(reservations.find(terminalId, request.checkoutId())).thenReturn(Optional.empty());
+        when(reservations.insert(any())).thenAnswer(call -> call.getArgument(0));
+        when(checkouts.save(any())).thenAnswer(call -> call.getArgument(0));
+        var operation = approvedOperation(request, new BigDecimal("30.00"));
+        when(operation.getSaleCustomerContactSnapshot()).thenReturn(contact);
+        when(terminalOperations.find(request.checkoutId())).thenReturn(Optional.of(operation));
+        when(terminalOperations.requireFinalizableApprovedCharge(request.checkoutId()))
+                .thenReturn(operation);
+        var current = configuration();
+        when(configurations.required(terminalId)).thenReturn(current);
+        when(operation.matchesConfigurationIdentity(current)).thenReturn(true);
+        when(documents.createPendingSale(any(), eq(request.dueDate()), any(), eq(authentication)))
+                .thenAnswer(invocation -> {
+                    var command = (DocumentCommand) invocation.getArgument(0);
+                    assertThat(command.customerContactSnapshot()).isEqualTo(contact);
+                    assertThat(command.customerAddressId()).isEqualTo(contact.id());
+                    return saved;
+                });
         var view = org.mockito.Mockito.mock(CustomerReceivableView.class);
         when(views.receivableView(saved, request.date())).thenReturn(view);
 

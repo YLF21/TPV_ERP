@@ -118,7 +118,7 @@ public class ParkedSale {
                 lines(snapshot),
                 clean((String) snapshot.get("comentarioInterno")),
                 decimal(snapshot.getOrDefault("documentDiscountPercent", "0")),
-                Boolean.TRUE.equals(snapshot.get("wholesaleMode")));
+                Boolean.TRUE.equals(snapshot.get("wholesaleMode")), uuid(snapshot.get("customerAddressId")));
     }
     // Reconstruye el ticket borrador que se entrega al terminal al abrir la venta.
 
@@ -170,6 +170,7 @@ public class ParkedSale {
         value.put("tipo", command.tipo().name());
         value.put("fecha", command.fecha().toString());
         value.put("clienteId", string(command.clienteId()));
+        value.put("customerAddressId", string(command.customerAddressId()));
         value.put("descuentoGlobal", command.descuentoGlobal().toPlainString());
         value.put("documentDiscountPercent", (command.documentDiscountPercent() == null
                 ? BigDecimal.ZERO : command.documentDiscountPercent()).toPlainString());

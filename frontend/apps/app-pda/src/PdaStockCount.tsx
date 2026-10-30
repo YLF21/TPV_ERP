@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { apiRequest, type LocaleCode } from "@tpverp/app-common";
+import { apiRequest } from "../../../packages/app-common/src/api/client";
+import type { LocaleCode } from "../../../packages/app-common/src/types";
 import { pdaPriceLookupPath } from "./PdaProductLookup";
 import { PhysicalScannerStatus, usePhysicalScanner } from "./usePhysicalScanner";
 

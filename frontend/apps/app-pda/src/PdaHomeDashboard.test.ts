@@ -12,4 +12,17 @@ describe("PdaHomeDashboard", () => {
     );
     expect(result).toEqual({ pending: 1, low: 1, assigned: 1, incidents: 1, urgent: 0 });
   });
+
+  it("counts only work assigned to the authenticated user", () => {
+    const result = summarizePdaHome(
+      [],
+      [
+        { type: "PICKING", status: "OPEN", assignedUserId: "current" },
+        { type: "INCIDENT", status: "OPEN", assignedUserId: "another" }
+      ],
+      [], [], "", "current"
+    );
+    expect(result.assigned).toBe(1);
+    expect(result.incidents).toBe(0);
+  });
 });

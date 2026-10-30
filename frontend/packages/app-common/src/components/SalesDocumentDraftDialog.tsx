@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
+import type { CustomerContactAddress } from "./customerContactAddresses";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 
 export type SalesDocumentDraftSummary = {
@@ -18,6 +19,8 @@ export type SalesDocumentDraftSummary = {
 };
 
 export type SalesDocumentDraftDetail = SalesDocumentDraftSummary & {
+  customerAddressId?: string | null;
+  customerContactSnapshot?: CustomerContactAddress | null;
   dueDate: string;
   warehouseId: string;
   globalDiscount: number | string;
