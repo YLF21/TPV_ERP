@@ -249,6 +249,10 @@ describe("SalesDocumentScreen", () => {
         clientId: "C-001",
         fiscalName: "Cliente Fiscal SL",
         documentNumber: "B11111111",
+        addresses: [
+          { id: "default-contact", address: { address: "CALLE PRINCIPAL", city: "MOGÁN", country: "ES" } },
+          { id: "chosen-contact", address: { address: "CALLE SECUNDARIA", city: "MADRID", country: "ES" } },
+        ],
       }]);
       if (path === "/warehouses") return Promise.resolve([{
         id: "warehouse-1",
@@ -259,6 +263,7 @@ describe("SalesDocumentScreen", () => {
         expect(options?.body).toMatchObject({
           type: "FACTURA_VENTA",
           customerId: "customer-1",
+          customerAddressId: "chosen-contact",
           wholesaleMode: true,
           completionMode: "DRAFT",
           payments: [],
@@ -269,6 +274,7 @@ describe("SalesDocumentScreen", () => {
         expect(options?.body).toMatchObject({
           type: "FACTURA_VENTA",
           customerId: "customer-1",
+          customerAddressId: "chosen-contact",
           warehouseId: "warehouse-1",
           wholesaleMode: true,
           completionMode: "DRAFT",
@@ -305,6 +311,8 @@ describe("SalesDocumentScreen", () => {
     fireEvent.doubleClick(within(customerDialog).getByRole("option", {
       name: /cliente fiscal sl/i,
     }));
+    const addressDialog = screen.getByRole("dialog", { name: "Seleccionar dirección" });
+    fireEvent.doubleClick(within(addressDialog).getByText("CALLE SECUNDARIA").closest("tr")!);
 
     const quickEntry = screen.getByLabelText(/entrada rápida/i);
     fireEvent.change(quickEntry, { target: { value: "P-001" } });
@@ -427,6 +435,8 @@ describe("SalesDocumentScreen", () => {
         dueDate: "2026-09-10",
         warehouseId: "warehouse-1",
         customerId: "customer-2",
+        customerAddressId: "stored-contact",
+        customerContactSnapshot: { id: "stored-contact", address: { address: "CALLE HISTÓRICA", country: "ES" }, phone: "600111222" },
         customerName: "Cliente Borrador SL",
         globalDiscount: "5.00",
         documentDiscountPercent: "5.00",
@@ -455,6 +465,7 @@ describe("SalesDocumentScreen", () => {
       });
       if (path === "/pos/sales-document-drafts/draft-2/quote") {
         expect(options?.body).toMatchObject({
+          customerAddressId: "stored-contact",
           draftVersion: 7,
           globalDiscount: "0.00",
           documentDiscountPercent: "5.00",
@@ -508,6 +519,7 @@ describe("SalesDocumentScreen", () => {
 
     await waitFor(() => expect(updatedBodies).toHaveLength(1));
     expect(updatedBodies[0]).toMatchObject({
+      customerAddressId: "stored-contact",
       draftVersion: 7,
       date: "2026-08-11",
       dueDate: "2026-09-10",

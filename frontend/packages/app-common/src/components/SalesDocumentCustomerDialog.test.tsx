@@ -12,10 +12,85 @@ const customers: SaleCustomer[] = [
   { id: "customer-one", clientId: "CLI-001", fiscalName: "Cliente Uno SL", documentNumber: "B11111111" },
   { id: "customer-two", clientId: "CLI-002", fiscalName: "Cliente Dos SL", documentNumber: "B22222222" },
 ];
+const addresses = [
+  { id: "address-main", address: { address: "Calle Mayor 1", city: "Madrid", country: "ES" }, phone: "600111222" },
+  { id: "address-other", address: { address: "Calle Sol 2", city: "Las Palmas", country: "ES" }, phone: "600333444" },
+];
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("SalesDocumentCustomerDialog", () => {
+  it.each(["Insert", "Enter", "double click", "button"])("requires an address after customer acceptance with %s", (activation) => {
+    const onSelect = vi.fn();
+    const onClose = vi.fn();
+    const customer = { ...customers[0], addresses };
+    const { container } = render(<SalesDocumentCustomerDialog locale="es" customers={[customer]} onSelect={onSelect} onClose={onClose} />);
+    const search = screen.getByRole("textbox", { name: "Buscar cliente" });
+    const option = screen.getByRole("option", { name: /Cliente Uno SL/ });
+
+    if (activation === "double click") fireEvent.doubleClick(option);
+    else if (activation === "button") fireEvent.click(screen.getByRole("button", { name: "Seleccionar cliente" }));
+    else fireEvent.keyDown(search, { key: activation });
+
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    const chooser = screen.getByRole("dialog", { name: "Seleccionar dirección" });
+    expect(chooser).toBeInTheDocument();
+    const customerOverlay = container.querySelector(".sales-document-customer-overlay");
+    expect(customerOverlay).toHaveAttribute("aria-hidden", "true");
+    expect(customerOverlay).toHaveAttribute("inert");
+    expect(customerOverlay).toHaveStyle({ visibility: "hidden" });
+    expect(option).toBeInTheDocument();
+    expect(option).not.toHaveFocus();
+
+    const rows = chooser.querySelectorAll<HTMLTableRowElement>("tbody tr");
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    fireEvent.keyDown(rows[1], { key: "Insert" });
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith({
+      ...customer, customerAddressId: addresses[1].id, customerContactSnapshot: addresses[1],
+    });
+  });
+
+  it("cancels only the address choice and retains query, row, scroll and focus", () => {
+    const onSelect = vi.fn();
+    const onClose = vi.fn();
+    const customer = { ...customers[1], addresses };
+    const { container } = render(<SalesDocumentCustomerDialog locale="es" customers={[...customers.slice(0, 1), customer]}
+      onSelect={onSelect} onClose={onClose} />);
+    const search = screen.getByRole("textbox", { name: "Buscar cliente" });
+    fireEvent.change(search, { target: { value: "Dos" } });
+    const option = screen.getByRole("option", { name: /Cliente Dos SL/ });
+    const table = container.querySelector<HTMLDivElement>(".sales-document-customer-table")!;
+    table.scrollTop = 42;
+    fireEvent.click(option);
+    expect(option).toHaveFocus();
+    fireEvent.keyDown(option, { key: "Enter" });
+    const chooser = screen.getByRole("dialog", { name: "Seleccionar dirección" });
+    fireEvent.keyDown(chooser.querySelector("tbody tr")!, { key: "Escape" });
+
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "Seleccionar dirección" })).not.toBeInTheDocument();
+    expect(search).toHaveValue("Dos");
+    expect(option).toHaveAttribute("aria-selected", "true");
+    expect(table.scrollTop).toBe(42);
+    expect(option).toHaveFocus();
+    expect(container.querySelector(".sales-document-customer-overlay")).toHaveAttribute("aria-hidden", "false");
+    fireEvent.keyDown(option, { key: "Enter" });
+    expect(screen.getByRole("dialog", { name: "Seleccionar dirección" })).toBeInTheDocument();
+  });
+
+  it("passes the only address directly with its ID and contact snapshot", () => {
+    const onSelect = vi.fn();
+    const customer = { ...customers[0], addresses: [addresses[0]] };
+    render(<SalesDocumentCustomerDialog locale="es" customers={[customer]} onSelect={onSelect} onClose={vi.fn()} />);
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    expect(screen.queryByRole("dialog", { name: "Seleccionar dirección" })).not.toBeInTheDocument();
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith({
+      ...customer, customerAddressId: addresses[0].id, customerContactSnapshot: addresses[0],
+    });
+  });
+
   it("navigates from the focused row even before its highlight commits", () => {
     const onSelect = vi.fn();
     render(<SalesDocumentCustomerDialog locale="es" customers={customers} onSelect={onSelect} onClose={vi.fn()} />);

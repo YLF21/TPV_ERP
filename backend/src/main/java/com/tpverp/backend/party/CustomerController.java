@@ -224,7 +224,7 @@ public class CustomerController {
             boolean blockOnOverdue,
             BigDecimal outstandingDebt,
             BigDecimal overdueDebt,
-            BigDecimal availableCredit) {
+            BigDecimal availableCredit, List<CustomerAddressEntry> addresses) {
 
         static SaleCustomerOption from(CustomerService.CustomerView customer) {
             return new SaleCustomerOption(
@@ -234,7 +234,7 @@ public class CustomerController {
                     customer.balance(),
                     customer.creditEnabled(), customer.creditLimit(), customer.paymentTermDays(),
                     customer.creditBlocked(), customer.blockOnOverdue(), customer.outstandingDebt(),
-                    customer.overdueDebt(), customer.availableCredit());
+                    customer.overdueDebt(), customer.availableCredit(), customer.addresses());
         }
     }
 }

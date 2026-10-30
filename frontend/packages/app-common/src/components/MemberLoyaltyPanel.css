@@ -3,6 +3,8 @@
 .member-loyalty-tabs { margin-left: auto; padding: 0; border: 0; background: transparent; }
 .member-loyalty-tabs button { min-height: 34px; padding: 6px 14px; border: 1px solid #9baaba; background: #fff; color: #153653; font-weight: 700; }
 .member-loyalty-tabs button.is-active { border-color: #12395f; background: #12395f; color: #fff; }
+.member-loyalty-tabs button:focus-visible { outline: 2px solid #0065fe; outline-offset: 2px; }
+.member-loyalty-tab-content { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; overflow: auto; }
 .party-member-loyalty .stock-summary-grid { grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 8px; }
 .party-member-loyalty .stock-summary-grid > div { min-height: 56px; padding: 9px 10px; border: 1px solid #c2ccd5; background: #f8fafb; }
 .party-member-loyalty .stock-summary-grid span { display: block; margin-bottom: 4px; color: #5b6b7a; font-size: 11px; text-transform: uppercase; }
@@ -11,13 +13,21 @@
 .member-loyalty-card, .member-loyalty-list-section { border: 1px solid #b8c3ce; background: #fff; }
 .member-loyalty-card h4, .member-loyalty-list-section > header { margin: 0; padding: 8px 10px; border-bottom: 1px solid #b8c3ce; background: #e8edf1; color: #102f50; }
 .member-loyalty-card h4 { font-size: 14px; }
-.member-loyalty-card form { display: grid; grid-template-columns: minmax(130px, .8fr) minmax(180px, 1.4fr) auto; align-items: end; gap: 9px; padding: 10px; }
-.member-loyalty-card form > label > span { display: block; margin-bottom: 4px; color: #3f5367; font-size: 11px; font-weight: 700; }
+.member-loyalty-card form { margin: 0; padding: 10px; }
+.member-loyalty-card fieldset { display: grid; grid-template-columns: minmax(100px, .8fr) minmax(140px, 1.4fr) auto; align-items: end; gap: 9px; min-width: 0; padding: 0; margin: 0; border: 0; }
+.member-loyalty-card fieldset > label { min-width: 0; }
+.member-loyalty-card fieldset > label > span { display: block; margin-bottom: 4px; color: #3f5367; font-size: 11px; font-weight: 700; }
 .member-loyalty-card input:not([type="checkbox"]) { width: 100%; min-height: 32px; box-sizing: border-box; border: 1px solid #8899a8; }
-.member-loyalty-card button { min-height: 32px; }
+.member-loyalty-card button { min-height: 32px; white-space: nowrap; }
+.member-loyalty-card--manual fieldset > button { grid-column: 1 / -1; justify-self: end; }
 .member-loyalty-check { grid-column: 1 / -2; display: flex; align-items: center; gap: 7px; }
 .member-loyalty-check > span { margin: 0 !important; }
-.member-loyalty-list-section { min-height: 0; overflow: auto; }
+.member-loyalty-list-section { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow: hidden; border-radius: var(--erp-window-radius, 6px); }
+.member-loyalty-table-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; border-radius: inherit; }
+.party-member-loyalty .member-loyalty-list-section .member-loyalty-table-scroll table { width: 100%; margin: 0; border: 0 !important; border-collapse: separate; border-spacing: 0; }
+.member-loyalty-table-scroll thead th { position: sticky; top: 0; z-index: 2; }
+.member-loyalty-card--number fieldset { grid-template-columns: minmax(140px, 1fr) auto; }
+.member-loyalty-number-hint { grid-column: 1 / -1; margin: 0; color: #52687e; font-size: 11px; }
 .member-loyalty-list-section > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .member-loyalty-list-section h4 { margin: 0; font-size: 14px; }
 .member-loyalty-list-section header p { margin: 2px 0 0; color: #5c6e80; font-size: 11px; }
@@ -37,6 +47,6 @@
   .member-loyalty-tabs { margin-left: 0; }
   .party-member-loyalty .stock-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .member-loyalty-editor-grid { grid-template-columns: 1fr; }
-  .member-loyalty-card form { grid-template-columns: 1fr; }
+  .member-loyalty-card fieldset { grid-template-columns: 1fr; }
   .member-loyalty-check { grid-column: auto; }
 }

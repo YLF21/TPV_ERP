@@ -39,6 +39,10 @@ public class DocumentSyncPayloadFactory {
         payload.put("estado", document.getEstado().name());
         payload.put("fecha", document.getFecha().toString());
         payload.put("clienteId", nullableUuid(document.getClienteId()));
+        if (document.getCustomerContact() != null) {
+            payload.put("customerAddressId", document.getCustomerAddressId().toString());
+            payload.put("customerContactSnapshot", contactPayload(document.getCustomerContact()));
+        }
         payload.put("proveedorId", nullableUuid(document.getProveedorId()));
         payload.put("almacenId", nullableUuid(document.getAlmacenId()));
         payload.put("descuentoGlobal", document.getDescuentoGlobal().toPlainString());
@@ -64,6 +68,23 @@ public class DocumentSyncPayloadFactory {
         payload.put("perfilFiscalImpresionTicket", nullableEnum(document.getTicketPrintFiscalProfile()));
         payload.put("relaciones", outgoing.stream().map(relation -> Map.of(
                 "tipo", relation.getType().name(), "origenId", relation.getOriginId().toString())).toList());
+        return payload;
+    }
+
+    private static Map<String, Object> contactPayload(DocumentCustomerContact contact) {
+        var payload = new LinkedHashMap<String, Object>();
+        payload.put("id", contact.id().toString());
+        var address = new LinkedHashMap<String, Object>();
+        if (contact.address() != null) {
+            address.put("address", contact.address().address());
+            address.put("postalCode", contact.address().postalCode());
+            address.put("city", contact.address().city());
+            address.put("province", contact.address().province());
+            address.put("country", contact.address().country());
+        }
+        payload.put("address", address);
+        payload.put("phone", contact.phone());
+        payload.put("email", contact.email());
         return payload;
     }
 

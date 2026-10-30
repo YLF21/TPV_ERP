@@ -7,9 +7,12 @@ import com.tpverp.backend.security.domain.UserAccount;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,9 +27,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class TerminalController {
 
     private final TerminalRegistrationService service;
+    private final PdaCredentialRotationService credentialRotation;
 
-    public TerminalController(TerminalRegistrationService service) {
+    public TerminalController(
+            TerminalRegistrationService service,
+            PdaCredentialRotationService credentialRotation) {
         this.service = service;
+        this.credentialRotation = credentialRotation;
     }
 
     @PostMapping("/request")
@@ -49,6 +56,16 @@ public class TerminalController {
     public TerminalRegistrationService.PdaRegistrationResult linkPda(
             @Valid @RequestBody PdaLinkRequest request) {
         return service.linkPda(request.code());
+    }
+
+    @PostMapping("/current/credential/rotate")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<PdaCredentialRotationService.RotationResult> rotateCurrentPdaCredential(
+            Authentication authentication) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .header(HttpHeaders.PRAGMA, "no-cache")
+                .body(credentialRotation.rotate(authentication));
     }
 
     @GetMapping
@@ -97,9 +114,9 @@ public class TerminalController {
             @NotNull TerminalType type) {
     }
 
-    public record PdaRequest(@NotBlank String name) {
+    public record PdaRequest(@NotBlank @Size(max = 120) String name) {
     }
 
-    public record PdaLinkRequest(@NotBlank String code) {
+    public record PdaLinkRequest(@NotBlank @Size(min = 6, max = 128) String code) {
     }
 }

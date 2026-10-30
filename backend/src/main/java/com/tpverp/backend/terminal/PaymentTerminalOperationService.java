@@ -37,8 +37,13 @@ public class PaymentTerminalOperationService {
 
     public PaymentTerminalResult charge(UUID operationId,String requestHash,BigDecimal amount,
             CardTerminalConfiguration configuration){
+        return charge(operationId, requestHash, amount, configuration, null);
+    }
+
+    public PaymentTerminalResult charge(UUID operationId, String requestHash, BigDecimal amount,
+            CardTerminalConfiguration configuration, com.tpverp.backend.document.DocumentCustomerContact contact) {
         Reservation reserved;
-        try { reserved=chargeTx(()->reserveAndMarkSent(operationId,requestHash,amount,configuration)); }
+        try { reserved=chargeTx(()->reserveAndMarkSent(operationId,requestHash,amount,configuration,contact)); }
         catch(org.springframework.dao.DataIntegrityViolationException race){reserved=chargeTx(()->existingReservation(operationId,requestHash,configuration));}
         if(!reserved.send()) return toResult(reserved.operation());
         var gateway=resolve(configuration);
@@ -51,6 +56,10 @@ public class PaymentTerminalOperationService {
     }
 
     public Reservation reserveAndMarkSent(UUID id,String requestHash,BigDecimal amount,CardTerminalConfiguration c){
+        return reserveAndMarkSent(id, requestHash, amount, c, null);
+    }
+    public Reservation reserveAndMarkSent(UUID id,String requestHash,BigDecimal amount,CardTerminalConfiguration c,
+            com.tpverp.backend.document.DocumentCustomerContact contact){
         var existing=operations.findByTerminalIdAndIdempotencyKey(c.terminalId(),id.toString());
         if(existing.isPresent()){
             var operation=existing.orElseThrow();
@@ -61,6 +70,7 @@ public class PaymentTerminalOperationService {
                 c.testMode()?PaymentTerminalMode.SIMULATED:PaymentTerminalMode.LIVE,
                 PaymentTerminalOperationType.CHARGE,null,id.toString(),requestHash,amount,
                 c.configurationHash(),c.configurationVersion(),clock.instant());
+        if (contact != null) operation.freezeSaleCustomerContact(contact);
         operation.markSent("GATEWAY_SEND",clock.instant());
         return new Reservation(operations.saveAndFlush(operation),true);
     }

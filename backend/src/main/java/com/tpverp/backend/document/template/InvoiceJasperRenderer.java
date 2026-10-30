@@ -473,7 +473,7 @@ public class InvoiceJasperRenderer {
         if (customer != null) {
             customerNode.put("legalName", customer.getFiscalName());
             customerNode.put("taxId", customer.getDocumentNumber());
-            var customerAddress = customer.getFiscalAddress();
+            var customerAddress = com.tpverp.backend.document.DocumentCustomerContact.addressFor(document, customer);
             var address = customerNode.putObject("address");
             if (customerAddress != null) {
                 putNullable(address, "line1", customerAddress.getAddress());
@@ -482,9 +482,9 @@ public class InvoiceJasperRenderer {
                 putNullable(address, "province", customerAddress.getProvince());
                 putNullable(address, "countryName", customerAddress.getCountry());
             }
-            putNullable(customerNode, "phone", customer.getPhone());
+            putNullable(customerNode, "phone", com.tpverp.backend.document.DocumentCustomerContact.phoneFor(document, customer));
             putNullable(customerNode, "customerCode", customer.getClientId());
-            putNullable(customerNode, "details", customerDetails(customer));
+            putNullable(customerNode, "details", customerDetails(document, customer));
         }
 
         if (document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA) {
@@ -740,8 +740,8 @@ public class InvoiceJasperRenderer {
         }
     }
 
-    private static String customerDetails(Customer customer) {
-        var source = customer.getFiscalAddress();
+    private static String customerDetails(CommercialDocument document, Customer customer) {
+        var source = com.tpverp.backend.document.DocumentCustomerContact.addressFor(document, customer);
         return compactLines(
                 labeled("Cód. cliente: ", customer.getClientId()),
                 labeled("NIF: ", customer.getDocumentNumber()),
@@ -749,7 +749,7 @@ public class InvoiceJasperRenderer {
                 source == null ? null : locality(
                         source.getPostalCode(), source.getCity(), source.getProvince()),
                 source == null ? null : labeled("País: ", source.getCountry()),
-                labeled("Tel.: ", customer.getPhone()));
+                labeled("Tel.: ", com.tpverp.backend.document.DocumentCustomerContact.phoneFor(document, customer)));
     }
 
     private static String locality(String postalCode, String city, String province) {

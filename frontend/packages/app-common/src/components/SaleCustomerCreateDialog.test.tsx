@@ -73,7 +73,7 @@ describe("SaleCustomerCreateDialog", () => {
       body: expect.objectContaining({
         fiscalName: "Cliente creado",
         documentNumber: "12345678Z",
-        creditEnabled: true,
+        creditEnabled: false,
         unlimitedCredit: true,
       }),
     })));
@@ -99,6 +99,9 @@ describe("SaleCustomerCreateDialog", () => {
       paymentTermDays: 30,
       creditBlocked: false,
       blockOnOverdue: false,
+      version: 7,
+      addressSyncStatus: "SYNCED",
+      addresses: [{ id: "contact-1", address: { country: "ES" }, phone: null, email: null, notes: null }],
     };
     const onCreated = vi.fn();
     request.mockImplementation(async (path, options) => {
@@ -106,6 +109,7 @@ describe("SaleCustomerCreateDialog", () => {
       if (path === "/customers/customer-1" && options?.method === "PUT") {
         return { ...existing, fiscalName: "Cliente actualizado" } as never;
       }
+      if (path === "/customers/customer-1/addresses/refresh") return { ...existing, version: 8 } as never;
       if (path === "/customers/customer-1") return existing as never;
       throw new Error(`Unexpected request: ${path}`);
     });
@@ -131,6 +135,8 @@ describe("SaleCustomerCreateDialog", () => {
         fiscalName: "Cliente actualizado",
         documentNumber: "X5806991C",
         isMember: true,
+        expectedVersion: 8,
+        addresses: [expect.objectContaining({ id: "contact-1" })],
       }),
     })));
     expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({
