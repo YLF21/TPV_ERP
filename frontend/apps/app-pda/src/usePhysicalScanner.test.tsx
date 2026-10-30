@@ -101,4 +101,16 @@ describe("usePhysicalScanner", () => {
     scan(window, "INVALID", 100);
     expect(await screen.findByText("No se pudo procesar el código")).toBeTruthy();
   });
+
+  it("queues a different scan while the previous one is still processing", async () => {
+    let release!: () => void;
+    const first = new Promise<boolean>((resolve) => { release = () => resolve(true); });
+    const onScan = vi.fn((value: string) => value === "FIRST1" ? first : Promise.resolve(true));
+    render(<Harness onScan={onScan} />);
+    scan(window, "FIRST1", 100);
+    scan(window, "SECOND2", 500);
+    expect(onScan).toHaveBeenCalledTimes(1);
+    release();
+    await waitFor(() => expect(onScan).toHaveBeenNthCalledWith(2, "SECOND2"));
+  });
 });

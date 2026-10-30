@@ -33,7 +33,7 @@ public class FiscalSnapshotFactory {
         snapshot.put("fecha", document.getFecha().toString());
         snapshot.put("tiendaId", document.getTiendaId().toString());
         snapshot.put("clienteId", id(document.getClienteId()));
-        snapshot.put("cliente", customer(customer));
+        snapshot.put("cliente", customer(document, customer));
         snapshot.put("nifEmisor", SpanishTaxId.validate(issuerTaxId));
         snapshot.put("operacionFiscal", operation.name());
         snapshot.put("tipoFiscal", fiscalType.name());
@@ -58,7 +58,7 @@ public class FiscalSnapshotFactory {
         return ImmutableJson.copy(snapshot);
     }
 
-    private static Map<String, Object> customer(Customer customer) {
+    private static Map<String, Object> customer(CommercialDocument document, Customer customer) {
         if (customer == null) {
             return null;
         }
@@ -67,7 +67,7 @@ public class FiscalSnapshotFactory {
         value.put("tipoDocumento", customer.getDocumentType().name());
         value.put("numeroDocumento", customer.getDocumentNumber());
         value.put("nombreFiscal", customer.getFiscalName());
-        value.put("direccion", address(customer.getFiscalAddress()));
+        value.put("direccion", address(com.tpverp.backend.document.DocumentCustomerContact.addressFor(document, customer)));
         return value;
     }
 

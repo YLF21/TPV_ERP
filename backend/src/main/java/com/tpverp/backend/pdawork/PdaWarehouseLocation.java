@@ -9,5 +9,6 @@ public class PdaWarehouseLocation{
  protected PdaWarehouseLocation(){} public PdaWarehouseLocation(UUID storeId,UUID warehouseId,String code,String description){id=UUID.randomUUID();this.storeId=Objects.requireNonNull(storeId);this.warehouseId=Objects.requireNonNull(warehouseId);this.code=normalize(code);this.description=description==null?null:description.trim();}
  private static String normalize(String v){if(v==null||v.isBlank())throw new IllegalArgumentException("Código de ubicación obligatorio");return v.trim().toUpperCase();}
  public void deactivate(long expected){if(version!=expected)throw new PdaWorkConflictException("La ubicación fue modificada por otro dispositivo");active=false;}
+ public void reactivate(String description){active=true;this.description=description==null||description.isBlank()?null:description.trim();}
  public UUID getId(){return id;}public UUID getStoreId(){return storeId;}public UUID getWarehouseId(){return warehouseId;}public String getCode(){return code;}public String getDescription(){return description;}public boolean isActive(){return active;}public long getVersion(){return version;}
 }

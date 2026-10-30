@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { flushPdaDurableWrites, setPdaDurableStorageForTests, type PdaDurableStorage } from "./PdaDurableStorage";
 import { PDA_LAST_SYNC_KEY, PDA_WORK_DRAFT_KEY, writePdaWorkQueue } from "./PdaWorkQueue";
 import {
+  applyRotatedPdaCredential,
   clearPdaIdentity,
   PDA_DISABLED_IDENTITY_STORAGE_KEY,
   PDA_IDENTITY_STORAGE_KEY,
@@ -60,6 +61,16 @@ describe("pdaIdentity", () => {
     expect(storage.getItem(PDA_IDENTITY_STORAGE_KEY)).toBeNull();
   });
 
+  it("replaces a rotated credential only for the bound terminal", () => {
+    const storage=memoryStorage();
+    const current={storeName:"Tienda",terminalCode:"PDA 1",terminalId:"terminal-1",terminalCredential:"old-secret",pendingApproval:false};
+    const rotated=applyRotatedPdaCredential(storage,current,{terminalId:"terminal-1",terminalCredential:"new-secret",rotatedAt:"2026-10-29T10:00:00Z"});
+    expect(rotated.terminalCredential).toBe("new-secret");
+    expect(readPdaIdentity(storage)?.terminalCredential).toBe("new-secret");
+    expect(()=>applyRotatedPdaCredential(storage,rotated,{terminalId:"another-terminal",terminalCredential:"attacker-secret",rotatedAt:"2026-10-29T10:00:01Z"})).toThrow("invalid_pda_credential_rotation");
+    expect(readPdaIdentity(storage)?.terminalCredential).toBe("new-secret");
+  });
+
   it("removes offline data and credentials when unlinking the browser device", async () => {
     writePdaIdentity(localStorage, { storeName: "Tienda", terminalCode: "PDA 1", terminalId: "t1", terminalCredential: "secret", pendingApproval: false });
     writePdaWorkQueue([{ id: "queued", createdAt: "x" }]);
@@ -84,6 +95,11 @@ describe("pdaIdentity", () => {
 
     expect(localStorage.getItem(PDA_IDENTITY_STORAGE_KEY)).toBeNull();
     expect(localStorage.getItem(PDA_DISABLED_IDENTITY_STORAGE_KEY)).toContain("t1");
+    expect(localStorage.getItem(PDA_DISABLED_IDENTITY_STORAGE_KEY)).not.toContain("secret");
+    expect(JSON.parse(localStorage.getItem(PDA_DISABLED_IDENTITY_STORAGE_KEY)!)).toMatchObject({
+      terminalId: "t1",
+      reason: "terminal-disabled"
+    });
     expect(localStorage.getItem(PDA_WORK_DRAFT_KEY)).toContain("draft");
     expect(durableValues.size).toBeGreaterThan(0);
   });
