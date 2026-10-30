@@ -1,4 +1,4 @@
-FROM node:26.11-alpine3.23@sha256:f1394b3ffc021bc3f4aaf363e70a8d9667f7a9a63538bc824d7cc583129fffad AS build
+FROM node:26.12-alpine3.23@sha256:bc2b334006f15c7167bbeb2f08f28c2df883f7594a0470e04454ebe7560cfe68 AS build
 WORKDIR /workspace
 COPY frontend-saas/package*.json ./frontend-saas/
 RUN npm --prefix frontend-saas ci
