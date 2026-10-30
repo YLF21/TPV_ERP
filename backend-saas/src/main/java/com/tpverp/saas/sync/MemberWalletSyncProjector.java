@@ -17,7 +17,6 @@ import com.tpverp.saas.loyalty.SaasMemberBalanceRetentionReceipt;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
@@ -187,8 +186,14 @@ public class MemberWalletSyncProjector {
     private static boolean samePostgresInstant(Instant left, Instant right) {
         return left == null ? right == null
                 : right != null
-                        && left.truncatedTo(ChronoUnit.MICROS)
-                                .equals(right.truncatedTo(ChronoUnit.MICROS));
+                        && roundPostgresInstant(left).equals(roundPostgresInstant(right));
+    }
+
+    private static Instant roundPostgresInstant(Instant value) {
+        // pgJDBC rounds nanoseconds to the nearest microsecond, carrying into
+        // the next second at 999999500ns. Instant normalizes that carry too.
+        long roundedNanos = ((value.getNano() + 500L) / 1000L) * 1000L;
+        return Instant.ofEpochSecond(value.getEpochSecond(), roundedNanos);
     }
 
     private WalletLotCreation parse(Map<String, Object> payload) {

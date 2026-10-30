@@ -69,7 +69,7 @@ public class MemberPointsSyncPublisher {
         payload.put("amount", operation.getAmount());
         payload.put("sourceDocumentId", nullable(operation.getSourceDocumentId()));
         payload.put("originalDocumentId", nullable(operation.getOriginalDocumentId()));
-        payload.put("occurredAt", operation.getOccurredAt());
+        payload.put("occurredAt", operation.getOccurredAt().toString());
         payload.put("localPointsDelta", operation.getLocalPointsDelta());
         payload.put("localDebtDelta", operation.getLocalDebtDelta());
 

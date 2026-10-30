@@ -19,6 +19,8 @@ spring:
 
 tpv:
   saas:
+    sync-recovery:
+      enabled: ${TPV_SAAS_SYNC_RECOVERY_ENABLED:false}
     legacy-basic-auth-enabled: ${TPV_SAAS_LEGACY_BASIC_AUTH_ENABLED:false}
     bootstrap-admin-password: ${TPV_SAAS_BOOTSTRAP_ADMIN_PASSWORD:}
     sessions:

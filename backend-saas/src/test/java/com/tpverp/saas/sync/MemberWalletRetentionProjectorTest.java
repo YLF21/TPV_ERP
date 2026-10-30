@@ -30,6 +30,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.LinkedHashMap;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class MemberWalletRetentionProjectorTest {
 
@@ -146,6 +148,29 @@ class MemberWalletRetentionProjectorTest {
                 true);
     }
 
+    @ParameterizedTest
+    @CsvSource({
+            "2026-08-23T13:44:29.351145Z, 2026-08-23T13:44:29.351144800Z, false",
+            "2026-08-23T13:45:46.891041Z, 2026-08-23T13:45:46.891040600Z, false",
+            "2026-08-24T17:22:36.496971Z, 2026-08-24T17:22:36.496970700Z, false",
+            "1970-01-01T00:00:00.000000Z, 1970-01-01T00:00:00.000000499Z, false",
+            "1970-01-01T00:00:00.000001Z, 1970-01-01T00:00:00.000000500Z, false",
+            "1970-01-01T00:00:01Z, 1970-01-01T00:00:00.999999500Z, false",
+            "1969-12-31T23:59:59.123457Z, 1969-12-31T23:59:59.123456500Z, false",
+            "1970-01-01T00:00:00Z, 1969-12-31T23:59:59.999999500Z, false",
+            "1969-12-31T23:59:59.999999Z, 1969-12-31T23:59:59.999999499Z, false",
+            "1970-01-01T00:00:00Z, 1970-01-01T00:00:00.000000500Z, true",
+            "1970-01-01T00:00:00Z, 1969-12-31T23:59:59.999999499Z, true",
+            "2026-08-23T13:44:29.351144Z, 2026-08-23T13:44:29.351144800Z, true"
+    })
+    void replayUsesPostgresRoundingWithoutRestoringExhaustedBalance(
+            String stored, String replay, boolean conflict) {
+        // Exercise each immutable timestamp independently so a creation match
+        // cannot hide an expiry comparison failure (and vice versa).
+        assertTemporalReplay(Instant.parse(stored), Instant.parse(replay), NOW, NOW, conflict);
+        assertTemporalReplay(NOW, NOW, Instant.parse(stored), Instant.parse(replay), conflict);
+    }
+
     private static void assertTemporalReplay(
             Instant storedCreatedAt, Instant replayCreatedAt,
             Instant storedExpiresAt, Instant replayExpiresAt, boolean conflict) {
@@ -155,7 +180,7 @@ class MemberWalletRetentionProjectorTest {
         UUID movementId = UUID.randomUUID();
         var account = account(companyId, memberId, "0");
         var existingLot = new SaasMemberBalanceLot(
-                lotId, account, MemberBalanceType.LOYALTY, money("10"), money("10"),
+                lotId, account, MemberBalanceType.LOYALTY, money("10"), money("0"),
                 storedCreatedAt, storedExpiresAt, movementId, SOURCE_DOCUMENT_ID);
         var accounts = mock(SaasMemberBalanceAccountRepository.class);
         var lots = mock(SaasMemberBalanceLotRepository.class);
@@ -174,8 +199,13 @@ class MemberWalletRetentionProjectorTest {
         } else {
             lots(projector, event(companyId, lotId), replay);
             lots(projector, event(companyId, lotId), replay);
-            verify(lots, never()).save(any());
         }
+        assertThat(existingLot.getRemainingAmount()).isEqualByComparingTo("0");
+        assertThat(account.getBalance()).isEqualByComparingTo("0");
+        assertThat(existingLot.getCreatedAt()).isEqualTo(storedCreatedAt);
+        assertThat(existingLot.getExpiresAt()).isEqualTo(storedExpiresAt);
+        verify(lots, never()).save(any());
+        verify(accounts, never()).save(any());
     }
 
     private static void lots(MemberWalletSyncProjector projector, SaasSyncEvent event,

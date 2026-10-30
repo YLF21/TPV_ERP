@@ -20,6 +20,7 @@ public class MemberPointsBootstrapSealService {
     private final MemberPointsBootstrapSnapshotOperationRepository snapshotOperations;
     private final MemberPointsOperationRepository operations;
     private final MemberPointsBootstrapUploadRepository uploads;
+    private final MemberPointsBootstrapContractResolver contracts;
     private final Clock clock;
 
     public MemberPointsBootstrapSealService(
@@ -29,6 +30,7 @@ public class MemberPointsBootstrapSealService {
             MemberPointsBootstrapSnapshotOperationRepository snapshotOperations,
             MemberPointsOperationRepository operations,
             MemberPointsBootstrapUploadRepository uploads,
+            MemberPointsBootstrapContractResolver contracts,
             Clock clock) {
         this.states = states;
         this.snapshots = snapshots;
@@ -36,6 +38,7 @@ public class MemberPointsBootstrapSealService {
         this.snapshotOperations = snapshotOperations;
         this.operations = operations;
         this.uploads = uploads;
+        this.contracts = contracts;
         this.clock = clock;
     }
 
@@ -117,7 +120,9 @@ public class MemberPointsBootstrapSealService {
                     cutSequence,
                     sealSequence,
                     PageRequest.of(page++, MemberPointsBootstrapCanonicalizer.CHUNK_SIZE));
-            slice.forEach(row -> result.add(operationValue(row)));
+            var hashes = contracts.resolve(companyId, storeId, slice.getContent());
+            slice.forEach(row -> result.add(new MemberPointsBootstrapCanonicalizer.OperationValue(
+                    row.getOperationId(), hashes.get(row.getOperationId()), row.getStoreSequence())));
         } while (slice.hasNext());
         return List.copyOf(result);
     }
@@ -162,23 +167,6 @@ public class MemberPointsBootstrapSealService {
                             row.getSourceSequence())));
         } while (slice.hasNext());
         return List.copyOf(result);
-    }
-
-    private static MemberPointsBootstrapCanonicalizer.OperationValue operationValue(
-            MemberPointsOperationRepository.MemberPointsBootstrapOperationProjection row) {
-        return new MemberPointsBootstrapCanonicalizer.OperationValue(
-                row.getOperationId(),
-                MemberPointsContractCanonicalizer.contractHash(
-                        row.getOperationId(),
-                        row.getMemberId(),
-                        row.getOperationType(),
-                        row.getAmount(),
-                        row.getSourceDocumentId(),
-                        row.getOriginalDocumentId(),
-                        row.getOccurredAt(),
-                        row.getLocalPointsDelta(),
-                        row.getLocalDebtDelta()),
-                row.getStoreSequence());
     }
 
     private static List<String> chunkHashes(List<String> lines) {
