@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import { gestionUrl, ventaUrl } from "./testApi";
+import { gestionUrl, pdaUrl, terminalCredential, terminalId, ventaUrl } from "./testApi";
 
 export async function loginUi(
   page: Page,
@@ -12,6 +12,27 @@ export async function loginUi(
   await page.getByLabel("Contraseña", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Entrar" }).click();
   await expect(page.locator(app === "venta" ? ".home-screen" : ".gestion-screen")).toBeVisible();
+}
+
+export async function loginPda(
+  page: Page,
+  userName = process.env.E2E_ADMIN_USERNAME ?? "ADMIN",
+  password = process.env.E2E_ADMIN_PASSWORD ?? "0000"
+) {
+  await page.addInitScript(({ id, credential }) => {
+    window.localStorage.setItem("tpverp.pda.identity.v1", JSON.stringify({
+      storeName: "TIENDA PRUEBAS 001",
+      terminalCode: "PDA E2E",
+      terminalId: id,
+      terminalCredential: credential,
+      pendingApproval: false
+    }));
+  }, { id: terminalId, credential: terminalCredential });
+  await page.goto(pdaUrl);
+  await page.getByLabel("Usuario", { exact: true }).fill(userName);
+  await page.getByLabel("Contraseña", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page.locator(".pda-home")).toBeVisible();
 }
 
 export async function openStock(page: Page, app: "venta" | "gestion") {

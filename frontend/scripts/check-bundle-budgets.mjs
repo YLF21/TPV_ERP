@@ -8,6 +8,8 @@ const budgets = [
   { app: "app-gestion", extension: ".css", maximumBytes: 520_000 },
   { app: "app-venta", extension: ".js", maximumBytes: 800_000 },
   { app: "app-venta", extension: ".css", maximumBytes: 460_000 },
+  { app: "app-pda", extension: ".js", maximumBytes: 550_000 },
+  { app: "app-pda", extension: ".css", maximumBytes: 100_000 },
 ];
 const warningRatio = 0.9;
 

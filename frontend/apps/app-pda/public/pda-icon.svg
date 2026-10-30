@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="esPOS PDA">
+  <rect width="512" height="512" rx="104" fill="#07254f"/>
+  <rect x="106" y="74" width="300" height="364" rx="42" fill="#f4f8fc"/>
+  <rect x="138" y="116" width="236" height="188" rx="18" fill="#dceaf6"/>
+  <path d="M174 168h164M174 214h164M174 260h104" stroke="#1177b9" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="256" cy="368" r="34" fill="#1177b9"/>
+</svg>

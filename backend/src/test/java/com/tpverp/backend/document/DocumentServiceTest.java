@@ -150,6 +150,35 @@ class DocumentServiceTest {
     private UserAccount user;
     private UUID terminalId;
 
+    @Test
+    void selectedContactIsResolvedOnlyWithinCurrentCompany() {
+        var customer = org.mockito.Mockito.mock(Customer.class);
+        var customerId = UUID.randomUUID();
+        var addressId = UUID.randomUUID();
+        var contact = new com.tpverp.backend.party.CustomerAddressEntry(addressId,
+                new com.tpverp.backend.party.CustomerAddressEntry.Address("Elegida", "35001", "Las Palmas", "Las Palmas", "ES"),
+                "111", null, null);
+        var command = new DocumentCommand(UUID.randomUUID(), CommercialDocumentType.TICKET, LocalDate.now(),
+                customerId, null, null, BigDecimal.ZERO, true, List.of(), null, null, false, addressId);
+        when(customerRepository.findByIdAndCompanyId(customerId, store.getEmpresa().getId())).thenReturn(Optional.of(customer));
+        when(customer.getAddresses()).thenReturn(List.of(contact));
+        assertThat(service.resolveCustomerContact(command).id()).isEqualTo(addressId);
+        when(customerRepository.findByIdAndCompanyId(customerId, store.getEmpresa().getId())).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.resolveCustomerContact(command))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("customer_address_customer_not_found");
+        verify(customerRepository, org.mockito.Mockito.times(2)).findByIdAndCompanyId(customerId, store.getEmpresa().getId());
+    }
+
+    @Test
+    void frozenPendingCardContactSurvivesRemovalFromCustomerMaster() {
+        var contact = new DocumentCustomerContact(UUID.randomUUID(),
+                new com.tpverp.backend.party.CustomerAddressEntry.Address("Congelada", "35001", "Las Palmas", "Las Palmas", "ES"), "111", null);
+        var command = new DocumentCommand(UUID.randomUUID(), CommercialDocumentType.FACTURA_VENTA, LocalDate.now(),
+                UUID.randomUUID(), null, null, BigDecimal.ZERO, true, List.of()).withFrozenCustomerContact(contact);
+        assertThat(service.resolveCustomerContact(command)).isEqualTo(contact);
+        org.mockito.Mockito.verifyNoInteractions(customerRepository);
+    }
+
     @BeforeEach
     void setUp() {
         var address = Map.of(

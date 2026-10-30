@@ -16,7 +16,9 @@
 	<query language="sql"><![CDATA[SELECT
     c.nombre_fiscal AS nombre_cliente,
     c.client_id AS codigo_cliente,
-    c.telefono,
+    CASE WHEN d.cliente_contacto_snapshot IS NOT NULL
+         THEN d.cliente_contacto_snapshot ->> 'phone'
+         ELSE c.telefono END AS telefono,
     c.tarifa,
     COALESCE(ajuste.porcentaje, 0::numeric) AS porcentaje_descuento,
     COALESCE(ajuste.importe, 0::numeric) > 0 AS descuento_cliente_aplicado,

@@ -274,6 +274,7 @@ public class PosCashService {
         if (ticket == null) {
             throw new IllegalArgumentException("message.document.lines_required");
         }
+        if (prepared.replay() != null) ticket.setCustomerContact(prepared.replay().customerContact());
         var hasTicketReturn = command.lineas().stream().anyMatch(line ->
                 line.originalDocumentLineId() != null && line.cantidad().signum() < 0);
         if (!hasTicketReturn) {
@@ -297,6 +298,7 @@ public class PosCashService {
                 command.fecha(), requireUser(authentication).getId(), BigDecimal.ZERO,
                 command.wholesaleMode());
         combined.setParties(replay.customerId(), null, null);
+        combined.setCustomerContact(replay.customerContact());
         combined.setInternalComment(request.internalComment());
         replay.commands().forEach(line -> combined.addLine(line.toEntity(combined)));
         replay.adjustments().forEach(snapshot -> snapshot.restore(combined));
@@ -648,12 +650,16 @@ public class PosCashService {
         if (hasDocumentDiscount(request)) {
             sensitiveOperations.add(SaleOperationCode.APPLY_SALE_DISCOUNT);
         }
+        if (replay != null && request.customerAddressId() != null
+                && !request.customerAddressId().equals(replay.customerContact() == null ? null : replay.customerContact().id())) {
+            throw new IllegalArgumentException("previous_ticket_customer_address_mismatch");
+        }
         var command = new DocumentCommand(
                 warehouse.getId(), CommercialDocumentType.TICKET,
                 LocalDate.now(ZoneId.of(store.getTimezone())), request.customerId(), null, null,
                 BigDecimal.ZERO.setScale(2), true,
                 List.copyOf(commandLines), request.internalComment(),
-                request.documentDiscountPercent(), request.wholesaleMode());
+                request.documentDiscountPercent(), request.wholesaleMode(), replay == null ? request.customerAddressId() : null);
         return new PreparedSale(command, sensitiveOperations, temporaryPriceClaims, replay);
     }
 
@@ -894,7 +900,7 @@ public class PosCashService {
                         prepared.replay() != null && prepared.replay().currentRepricing()
                                 ? prepared.replay().commands().size() : 0,
                         prepared.replay() != null && prepared.replay().frozenExact()
-                                ? prepared.replay().commands().size() : 0));
+                                ? prepared.replay().commands().size() : 0), snapshot.customerContact());
     }
 
     private HistoricalTicketReplayMetadata historicalReplayMetadata(
@@ -2054,6 +2060,7 @@ public class PosCashService {
         var canonical = new StringBuilder("authoritative-sale-quote-v1|")
                 .append(ticket.getTiendaId()).append('|')
                 .append(ticket.getClienteId()).append('|')
+                .append(canonicalCustomerAddress(ticket.getCustomerAddressId()))
                 .append(ticket.getFecha()).append('|')
                 .append(ticket.getMoneda()).append('|')
                 .append(ticket.getBaseTotal()).append('|')
@@ -2129,6 +2136,7 @@ public class PosCashService {
                 : hasOpenPrice ? "v4-checkout-discount-open-price|"
                 : "v4-checkout-discount|")
                 .append(request.sale().customerId()).append('|')
+                .append(canonicalCustomerAddress(request.sale().customerAddressId()))
                 .append(wholesale ? "true|" : "")
                 .append(canonicalPreviousTicketImport(
                         request.sale().previousTicketImport())).append('|');
@@ -2196,6 +2204,7 @@ public class PosCashService {
                 ? "v7-temporary-name|" : hasSerialNumbers ? "v4-serials|"
                 : hasOpenPrice ? "v3-open-price|" : couponCode.isEmpty() ? "v1|" : "v2-coupon|")
                 .append(request.sale().customerId()).append('|')
+                .append(canonicalCustomerAddress(request.sale().customerAddressId()))
                 .append(wholesale ? "true|" : "");
         if (!couponCode.isEmpty()) canonical.append(couponCode).append('|');
         canonical.append(Money.euros(request.received())).append('|')
@@ -2231,6 +2240,10 @@ public class PosCashService {
         }
         return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
                 value.trim().getBytes(StandardCharsets.UTF_8));
+    }
+
+    static String canonicalCustomerAddress(UUID addressId) {
+        return addressId == null ? "" : "customer-address|" + addressId + "|";
     }
 
     static String canonicalPreviousTicketImport(
