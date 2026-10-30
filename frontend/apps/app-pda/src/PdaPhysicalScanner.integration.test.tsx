@@ -6,8 +6,8 @@ import { PdaStockCount } from "./PdaStockCount";
 
 const apiRequestMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@tpverp/app-common", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@tpverp/app-common")>()),
+vi.mock("../../../packages/app-common/src/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../packages/app-common/src/api/client")>()),
   apiRequest: apiRequestMock
 }));
 

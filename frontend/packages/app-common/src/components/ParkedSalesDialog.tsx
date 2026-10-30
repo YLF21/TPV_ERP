@@ -25,6 +25,7 @@ export type OpenedParkedSale = {
   document: {
     wholesaleMode?: boolean | null;
     clienteId?: string | null;
+    customerAddressId?: string | null;
     comentarioInterno?: string | null;
     documentDiscountPercent?: number | string | null;
     lineas: Array<{

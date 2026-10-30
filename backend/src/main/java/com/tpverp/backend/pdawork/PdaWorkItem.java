@@ -29,6 +29,8 @@ public class PdaWorkItem {
     @Column(name = "evidencia_datos", columnDefinition = "text") private String evidenceData;
     @Column(name = "creado_por", nullable = false) private UUID createdBy;
     @Column(name = "creado_en", nullable = false) private Instant createdAt;
+    @Column(name = "client_request_id") private UUID clientRequestId;
+    @Column(name = "client_request_fingerprint", length = 64) private String clientRequestFingerprint;
     @Column(name = "completado_por") private UUID completedBy;
     @Column(name = "completado_en") private Instant completedAt;
     @Column(name = "asignado_a") private UUID assignedTo;
@@ -55,6 +57,16 @@ public class PdaWorkItem {
             LocalDate expiryDate, String location, String priority, String notes,
             String evidenceName, String evidenceType, String evidenceData,
             UUID createdBy, Instant createdAt) {
+        this(storeId, type, title, reference, productCode, warehouseId, quantity, lotNumber,
+                expiryDate, location, priority, notes, evidenceName, evidenceType, evidenceData,
+                createdBy, createdAt, null);
+    }
+
+    public PdaWorkItem(UUID storeId, PdaWorkType type, String title, String reference,
+            String productCode, UUID warehouseId, BigDecimal quantity, String lotNumber,
+            LocalDate expiryDate, String location, String priority, String notes,
+            String evidenceName, String evidenceType, String evidenceData,
+            UUID createdBy, Instant createdAt, UUID clientRequestId) {
         id = UUID.randomUUID();
         this.storeId = Objects.requireNonNull(storeId);
         this.type = Objects.requireNonNull(type);
@@ -73,6 +85,7 @@ public class PdaWorkItem {
         this.evidenceData = optional(evidenceData);
         this.createdBy = Objects.requireNonNull(createdBy);
         this.createdAt = Objects.requireNonNull(createdAt);
+        this.clientRequestId = clientRequestId;
         status = PdaWorkStatus.OPEN;
     }
 
@@ -124,5 +137,8 @@ public class PdaWorkItem {
     public String getDestinationLocation(){return destinationLocation;} public Instant getLocationValidatedAt(){return locationValidatedAt;}
     public UUID getLocationValidatedBy(){return locationValidatedBy;} public UUID getGoodsCheckId(){return goodsCheckId;} public UUID getDocumentId(){return documentId;}
     public UUID getProductId(){return productId;} public Instant getStartedAt(){return startedAt;} public UUID getStartedBy(){return startedBy;} public long getVersion(){return version;}
+    public UUID getClientRequestId(){return clientRequestId;}
+    public String getClientRequestFingerprint(){return clientRequestFingerprint;}
+    void setClientRequestFingerprint(String value){clientRequestFingerprint=optional(value);}
     public Instant getSourceLocationValidatedAt(){return sourceLocationValidatedAt;} public Instant getDestinationLocationValidatedAt(){return destinationLocationValidatedAt;}
 }

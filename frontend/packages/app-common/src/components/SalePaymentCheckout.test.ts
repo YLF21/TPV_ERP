@@ -247,7 +247,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   });
   const ref=createRef<SalePaymentCheckoutHandle>();
   const onMemberBalance=vi.fn();
-  const baseSale={customerId:"customer-1",memberBalanceAmount:0,quoteFingerprint:"old-quote",lines:[{productId:"p-1",quantity:1,discount:0}]};
+  const baseSale={customerId:"customer-1",customerAddressId:"selected-contact",memberBalanceAmount:0,quoteFingerprint:"old-quote",lines:[{productId:"p-1",quantity:1,discount:0}]};
   const wallet={
    loyaltyAvailable:"0.94",returnCreditAvailable:"0.03",totalAvailable:"0.97",
    lots:[
@@ -281,7 +281,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions")).toHaveLength(1));
   await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>String(path).endsWith("/allocations")).length).toBe(1));
   const reserveCall=apiRequestMock.mock.calls.find(([path])=>path==="/pos/payment-sessions");
-  expect(reserveCall?.[1].body).toMatchObject({sale:{quoteFingerprint:"new-quote"}});
+  expect(reserveCall?.[1].body).toMatchObject({sale:{quoteFingerprint:"new-quote",customerAddressId:"selected-contact"}});
   const allocationCall=apiRequestMock.mock.calls.find(([path])=>String(path).endsWith("/allocations"));
   expect(allocationCall?.[1].body).toMatchObject({kind:"MEMBER_CREDIT",amount:"0.03"});
   expect(screen.getByText("-0,97 €")).toBeInTheDocument();

@@ -1,13 +1,8 @@
-import { useMemo, useRef, useState, type FormEvent } from "react";
-import {
-  apiRequest,
-  getHardwareBridge,
-  productLabelEanBits,
-  type HardwareConfig,
-  type LocaleCode,
-  type ProductLabelPrintRequest,
-  type ProductLabelProfile
-} from "@tpverp/app-common";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { apiRequest } from "../../../packages/app-common/src/api/client";
+import { getHardwareBridge, type HardwareConfig, type ProductLabelPrintRequest, type ProductLabelProfile } from "../../../packages/app-common/src/hardware/hardware";
+import { productLabelEanBits } from "../../../packages/app-common/src/components/productLabelBarcode";
+import type { LocaleCode } from "../../../packages/app-common/src/types";
 import { PhysicalScannerStatus, usePhysicalScanner } from "./usePhysicalScanner";
 
 type PriceResult = {
@@ -39,6 +34,26 @@ export type PdaLabelJob = {
   barcode: string;
   copies: number;
 };
+export const PDA_LABEL_QUEUE_KEY = "tpverp.pda.labelQueue.v1";
+export const PDA_PRINT_HISTORY_KEY = "tpverp.pda.printHistory.v1";
+
+function readStoredArray(key: string): unknown[] {
+  try { const parsed=JSON.parse(localStorage.getItem(key)??"[]"); return Array.isArray(parsed)?parsed:[]; } catch { return []; }
+}
+
+export function readPdaLabelQueue(): PdaLabelJob[] {
+  return readStoredArray(PDA_LABEL_QUEUE_KEY).filter((value):value is PdaLabelJob=>{
+    if(!value||typeof value!=="object")return false;
+    const job=value as Partial<PdaLabelJob>;
+    return [job.id,job.productId,job.code,job.name,job.barcode].every(item=>typeof item==="string")&&typeof job.price==="number"&&Number.isFinite(job.price)&&typeof job.copies==="number"&&job.copies>=1&&job.copies<=99;
+  }).slice(-100);
+}
+
+export function readPdaPrintHistory(): string[] {
+  return readStoredArray(PDA_PRINT_HISTORY_KEY).filter((value):value is string=>typeof value==="string").slice(0,20);
+}
+
+function persistPdaArray(key:string,value:unknown[]){try{localStorage.setItem(key,JSON.stringify(value))}catch{/* Printing remains available when storage is restricted. */}}
 
 export function pdaExpandLabelJobs(jobs: PdaLabelJob[]) {
   return jobs.flatMap((job) => Array.from({ length: job.copies }, (_, copyIndex) => ({ ...job, copyIndex })));
@@ -129,9 +144,9 @@ export function PdaProductLookup({ token, locale, warehouses, storeName, t }: {
   const [barcode, setBarcode] = useState("");
   const [copies, setCopies] = useState(1);
   const [labelTemplate, setLabelTemplate] = useState<PdaLabelTemplate>("50x30");
-  const [labelQueue, setLabelQueue] = useState<PdaLabelJob[]>([]);
+  const [labelQueue, setLabelQueue] = useState<PdaLabelJob[]>(() => readPdaLabelQueue());
   const [printSelection, setPrintSelection] = useState<"current" | "queue">("current");
-  const [printHistory, setPrintHistory] = useState<string[]>([]);
+  const [printHistory, setPrintHistory] = useState<string[]>(() => readPdaPrintHistory());
   const [printError, setPrintError] = useState("");
   const [printBusy, setPrintBusy] = useState(false);
   const [fallbackSelection, setFallbackSelection] = useState<"current" | "queue" | null>(null);
@@ -141,6 +156,9 @@ export function PdaProductLookup({ token, locale, warehouses, storeName, t }: {
   const number = useMemo(() => new Intl.NumberFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES", { maximumFractionDigits: 3 }), [locale]);
   const currency = useMemo(() => new Intl.NumberFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES", { style: "currency", currency: "EUR" }), [locale]);
   const totalStock = stock.reduce((total, item) => total + Number(item.quantity), 0);
+
+  useEffect(()=>persistPdaArray(PDA_LABEL_QUEUE_KEY,labelQueue),[labelQueue]);
+  useEffect(()=>persistPdaArray(PDA_PRINT_HISTORY_KEY,printHistory.slice(0,20)),[printHistory]);
 
   async function searchIdentifier(scannedIdentifier: string) {
     const normalizedIdentifier = scannedIdentifier.trim();

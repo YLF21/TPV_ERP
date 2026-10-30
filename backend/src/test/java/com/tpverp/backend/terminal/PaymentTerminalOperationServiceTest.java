@@ -40,6 +40,27 @@ class PaymentTerminalOperationServiceTest {
         service=new PaymentTerminalOperationService(repository,configurations,List.of(paytef),Clock.fixed(now,ZoneOffset.UTC));
     }
 
+    @Test void persistsContactBeforeGatewayAndKeepsItOnReplay() {
+        var contact = new com.tpverp.backend.document.DocumentCustomerContact(UUID.randomUUID(),
+                new com.tpverp.backend.party.CustomerAddressEntry.Address("Elegida", "35001", "Las Palmas", "Las Palmas", "ES"), null, null);
+        var persisted = new java.util.concurrent.atomic.AtomicReference<PaymentTerminalOperation>();
+        when(repository.findByTerminalIdAndIdempotencyKey(terminal, operationId.toString()))
+                .thenAnswer(invocation -> Optional.ofNullable(persisted.get()));
+        when(repository.saveAndFlush(any())).thenAnswer(invocation -> { persisted.set(invocation.getArgument(0)); return persisted.get(); });
+        when(repository.findLockedById(operationId)).thenAnswer(invocation -> Optional.of(persisted.get()));
+        when(paytef.charge(any(PaymentTerminalChargeCommand.class), any(PaymentTerminalGatewayContext.class))).thenAnswer(invocation -> {
+            assertThat(persisted.get().getSaleCustomerContactSnapshot()).isEqualTo(contact);
+            return new PaymentTerminalResult(PaymentTerminalOperationStatus.APPROVED, "APPROVED", "REF", "AUTH", "ok");
+        });
+        assertThat(service.charge(operationId, "a".repeat(64), new BigDecimal("10.00"), configuration, contact).status())
+                .isEqualTo(PaymentTerminalOperationStatus.APPROVED);
+        var modified = new com.tpverp.backend.document.DocumentCustomerContact(contact.id(),
+                new com.tpverp.backend.party.CustomerAddressEntry.Address("Editada despues", null, null, null, null), "999", null);
+        service.charge(operationId, "a".repeat(64), new BigDecimal("10.00"), configuration, modified);
+        assertThat(persisted.get().getSaleCustomerContactSnapshot()).isEqualTo(contact);
+        verify(paytef, times(1)).charge(any(PaymentTerminalChargeCommand.class), any(PaymentTerminalGatewayContext.class));
+    }
+
     @Test void routesToActualProviderAndPropagatesFullSimulatedConfiguration(){
         var persisted=new java.util.concurrent.atomic.AtomicReference<PaymentTerminalOperation>();
         when(repository.findByTerminalIdAndIdempotencyKey(terminal,operationId.toString())).thenReturn(Optional.empty());
