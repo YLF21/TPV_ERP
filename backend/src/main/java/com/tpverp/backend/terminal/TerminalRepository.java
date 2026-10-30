@@ -7,7 +7,10 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.Instant;
 
 public interface TerminalRepository extends JpaRepository<Terminal, UUID> {
 
@@ -33,6 +36,12 @@ public interface TerminalRepository extends JpaRepository<Terminal, UUID> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select terminal from Terminal terminal where terminal.id = :id and terminal.tienda.id = :storeId")
+    Optional<Terminal> findByIdAndTiendaIdForUpdate(
+            @Param("id") UUID id,
+            @Param("storeId") UUID storeId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select terminal from Terminal terminal where terminal.id = :id and terminal.tienda.id = :storeId")
     Optional<Terminal> findForCashSessionPreparation(
             @Param("id") UUID id,
             @Param("storeId") UUID storeId);
@@ -40,4 +49,14 @@ public interface TerminalRepository extends JpaRepository<Terminal, UUID> {
     List<Terminal> findAllByTiendaIdOrderByNombre(UUID tiendaId);
 
     List<Terminal> findByTiendaIdAndActivaTrue(UUID tiendaId);
+
+    @Modifying(clearAutomatically = false, flushAutomatically = false)
+    @Transactional
+    @Query(value = """
+            update terminal
+               set last_seen_at = :now, version = version + 1
+             where id = :id and (last_seen_at is null or last_seen_at <= :threshold)
+            """, nativeQuery = true)
+    int touchLastSeen(@Param("id") UUID id, @Param("now") Instant now,
+            @Param("threshold") Instant threshold);
 }

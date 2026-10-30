@@ -45,6 +45,7 @@ import { SaleMutationAuthorizationDialog } from "./SaleMutationAuthorizationDial
 
 type Sale = {
   customerId: string | null;
+  customerAddressId?: string | null;
   lines: Array<{ productId: string; quantity: number; discount: number; openUnitPrice?: number; temporaryName?: string; cartLineId?: string; temporaryPriceAuthorizationToken?: string }>;
   previousTicketImport?: {
     ticketId: string;

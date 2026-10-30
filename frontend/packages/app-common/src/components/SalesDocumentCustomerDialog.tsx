@@ -5,6 +5,7 @@ import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import type { SaleCustomer } from "./SaleScreen";
+import { SaleCustomerAddressDialog } from "./SaleCustomerAddressDialog";
 import "./SalesDocumentCustomerDialog.css";
 import { useTableArrowRepeat } from "./useTableArrowRepeat";
 import { ensureTableRowVisible } from "./ensureTableRowVisible";
@@ -30,6 +31,7 @@ export function SalesDocumentCustomerDialog({
   const id = useId();
   const [query, setQuery] = useState("");
   const [highlightedId, setHighlightedId] = useState(selectedCustomerId);
+  const [customerAddressChoice, setCustomerAddressChoice] = useState<SaleCustomer | null>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const tableRef = useRef<HTMLDivElement>(null);
@@ -74,9 +76,24 @@ export function SalesDocumentCustomerDialog({
     focusMovedOptionRef.current = document.activeElement?.getAttribute("role") === "option";
     setHighlightedId(results[nextIndex].id);
     return true;
-  }, !loading && results.length > 0);
+  }, !loading && results.length > 0 && !customerAddressChoice);
+
+  function chooseCustomer(customer: SaleCustomer) {
+    const addresses = customer.addresses ?? [];
+    if (addresses.length > 1) {
+      setCustomerAddressChoice(customer);
+    } else if (addresses.length === 1) {
+      onSelect({ ...customer, customerAddressId: addresses[0].id, customerContactSnapshot: addresses[0] });
+    } else {
+      onSelect(customer);
+    }
+  }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (customerAddressChoice) {
+      event.stopPropagation();
+      return;
+    }
     if (event.nativeEvent.isComposing || (event.repeat && event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
     if (event.key === "Escape") {
       event.preventDefault();
@@ -96,12 +113,15 @@ export function SalesDocumentCustomerDialog({
     } else if (event.key === "Insert" || event.key === "Enter") {
       event.preventDefault();
       event.stopPropagation();
-      if (selected) onSelect(selected);
+      if (selected) chooseCustomer(selected);
     }
   }
 
   return (
-    <div className="sale-action-overlay sales-document-customer-overlay" role="presentation">
+    <>
+    <div className="sale-action-overlay sales-document-customer-overlay" role="presentation"
+      aria-hidden={Boolean(customerAddressChoice)} inert={Boolean(customerAddressChoice)}
+      style={customerAddressChoice ? { visibility: "hidden" } : undefined}>
       <section
         ref={dialogRef}
         className="sale-action-dialog sale-business-dialog sales-document-customer-selector"
@@ -161,7 +181,7 @@ export function SalesDocumentCustomerDialog({
                   setHighlightedId(customer.id);
                   event.currentTarget.focus();
                 }}
-                onDoubleClick={() => onSelect(customer)}
+                onDoubleClick={() => chooseCustomer(customer)}
               >
                 <span>{customer.clientId ?? "\u2014"}</span>
                 <strong>{customer.fiscalName ?? customer.clientId ?? customer.id}</strong>
@@ -190,12 +210,20 @@ export function SalesDocumentCustomerDialog({
             className="sales-document-customer-confirm erp-dialog-action-confirm"
             disabled={!selected || loading}
             aria-keyshortcuts="Insert Enter"
-            onClick={() => selected && onSelect(selected)}
+            onClick={() => selected && chooseCustomer(selected)}
           >
             <span>{t("sale.customer.select")}</span><kbd aria-hidden="true">Insert / Enter</kbd>
           </button>
         </footer>
       </section>
     </div>
+    {customerAddressChoice && <SaleCustomerAddressDialog
+      locale={locale}
+      customer={customerAddressChoice}
+      addresses={customerAddressChoice.addresses ?? []}
+      onSelect={(address) => onSelect({ ...customerAddressChoice, customerAddressId: address.id, customerContactSnapshot: address })}
+      onCancel={() => setCustomerAddressChoice(null)}
+    />}
+    </>
   );
 }

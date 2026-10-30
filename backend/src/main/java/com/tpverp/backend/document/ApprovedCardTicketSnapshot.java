@@ -16,7 +16,18 @@ public record ApprovedCardTicketSnapshot(
         BigDecimal total, List<DocumentLineCommand> lines, String internalComment,
         HistoricalTicketReplayMetadata historicalReplay,
         List<DocumentAdjustmentSnapshot> adjustments,
-        ManualDiscountSnapshot manualControl) {
+        ManualDiscountSnapshot manualControl,
+        DocumentCustomerContact customerContact) {
+    public ApprovedCardTicketSnapshot(UUID storeId, UUID warehouseId, LocalDate date, UUID customerId,
+            boolean wholesaleMode, UUID paymentMethodId, BigDecimal globalDiscount, BigDecimal baseTotal,
+            BigDecimal taxTotal, BigDecimal total, List<DocumentLineCommand> lines, String internalComment,
+            HistoricalTicketReplayMetadata historicalReplay, List<DocumentAdjustmentSnapshot> adjustments,
+            ManualDiscountSnapshot manualControl) {
+        this(storeId, warehouseId, date, customerId, wholesaleMode, paymentMethodId, globalDiscount,
+                baseTotal, taxTotal, total, lines, internalComment, historicalReplay, adjustments,
+                manualControl, null);
+    }
+
     public ApprovedCardTicketSnapshot {
         lines = List.copyOf(lines == null ? List.of() : lines);
         adjustments = List.copyOf(adjustments == null ? List.of() : adjustments);
@@ -94,7 +105,7 @@ public record ApprovedCardTicketSnapshot(
                 quoted.getAjustes().stream()
                         .map(adjustment -> DocumentAdjustmentSnapshot.from(
                                 adjustment, quoted.getLineas()))
-                        .toList());
+                        .toList(), null, quoted.getCustomerContact());
     }
 
     public static ApprovedCardTicketSnapshot from(
@@ -107,7 +118,7 @@ public record ApprovedCardTicketSnapshot(
                 base.storeId(), base.warehouseId(), base.date(), base.customerId(),
                 base.wholesaleMode(), base.paymentMethodId(), base.globalDiscount(), base.baseTotal(),
                 base.taxTotal(), base.total(), base.lines(), base.internalComment(),
-                historicalReplay, base.adjustments());
+                historicalReplay, base.adjustments(), base.manualControl(), base.customerContact());
     }
 
     public static ApprovedCardTicketSnapshot from(
@@ -132,7 +143,7 @@ public record ApprovedCardTicketSnapshot(
                 base.lines().stream()
                         .map(line -> withReturnSource(line, returnSources))
                         .toList(),
-                base.internalComment(), base.historicalReplay(), base.adjustments());
+                base.internalComment(), base.historicalReplay(), base.adjustments(), base.manualControl(), base.customerContact());
     }
 
     public void restoreAdjustments(CommercialDocument document) {

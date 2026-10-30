@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { LocaleCode } from "@tpverp/app-common";
+import type { LocaleCode } from "../../../packages/app-common/src/types";
 
 export type ScannerFeedback = "ready" | "reading" | "success" | "duplicate" | "error";
 
@@ -118,6 +118,8 @@ export function usePhysicalScanner({
   const detectorRef = useRef(new ScannerBurstDetector({ minLength, maxInterKeyDelayMs }));
   const previousRef = useRef<{ value: string; at: number } | null>(null);
   const processingRef = useRef(false);
+  const activeValueRef = useRef<string | null>(null);
+  const pendingScansRef = useRef<Array<{ value: string; at: number }>>([]);
   const feedbackTimerRef = useRef<number | null>(null);
   const [feedback, setFeedback] = useState<ScannerFeedback>("ready");
   const [announcement, setAnnouncement] = useState(scannerFeedbackText(locale, "ready"));
@@ -145,6 +147,21 @@ export function usePhysicalScanner({
       detectorRef.current.reset();
       return;
     }
+    const processScan = (value: string, now: number) => {
+      processingRef.current = true;
+      activeValueRef.current = value;
+      Promise.resolve(callbackRef.current(value))
+        .then((accepted) => {
+          if (accepted === false) showFeedback("error");
+          else { previousRef.current = { value, at: now }; showFeedback("success", value); }
+        })
+        .catch(() => showFeedback("error"))
+        .finally(() => {
+          processingRef.current = false; activeValueRef.current = null;
+          const pending = pendingScansRef.current.shift();
+          if (pending) processScan(pending.value, pending.at);
+        });
+    };
     const keydown = (event: KeyboardEvent) => {
       const scannerInput = isPhysicalScannerInputTarget(event.target);
       if (event.defaultPrevented || event.ctrlKey || event.altKey || event.metaKey || event.isComposing || (isEditableScannerTarget(event.target) && !scannerInput)) {
@@ -166,21 +183,11 @@ export function usePhysicalScanner({
         return;
       }
       if (processingRef.current) {
-        showFeedback("duplicate");
+        if (activeValueRef.current === value || pendingScansRef.current.some((entry) => entry.value === value)) showFeedback("duplicate");
+        else { pendingScansRef.current.push({ value, at: now }); setFeedback("reading"); setAnnouncement(scannerFeedbackText(locale, "reading")); }
         return;
       }
-      processingRef.current = true;
-      Promise.resolve(callbackRef.current(value))
-        .then((accepted) => {
-          if (accepted === false) {
-            showFeedback("error");
-          } else {
-            previousRef.current = { value, at: now };
-            showFeedback("success", value);
-          }
-        })
-        .catch(() => showFeedback("error"))
-        .finally(() => { processingRef.current = false; });
+      processScan(value, now);
     };
     window.addEventListener("keydown", keydown, true);
     return () => window.removeEventListener("keydown", keydown, true);

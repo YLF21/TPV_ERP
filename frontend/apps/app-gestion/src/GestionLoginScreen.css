@@ -1,0 +1,25 @@
+.login-settings {
+  display: contents;
+}
+
+.login-screen .login-settings-button {
+  right: 132px !important;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.login-screen .login-settings-menu {
+  right: 132px !important;
+  width: max-content;
+  min-width: 190px;
+  max-width: calc(100vw - 144px);
+}
+
+.login-desktop .login-settings-menu button:is(:hover, :focus) {
+  border-color: var(--gestion-accent, #0065fe) !important;
+  background: var(--gestion-accent, #0065fe) !important;
+  color: #fff;
+  outline: none;
+  box-shadow: none;
+}

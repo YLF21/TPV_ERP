@@ -5,19 +5,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.Properties;
 import org.springframework.core.io.AbstractResource;
+import org.springframework.core.io.ClassPathResource;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.mock.env.MockEnvironment;
 
 class FiscalResponsibleDeclarationServiceTest {
 
-    private static final byte[] TEST_PDF = ("%PDF-1.4\nfake test declaration\n%%EOF\n")
-            .getBytes(StandardCharsets.UTF_8);
+    private static final byte[] TEST_PDF = testPdf();
 
     @Test
     void springCreatesTheServiceWithTheRuntimeConstructor() {
@@ -123,6 +122,15 @@ class FiscalResponsibleDeclarationServiceTest {
                     MessageDigest.getInstance("SHA-256").digest(bytes));
         } catch (Exception exception) {
             throw new AssertionError(exception);
+        }
+    }
+
+    private static byte[] testPdf() {
+        try (var input = new ClassPathResource(
+                "META-INF/fiscal/declaracion-responsable-TEST.pdf").getInputStream()) {
+            return input.readAllBytes();
+        } catch (Exception exception) {
+            throw new ExceptionInInitializerError(exception);
         }
     }
 

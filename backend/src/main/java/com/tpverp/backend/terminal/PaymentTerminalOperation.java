@@ -31,6 +31,17 @@ public class PaymentTerminalOperation {
     @Column(name = "original_operation_id") private UUID originalOperationId;
     @Column(name = "idempotency_key", nullable = false, length = 128) private String idempotencyKey;
     @Column(name = "request_hash", nullable = false, length = 64) private String requestHash;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "sale_customer_contact_snapshot", columnDefinition = "jsonb")
+    private com.tpverp.backend.document.DocumentCustomerContact saleCustomerContactSnapshot;
+
+    public com.tpverp.backend.document.DocumentCustomerContact getSaleCustomerContactSnapshot() { return saleCustomerContactSnapshot; }
+    void freezeSaleCustomerContact(com.tpverp.backend.document.DocumentCustomerContact contact) {
+        if (status != PaymentTerminalOperationStatus.PENDING || saleCustomerContactSnapshot != null)
+            throw new IllegalStateException("payment_customer_contact_already_frozen");
+        saleCustomerContactSnapshot = contact;
+    }
+
     @Column(nullable = false, precision = 19, scale = 2) private BigDecimal amount;
     @Column(nullable = false, length = 3) private String currency;
     @Column(name = "refunded_amount", nullable = false, precision = 19, scale = 2) private BigDecimal refundedAmount;
