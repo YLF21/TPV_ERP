@@ -59,6 +59,20 @@ public class CommercialDocument {
     private UUID terminalOrigenId;
     @Column(name = "cliente_id")
     private UUID clienteId;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "cliente_contacto_snapshot", columnDefinition = "jsonb")
+    private DocumentCustomerContact customerContact;
+
+    public DocumentCustomerContact getCustomerContact() { return customerContact; }
+
+    public UUID getCustomerAddressId() { return customerContact == null ? null : customerContact.id(); }
+
+    public void setCustomerContact(DocumentCustomerContact contact) {
+        if (estado != DocumentStatus.BORRADOR) throw new IllegalStateException("document_contact_already_frozen");
+        if (contact != null && clienteId == null) throw new IllegalArgumentException("customer_address_customer_required");
+        customerContact = contact;
+    }
+
     @Column(name = "proveedor_id")
     private UUID proveedorId;
     @Column(name = "numero_externo", length = 128)
@@ -403,6 +417,8 @@ public class CommercialDocument {
         almacenId = replacement.almacenId;
         tipo = replacement.tipo;
         fecha = replacement.fecha;
+        customerContact = replacement.customerContact != null ? replacement.customerContact
+                : Objects.equals(clienteId, replacement.clienteId) ? customerContact : null;
         clienteId = replacement.clienteId;
         proveedorId = null;
         numeroExterno = null;
@@ -521,6 +537,7 @@ public class CommercialDocument {
             throw new IllegalStateException("message.document.confirmed_admin_edit_not_allowed");
         }
         descuentoGlobal = Money.validPercentage(globalDiscount);
+        if (!Objects.equals(clienteId, customerId)) customerContact = null;
         clienteId = customerId;
         proveedorId = supplierId;
         ajustes.clear();
@@ -558,6 +575,7 @@ public class CommercialDocument {
     }
 
     void setParties(UUID customerId, UUID supplierId, String externalNumber) {
+        if (!Objects.equals(clienteId, customerId)) customerContact = null;
         clienteId = customerId;
         proveedorId = supplierId;
         numeroExterno = externalNumber == null || externalNumber.isBlank()

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { apiRequest, type LocaleCode } from "@tpverp/app-common";
+import { apiRequest } from "../../../packages/app-common/src/api/client";
+import type { LocaleCode } from "../../../packages/app-common/src/types";
 import { pdaPriceLookupPath, pdaStockLookupPath } from "./PdaProductLookup";
 import {
   buildReplenishmentSuggestions,
@@ -58,7 +59,12 @@ export function PdaReplenishment({ token, locale, warehouses, t }: {
   const [suggestionsError, setSuggestionsError] = useState("");
   const [status, setStatus] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const bulkDialogRef = useRef<HTMLElement | null>(null);
+  const bulkTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const bulkPreviousFocusRef = useRef<HTMLElement | null>(null);
+  const bulkSavingRef = useRef(false);
   const bulkConfirmRef = useRef<HTMLButtonElement | null>(null);
+  bulkSavingRef.current = bulkSaving;
   const number = useMemo(() => new Intl.NumberFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES", { maximumFractionDigits: 3 }), [locale]);
   const warehouseName = useCallback((id: string) => {
     const warehouse = activeWarehouses.find((item) => item.id === id);
@@ -114,7 +120,28 @@ export function PdaReplenishment({ token, locale, warehouses, t }: {
   }, [inventoryItems, targetWarehouseId]);
 
   useEffect(() => {
-    if (bulkReviewOpen) window.setTimeout(() => bulkConfirmRef.current?.focus(), 0);
+    if (!bulkReviewOpen) return;
+    bulkPreviousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : bulkTriggerRef.current;
+    window.setTimeout(() => bulkConfirmRef.current?.focus(), 0);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !bulkSavingRef.current) {
+        event.preventDefault();
+        setBulkReviewOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = [...(bulkDialogRef.current?.querySelectorAll<HTMLElement>("button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])") ?? [])];
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      window.setTimeout(() => bulkPreviousFocusRef.current?.focus(), 0);
+    };
   }, [bulkReviewOpen]);
 
   function chooseSuggestion(suggestion: ReplenishmentSuggestion) {
@@ -237,7 +264,7 @@ export function PdaReplenishment({ token, locale, warehouses, t }: {
   }
 
   const physicalScanner = usePhysicalScanner({
-    enabled: Boolean(token && !busy && !saving && !bulkSaving),
+    enabled: Boolean(token && !busy && !saving && !bulkSaving && !bulkReviewOpen),
     locale,
     onScan: (value) => searchIdentifier(value),
     duplicateWindowMs: 1200
@@ -269,11 +296,11 @@ export function PdaReplenishment({ token, locale, warehouses, t }: {
             </button>
           </article>)}
         </div>
-        <footer><button type="button" disabled={bulkSaving || selectedSuggestions.length === 0} onClick={() => setBulkReviewOpen(true)}>{bulkSaving ? t("common.loading") : `${t("pda.replenishment.replenishSelected")} (${selectedSuggestions.length})`}</button></footer>
+        <footer><button ref={bulkTriggerRef} type="button" disabled={bulkSaving || selectedSuggestions.length === 0} onClick={() => setBulkReviewOpen(true)} aria-haspopup="dialog" aria-expanded={bulkReviewOpen} aria-controls="pda-bulk-review-dialog">{bulkSaving ? t("common.loading") : `${t("pda.replenishment.replenishSelected")} (${selectedSuggestions.length})`}</button></footer>
       </>}
     </section>
     {bulkReviewOpen && <div className="pda-replenishment-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !bulkSaving) setBulkReviewOpen(false); }}>
-      <section className="pda-replenishment-dialog" role="dialog" aria-modal="true" aria-labelledby="pda-bulk-review-title" aria-describedby="pda-bulk-review-help">
+      <section ref={bulkDialogRef} id="pda-bulk-review-dialog" className="pda-replenishment-dialog" role="dialog" aria-modal="true" aria-labelledby="pda-bulk-review-title" aria-describedby="pda-bulk-review-help">
         <header><h3 id="pda-bulk-review-title">{t("pda.replenishment.bulkReviewTitle")}</h3><p id="pda-bulk-review-help">{t("pda.replenishment.bulkReviewHelp")}</p></header>
         <ul>{selectedSuggestions.map((suggestion) => <li key={suggestion.product.id}><span><b>{suggestion.product.code}</b>{suggestion.product.name}</span><strong>{number.format(suggestion.suggestedQuantity)}</strong><small>{warehouseName(suggestion.sourceWarehouseId)} → {warehouseName(suggestion.targetWarehouseId)}</small></li>)}</ul>
         <footer>

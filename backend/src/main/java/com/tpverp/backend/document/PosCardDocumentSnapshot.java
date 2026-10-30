@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class PosCardDocumentSnapshot {
 
-    private static final int CURRENT_SCHEMA_VERSION = 5;
+    private static final int CURRENT_SCHEMA_VERSION = 6;
 
     private final ObjectMapper mapper;
 
@@ -70,7 +70,7 @@ public class PosCardDocumentSnapshot {
                         })
                         .toList(),
                 value.internalComment(), value.historicalReplay(), value.adjustments(),
-                value.manualControl());
+                value.manualControl(), value.customerContact());
     }
 
     private static void validate(ApprovedCardTicketSnapshot value) {
@@ -91,6 +91,9 @@ public class PosCardDocumentSnapshot {
                 || value.total() == null) {
             throw new ApprovedCardSnapshotException(
                     "Instantanea de venta incompleta");
+        }
+        if (value.customerContact() != null && value.customerId() == null) {
+            throw new ApprovedCardSnapshotException("El contacto requiere un cliente");
         }
         if (value.lines().stream()
                 .anyMatch(line -> isPositiveProduct(line)

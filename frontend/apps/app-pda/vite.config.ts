@@ -14,7 +14,20 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: "dist"
+    outDir: "dist",
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const normalized = id.replace(/\\/g, "/");
+          const messages = normalized.match(/\/i18n\/Messages(Es|En|Zh)\.ts$/);
+          if (messages) return `messages-${messages[1].toLowerCase()}`;
+          if (normalized.includes("node_modules/react") || normalized.includes("node_modules/scheduler")) {
+            return "react-vendor";
+          }
+          return undefined;
+        }
+      }
+    }
   },
   server: {
     proxy: {

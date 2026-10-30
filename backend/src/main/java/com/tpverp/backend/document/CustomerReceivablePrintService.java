@@ -174,7 +174,7 @@ public class CustomerReceivablePrintService {
                 document.getClienteId(), fiscalSnapshot == null
                         ? FiscalParty.from(company, logoDataUri)
                         : FiscalParty.from(fiscalSnapshot, logoDataUri),
-                customer == null ? null : FiscalParty.from(customer),
+                customer == null ? null : FiscalParty.from(document, customer),
                 document.getLineas().stream().map(Line::from).toList(),
                 document.getPagos().stream()
                         .sorted(Comparator.comparingInt(DocumentPayment::getPosicion))
@@ -426,6 +426,12 @@ public class CustomerReceivablePrintService {
                     new PartyAddress(address.get("linea1"), address.get("codigoPostal"),
                             address.get("ciudad"), address.get("provincia"),
                             address.get("pais")), address.get("telefono"), logo);
+        }
+
+        static FiscalParty from(CommercialDocument document, Customer customer) {
+            return new FiscalParty(customer.getFiscalName(), customer.getDocumentNumber(),
+                    PartyAddress.from(DocumentCustomerContact.addressFor(document, customer)),
+                    DocumentCustomerContact.phoneFor(document, customer), null);
         }
 
         static FiscalParty from(Customer customer) {

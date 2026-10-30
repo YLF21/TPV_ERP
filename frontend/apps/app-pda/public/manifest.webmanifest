@@ -1,0 +1,20 @@
+{
+  "name": "esPOS PDA",
+  "short_name": "esPOS PDA",
+  "description": "Operaciones de almacén de esPOS",
+  "lang": "es",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#eef3f8",
+  "theme_color": "#07254f",
+  "icons": [
+    {
+      "src": "/pda-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
