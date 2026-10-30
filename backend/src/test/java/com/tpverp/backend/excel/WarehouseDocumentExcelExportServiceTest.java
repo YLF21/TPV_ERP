@@ -26,6 +26,7 @@ import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import org.apache.poi.ss.usermodel.BorderStyle;
@@ -33,7 +34,7 @@ import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.ss.usermodel.FillPatternType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.access.AccessDeniedException;
@@ -94,15 +95,15 @@ class WarehouseDocumentExcelExportServiceTest {
             assertThat(sheet.getRow(7).getCell(3).getCellStyle().getDataFormatString()).contains("0.00#");
             assertThat(sheet.getRow(7).getCell(4).getNumericCellValue()).isEqualTo(22.08);
             assertThat(sheet.getRow(7).getCell(4).getCellStyle().getDataFormatString()).doesNotContain("0.00#");
-            assertThat(workbook.getFontAt(sheet.getRow(0).getCell(0).getCellStyle().getFontIndexAsInt()).getBold())
+            assertThat(workbook.getFontAt(sheet.getRow(0).getCell(0).getCellStyle().getFontIndex()).getBold())
                     .isTrue();
-            assertThat(workbook.getFontAt(sheet.getRow(6).getCell(0).getCellStyle().getFontIndexAsInt()).getBold())
+            assertThat(workbook.getFontAt(sheet.getRow(6).getCell(0).getCellStyle().getFontIndex()).getBold())
                     .isTrue();
             assertThat(sheet.getRow(0).getCell(0).getCellStyle().getFillPattern())
                     .isEqualTo(FillPatternType.NO_FILL);
             assertThat(sheet.getRow(0).getCell(1).getCellStyle().getFillPattern())
                     .isEqualTo(FillPatternType.NO_FILL);
-            assertThat(workbook.getFontAt(sheet.getRow(0).getCell(1).getCellStyle().getFontIndexAsInt()).getBold())
+            assertThat(workbook.getFontAt(sheet.getRow(0).getCell(1).getCellStyle().getFontIndex()).getBold())
                     .isTrue();
             assertThat(sheet.getRow(6).getCell(0).getCellStyle().getFillPattern())
                     .isEqualTo(FillPatternType.NO_FILL);
@@ -114,15 +115,23 @@ class WarehouseDocumentExcelExportServiceTest {
                     .isEqualTo(BorderStyle.THIN);
             assertThat(sheet.getRow(9).getCell(0).getCellStyle().getFillPattern())
                     .isEqualTo(FillPatternType.NO_FILL);
-            assertThat(workbook.getFontAt(sheet.getRow(9).getCell(0).getCellStyle().getFontIndexAsInt()).getBold())
+            assertThat(workbook.getFontAt(sheet.getRow(9).getCell(0).getCellStyle().getFontIndex()).getBold())
                     .isTrue();
             assertThat(sheet.getPaneInformation()).isNotNull();
         }
     }
 
     @ParameterizedTest
-    @EnumSource(value = WarehouseInputDocumentType.class, names = {"FACTURA_ENTRADA", "ALBARAN_ENTRADA"})
-    void allowsPurchaseReadersToExportOnlyScopedPurchaseInputs(WarehouseInputDocumentType type) throws Exception {
+    @CsvSource({
+            "FACTURA_ENTRADA,10.00,0.1,10%,90",
+            "ALBARAN_ENTRADA,10.00,0.1,10%,90",
+            "FACTURA_ENTRADA,0.00,0,0%,100",
+            "FACTURA_ENTRADA,10.50,0.105,10.5%,89.50",
+            "FACTURA_ENTRADA,10.25,0.1025,10.25%,89.75",
+            "FACTURA_ENTRADA,100.00,1,100%,0"
+    })
+    void allowsPurchaseReadersToExportOnlyScopedPurchaseInputs(WarehouseInputDocumentType type,
+            String discount, double ratio, String formatted, double total) throws Exception {
         var inputs = mock(WarehouseInputRepository.class);
         var products = mock(ProductRepository.class);
         var organization = mock(CurrentOrganization.class);
@@ -131,7 +140,7 @@ class WarehouseDocumentExcelExportServiceTest {
         when(organization.currentStore()).thenReturn(store);
         when(organization.currentCompany()).thenReturn(company);
         var input = new WarehouseInput(store.getId(), UUID.randomUUID(), LocalDate.of(2026, 8, 10), UUID.randomUUID(), type);
-        input.replace(null, "Origen", "REF-01", "Compra", null, new BigDecimal("10"), List.of(),
+        input.replace(null, "Origen", "REF-01", "Compra", null, new BigDecimal(discount), List.of(),
                 List.of(new WarehouseInputLineCommand(UUID.randomUUID(), new BigDecimal("2"),
                         new BigDecimal("50"), BigDecimal.ZERO, false, "PRODUCTO")), null);
         when(inputs.findByIdAndStoreId(input.getId(), store.getId())).thenReturn(Optional.of(input));
@@ -148,11 +157,13 @@ class WarehouseDocumentExcelExportServiceTest {
             assertThat(sheet.getRow(9).getCell(0).getStringCellValue()).isEqualTo("Subtotal");
             assertThat(sheet.getRow(9).getCell(1).getNumericCellValue()).isEqualTo(100);
             assertThat(sheet.getRow(10).getCell(0).getStringCellValue()).isEqualTo("Descuento total del documento %");
-            assertThat(sheet.getRow(10).getCell(1).getNumericCellValue()).isEqualTo(0.1);
-            assertThat(new org.apache.poi.ss.usermodel.DataFormatter().formatCellValue(sheet.getRow(10).getCell(1)))
-                    .isEqualTo("10%");
+            assertThat(sheet.getRow(10).getCell(1).getNumericCellValue()).isEqualTo(ratio);
+            assertThat(new org.apache.poi.ss.usermodel.DataFormatter(Locale.US)
+                    .formatCellValue(sheet.getRow(10).getCell(1))).isEqualTo(formatted);
+            assertThat(new org.apache.poi.ss.usermodel.DataFormatter(Locale.forLanguageTag("es-ES"))
+                    .formatCellValue(sheet.getRow(10).getCell(1))).isEqualTo(formatted.replace('.', ','));
             assertThat(sheet.getRow(11).getCell(0).getStringCellValue()).isEqualTo("Total de compra");
-            assertThat(sheet.getRow(11).getCell(1).getNumericCellValue()).isEqualTo(90);
+            assertThat(sheet.getRow(11).getCell(1).getNumericCellValue()).isEqualTo(total);
         }
         verify(inputs).findByIdAndStoreId(input.getId(), store.getId());
     }
