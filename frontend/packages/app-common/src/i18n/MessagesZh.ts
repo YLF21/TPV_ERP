@@ -111,6 +111,7 @@ export class MessagesZh {
     "login.backendOffline": "无法连接后端。请启动后端以加载数据。",
     "login.backendRetry": "重试连接",
     "login.language": "切换语言",
+    "login.settings": "设置",
     "login.noAccess": "该用户无权进入",
     "login.terminalMissing": "终端未配置",
     "gestion.serverSetup.title": "配置服务器终端",
