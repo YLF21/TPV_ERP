@@ -68,10 +68,28 @@ function session(permissions: UserSession["permissions"]): UserSession {
 
 const t = (key: string) => key;
 
+function adjustmentRow(id: string): api.StockAdjustmentHistoryRow {
+  return { movementId: id, warehouseId: "general", productId: "coffee", code: id, name: "Café",
+    previousQuantity: 10, adjustmentQuantity: 2, nextQuantity: 12, reason: "Revisión", createdAt: "2026-09-23T10:00:00Z" };
+}
+
+function scrollAdjustmentHistory() {
+  const scroll = screen.getByRole("table", { name: "warehouse.adjustment.title" }).parentElement!;
+  Object.defineProperties(scroll, {
+    clientHeight: { configurable: true, value: 400 },
+    scrollHeight: { configurable: true, value: 1200 },
+    scrollTop: { configurable: true, writable: true, value: 750 }
+  });
+  fireEvent.scroll(scroll);
+  return scroll;
+}
+
 describe("WarehouseOperationsScreen", () => {
   afterEach(cleanup);
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    vi.mocked(api.loadStockAdjustmentHistory).mockReset();
     vi.mocked(apiRequest).mockImplementation(async (path) => String(path).startsWith("/document-reports/date-options")
       ? { currentDate: "2026-10-15", earliestDate: "2026-01-01" } : []);
     vi.mocked(api.loadWarehouseOperationResources).mockResolvedValue(resources);
@@ -242,6 +260,84 @@ describe("WarehouseOperationsScreen", () => {
     await waitFor(() => expect(api.loadStockAdjustmentHistory).toHaveBeenLastCalledWith("token", expect.objectContaining({
       search: "CAF", from: undefined, to: new Date("2026-09-24T00:00:00").toISOString()
     })));
+  });
+
+  it("appends adjustment history on scroll without pagination, duplicate requests or losing selection", async () => {
+    let complete!: (page: api.StockAdjustmentHistoryPage) => void;
+    vi.mocked(api.loadStockAdjustmentHistory)
+      .mockResolvedValueOnce({ items: [adjustmentRow("ADJ-1")], hasMore: true, nextCursor: null })
+      .mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
+    render(<WarehouseOperationsScreen session={session(["STOCK_ADJUST"])} mode="adjustment" t={t} />);
+    const first = await screen.findByRole("row", { name: /ADJ-1/ });
+    fireEvent.click(first);
+    expect(screen.queryByRole("button", { name: "warehouse.adjustment.previous" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "warehouse.adjustment.next" })).not.toBeInTheDocument();
+    const scroll = scrollAdjustmentHistory();
+    scrollAdjustmentHistory();
+    expect(api.loadStockAdjustmentHistory).toHaveBeenCalledTimes(2);
+    expect(api.loadStockAdjustmentHistory).toHaveBeenLastCalledWith("token", expect.objectContaining({ page: 1 }));
+    expect(first).toHaveAttribute("aria-selected", "true");
+    expect(scroll).toHaveAttribute("aria-busy", "true");
+    await act(async () => complete({ items: [adjustmentRow("ADJ-1"), adjustmentRow("ADJ-2")], hasMore: false, nextCursor: null }));
+    expect(screen.getByRole("row", { name: /ADJ-2/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("row", { name: /ADJ-1/ })).toHaveLength(1);
+    expect(first).toHaveAttribute("aria-selected", "true");
+    expect(scroll.scrollTop).toBe(750);
+    expect(scroll).toHaveAttribute("aria-busy", "false");
+    scrollAdjustmentHistory();
+    expect(api.loadStockAdjustmentHistory).toHaveBeenCalledTimes(2);
+    expect(api.createStockAdjustment).not.toHaveBeenCalled();
+  });
+
+  it("resets adjustment history on filter changes and ignores an older scroll response", async () => {
+    let completeOld!: (page: api.StockAdjustmentHistoryPage) => void;
+    vi.mocked(api.loadStockAdjustmentHistory)
+      .mockResolvedValueOnce({ items: [adjustmentRow("ADJ-OLD")], hasMore: true, nextCursor: null })
+      .mockImplementationOnce(() => new Promise((resolve) => { completeOld = resolve; }))
+      .mockResolvedValueOnce({ items: [adjustmentRow("ADJ-NEW")], hasMore: false, nextCursor: null });
+    render(<WarehouseOperationsScreen session={session(["STOCK_ADJUST"])} mode="adjustment" t={t} />);
+    await screen.findByRole("row", { name: /ADJ-OLD/ });
+    const scroll = scrollAdjustmentHistory();
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "NEW" } });
+    await screen.findByRole("row", { name: /ADJ-NEW/ });
+    expect(api.loadStockAdjustmentHistory).toHaveBeenLastCalledWith("token", expect.objectContaining({ page: 0, search: "NEW" }));
+    await act(async () => completeOld({ items: [adjustmentRow("ADJ-STALE")], hasMore: true, nextCursor: null }));
+    expect(screen.queryByRole("row", { name: /ADJ-OLD|ADJ-STALE/ })).not.toBeInTheDocument();
+    expect(scroll.scrollTop).toBe(0);
+    scrollAdjustmentHistory();
+    expect(api.loadStockAdjustmentHistory).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps loaded adjustments on an incremental error and retries the same batch on scroll", async () => {
+    vi.mocked(api.loadStockAdjustmentHistory)
+      .mockResolvedValueOnce({ items: [adjustmentRow("ADJ-1")], hasMore: true, nextCursor: null })
+      .mockRejectedValueOnce(new Error("Load failed"))
+      .mockResolvedValueOnce({ items: [adjustmentRow("ADJ-2")], hasMore: false, nextCursor: null });
+    render(<WarehouseOperationsScreen session={session(["STOCK_ADJUST"])} mode="adjustment" t={t} />);
+    await screen.findByRole("row", { name: /ADJ-1/ });
+    scrollAdjustmentHistory();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Load failed");
+    expect(screen.getByRole("row", { name: /ADJ-1/ })).toBeInTheDocument();
+    scrollAdjustmentHistory();
+    await screen.findByRole("row", { name: /ADJ-2/ });
+    expect(vi.mocked(api.loadStockAdjustmentHistory).mock.calls.map(([, options]) => options?.page)).toEqual([0, 1, 1]);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("loads more history when the table is not full and stops on an empty batch", async () => {
+    const height = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(400);
+    const scrollHeight = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(200);
+    try {
+      vi.mocked(api.loadStockAdjustmentHistory)
+        .mockResolvedValueOnce({ items: [adjustmentRow("ADJ-1")], hasMore: true, nextCursor: null })
+        .mockResolvedValueOnce({ items: [adjustmentRow("ADJ-2")], hasMore: true, nextCursor: null })
+        .mockResolvedValueOnce({ items: [], hasMore: true, nextCursor: null });
+      render(<WarehouseOperationsScreen session={session(["STOCK_ADJUST"])} mode="adjustment" t={t} />);
+      await screen.findByRole("row", { name: /ADJ-2/ });
+      await waitFor(() => expect(screen.getByRole("table").parentElement).toHaveAttribute("aria-busy", "false"));
+      expect(screen.getByRole("row", { name: /ADJ-1/ })).toBeInTheDocument();
+      expect(vi.mocked(api.loadStockAdjustmentHistory).mock.calls.map(([, options]) => options?.page)).toEqual([0, 1, 2]);
+    } finally { height.mockRestore(); scrollHeight.mockRestore(); }
   });
 
   it("shows the adjustment author and leaves unknown legacy authors blank", async () => {

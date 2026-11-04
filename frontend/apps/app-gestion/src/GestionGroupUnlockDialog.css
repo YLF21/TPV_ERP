@@ -1,0 +1,37 @@
+.gestion-group-unlock-backdrop .gestion-group-unlock-dialog {
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+}
+
+.gestion-group-unlock-backdrop .gestion-group-unlock-dialog--keyboard {
+  width: min(900px, 100%);
+}
+
+.gestion-group-unlock-credentials {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 0 17px;
+}
+
+.gestion-group-unlock-dialog .gestion-group-unlock-credentials > label {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.gestion-group-unlock-credentials input {
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+}
+
+.gestion-group-unlock-keyboard-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.gestion-group-unlock-keyboard {
+  margin: 10px 17px 0;
+}

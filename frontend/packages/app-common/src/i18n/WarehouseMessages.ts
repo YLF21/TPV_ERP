@@ -360,6 +360,9 @@ const warehouseDocumentChanges: Record<LocaleCode, Record<string, string>> = {
   es: {
     "warehouse.transfer.create": "Crear documento de traspaso",
     "warehouse.transfer.cancelDocument": "Anular documento",
+    "warehouse.transfer.cancelTitle": "Anular traspaso",
+    "warehouse.transfer.cancelMessage": "¿Quieres anular este traspaso? El documento quedará anulado y no podrá modificarse ni confirmarse.",
+    "warehouse.transfer.cancelAction": "Anular",
     "warehouse.transfer.search": "Buscar",
     "warehouse.transfer.searchPlaceholder": "Número o notas",
     "warehouse.transfer.edit": "Editar documento",
@@ -413,6 +416,9 @@ const warehouseDocumentChanges: Record<LocaleCode, Record<string, string>> = {
   en: {
     "warehouse.transfer.create": "Create transfer document",
     "warehouse.transfer.cancelDocument": "Cancel document",
+    "warehouse.transfer.cancelTitle": "Void transfer",
+    "warehouse.transfer.cancelMessage": "Do you want to void this transfer? The document will be voided and can no longer be edited or confirmed.",
+    "warehouse.transfer.cancelAction": "Void",
     "warehouse.transfer.search": "Search",
     "warehouse.transfer.searchPlaceholder": "Number or notes",
     "warehouse.transfer.edit": "Edit document",
@@ -466,6 +472,9 @@ const warehouseDocumentChanges: Record<LocaleCode, Record<string, string>> = {
   zh: {
     "warehouse.transfer.create": "创建调拨单据",
     "warehouse.transfer.cancelDocument": "作废单据",
+    "warehouse.transfer.cancelTitle": "作废调拨单",
+    "warehouse.transfer.cancelMessage": "确定要作废此调拨单吗？作废后将无法再修改或确认此单据。",
+    "warehouse.transfer.cancelAction": "作废",
     "warehouse.transfer.search": "搜索",
     "warehouse.transfer.searchPlaceholder": "单号或备注",
     "warehouse.transfer.edit": "编辑单据",

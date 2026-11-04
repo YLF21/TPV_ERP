@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserSession } from "../../../packages/app-common/src/types";
 import { apiRequest } from "../../../packages/app-common/src/api/client";
@@ -34,6 +34,8 @@ describe("StockCountScreen", () => {
   afterEach(cleanup);
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(api.cancelStockCount).mockReset();
+    localStorage.clear();
     vi.mocked(api.loadStockCounts).mockResolvedValue([summary]);
     vi.mocked(api.loadStockCount).mockResolvedValue(detail);
     vi.mocked(apiRequest).mockImplementation(async (path) => {
@@ -82,9 +84,15 @@ describe("StockCountScreen", () => {
     fireEvent.click(within(editor).getByRole("button", { name: "Salir Esc" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Documento de inventario" })).not.toBeInTheDocument());
     expect(api.createStockCount).not.toHaveBeenCalled();
+  });
 
-    fireEvent.click(screen.getByRole("row", { name: /INV-2026-000001/ }));
-    fireEvent.click(screen.getByRole("button", { name: "warehouseDocument.open" }));
+  it.each(["double click", "Enter"])("opens an inventory with %s without an Open button", async (action) => {
+    render(<StockCountScreen session={session(["GESTION_ALMACEN"])} t={t} />);
+    const row = await screen.findByRole("row", { name: /INV-2026-000001/ });
+    expect(screen.queryByRole("button", { name: "warehouseDocument.open" })).not.toBeInTheDocument();
+    expect(api.loadStockCount).not.toHaveBeenCalled();
+    if (action === "double click") fireEvent.doubleClick(row);
+    else fireEvent.keyDown(row, { key: "Enter" });
     expect(await screen.findByRole("dialog", { name: "Documento de inventario" })).toHaveTextContent("INV-2026-000001");
     expect(api.loadStockCount).toHaveBeenCalledWith("inventory-1", "token");
   });
@@ -103,11 +111,65 @@ describe("StockCountScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Anular borrador" }));
     expect(api.cancelStockCount).not.toHaveBeenCalled();
     const prompt = screen.getByRole("alertdialog", { name: "Anular borrador" });
+    expect(within(prompt).getByRole("button", { name: "Cancelar" })).toHaveFocus();
     fireEvent.click(within(prompt).getByRole("button", { name: "Cancelar" }));
     expect(api.cancelStockCount).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Anular borrador" }));
-    fireEvent.click(within(screen.getByRole("alertdialog", { name: "Anular borrador" })).getByRole("button", { name: "Anular borrador" }));
+    fireEvent.click(within(screen.getByRole("alertdialog", { name: "Anular borrador" })).getByRole("button", { name: "Anular" }));
     await waitFor(() => expect(api.cancelStockCount).toHaveBeenCalledWith("inventory-1", "token"));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+  });
+
+  it.each(["Escape", "close"])("dismisses inventory cancellation with %s without changing the document", async (action) => {
+    render(<StockCountScreen session={session(["GESTION_ALMACEN"])} t={t} />);
+    await screen.findByRole("row", { name: /INV-2026-000001/ });
+    fireEvent.click(screen.getByRole("button", { name: "Anular borrador" }));
+    const prompt = screen.getByRole("alertdialog", { name: "Anular borrador" });
+    if (action === "Escape") fireEvent.keyDown(within(prompt).getByRole("button", { name: "Cancelar" }), { key: "Escape" });
+    else fireEvent.click(within(prompt).getByRole("button", { name: "Cancelar: Anular borrador" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(api.cancelStockCount).not.toHaveBeenCalled();
+    expect(api.loadStockCounts).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks duplicate cancellations and list actions until the selected inventory is cancelled", async () => {
+    let complete!: (value: api.StockCountDetail) => void;
+    vi.mocked(api.cancelStockCount).mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+    render(<StockCountScreen session={session(["GESTION_ALMACEN"])} t={t} />);
+    await screen.findByRole("row", { name: /INV-2026-000001/ });
+    fireEvent.click(screen.getByRole("button", { name: "Anular borrador" }));
+    const prompt = screen.getByRole("alertdialog", { name: "Anular borrador" });
+    const confirm = within(prompt).getByRole("button", { name: "Anular" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    for (const key of ["F5", "F6", "F7", "Escape"]) fireEvent.keyDown(prompt, { key });
+    fireEvent.doubleClick(screen.getByRole("row", { name: /INV-2026-000001/ }));
+    expect(api.cancelStockCount).toHaveBeenCalledExactlyOnceWith("inventory-1", "token");
+    expect(api.loadStockCount).not.toHaveBeenCalled();
+    expect(api.exportStockCount).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    for (const button of within(prompt).getAllByRole("button")) expect(button).toBeDisabled();
+    vi.mocked(api.loadStockCounts).mockResolvedValue([{ ...summary, status: "CANCELLED" }]);
+    await act(async () => complete({ ...detail, status: "CANCELLED" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(api.loadStockCounts).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: "Anular borrador" })).toBeDisabled();
+    expect(screen.getByRole("row", { name: /INV-2026-000001/ })).toHaveTextContent("warehouse.count.status.CANCELLED");
+  });
+
+  it("shows a cancellation failure in the prompt and lets the user dismiss it", async () => {
+    vi.mocked(api.cancelStockCount).mockRejectedValue(new Error("El recuento ya no es editable"));
+    render(<StockCountScreen session={session(["GESTION_ALMACEN"])} t={t} />);
+    await screen.findByRole("row", { name: /INV-2026-000001/ });
+    fireEvent.click(screen.getByRole("button", { name: "Anular borrador" }));
+    const prompt = screen.getByRole("alertdialog", { name: "Anular borrador" });
+    fireEvent.click(within(prompt).getByRole("button", { name: "Anular" }));
+    expect(await within(prompt).findByRole("alert")).toHaveTextContent("El recuento ya no es editable");
+    expect(api.loadStockCounts).toHaveBeenCalledTimes(1);
+    expect(within(prompt).getByRole("button", { name: "Anular" })).toBeEnabled();
+    fireEvent.click(within(prompt).getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(api.cancelStockCount).toHaveBeenCalledTimes(1);
   });
 
   it("routes F5/F6/F7 from the initially selected inventory and blocks them in dialogs", async () => {
