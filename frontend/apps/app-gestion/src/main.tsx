@@ -969,6 +969,7 @@ function GestionScreen({
         <GestionGroupUnlockDialog
           group={unlockRequest.group}
           session={session}
+          locale={locale}
           t={t}
           onUnlocked={completeUnlock}
           onLocked={lockedGroupFallback}

@@ -554,7 +554,7 @@ html[data-app="gestion"] .gestion-warehouse-screen .gestion-warehouse-toolbar {
   border-color: #68737e;
 }
 
-.gestion-warehouse-screen :is(.gestion-warehouse-operations-header, .gestion-warehouse-adjustments-pages, .goods-check-type-filter) > button {
+.gestion-warehouse-screen :is(.gestion-warehouse-operations-header, .goods-check-type-filter) > button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -610,14 +610,28 @@ html[data-app="gestion"] .gestion-warehouse-screen .report-date-range-filter {
   align-items: flex-end;
 }
 
-.gestion-warehouse-screen .gestion-warehouse-transfer-toolbar > label,
-.gestion-warehouse-screen .inventory-filters > label:first-child {
-  flex: 1.5 1 220px;
+html[data-app="gestion"] .gestion-warehouse-screen .inventory-filters > label:first-child {
+  flex: 1 1 360px;
 }
 
-.gestion-warehouse-screen .gestion-warehouse-transfer-toolbar > .stock-history-filter-field,
-.gestion-warehouse-screen .inventory-filters > label:not(:first-child) {
-  flex: 1 1 140px;
+html[data-app="gestion"] .gestion-warehouse-screen .inventory-filters > label:not(:first-child) {
+  flex: 0 1 180px;
+}
+
+html[data-app="gestion"] .gestion-warehouse-screen .inventory-filters > label.gestion-warehouse-status-filter {
+  flex-basis: 150px;
+}
+
+html[data-app="gestion"] .gestion-warehouse-transfer-toolbar > label {
+  flex: 1 1 360px;
+}
+
+html[data-app="gestion"] .gestion-warehouse-transfer-toolbar > .stock-history-filter-field {
+  flex: 0 1 180px;
+}
+
+html[data-app="gestion"] .gestion-warehouse-transfer-toolbar > .gestion-warehouse-status-filter {
+  flex-basis: 150px;
 }
 
 .gestion-warehouse-screen :is(.gestion-warehouse-transfer-toolbar, .inventory-filters) > .gestion-warehouse-list-actions {

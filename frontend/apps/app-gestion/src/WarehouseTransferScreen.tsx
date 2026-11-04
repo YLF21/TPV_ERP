@@ -1,9 +1,10 @@
 import { sortTableRows, useTableSortPreference } from "../../../packages/app-common/src/components/tableSorting";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Eye, FilePdf, FileXls, Plus, Trash } from "@phosphor-icons/react";
+import { FilePdf, FileXls, Plus, Trash } from "@phosphor-icons/react";
 import type { LocaleCode, TerminalContext, UserSession } from "../../../packages/app-common/src/types";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { ErpConfirmDialog } from "../../../packages/app-common/src/components/ErpConfirmDialog";
 import { ErpSelect } from "../../../packages/app-common/src/components/ErpSelect";
 import { WarehouseSearchFrame } from "../../../packages/app-common/src/components/WarehouseSearchFrame";
 import { ReportDateRangeFilter, type ReportDateRange } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
@@ -73,7 +74,11 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [editor, setEditor] = useState<WarehouseDocumentView | null>(null);
   const [editorOpen, setEditorOpen] = useState(createOnMount);
-  useWarehouseListShortcuts(rootRef, Boolean(token), editorOpen);
+  const [cancelDocumentId, setCancelDocumentId] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState("");
+  const cancelBusy = useRef(false);
+  const modalOpen = editorOpen || cancelDocumentId !== null;
+  useWarehouseListShortcuts(rootRef, Boolean(token), modalOpen);
   const [products, setProducts] = useState<WarehouseImportProduct[]>([]);
   const [resourcesReady, setResourcesReady] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -186,11 +191,11 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
   const tableSort = useTableSortPreference({ app: "gestion", username: session.username, tableKey: "warehouse.transfers.documents", columns: transferColumns.map(c => c.key), defaultSort: null });
   const sortedDocuments = sortTableRows(documents, tableSort.sort, (doc, key) => key === "date" ? doc.createdAt : key === "source" ? warehouseName(doc.sourceWarehouseId) : key === "target" ? warehouseName(doc.targetWarehouseId) : key === "lines" ? doc.lineCount : key === "units" ? doc.totalUnits : key === "status" ? t(`warehouse.count.status.${doc.status}`) : key === "notes" ? doc.notes : doc.number, locale);
   useTableInitialFocus(scrollRef, "tbody tr[data-transfer-document-id]", {
-    ready: !listLoading && !error && !editorOpen && searchInput.trim() === searchFilter && sortedDocuments.length > 0,
+    ready: !listLoading && !error && !modalOpen && searchInput.trim() === searchFilter && sortedDocuments.length > 0,
     onSelect: (row) => setSelectedDocumentId(row.dataset.transferDocumentId ?? "")
   });
   const handleArrowRepeat = useTableArrowRepeat((direction) => {
-    if (editorOpen || listLoading || searchInput.trim() !== searchFilter) return false;
+    if (modalOpen || listLoading || searchInput.trim() !== searchFilter) return false;
     const current = document.activeElement;
     const index = sortedDocuments.findIndex((item) => rowRefs.current.get(item.id) === current);
     const next = index + (direction === "ArrowDown" ? 1 : -1);
@@ -203,16 +208,18 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
     const container = scrollRef.current;
     if (container) ensureTableRowVisible(container, node);
     return true;
-  }, !editorOpen && !listLoading && searchInput.trim() === searchFilter);
+  }, !modalOpen && !listLoading && searchInput.trim() === searchFilter);
 
   async function cancelSelectedDocument() {
-    if (!selectedDocumentId || cancelling) return;
-    setCancelling(true); setError("");
+    if (!cancelDocumentId || cancelBusy.current) return;
+    cancelBusy.current = true;
+    setCancelling(true); setCancelError("");
     try {
-      await cancelTransferDocument(selectedDocumentId, token);
+      await cancelTransferDocument(cancelDocumentId, token);
       await loadDocuments();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : t("warehouse.transfer.error")); }
-    finally { setCancelling(false); }
+      setCancelDocumentId(null);
+    } catch (cause) { setCancelError(cause instanceof Error ? cause.message : t("warehouse.transfer.error")); }
+    finally { cancelBusy.current = false; setCancelling(false); }
   }
 
   const selectedDocument = documents.find((document) => document.id === selectedDocumentId);
@@ -276,11 +283,11 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
           options={[{ value: "", label: t("warehouse.count.all") },
             ...warehouses.map((item) => ({ value: item.id, label: item.name }))]} /></div>
       <div className="warehouse-document-actions gestion-warehouse-transfer-actions gestion-warehouse-actions gestion-warehouse-list-actions gestion-toolbar-end">
-        <button type="button" disabled={!resourcesReady || !selectedDocument || listLoading || searchInput.trim() !== searchFilter}
-          onClick={() => selectedDocument && void openDocument(selectedDocument.id)}>
-          <span><Eye size={16} aria-hidden="true" />{t("warehouseDocument.open")}</span></button>
         <button type="button" disabled={selectedDocument?.status !== "DRAFT" || cancelling || listLoading}
-          onClick={() => void cancelSelectedDocument()}><span><Trash size={16} aria-hidden="true" />{t("warehouse.transfer.cancelDocument")}</span></button>
+          onClick={() => {
+            if (selectedDocument?.status !== "DRAFT") return;
+            setCancelError(""); setCancelDocumentId(selectedDocument.id);
+          }}><span><Trash size={16} aria-hidden="true" />{t("warehouse.transfer.cancelDocument")}</span></button>
         <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.excel} disabled={!token || exporting} onClick={() => void exportList("xlsx")}><span><FileXls size={16} aria-hidden="true" />{t("warehouse.count.exportExcel")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.excel}</kbd></button>
         <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.pdf} disabled={!token || exporting} onClick={() => void exportList("pdf")}><span><FilePdf size={16} aria-hidden="true" />{t("warehouse.count.exportPdf")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.pdf}</kbd></button>
       </div>
@@ -345,6 +352,13 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
           {!listLoading && searchInput.trim() === searchFilter && documents.length === 0 &&
             <tr><td colSpan={visibleColumns.length}>{t("warehouse.adjustment.empty")}</td></tr>}
         </tbody></table></div>
+
+    {cancelDocumentId && <ErpConfirmDialog
+      title={t("warehouse.transfer.cancelTitle")} message={t("warehouse.transfer.cancelMessage")}
+      cancelLabel={t("common.cancel")} confirmLabel={t("warehouse.transfer.cancelAction")}
+      busy={cancelling} errorMessage={cancelError}
+      onCancel={() => { if (!cancelBusy.current) setCancelDocumentId(null); }}
+      onConfirm={() => void cancelSelectedDocument()} />}
 
     {editorOpen && resourcesReady && createPortal(<WarehouseDocumentDialog mode="transfer" open app="gestion"
       username={session.username} accessToken={token} token={token} session={session} locale={locale}

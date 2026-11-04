@@ -1,5 +1,31 @@
 @import "../../../packages/app-common/src/components/ErpClassicTables.css" screen;
 
+/* Legacy management/window skins force header tools visible with !important.
+   Own their interaction state in Gestión's predeclared layer so lazy-loaded
+   screens cannot override it. Opacity retains the keyboard focus targets. */
+@layer gestion-accents {
+  @media screen {
+    html[data-app="gestion"] :is(.table-layout-sort-indicator, .table-layout-column-menu-button) {
+      opacity: 0 !important;
+      visibility: visible !important;
+    }
+
+    html[data-app="gestion"] :is(th, [role="columnheader"], .table-layout-header-cell):is(
+      :hover, :focus-within, :has(.table-layout-column-menu-button.is-open)
+    ) :is(.table-layout-sort-indicator, .table-layout-column-menu-button) {
+      opacity: 1 !important;
+    }
+
+    /* Hybrid Windows devices report a coarse pointer even with a mouse.
+       Keep tools visible only when no input device can hover. */
+    @media (any-hover: none) {
+      html[data-app="gestion"] :is(.table-layout-sort-indicator, .table-layout-column-menu-button) {
+        opacity: 1 !important;
+      }
+    }
+  }
+}
+
 /* APP GESTIÓN uses the same desktop table tokens as APP VENTA. Keep existing
    column templates, scroll containers, editor controls and semantic badges. */
 @media screen {
@@ -10,7 +36,7 @@
     --gestion-sort-space: 0px;
     --gestion-menu-space: 0px;
   }
-  html[data-app="gestion"] .erp-classic-tables .table-layout-header-cell:not(.bulk-pair-header):not(:has(.table-layout-header-action)):is(:hover, :focus-within, :has(.table-layout-column-menu-button.is-open), :has(.table-layout-sort-button.is-active)) {
+  html[data-app="gestion"] .erp-classic-tables .table-layout-header-cell:not(.bulk-pair-header):not(:has(.table-layout-header-action)):is(:hover, :focus-within, :has(.table-layout-column-menu-button.is-open)) {
     --gestion-sort-space: 17px;
   }
   html[data-app="gestion"] .erp-classic-tables .table-layout-header-cell.has-column-menu:not(.bulk-pair-header):not(:has(.table-layout-header-action)):is(:hover, :focus-within, :has(.table-layout-column-menu-button.is-open)) {
@@ -38,7 +64,7 @@
   html[data-app="gestion"] .erp-classic-tables .table-layout-header-cell:not(.bulk-pair-header):not(:has(.table-layout-header-action)) > .table-layout-header-controls > .table-layout-header-label {
     padding-right: calc(2px + var(--gestion-menu-space)) !important;
   }
-  @media (hover: none), (any-pointer: coarse) {
+  @media (any-hover: none) {
     html[data-app="gestion"] .erp-classic-tables .table-layout-header-cell:not(.bulk-pair-header):not(:has(.table-layout-header-action)) {
       --gestion-sort-space: 17px;
     }

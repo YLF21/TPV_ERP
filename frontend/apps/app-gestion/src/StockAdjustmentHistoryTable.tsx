@@ -20,8 +20,8 @@ const definitions: TableColumnDefinition<Column>[] = [
 ];
 const quantity = (value: number | null) => value == null ? "—" : Number(value).toLocaleString(undefined, { maximumFractionDigits: 3 });
 
-export function StockAdjustmentHistoryTable({ rows, session, t }: {
-  rows: StockAdjustmentHistoryRow[]; session: UserSession; t: (key: string) => string;
+export function StockAdjustmentHistoryTable({ rows, session, t, loading = false }: {
+  rows: StockAdjustmentHistoryRow[]; session: UserSession; t: (key: string) => string; loading?: boolean;
 }) {
   const layout = useTableLayoutPreference({ app: "gestion", username: session.username,
     accessToken: session.accessToken, tableKey: "warehouse.adjustments.history", definitions });
@@ -92,7 +92,8 @@ export function StockAdjustmentHistoryTable({ rows, session, t }: {
         {cell(row, key)}
       </td>)}
     </tr>)}
-    {!rows.length && <tr><td colSpan={columns.length}>{t("warehouse.adjustment.empty")}</td></tr>}
+    {loading && <tr><td colSpan={columns.length} role="status">{t("common.loading")}</td></tr>}
+    {!loading && !rows.length && <tr><td colSpan={columns.length}>{t("warehouse.adjustment.empty")}</td></tr>}
     </tbody>
   </table>;
 }

@@ -2,6 +2,7 @@ import type { LocaleCode } from "../../../packages/app-common/src/types";
 
 const copy = {
   es: {
+    cancelAction: "Anular",
     title: "Hacer inventario", subtitle: "Historial y gestión de inventarios", create: "Crear inventario", consult: "Consultar", cancelDocument: "Anular borrador",
     search: "Número o notas", editor: "Documento de inventario", save: "Guardar borrador (F9)", review: "Revisar diferencias", exit: "Salir (Esc)",
     number: "Número", date: "Fecha", status: "Estado", warehouse: "Almacén", notes: "Notas", articles: "Artículos", user: "Usuario", counted: "Contados",
@@ -16,6 +17,7 @@ const copy = {
     selectFamily: "Seleccionar familia", cancel: "Cancelar", empty: "SIN DATOS", readOnly: "Este documento está cerrado y no se puede editar.", noProducts: "No se encontraron productos", reload: "Recargar documento", reloadText: "Se perderán los cambios sin guardar. ¿Recargar la versión guardada?", cancelText: "¿Anular este borrador? No se modificarán existencias.", all: "Todos", actions: "Acciones", noAccess: "No tienes permiso para gestionar inventarios."
   },
   en: {
+    cancelAction: "Void",
     title: "Take inventory", subtitle: "Inventory documents and management", create: "Create inventory", consult: "View", cancelDocument: "Cancel draft",
     search: "Number or notes", editor: "Inventory document", save: "Save draft (F9)", review: "Review differences", exit: "Exit (Esc)",
     number: "Number", date: "Date", status: "Status", warehouse: "Warehouse", notes: "Notes", articles: "Items", user: "User", counted: "Counted",
@@ -30,6 +32,7 @@ const copy = {
     selectFamily: "Select family", cancel: "Cancel", empty: "NO DATA", readOnly: "This document is closed and cannot be edited.", noProducts: "No products found", reload: "Reload document", reloadText: "Unsaved changes will be lost. Reload the saved version?", cancelText: "Cancel this draft? Stock will not change.", all: "All", actions: "Actions", noAccess: "You do not have permission to manage inventory."
   },
   zh: {
+    cancelAction: "作废",
     title: "进行盘点", subtitle: "盘点单据列表与管理", create: "新建盘点", consult: "查看", cancelDocument: "作废草稿",
     search: "单号或备注", editor: "盘点单", save: "保存草稿 (F9)", review: "核对差异", exit: "退出 (Esc)",
     number: "单号", date: "日期", status: "状态", warehouse: "仓库", notes: "备注", articles: "商品数", user: "操作用户", counted: "已盘点",

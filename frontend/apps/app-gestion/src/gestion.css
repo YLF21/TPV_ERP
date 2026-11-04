@@ -1853,7 +1853,6 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 .gestion-warehouse-adjustments-table td.is-numeric { text-align: right; font-variant-numeric: tabular-nums; }
 .gestion-warehouse-adjustments-table td.negative { color: #a12626 !important; font-weight: 700; }
 .gestion-warehouse-adjustments-table td.positive { color: #17662a !important; font-weight: 700; }
-.gestion-warehouse-adjustments-pages { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .gestion-warehouse-adjustment-dialog { width: min(620px, 96vw); }
 .gestion-warehouse-product-suggestions { display: grid; max-height: 210px; overflow: auto; border: 1px solid #aebfd2; background: #fff; }
 .gestion-warehouse-product-suggestions button { width: 100%; border: 0; border-radius: 0; background: #fff; color: #172e4c; text-align: left; }
@@ -5951,8 +5950,7 @@ button.gestion-voucher-row.selected { box-shadow: inset 4px 0 0 #1d5f92; backgro
 .gestion-adjustment-screen .gestion-warehouse-adjustments-table table { table-layout: fixed; }
 .gestion-adjustment-screen .gestion-warehouse-adjustments-table td { box-sizing: border-box; height: 36px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .gestion-adjustment-screen .gestion-warehouse-adjustments-table td.is-numeric { text-align: right; }
-.gestion-adjustment-screen .gestion-warehouse-adjustments-table thead { position: sticky; top: 0; z-index: 1; }
-.gestion-adjustment-screen .gestion-warehouse-adjustments-pages { background: #fff; padding-top: 2px; }
+.gestion-adjustment-screen .gestion-warehouse-adjustments-table thead { position: sticky; top: 0; z-index: 2; }
 .gestion-adjustment-screen .gestion-warehouse-adjustment-dialog { width: min(720px,calc(100vw - 40px)); max-height: calc(100vh - 40px); overflow: auto; border-radius: 2px; }
 .gestion-adjustment-screen .gestion-warehouse-adjustment-dialog .gestion-warehouse-operation-form { box-sizing: border-box; width: 100%; margin: 0; padding: 20px; gap: 16px; border: 0; border-radius: 0; box-shadow: none; }
 .gestion-adjustment-screen .gestion-warehouse-adjustment-dialog .gestion-warehouse-operation-form > label { min-width: 0; }

@@ -20,11 +20,13 @@ vi.mock("./warehouseOperationsApi", async (original) => ({
   searchWarehouseProducts: vi.fn(),
   saveTransferDocument: vi.fn(),
   confirmTransferDocument: vi.fn(),
+  cancelTransferDocument: vi.fn(),
   exportTransferList: vi.fn()
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(api.cancelTransferDocument).mockReset();
   localStorage.clear();
   vi.mocked(apiRequest).mockImplementation(async (path) => {
     if (path === "/document-reports/date-options?report=warehouseTransfers") return {
@@ -99,7 +101,7 @@ it("opens a new transfer document from the warehouse screen", async () => {
   expect(within(dialog).getByRole("table")).toBeInTheDocument();
 });
 
-it("lists transfer documents like warehouse entries and opens the selected one", async () => {
+it.each(["double click", "Enter"])("opens the selected transfer with %s without an Open button", async (action) => {
   vi.mocked(api.loadTransferDocuments).mockResolvedValue({ items: [{
     id: "transfer", storeId: "store", sourceWarehouseId: "source", targetWarehouseId: "target",
     number: "TRA-2026-000001", notes: "Reposición", status: "CONFIRMED", createdAt: "2026-09-22T10:00:00Z", version: 1,
@@ -110,7 +112,7 @@ it("lists transfer documents like warehouse entries and opens the selected one",
   const row = await screen.findByRole("row", { name: /TRA-2026-000001/ });
   expect(row).toHaveFocus();
   expect(row).toHaveAttribute("aria-selected", "true");
-  expect(screen.getByRole("button", { name: "warehouseDocument.open" })).toBeEnabled();
+  expect(screen.queryByRole("button", { name: "warehouseDocument.open" })).not.toBeInTheDocument();
   expect(api.loadTransferDocument).not.toHaveBeenCalled();
   expect(within(row).getByText("Reposición")).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: /warehouse.transfer.lines/ })).toBeInTheDocument();
@@ -119,7 +121,8 @@ it("lists transfer documents like warehouse entries and opens the selected one",
   expect(within(row).getByText(/7[,.]5/)).toBeInTheDocument();
   fireEvent.click(row);
   expect(row).toHaveAttribute("aria-selected", "true");
-  fireEvent.click(screen.getByRole("button", { name: "warehouseDocument.open" }));
+  if (action === "double click") fireEvent.doubleClick(row);
+  else fireEvent.keyDown(row, { key: "Enter" });
   await waitFor(() => expect(api.loadTransferDocument).toHaveBeenCalledWith("transfer", "token"));
   expect(await screen.findByRole("dialog", { name: /TRA-2026-000001/ })).toBeInTheDocument();
 });
@@ -189,6 +192,77 @@ function transferRow(id: string): api.TransferListItem {
 
 const listSession: UserSession = { username: "admin", displayName: "Admin", accessToken: "token", permissions: ["GESTION_ALMACEN"] };
 type TransferPage = Awaited<ReturnType<typeof api.loadTransferDocuments>>;
+
+async function requestTransferCancellation() {
+  vi.mocked(api.loadTransferDocuments).mockResolvedValue({ items: [{ ...transferRow("draft-transfer"), status: "DRAFT" }],
+    hasMore: false, nextCursor: null });
+  render(<WarehouseTransferScreen session={listSession} t={(key) => key} />);
+  await screen.findByRole("row", { name: /draft-transfer/ });
+  fireEvent.click(screen.getByRole("button", { name: "warehouse.transfer.cancelDocument" }));
+  return screen.getByRole("alertdialog", { name: "warehouse.transfer.cancelTitle" });
+}
+
+it.each(["cancel", "Escape", "close"])("dismisses transfer cancellation with %s without changing the document", async (action) => {
+  const dialog = await requestTransferCancellation();
+  const cancel = within(dialog).getByRole("button", { name: "common.cancel" });
+  expect(cancel).toHaveFocus();
+  expect(dialog).toHaveTextContent("warehouse.transfer.cancelMessage");
+  expect(api.cancelTransferDocument).not.toHaveBeenCalled();
+  if (action === "Escape") fireEvent.keyDown(cancel, { key: "Escape" });
+  else fireEvent.click(action === "cancel" ? cancel
+    : within(dialog).getByRole("button", { name: "common.cancel: warehouse.transfer.cancelTitle" }));
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  expect(api.cancelTransferDocument).not.toHaveBeenCalled();
+  expect(api.loadTransferDocuments).toHaveBeenCalledTimes(1);
+});
+
+it("cancels only after confirmation and blocks duplicate requests and list shortcuts while processing", async () => {
+  let complete!: (value: api.TransferDocumentView) => void;
+  vi.mocked(api.cancelTransferDocument).mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+  const dialog = await requestTransferCancellation();
+  const confirm = within(dialog).getByRole("button", { name: "warehouse.transfer.cancelAction" });
+  for (const key of ["F5", "F6", "F7"]) fireEvent.keyDown(dialog, { key });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(api.exportTransferList).not.toHaveBeenCalled();
+  expect(api.cancelTransferDocument).not.toHaveBeenCalled();
+  fireEvent.click(confirm);
+  fireEvent.click(confirm);
+  expect(api.cancelTransferDocument).toHaveBeenCalledExactlyOnceWith("draft-transfer", "token");
+  for (const button of within(dialog).getAllByRole("button")) expect(button).toBeDisabled();
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(dialog).toBeInTheDocument();
+  vi.mocked(api.loadTransferDocuments).mockResolvedValue({ items: [{ ...transferRow("draft-transfer"), status: "CANCELLED" }],
+    hasMore: false, nextCursor: null });
+  await act(async () => complete({ document: { ...transferRow("draft-transfer"), status: "CANCELLED" }, lines: [] }));
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  expect(api.loadTransferDocuments).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole("row", { name: /draft-transfer/ })).toHaveTextContent("warehouse.count.status.CANCELLED");
+  expect(screen.getByRole("button", { name: "warehouse.transfer.cancelDocument" })).toBeDisabled();
+});
+
+it("keeps a failed cancellation visible without changing the transfer and allows dismissal", async () => {
+  vi.mocked(api.cancelTransferDocument).mockRejectedValue(new Error("El traspaso ya no es editable"));
+  const dialog = await requestTransferCancellation();
+  fireEvent.click(within(dialog).getByRole("button", { name: "warehouse.transfer.cancelAction" }));
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent("El traspaso ya no es editable");
+  expect(api.loadTransferDocuments).toHaveBeenCalledTimes(1);
+  expect(within(dialog).getByRole("button", { name: "warehouse.transfer.cancelAction" })).toBeEnabled();
+  fireEvent.click(within(dialog).getByRole("button", { name: "common.cancel" }));
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  expect(api.cancelTransferDocument).toHaveBeenCalledTimes(1);
+});
+
+it.each(["CONFIRMED", "CANCELLED"] as const)("does not allow cancellation of a %s transfer", async (status) => {
+  vi.mocked(api.loadTransferDocuments).mockResolvedValue({ items: [{ ...transferRow("transfer"), status }],
+    hasMore: false, nextCursor: null });
+  render(<WarehouseTransferScreen session={listSession} t={(key) => key} />);
+  await screen.findByRole("row", { name: /^transfer / });
+  const button = screen.getByRole("button", { name: "warehouse.transfer.cancelDocument" });
+  expect(button).toBeDisabled();
+  fireEvent.click(button);
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  expect(api.cancelTransferDocument).not.toHaveBeenCalled();
+});
 
 it("exports the complete filtered list as PDF and Excel independently of loaded rows", async () => {
   vi.stubGlobal("URL", class extends URL {

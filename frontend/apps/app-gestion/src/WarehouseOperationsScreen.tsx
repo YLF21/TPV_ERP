@@ -96,7 +96,11 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
   const [adjustmentTo, setAdjustmentTo] = useState("");
   const [adjustmentRange, setAdjustmentRange] = useState<ReportDateRange>({ from: "", to: "", label: "" });
   const adjustmentRequest = useRef(0);
-  const [adjustmentPage, setAdjustmentPage] = useState(0);
+  const adjustmentNextPage = useRef(0);
+  const adjustmentBusy = useRef(false);
+  const adjustmentMoreAvailable = useRef(false);
+  const adjustmentScrollRef = useRef<HTMLDivElement>(null);
+  const [adjustmentLoading, setAdjustmentLoading] = useState(false);
   const [adjustmentRows, setAdjustmentRows] = useState<StockAdjustmentHistoryRow[]>([]);
   const [adjustmentHasMore, setAdjustmentHasMore] = useState(false);
   const [productQuery, setProductQuery] = useState("");
@@ -189,25 +193,54 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
     }
   }, [allowed, mode, t, token]);
 
-  const refreshAdjustments = useCallback(async () => {
+  const refreshAdjustments = useCallback(async (append = false) => {
     if (mode !== "adjustment" || !allowed) return;
+    if (append && (adjustmentBusy.current || !adjustmentMoreAvailable.current)) return;
     const request = ++adjustmentRequest.current;
+    const requestedPage = append ? adjustmentNextPage.current : 0;
+    adjustmentBusy.current = true;
+    setAdjustmentLoading(true);
+    setError("");
+    if (!append) {
+      adjustmentNextPage.current = 0;
+      adjustmentMoreAvailable.current = false;
+      setAdjustmentHasMore(false);
+      setAdjustmentRows([]);
+      if (adjustmentScrollRef.current) adjustmentScrollRef.current.scrollTop = 0;
+    }
     try {
       const page = await loadStockAdjustmentHistory(token, {
-        page: adjustmentPage, warehouseId: adjustmentWarehouseFilter || undefined,
+        page: requestedPage, warehouseId: adjustmentWarehouseFilter || undefined,
         search: adjustmentSearch.trim() || undefined,
         from: adjustmentFrom ? new Date(`${adjustmentFrom}T00:00:00`).toISOString() : undefined,
         to: adjustmentTo ? new Date(new Date(`${adjustmentTo}T00:00:00`).setDate(new Date(`${adjustmentTo}T00:00:00`).getDate() + 1)).toISOString() : undefined
       });
       if (request !== adjustmentRequest.current) return;
-      setAdjustmentRows(page.items);
-      setAdjustmentHasMore(page.hasMore);
+      setAdjustmentRows((current) => append
+        ? Array.from(new Map([...current, ...page.items].map((row) => [row.movementId, row])).values())
+        : page.items);
+      adjustmentNextPage.current = requestedPage + 1;
+      adjustmentMoreAvailable.current = page.hasMore && page.items.length > 0;
+      setAdjustmentHasMore(adjustmentMoreAvailable.current);
     } catch (cause) {
       if (request === adjustmentRequest.current) setError(errorMessage(cause, t("warehouse.adjustment.historyError")));
+    } finally {
+      if (request === adjustmentRequest.current) { adjustmentBusy.current = false; setAdjustmentLoading(false); }
     }
-  }, [adjustmentFrom, adjustmentTo, adjustmentPage, adjustmentSearch, adjustmentWarehouseFilter, allowed, mode, t, token]);
+  }, [adjustmentFrom, adjustmentTo, adjustmentSearch, adjustmentWarehouseFilter, allowed, mode, t, token]);
 
-  useEffect(() => { void refreshAdjustments(); }, [refreshAdjustments]);
+  useEffect(() => {
+    void refreshAdjustments();
+    return () => { adjustmentRequest.current += 1; };
+  }, [refreshAdjustments]);
+
+  useEffect(() => {
+    const table = adjustmentScrollRef.current;
+    if (table && table.clientHeight > 0 && table.scrollHeight <= table.clientHeight
+      && adjustmentHasMore && !adjustmentLoading && !loading && !error && !adjustmentFormOpen) {
+      void refreshAdjustments(true);
+    }
+  }, [adjustmentRows, adjustmentHasMore, adjustmentLoading, loading, error, adjustmentFormOpen, refreshAdjustments]);
 
   useEffect(() => {
     if (mode !== "adjustment" || !productId || !warehouseId || !adjustmentFormOpen) return;
@@ -316,7 +349,6 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
       setQuantity("");
       setReason("");
       setAdjustmentFormOpen(false);
-      setAdjustmentPage(0);
       await refreshAdjustments();
     } catch (cause) {
       setError(errorMessage(cause, t("warehouse.adjustment.error")));
@@ -532,39 +564,40 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
           <div className="gestion-warehouse-adjustments-toolbar gestion-warehouse-toolbar">
             <label className="adjustment-search">{t("warehouse.management.search")}
               <WarehouseSearchFrame><input className="erp-search-input" type="search" placeholder={t("warehouse.adjustment.productSearch")} value={adjustmentSearch} onChange={(event) => {
-                setAdjustmentSearch(event.target.value); setAdjustmentPage(0);
+                setAdjustmentSearch(event.target.value);
               }} /></WarehouseSearchFrame></label>
             <label>{t("warehouse.operations.warehouse")}
               <ErpSelect aria-label={t("warehouse.operations.warehouse")} value={adjustmentWarehouseFilter}
                 options={[{ value: "", label: t("warehouse.count.all") }, ...warehouses.map((item) => ({ value: item.id, label: item.name }))]}
-                onChange={(value) => { setAdjustmentWarehouseFilter(value); setAdjustmentPage(0); }} />
+                onChange={setAdjustmentWarehouseFilter} />
             </label>
           </div>
           <ErpFilterChips translate={t} chips={[
             ...(adjustmentFrom ? [{ key: "from", label: t("warehouse.report.from"), value: adjustmentFrom,
-              onRemove: () => { setAdjustmentFrom(""); setAdjustmentPage(0); } }] : []),
+              onRemove: () => setAdjustmentFrom("") }] : []),
             ...(adjustmentTo ? [{ key: "to", label: t("warehouse.report.to"), value: adjustmentTo,
-              onRemove: () => { setAdjustmentTo(""); setAdjustmentPage(0); } }] : []),
+              onRemove: () => setAdjustmentTo("") }] : []),
             ...(adjustmentWarehouseFilter ? [{ key: "warehouse", label: t("warehouse.operations.warehouse"),
               value: warehouses.find((item) => item.id === adjustmentWarehouseFilter)?.name ?? adjustmentWarehouseFilter,
-              onRemove: () => { setAdjustmentWarehouseFilter(""); setAdjustmentPage(0); } }] : []),
+              onRemove: () => setAdjustmentWarehouseFilter("") }] : []),
             ...(adjustmentSearch.trim() ? [{ key: "search", label: t("warehouse.management.search"),
-              value: adjustmentSearch.trim(), onRemove: () => { setAdjustmentSearch(""); setAdjustmentPage(0); } }] : [])
-          ]} onClear={() => { setAdjustmentFrom(""); setAdjustmentTo(""); setAdjustmentWarehouseFilter(""); setAdjustmentSearch(""); setAdjustmentPage(0); }} />
-          <div className="gestion-warehouse-adjustments-table erp-classic-tables warehouse-classic-table">
-            <StockAdjustmentHistoryTable rows={adjustmentRows} session={session} t={t} />
-          </div>
-          <div className="gestion-warehouse-adjustments-pages">
-            <button type="button" disabled={adjustmentPage === 0} onClick={() => setAdjustmentPage(adjustmentPage - 1)}>{t("warehouse.adjustment.previous")}</button>
-            <span>{adjustmentPage + 1}</span>
-            <button type="button" disabled={!adjustmentHasMore} onClick={() => setAdjustmentPage(adjustmentPage + 1)}>{t("warehouse.adjustment.next")}</button>
+              value: adjustmentSearch.trim(), onRemove: () => setAdjustmentSearch("") }] : [])
+          ]} onClear={() => { setAdjustmentFrom(""); setAdjustmentTo(""); setAdjustmentWarehouseFilter(""); setAdjustmentSearch(""); }} />
+          <div ref={adjustmentScrollRef} className="gestion-warehouse-adjustments-table erp-classic-tables warehouse-classic-table"
+            aria-busy={adjustmentLoading} onScroll={(event) => {
+              const table = event.currentTarget;
+              if (!adjustmentFormOpen && table.scrollHeight - table.scrollTop - table.clientHeight <= 240) {
+                void refreshAdjustments(true);
+              }
+            }}>
+            <StockAdjustmentHistoryTable rows={adjustmentRows} session={session} t={t} loading={adjustmentLoading} />
           </div>
           {dateOptionsFailed && <div className="report-date-options-error" role="alert">
             <span>{t("salesReport.loadError")}</span><button type="button" onClick={retryDateOptions}>{t("salesReport.retry")}</button>
           </div>}
           <ReportDateRangeFilter locale={locale} today={dateOptions?.currentDate ?? ""} earliestDate={dateOptions?.earliestDate ?? ""}
             value={{ from: adjustmentFrom, to: adjustmentTo, label: "", preset: adjustmentRange.from === adjustmentFrom && adjustmentRange.to === adjustmentTo ? adjustmentRange.preset : undefined }}
-            onChange={(range) => { setAdjustmentRange(range); setAdjustmentFrom(range.from); setAdjustmentTo(range.to); setAdjustmentPage(0); }} />
+            onChange={(range) => { setAdjustmentRange(range); setAdjustmentFrom(range.from); setAdjustmentTo(range.to); }} />
           {adjustmentFormOpen && <div className="gestion-modal-backdrop"><section className="gestion-security-dialog gestion-warehouse-adjustment-dialog"
             role="dialog" aria-modal="true" aria-labelledby="warehouse-adjustment-title">
             <header><h2 id="warehouse-adjustment-title">{t("warehouse.adjustment.perform")}</h2>
