@@ -247,13 +247,19 @@ class ProductExcelImportApplyWriterCatalogPostgreSqlTest {
         Map<String, Object> after = productByCode("UPDATE_SUCCESS");
         org.assertj.core.api.Assertions.assertThat(after.get("nombre")).isEqualTo("ORIGINAL");
         org.assertj.core.api.Assertions.assertThat(after.get("precio_compra")).isEqualTo(new BigDecimal("25.000"));
-        org.assertj.core.api.Assertions.assertThat(after.get("version")).isEqualTo(version + 1);
+        // The forced price lock and the dirty parent may each advance Hibernate's
+        // opaque version token. The contract is invalidation, not a fixed delta.
+        org.assertj.core.api.Assertions.assertThat(((Number) after.get("version")).longValue()).isGreaterThan(version);
         org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
                 "select valor from producto_identificador where producto_id = ? and valor = 'UPDATE_SUCCESS'", String.class, id))
                 .isEqualTo("UPDATE_SUCCESS");
         org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
                 "select importe from producto_precio where producto_id = ? and tarifa = 'VENTA'", BigDecimal.class, id))
                 .isEqualTo(new BigDecimal("20.000"));
+        assertThatThrownBy(() -> writer.write(List.of(updateItem(11, id, version,
+                request("UPDATE_SUCCESS", "Original", "99.00")))))
+                .isInstanceOf(ProductExcelImportApplyWriter.StaleVersionException.class);
+        org.assertj.core.api.Assertions.assertThat(productByCode("UPDATE_SUCCESS")).isEqualTo(after);
     }
 
     @Test
