@@ -157,6 +157,33 @@ class ProductBulkEditVersionPostgreSqlTest {
     }
 
     @Test
+    void priceOnlyUpdateInvalidatesAnOlderBulkDraft() {
+        var base = new TransactionTemplate(transactionManager).execute(status ->
+                ProductBulkEditContent.ProductData.fromProduct(catalog.createProduct(request(familyId, taxId))));
+        var pending = classificationData(base, familyId, secondTaxId);
+        var saved = service.create(new ProductBulkEditService.ProductBulkCreateRequest(
+                "Precio concurrente", List.of(row(base, pending))), authentication);
+        var original = request(familyId, taxId);
+        var priceChange = new CatalogService.ProductRequest(original.familyId(), original.subfamilyId(), original.taxId(),
+                original.productType(), original.discountType(), original.priceUseMode(), original.name(),
+                original.description(), original.comments(), original.purchasePrice(), original.taxesIncluded(),
+                original.code(), original.barcode(), original.barcode2(), new BigDecimal("15.00"),
+                original.memberPrice(), original.wholesalePrice(), original.offerPrice(), original.offerDiscountPercent(),
+                original.purchaseDiscountPercent(), original.offerActive(), original.offerFrom(), original.offerUntil(),
+                original.stockMin(), original.stockMax(), original.packageQuantity(), original.active(), original.requiresSerialNumber());
+        catalog.updateProduct(base.productId(), priceChange);
+
+        assertThatThrownBy(() -> service.apply(saved.id(), new ProductBulkEditService.ProductBulkApplyRequest(
+                saved.version(), List.of(new CatalogService.BulkProductUpdate(base.productId(), base.version(), request(familyId, secondTaxId))),
+                List.of(), List.of(row(pending, pending))), authentication))
+                .isInstanceOf(ProductBulkEditConflictException.class);
+        assertThat(jdbc.queryForObject("select importe from producto_precio where producto_id = ? and tarifa = 'VENTA'",
+                BigDecimal.class, base.productId())).isEqualByComparingTo("15.00");
+        assertThat(jdbc.queryForObject("select impuesto_id from producto where id = ?", UUID.class, base.productId())).isEqualTo(taxId);
+        assertThat(jdbc.queryForObject("select estado from producto_edicion_masiva where id = ?", String.class, saved.id())).isEqualTo("PENDING");
+    }
+
+    @Test
     void openingAnOldUnchangedListRefreshesTheWholeProductWithoutWritingTheDraft() {
         var base = new TransactionTemplate(transactionManager).execute(status ->
                 ProductBulkEditContent.ProductData.fromProduct(catalog.createProduct(request(familyId, taxId))));

@@ -106,14 +106,15 @@ test('proof is durable before POST, refresh uses proof and pins installation', a
   await assert.rejects(otherBridge.saveAddress({ backendUrl: 'https://other.example' }), /vinculación/);
 });
 
-test('server adoption reuses the old credential and marks legacy outbox scope only after proof', async () => {
-  let state = { identity: { terminalId: 'server-id', terminalCode: 'SERVIDOR', terminalCredential: 'old-credential', storeName: 'Store' } };
+test.each(['SERVIDOR', 'SERVIDOR PRUEBAS'])('server adoption preserves credential and legacy outbox scope for %s', async (legacyCode) => {
+  let state = { identity: { terminalId: 'server-id', terminalCode: legacyCode, terminalCredential: 'old-credential', storeName: 'Store' } };
   const storage = { read: () => state, write: (next) => { state = structuredClone(next); } };
   let legacyConfigUrl = 'http://localhost:8080';
   const config = { read: () => ({ configuration: { backendUrl: legacyConfigUrl } }),
     commit: async (value) => { legacyConfigUrl = value; } };
   const request = async (url, options) => {
-    if (options.method === 'GET') return json(bootstrap(new URL(url).searchParams.get('challenge')));
+    if (options.method === 'GET') return json({ ...bootstrap(new URL(url).searchParams.get('challenge')),
+      slots: [{ code: '001', terminalId: 'server-id', status: 'RESERVED' }] });
     assert.ok(url.endsWith('/terminal-linking/server/adopt') || url.endsWith('/terminal-linking/requests/status'));
     const body = JSON.parse(options.body);
     assert.equal(body.credential, 'old-credential');
@@ -127,9 +128,24 @@ test('server adoption reuses the old credential and marks legacy outbox scope on
   assert.equal(result.identity, undefined); // Credential is hidden until the new binding scope is loaded on restart.
   assert.equal(state.identity.terminalCredential, 'old-credential');
   assert.equal(state.identity.legacyBackendScope, 'http://localhost:8080');
-  assert.equal(state.identity.legacyTerminalCode, 'SERVIDOR');
+  assert.equal(state.identity.legacyTerminalCode, legacyCode);
   assert.equal(result.restartRequired, true);
   assert.equal((await bridge.refreshLink()).identity, undefined);
+});
+
+test.each(['other-server-id', undefined])('a named legacy terminal must match server slot ID: %s', async (serverId) => {
+  const bridge = createTerminalLinking({
+    storage: { read: () => ({ identity: { terminalId: 'server-id', terminalCode: 'SERVIDOR PRUEBAS',
+      terminalCredential: 'old-credential' } }), write: () => assert.fail('Unexpected write') },
+    config: { read: () => ({ configuration: null }), commit: async () => assert.fail('Unexpected commit') },
+    request: async (url, options) => {
+      assert.equal(options.method, 'GET');
+      return json({ ...bootstrap(new URL(url).searchParams.get('challenge')),
+        slots: [{ code: '001', terminalId: serverId }] });
+    }
+  });
+  await assert.rejects(bridge.requestLink({ backendUrl: 'http://127.0.0.1:8080', code: '001', name: 'Servidor' }),
+    error => error.code === 'INVALID_IDENTITY');
 });
 
 test('the backend PC cannot claim a non-server workstation code', async () => {

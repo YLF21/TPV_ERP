@@ -16,6 +16,9 @@ export async function createProductManagerFixtures(
   adminToken: string,
   marker: string
 ): Promise<ProductManagerFixtures> {
+  await apiPost(request, adminToken, "/auth/gestion-groups/SEGURIDAD/unlock", {
+    password: process.env.E2E_ADMIN_PASSWORD ?? "0000"
+  });
   const role = await apiPost<RoleView>(request, adminToken, "/roles", {
     name: `E2E GESTION PRODUCTO ${marker}`
   });

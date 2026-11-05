@@ -1047,6 +1047,8 @@ public class ProductExcelImportPreviewService {
     private static Map<String, Object> productSnapshot(Product product) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", product.getId().toString()); result.put("version", product.getVersion());
+        result.put("active", product.isActive() ? "1" : "0");
+        result.put("requiresSerialNumber", product.isRequiresSerialNumber() ? "1" : "0");
         result.put("code", product.getCode()); result.put("barcode", product.getBarcode()); result.put("name", product.getName());
         result.put("barcode2", product.getBarcode2());
         result.put("description", product.getDescription()); result.put("comments", product.getComments());

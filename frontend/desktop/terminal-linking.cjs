@@ -282,7 +282,12 @@ function createTerminalLinking({ request = fetch, storage, config, discover = as
     }
     if (current.identity && !checked.sameInstallation && !legacyServer && !legacyPos) throw error('OTHER_INSTALLATION', 'Esta PC ya pertenece a otra instalación');
     if (terminalCode === '001' && !checked.localServer) throw error('SERVER_LOCAL_ONLY', 'El terminal 001 debe configurarse en el PC backend');
-    if (terminalCode === '001' && current.identity && !['001', 'SERVIDOR'].includes(current.identity.terminalCode)) {
+    // Older identities stored the terminal's editable name as terminalCode.
+    // Match its stable ID to the server slot; adoption still proves the credential.
+    const legacyServerSlot = legacyServer && checked.server.slots?.some(slot =>
+      slot.code === '001' && slot.terminalId === current.identity.terminalId);
+    if (terminalCode === '001' && current.identity && !['001', 'SERVIDOR'].includes(current.identity.terminalCode)
+        && !legacyServerSlot) {
       throw error('INVALID_IDENTITY', 'La identidad actual no corresponde al terminal servidor');
     }
     if (terminalCode === '001' && !current.identity && (!administrator || typeof (administrator.username || administrator.userName) !== 'string' || typeof administrator.password !== 'string')) {

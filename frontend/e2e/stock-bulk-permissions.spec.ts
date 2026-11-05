@@ -28,8 +28,8 @@ test("GESTION_PRODUCTO comparte edición y aplicación, pero protege la eliminac
 
   try {
     fixtures = await createProductManagerFixtures(request, admin.accessToken, marker);
-    const creatorSession = await loginApi(request, fixtures.creator.name, fixtures.creator.password);
-    const colleagueSession = await loginApi(request, fixtures.colleague.name, fixtures.colleague.password);
+    const creatorSession = await loginApi(request, fixtures.creator.userName, fixtures.creator.password);
+    const colleagueSession = await loginApi(request, fixtures.colleague.userName, fixtures.colleague.password);
 
     const created = await apiPost<BulkDraftView>(
       request,
@@ -55,12 +55,12 @@ test("GESTION_PRODUCTO comparte edición y aplicación, pero protege la eliminac
         description: product.description,
         comments: product.comments,
         purchasePrice: String(product.purchasePrice),
-        purchaseDiscountPercent: product.purchaseDiscountPercent === null ? null : String(product.purchaseDiscountPercent),
+        purchaseDiscountPercent: product.purchaseDiscountPercent == null ? null : String(product.purchaseDiscountPercent),
         salePrice: String(product.salePrice),
-        memberPrice: product.memberPrice === null ? null : String(product.memberPrice),
-        wholesalePrice: product.wholesalePrice === null ? null : String(product.wholesalePrice),
-        offerPrice: product.offerPrice === null ? null : String(product.offerPrice),
-        offerDiscountPercent: product.offerDiscountPercent === null ? null : String(product.offerDiscountPercent),
+        memberPrice: product.memberPrice == null ? null : String(product.memberPrice),
+        wholesalePrice: product.wholesalePrice == null ? null : String(product.wholesalePrice),
+        offerPrice: product.offerPrice == null ? null : String(product.offerPrice),
+        offerDiscountPercent: product.offerDiscountPercent == null ? null : String(product.offerDiscountPercent),
         productType: product.productType,
         discountType: product.priceUseMode,
         backendDiscountType: product.discountType,
@@ -92,6 +92,7 @@ test("GESTION_PRODUCTO comparte edición y aplicación, pero protege la eliminac
           productId: product.id,
           expectedVersion: product.version,
           product: {
+            active: true,
             familyId: product.familyId,
             subfamilyId: product.subfamilyId,
             taxId: product.taxId,

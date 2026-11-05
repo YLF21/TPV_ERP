@@ -50,7 +50,7 @@ type ApplyBody = {
 
 function mockBulkEditing(
   canonicalProducts: StockInventoryRow[],
-  scenario: { refreshedProductOnOpen?: StockInventoryRow; applyError?: ApiError; content?: StockBulkEditRowData[] } = {}
+  scenario: { refreshedProductOnOpen?: StockInventoryRow; applyError?: ApiError; content?: StockBulkEditRowData[]; emptyStockPage?: boolean } = {}
 ) {
   const now = "2026-09-20T10:00:00Z";
   let currentProductVersion = scenario.refreshedProductOnOpen?.version ?? initialProduct.version!;
@@ -71,6 +71,7 @@ function mockBulkEditing(
     if (path === "/connectivity") return { saasConnected: false };
     if (path.startsWith("/ui/table-preferences/")) return { app: "venta", tableKey: path.split("/").at(-1), columns: [] };
     if (path.startsWith("/stock/page")) {
+      if (scenario.emptyStockPage) return { items: [], hasMore: false };
       // A later stock page cannot provide the canonical version used in the second apply.
       if (applies.length > 0) {
         delayedRefreshCount++;
@@ -166,6 +167,24 @@ async function applyChanges() {
 }
 
 describe("Stock bulk editing save and apply", () => {
+  it("shows a saved below-cost price as a warning while leaving empty optional prices unmarked", async () => {
+    const product = { ...initialProduct, purchasePrice: "7.96", memberPrice: "5", wholesalePrice: "", offerPrice: "" };
+    mockBulkEditing([], { content: [rowFor(product)] });
+    await openWorkspace();
+    const member = screen.getAllByRole("textbox", { name: "Precio de miembro" })[0];
+    expect((member as HTMLInputElement).value).toBe("5");
+    expect(member.closest(".bulk-edit-cell")?.classList.contains("price-warning")).toBe(true);
+    expect(document.getElementById(member.getAttribute("aria-describedby")!)?.textContent).toBe("Inferior al precio de compra");
+    expect(member.closest(".bulk-edit-cell")?.classList.contains("changed")).toBe(false);
+    expect(member.getAttribute("aria-invalid")).toBe("false");
+    expect(member.getAttribute("title")).toContain("no impide guardar");
+    for (const label of ["Precio mayor", "Precio oferta"]) {
+      const input = screen.getAllByRole("textbox", { name: label })[0];
+      expect((input as HTMLInputElement).value).toBe("");
+      expect(input.closest(".bulk-edit-cell")?.classList.contains("price-warning")).toBe(false);
+    }
+  });
+
   it("confirms only selected products, cancels without mutation, and undoes the exchange", async () => {
     const first = { ...initialProduct, code: "2004461", barcode: "8435606744034", barcode2: "000091" };
     const second = { ...initialProduct, productId: "product-2", code: "00022", barcode: "00033" };
@@ -293,9 +312,9 @@ describe("Stock bulk editing save and apply", () => {
     expect(codes()).toEqual([...expectedCodes, ""]);
   });
 
-  it("applies a tax and family change together using the product version and clearing the old subfamily", async () => {
+  it.each([false, true])("applies tax and family changes from the full catalog, clearing the old subfamily (empty stock: %s)", async (emptyStockPage) => {
     const canonical = { ...initialProduct, version: 5, taxId: "tax-2", taxName: "3%", familyId: "family-2", familyName: "Electrónica", subfamilyId: "-", subfamilyName: "-" };
-    const backend = mockBulkEditing([canonical]);
+    const backend = mockBulkEditing([canonical], { emptyStockPage });
     await openWorkspace();
     await selectTax("3%");
     await selectFamily("Electrónica");

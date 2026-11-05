@@ -10,6 +10,9 @@ import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.promotion.PromotionTargetRepository;
 import com.tpverp.backend.promotion.PromotionTargetReference;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceContext;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
@@ -54,6 +57,8 @@ public class CatalogService {
     private final Clock clock;
     private AuditService auditService;
     private ProductCommercialHistoryService commercialHistory;
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Autowired
     void setCommercialHistory(ProductCommercialHistoryService commercialHistory) {
@@ -1018,6 +1023,11 @@ public class CatalogService {
                 request.discountType(), request.name(), request.description(), request.comments(),
                 request.purchasePrice(), request.taxesIncluded());
         applyProductData(product, request);
+        // Prices live in child entities. Their updates must also invalidate the
+        // product version used by saved bulk drafts and Excel previews.
+        if (entityManager != null && !before.equals(PriceSnapshot.from(product))) {
+            entityManager.lock(product, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+        }
         recordChangedPrices(product, before);
         if (captureHistory) recordCommercialHistory(product);
         return product;

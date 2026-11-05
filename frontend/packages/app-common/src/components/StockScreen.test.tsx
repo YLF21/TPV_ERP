@@ -59,6 +59,7 @@ import {
   StockScreen
 } from "./StockScreen";
 import type { TerminalContext, UserSession } from "../types";
+import { buildStockBulkUpdates } from "./stockBulkEdit";
 
 const tpvCss = readFileSync(resolve(process.cwd(), "packages/app-common/src/styles/tpv.css"), "utf8");
 const excelImportCss = readFileSync(resolve(process.cwd(), "packages/app-common/src/styles/shared-excel-import.css"), "utf8");
@@ -75,6 +76,38 @@ const terminalContext: TerminalContext = {
 };
 
 describe("StockScreen", () => {
+  it.each([true, "true", "TRUE", " true ", "1", 1, "common.yes"])("preserves affirmative Excel preview flags: %s", (value) => {
+    const product = stockBulkProductFromPreviewDatabaseData({
+      id: "product-1", active: value, taxesIncluded: value, offerActive: value, requiresSerialNumber: value
+    })!;
+    expect(product.active).toBe("common.yes");
+    expect(product.taxesIncluded).toBe("common.yes");
+    expect(product.offerActive).toBe("common.yes");
+    expect(product.requiresSerialNumber).toBe(true);
+  });
+
+  it.each([false, "false", "FALSE", "0", 0, "common.no"])("preserves negative Excel preview flags: %s", (value) => {
+    const product = stockBulkProductFromPreviewDatabaseData({
+      id: "product-1", active: value, taxesIncluded: value, offerActive: value, requiresSerialNumber: value
+    })!;
+    expect(product.active).toBe("common.no");
+    expect(product.taxesIncluded).toBe("common.no");
+    expect(product.offerActive).toBe("common.no");
+    expect(product.requiresSerialNumber).toBe(false);
+  });
+
+  it("preserves existing activation and serial tracking when an older preview omits them", () => {
+    const current = stockBulkProductFromPreviewDatabaseData({
+      id: "product-1", active: "0", requiresSerialNumber: "1"
+    })!;
+    const product = stockBulkProductFromPreviewDatabaseData({
+      id: "product-1", version: 2, code: "SERIAL-1", name: "Serializado", productType: "UNIT",
+      familyId: "family-1", taxId: "tax-1", purchasePrice: "5", salePrice: "10", taxesIncluded: "1"
+    }, {}, current)!;
+    const [update] = buildStockBulkUpdates([{ id: "row-1", selected: false, query: "SERIAL-1", product, draft: { salePrice: "12" } }]);
+    expect(update.product).toMatchObject({ active: false, requiresSerialNumber: true, taxesIncluded: true, salePrice: "12" });
+  });
+
   it("hydrates an existing preview product outside the current page", () => {
     const product = stockBulkProductFromPreviewDatabaseData({
       id: "product-outside-page",
@@ -289,6 +322,19 @@ describe("StockScreen", () => {
     expect(stockPriceFromBenefit(50, 100)).toBeNull();
     expect(stockPriceBelowCost(0, 50)).toBe(true);
     expect(stockPriceBelowCost(50, 50)).toBe(false);
+  });
+
+  it.each([undefined, null, "", "   ", "-", "abc"])("does not flag absent or invalid optional prices as below cost: %s", (price) => {
+    expect(stockPriceBelowCost(price, 7.96)).toBe(false);
+  });
+
+  it("warns for a real below-cost price, including explicit zero and comma decimals", () => {
+    expect(stockPriceBelowCost("5", "7.96")).toBe(true);
+    expect(stockPriceBelowCost("0", "7.96")).toBe(true);
+    expect(stockPriceBelowCost("5,00", "7,96")).toBe(true);
+    expect(stockPriceBelowCost("7.96", "7.96")).toBe(false);
+    expect(stockPriceBelowCost("8", "7.96")).toBe(false);
+    expect(stockPriceBelowCost("5", "")).toBe(false);
   });
 
   it("uses the new stock sections without the old low and empty views", () => {

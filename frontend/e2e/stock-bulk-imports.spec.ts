@@ -103,6 +103,12 @@ test("Archivo ejecuta todas las importaciones reales y la exportación Excel", a
 
     await loginUi(page, "venta");
     await openStock(page, "venta");
+    // Imports must resolve their own products, even outside the visible stock page/filter.
+    const filteredStock = page.waitForResponse(response => response.url().includes("/stock/page")
+      && response.url().includes("NO-MATCH"));
+    await page.getByRole("searchbox", { name: "Buscar artículo" }).fill(`NO-MATCH-${marker}`);
+    expect((await (await filteredStock).json()).items).toHaveLength(0);
+    await expect(page.locator(".stock-row").filter({ hasText: marker })).toHaveCount(0);
     await openBulkEdit(page);
     await page.getByRole("button", { name: "Nuevo F5", exact: true }).click();
 
@@ -156,30 +162,42 @@ test("Archivo ejecuta todas las importaciones reales y la exportación Excel", a
     await clearBulkRows(page);
     await chooseImportAction(page, "Importar proveedor");
     const supplierDialog = page.getByRole("dialog", { name: "Importar proveedor" });
-    await expect(supplierDialog.getByRole("option").first()).toBeVisible();
-    await supplierDialog.getByRole("option").first().press("Enter");
-    await expect(page.getByRole("status")).toContainText(/productos de/i);
+    const supplierOption = supplierDialog.getByRole("option").filter({ hasText: `PROVEEDOR ${marker}` });
+    await expect(supplierOption).toBeVisible();
+    await supplierOption.press("Enter");
+    await expect(page.locator(".bulk-edit-status")).toContainText(/productos de/i);
+    await expect(page.locator(".bulk-edit-row").filter({ hasText: marker })).toBeVisible();
 
     await clearBulkRows(page);
     await chooseImportAction(page, "Importar factura de entrada");
     const invoiceDialog = page.getByRole("dialog", { name: "Importar factura de entrada" });
-    await expect(invoiceDialog.getByRole("option").first()).toBeVisible();
-    await invoiceDialog.getByRole("option").first().press("Enter");
-    await expect(page.getByRole("status")).toContainText(/productos importados de la factura/i);
+    const invoiceOption = invoiceDialog.getByRole("option").filter({ hasText: `PROVEEDOR ${marker}` });
+    await expect(invoiceOption).toBeVisible();
+    await expect(invoiceOption).toContainText("Confirmada");
+    await invoiceOption.press("Enter");
+    await expect(page.locator(".bulk-edit-status")).toContainText(/productos importados de la factura/i);
+    await expect(page.locator(".bulk-edit-row").filter({ hasText: marker })).toBeVisible();
 
     await clearBulkRows(page);
     await chooseImportAction(page, "Importar albarán de entrada");
     const deliveryDialog = page.getByRole("dialog", { name: "Importar albarán de entrada" });
-    await expect(deliveryDialog.getByRole("option").first()).toBeVisible();
-    await deliveryDialog.getByRole("option").first().press("Enter");
-    await expect(page.getByRole("status")).toContainText(/productos importados del albarán/i);
+    const deliveryOption = deliveryDialog.getByRole("option").filter({ hasText: `PROVEEDOR ${marker}` });
+    await expect(deliveryOption).toBeVisible();
+    await expect(deliveryOption).toContainText("Confirmada");
+    await deliveryOption.press("Enter");
+    await expect(page.locator(".bulk-edit-status")).toContainText(/productos importados del albarán/i);
+    await expect(page.locator(".bulk-edit-row").filter({ hasText: marker })).toBeVisible();
 
     await clearBulkRows(page);
     await chooseImportAction(page, "Importar familias de productos");
     const familyDialog = page.getByRole("dialog", { name: "Importar familias de productos" });
-    await familyDialog.locator(".stock-bulk-family-node input[type='checkbox']").first().check();
+    const families = await apiGet<Array<{ id: string; name: string }>>(request, admin.accessToken, "/families");
+    await familyDialog.getByRole("checkbox", { name: families.find(family => family.id === product.familyId)!.name, exact: true }).check();
     await familyDialog.getByRole("button", { name: "Añadir productos" }).click();
-    await expect(page.getByRole("status")).toContainText(/productos nuevos anexados/i);
+    await expect(page.locator(".bulk-edit-status")).toContainText(/productos nuevos anexados/i);
+    // The family may exceed the viewport: filter the imported list to verify this exact product.
+    await page.getByRole("searchbox", { name: "Buscar en la lista" }).fill(marker);
+    await expect(page.locator(".bulk-edit-row").filter({ hasText: marker })).toBeVisible();
   } finally {
     await request.delete(
       `${apiUrl}/products/${encodeURIComponent(product.id)}/suppliers/${encodeURIComponent(supplier.id)}`,

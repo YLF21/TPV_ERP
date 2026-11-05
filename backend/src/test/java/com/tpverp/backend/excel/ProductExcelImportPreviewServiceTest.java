@@ -210,6 +210,8 @@ class ProductExcelImportPreviewServiceTest {
         when(product.getDiscountType()).thenReturn(com.tpverp.backend.catalog.DiscountType.NORMAL);
         when(product.getPurchasePrice()).thenReturn(new BigDecimal("9007199254740993.01"));
         when(product.getPackageQuantity()).thenReturn(new BigDecimal("1234567890123456.001"));
+        when(product.isActive()).thenReturn(false);
+        when(product.isRequiresSerialNumber()).thenReturn(true);
         when(products.findAllByStoreIdAndIdIn(any(), any())).thenReturn(List.of(product));
         when(identifiers.findAllByStoreIdAndValorLowerIn(any(), any())).thenReturn(
                 List.of(new ProductIdentifier(storeId, productId,
@@ -220,7 +222,9 @@ class ProductExcelImportPreviewServiceTest {
 
         assertThat(result.rows()).singleElement().satisfies(row -> assertThat(row.databaseData())
                 .containsEntry("purchasePrice", "9007199254740993.01")
-                .containsEntry("packageQuantity", "1234567890123456.001"));
+                .containsEntry("packageQuantity", "1234567890123456.001")
+                .containsEntry("active", "0")
+                .containsEntry("requiresSerialNumber", "1"));
     }
 
     @Test

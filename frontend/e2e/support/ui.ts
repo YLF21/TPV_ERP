@@ -61,6 +61,18 @@ export async function chooseFileAction(page: Page, action: string) {
   await page.getByRole("menu").getByRole("button", { name: action, exact: true }).click();
 }
 
+export async function addBulkProduct(page: Page, code: string) {
+  const input = page.getByPlaceholder("Código o código de barras");
+  await input.fill(code);
+  await input.press("Enter");
+  const row = page.locator(".bulk-edit-row").filter({ hasText: code });
+  const match = page.getByRole("dialog", { name: "Buscar producto", exact: true })
+    .getByRole("button").filter({ hasText: code });
+  await expect(row.or(match)).toBeVisible();
+  if (await match.isVisible()) await match.click();
+  await expect(row).toBeVisible();
+}
+
 export async function chooseImportAction(page: Page, action: string) {
   await page.getByRole("button", { name: "Archivo", exact: true }).click();
   const fileMenu = page.locator(".bulk-file-menu");

@@ -118,8 +118,15 @@ export async function createProductFixture(request: APIRequestContext, token: st
 }
 
 export async function deleteProductFixture(request: APIRequestContext, token: string, productId: string) {
-  const response = await request.delete(`${apiUrl}/products/${encodeURIComponent(productId)}`, {
-    headers: authorization(token)
+  await apiPost(request, token, "/auth/gestion-groups/CONFIGURACION/unlock", {
+    password: process.env.E2E_ADMIN_PASSWORD ?? "0000"
+  });
+  const current = await request.get(`${apiUrl}/products/${encodeURIComponent(productId)}`, { headers: authorization(token) });
+  if (current.status() === 404) return;
+  await expectApiOk(current, "No se pudo consultar el producto E2E para retirarlo");
+  const product = await current.json() as ProductView;
+  const response = await request.post(`${apiUrl}/products/management/${encodeURIComponent(productId)}/retire`, {
+    headers: authorization(token), data: { expectedVersion: product.version }
   });
   if (response.status() !== 404) await expectApiOk(response, "No se pudo borrar el producto E2E");
 }

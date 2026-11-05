@@ -7,7 +7,7 @@ import {
   productById,
   uniqueMarker
 } from "./support/testApi";
-import { chooseFileAction, loginUi, openBulkEdit, openStock } from "./support/ui";
+import { addBulkProduct, chooseFileAction, loginUi, openBulkEdit, openStock } from "./support/ui";
 
 test("crea, guarda, reabre, aplica y versiona una lista conservando comentarios", async ({ page, request }) => {
   const session = await loginApi(request);
@@ -22,21 +22,18 @@ test("crea, guarda, reabre, aplica y versiona una lista conservando comentarios"
     await openBulkEdit(page);
     await page.getByRole("button", { name: "Nuevo F5", exact: true }).click();
 
-    const codeInput = page.getByPlaceholder("Código o código de barras");
-    await codeInput.fill(marker);
-    await codeInput.press("Enter");
-    await expect(page.locator(".bulk-edit-row").filter({ hasText: marker })).toBeVisible();
+    await addBulkProduct(page, marker);
 
-    const salePrice = page.getByLabel("Precio venta").first();
+    const salePrice = page.getByRole("textbox", { name: "Precio venta", exact: true }).first();
     await salePrice.fill("12.75");
     await salePrice.press("Enter");
-    await expect(page.getByLabel("Precio de miembro").first()).toBeFocused();
+    await expect(page.getByRole("textbox", { name: "Precio de miembro", exact: true }).first()).toBeFocused();
 
     await page.keyboard.press("Control+s");
     const saveDialog = page.getByRole("dialog", { name: "Guardar lista de productos" });
     await saveDialog.getByLabel("Nombre de la lista").fill(listName);
     await saveDialog.getByLabel("Nombre de la lista").press("Enter");
-    await expect(page.getByRole("status")).toContainText("Lista guardada");
+    await expect(page.locator(".bulk-edit-status")).toContainText("Lista guardada");
 
     await chooseFileAction(page, "Comentarios");
     const commentsDialog = page.getByRole("dialog", { name: "Comentarios" });
@@ -45,7 +42,7 @@ test("crea, guarda, reabre, aplica y versiona una lista conservando comentarios"
     await expect(commentsDialog.getByText(comment, { exact: true })).toBeVisible();
     await commentsDialog.getByRole("button", { name: "Cerrar" }).last().click();
 
-    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Volver a listas", exact: true }).click();
     const listRow = page.getByRole("row").filter({ hasText: listName });
     await expect(listRow).toBeVisible();
     await listRow.click();
@@ -55,11 +52,11 @@ test("crea, guarda, reabre, aplica y versiona una lista conservando comentarios"
     await chooseFileAction(page, "Aplicar cambios");
     const applyDialog = page.getByRole("dialog", { name: "Aplicar cambios" });
     await applyDialog.getByRole("button", { name: "Aplicar cambios", exact: true }).press("Enter");
-    await expect(page.getByRole("status")).toContainText("Cambios aplicados");
+    await expect(page.locator(".bulk-edit-status")).toContainText("Cambios aplicados");
     await expect.poll(async () => (await productById(request, session.accessToken, product.id)).salePrice)
       .toBe(12.75);
 
-    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Volver a listas", exact: true }).click();
     const appliedRow = page.getByRole("row").filter({ hasText: listName }).filter({ hasText: "Aplicado" });
     await expect(appliedRow).toBeVisible();
     await appliedRow.click();

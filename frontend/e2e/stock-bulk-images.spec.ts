@@ -10,7 +10,7 @@ import {
   productById,
   uniqueMarker
 } from "./support/testApi";
-import { chooseFileAction, loginUi, openBulkEdit, openStock } from "./support/ui";
+import { addBulkProduct, chooseFileAction, loginUi, openBulkEdit, openStock } from "./support/ui";
 
 const tinyPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -37,10 +37,7 @@ test("empareja una imagen por código, la guarda y la aplica al producto", async
     await openBulkEdit(page);
     await page.getByRole("button", { name: "Nuevo F5", exact: true }).click();
 
-    const codeInput = page.getByPlaceholder("Código o código de barras");
-    await codeInput.fill(marker);
-    await codeInput.press("Enter");
-    await expect(page.locator(".bulk-edit-row").filter({ hasText: marker })).toBeVisible();
+    await addBulkProduct(page, marker);
 
     await page.getByRole("button", { name: "Imagen", exact: true }).click();
     const imageDirectory = testInfo.outputPath("imagenes");
@@ -52,20 +49,20 @@ test("empareja una imagen por código, la guarda y la aplica al producto", async
     await expect(page.getByText(`${marker}.png`, { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Comparar por código", exact: true }).click();
-    await expect(page.getByRole("status")).toContainText("1 coincidencias");
+    await expect(page.locator(".bulk-edit-status")).toContainText("1 coincidencias");
     await expect(page.locator(".stock-bulk-image-row.matched")).toContainText(product.name);
 
     await page.keyboard.press("Control+s");
     const saveDialog = page.getByRole("dialog", { name: "Guardar lista de productos" });
     await saveDialog.getByLabel("Nombre de la lista").fill(listName);
     await saveDialog.getByLabel("Nombre de la lista").press("Enter");
-    await expect(page.getByRole("status")).toContainText("Lista guardada");
+    await expect(page.locator(".bulk-edit-status")).toContainText("Lista guardada");
 
     await page.getByRole("button", { name: "Página principal", exact: true }).click();
     await chooseFileAction(page, "Aplicar cambios");
     const applyDialog = page.getByRole("dialog", { name: "Aplicar cambios" });
     await applyDialog.getByRole("button", { name: "Aplicar cambios", exact: true }).press("Enter");
-    await expect(page.getByRole("status")).toContainText("Cambios aplicados");
+    await expect(page.locator(".bulk-edit-status")).toContainText("Cambios aplicados");
 
     await expect.poll(async () => (await productById(request, session.accessToken, product.id)).imageId)
       .not.toBeNull();
@@ -85,13 +82,13 @@ test("empareja una imagen por código, la guarda y la aplica al producto", async
 
     const detailDialog = page.getByRole("dialog").filter({ hasText: product.name });
     await expect(detailDialog.getByRole("heading", { name: "Información del producto" })).toBeVisible();
-    await expect(detailDialog.getByRole("button", { name: "Stock por almacén" })).toBeVisible();
+    await expect(detailDialog.getByRole("heading", { name: "Stock por almacén" })).toBeVisible();
     await expect(detailDialog.locator(".stock-product-information-image img")).toBeVisible();
     const detailScreenshotPath = testInfo.outputPath("detalle-producto.png");
     await page.screenshot({ fullPage: true, path: detailScreenshotPath });
     await testInfo.attach("detalle-producto", { path: detailScreenshotPath, contentType: "image/png" });
 
-    await detailDialog.getByRole("button", { name: "Historial de venta" }).click();
+    await detailDialog.getByRole("tab", { name: "Historial de venta F6" }).click();
     await expect(detailDialog.getByRole("heading", { name: "Información del producto" })).toBeVisible();
 
     await detailDialog.getByRole("button", { name: "Modificar producto" }).click();

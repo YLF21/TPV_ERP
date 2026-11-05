@@ -1,0 +1,39 @@
+.bulk-edit-cell.changed input,
+.bulk-edit-cell.changed textarea {
+  background: #fff8dc;
+  box-shadow: inset 0 0 0 1px #d6a400;
+}
+
+.bulk-edit-cell.price-warning {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 2px;
+}
+
+.bulk-edit-cell.price-warning input {
+  background: #fff7df;
+  box-shadow: inset 0 0 0 1px #b77900;
+}
+
+.bulk-price-warning-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #805400;
+  font-size: 10px;
+  line-height: 12px;
+  padding-inline: 3px;
+}
+
+.bulk-edit-cell.invalid input,
+.bulk-edit-cell.invalid textarea,
+.bulk-choice-cell.invalid button,
+.bulk-code-value.invalid {
+  background: #fff1f1;
+  box-shadow: inset 0 0 0 2px #c93b3b;
+}
+
+.bulk-edit-row.invalid-row {
+  border-left-color: #c93b3b;
+}

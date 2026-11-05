@@ -4,13 +4,14 @@ import {
   apiPost,
   apiUrl,
   authorization,
+  cleanupBulkDrafts,
   createProductFixture,
   deleteProductFixture,
   loginApi,
   productById,
   uniqueMarker
 } from "./support/testApi";
-import { loginUi, openBulkEdit, openStock } from "./support/ui";
+import { addBulkProduct, loginUi, openBulkEdit, openStock } from "./support/ui";
 
 type PriceRuleView = {
   id: string;
@@ -55,7 +56,7 @@ test("previsualiza y aplica una regla real y rechaza formularios en conflicto", 
       `${apiUrl}/product-price-rules/${encodeURIComponent(conflictRule.id)}/preview`,
       {
         headers: authorization(session.accessToken),
-        data: { ruleVersion: conflictRule.version }
+        data: { ruleVersion: conflictRule.version, productIds: [product.id] }
       }
     );
     expect(conflictResponse.status()).toBe(409);
@@ -70,9 +71,8 @@ test("previsualiza y aplica una regla real y rechaza formularios en conflicto", 
     await openStock(page, "venta");
     await openBulkEdit(page);
     await page.getByRole("button", { name: "Nuevo F5", exact: true }).click();
-    const codeInput = page.getByPlaceholder("Código o código de barras");
-    await codeInput.fill(marker);
-    await codeInput.press("Enter");
+    await addBulkProduct(page, marker);
+    await page.getByRole("checkbox", { name: "Seleccionar toda la lista" }).check();
     await page.getByRole("button", { name: "Precio venta", exact: true }).click();
     await page.getByRole("button", { name: "Aplicar regla de precio", exact: true }).click();
 
@@ -85,9 +85,22 @@ test("previsualiza y aplica una regla real y rechaza formularios en conflicto", 
 
     await dialog.getByRole("button", { name: "Aplicar regla", exact: true }).click();
     await dialog.getByRole("alertdialog").getByRole("button", { name: "Confirmar" }).press("Enter");
+    // A price rule edits the draft; committing the list changes the catalog.
+    expect((await productById(request, session.accessToken, product.id)).salePrice).toBe(10);
+    await dialog.getByRole("button", { name: "Cerrar", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Precio venta", exact: true }).first()).toHaveValue("13.25");
+    await page.getByRole("button", { name: "Guardar", exact: true }).click();
+    const saveDialog = page.getByRole("dialog", { name: "Guardar lista de productos" });
+    await saveDialog.getByLabel("Nombre de la lista").fill(ruleName);
+    await saveDialog.getByRole("button", { name: "Guardar", exact: true }).click();
+    await expect(page.locator(".bulk-edit-status")).toContainText("Lista guardada");
+    await page.getByRole("button", { name: "Aplicar cambios", exact: true }).click();
+    await page.getByRole("dialog", { name: "Aplicar cambios" })
+      .getByRole("button", { name: "Aplicar cambios", exact: true }).click();
     await expect.poll(async () => (await productById(request, session.accessToken, product.id)).salePrice)
       .toBe(13.25);
   } finally {
+    await cleanupBulkDrafts(request, session.accessToken, ruleName);
     await deleteRule(request, session.accessToken, conflictRule.id).catch(() => undefined);
     await deleteRule(request, session.accessToken, rule.id).catch(() => undefined);
     await deleteProductFixture(request, session.accessToken, product.id);

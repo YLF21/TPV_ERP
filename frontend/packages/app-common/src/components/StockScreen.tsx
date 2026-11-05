@@ -7,6 +7,7 @@ import { ReportDateRangeFilter, isValidReportDate, type ReportDateRange } from "
 import "./ErpClassicWindow.css";
 import "./StockTopSales.css";
 import "./StockListControls.css";
+import "./StockBulkEdit.css";
 import { Children, Fragment, cloneElement, isValidElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, CSSProperties, FocusEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement, ReactNode, UIEvent } from "react";
 import {
@@ -803,6 +804,9 @@ export function stockPriceFromBenefit(purchasePrice: number, benefitPercent: num
 }
 
 export function stockPriceBelowCost(price: unknown, purchasePrice: unknown) {
+  if (price == null || String(price).trim() === "" || purchasePrice == null || String(purchasePrice).trim() === "") {
+    return false;
+  }
   const normalizedPrice = Number(String(price ?? "").replace(",", "."));
   const normalizedPurchasePrice = Number(String(purchasePrice ?? "").replace(",", "."));
   return Number.isFinite(normalizedPrice)
@@ -1424,13 +1428,14 @@ export function stockBulkProductFromPreviewDatabaseData(
   const flag = (key: string, fallback = "") => {
     const value = databaseData?.[key];
     if (value === null || value === undefined || value === "") return fallback;
-    return [true, "1", "true", "SI", "SÍ", "YES", "COMMON.YES"].includes(String(value).trim().toUpperCase())
+    return ["1", "TRUE", "SI", "SÍ", "YES", "COMMON.YES"].includes(String(value).trim().toUpperCase())
       ? "common.yes"
       : "common.no";
   };
   const booleanValue = (key: string) => {
     const value = databaseData?.[key];
-    return value === true || ["1", "true", "SI", "SÍ", "YES", "COMMON.YES"].includes(String(value ?? "").trim().toUpperCase());
+    if (value === null || value === undefined || value === "") return current?.requiresSerialNumber;
+    return ["1", "TRUE", "SI", "SÍ", "YES", "COMMON.YES"].includes(String(value).trim().toUpperCase());
   };
   const familyId = text("familyId");
   const subfamilyId = text("subfamilyId");
@@ -1441,7 +1446,7 @@ export function stockBulkProductFromPreviewDatabaseData(
   const taxName = tax?.name || (tax?.percentage == null ? taxId : String(tax.percentage) + "%") || "-";
   return {
     productId: id,
-    active: flag("active", "common.yes"),
+    active: flag("active", current?.active ?? "common.yes"),
     version: Number(databaseData?.version ?? 0),
     imageId: databaseData?.imageId == null ? null : String(databaseData.imageId),
     warehouseId: current?.warehouseId ?? "",
@@ -2317,6 +2322,9 @@ export function StockScreen({
   const [bulkConflictDraftId, setBulkConflictDraftId] = useState<string | null>(null);
   const [bulkRequestConflict, setBulkRequestConflict] = useState(false);
   const [bulkFinder, setBulkFinder] = useState<{ rowId: string; query: string } | null>(null);
+  const [bulkFinderResults, setBulkFinderResults] = useState<{ query: string; products: StockInventoryRow[] }>({ query: "", products: [] });
+  const [bulkFinderLoading, setBulkFinderLoading] = useState(false);
+  const [bulkFinderError, setBulkFinderError] = useState("");
   const [stockSettingsMode, setStockSettingsMode] = useState<"configuration" | null>(initialSettingsMode);
 
   useEffect(() => {
@@ -2731,7 +2739,83 @@ export function StockScreen({
   const selectableBulkRows = bulkRows.filter((row) => row.product);
   const allVisibleBulkRowsSelected = selectableBulkRows.length > 0
     && selectableBulkRows.every((row) => row.selected);
-  const bulkFinderMatches = bulkFinder ? stockBulkEditMatches(bulkProducts, bulkFinder.query) : [];
+  const bulkFinderMatches = bulkFinder ? stockBulkEditMatches(uniqueProductRows([
+    ...(bulkFinderResults.query === bulkFinder.query.trim() ? bulkFinderResults.products : []),
+    ...bulkProducts
+  ]), bulkFinder.query) : [];
+  const bulkCatalogFamilyTree = useMemo<StockTopSalesFamilyNode[]>(() => stockCatalog.families.map((family) => ({
+    id: family.id,
+    name: family.name || family.id,
+    subfamilies: stockCatalog.subfamilies.filter((child) => child.familyId === family.id)
+      .map((child) => ({ id: child.id, name: child.name || child.id }))
+      .sort((a, b) => a.name.localeCompare(b.name, locale))
+  })).sort((a, b) => a.name.localeCompare(b.name, locale)), [stockCatalog, locale]);
+  const bulkCatalogTaxOptions = useMemo(() => stockCatalog.taxes.map((tax) => ({
+    value: tax.id, label: taxDisplayName(tax)
+  })), [stockCatalog.taxes]);
+
+  // Bulk searches/imports must not inherit the visible stock page or its filters.
+  async function loadBulkCatalogRows(search: string, familyId = "", signal?: AbortSignal) {
+    const items: StockPageItemView[] = [];
+    const visited = new Set<string>();
+    let cursor: string | null = null;
+    do {
+      const page: PagedResult<StockPageItemView> = await apiRequest(
+        stockPagePath(cursor, "stock.current", search, { ...defaultStockInventoryFilters, family: familyId }),
+        { token: session.accessToken, signal }
+      );
+      items.push(...page.items);
+      if (items.length > 5000) throw new Error(t("stock.bulkEdit.catalogLimit"));
+      if (!page.hasMore) break;
+      if (!page.nextCursor || visited.has(page.nextCursor)) throw new Error(t("stock.bulkEdit.catalogLoadError"));
+      cursor = page.nextCursor;
+      visited.add(cursor);
+    } while (true);
+    return uniqueProductRows(selectStockInventoryRows(
+      buildStockInventoryRowsFromPage(items, warehouseCatalog, stockCatalog), effectiveWarehouseId
+    ));
+  }
+
+  async function loadBulkProductsByIds(ids: string[]) {
+    if (new Set([...ids, ...bulkRowsRef.current.flatMap((row) => row.product ? [row.product.productId] : [])]).size > 5000) {
+      throw new Error(t("stock.bulkEdit.catalogLimit"));
+    }
+    const products = new Map([...bulkProducts, ...bulkRowsRef.current.flatMap((row) => row.product ? [row.product] : [])]
+      .map((product) => [product.productId, product]));
+    const missing = [...new Set(ids)].filter((id) => !products.has(id));
+    // Keep imports bounded without fetching the whole catalog or dropping missing pages.
+    for (let offset = 0; offset < missing.length; offset += 8) {
+      const loaded = await Promise.all(missing.slice(offset, offset + 8).map(async (id) => {
+        const [product, stock] = await Promise.all([
+          apiRequest<ProductView>(`/products/management/${encodeURIComponent(id)}`, { token: session.accessToken }),
+          apiRequest<StockItemView[]>(`/stock?productId=${encodeURIComponent(id)}`, { token: session.accessToken })
+        ]);
+        return buildStockInventoryRows([product], warehouseCatalog, stock, stockCatalog,
+          { mode: effectiveWarehouseId === "TOTAL" ? "total" : "warehouse", warehouseId: effectiveWarehouseId })[0];
+      }));
+      loaded.forEach((product) => products.set(product.productId, product));
+    }
+    return [...products.values()];
+  }
+
+  useEffect(() => {
+    const query = bulkFinder?.query.trim() ?? "";
+    const controller = new AbortController();
+    setBulkFinderError("");
+    setBulkFinderResults({ query, products: [] });
+    setBulkFinderLoading(Boolean(query && session.accessToken));
+    if (!query || !session.accessToken) return;
+    const timer = window.setTimeout(() => {
+      void loadBulkCatalogRows(query, "", controller.signal).then((products) => {
+        if (!controller.signal.aborted) setBulkFinderResults({ query, products });
+      }).catch((error) => {
+        if (!controller.signal.aborted) setBulkFinderError(error instanceof Error ? error.message : t("stock.bulkEdit.catalogLoadError"));
+      }).finally(() => {
+        if (!controller.signal.aborted) setBulkFinderLoading(false);
+      });
+    }, 150);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [bulkFinder?.rowId, bulkFinder?.query, session.accessToken, warehouseCatalog, stockCatalog, effectiveWarehouseId]);
   const bulkValidationByRow = useMemo(() => {
     const result = new Map<string, Set<StockBulkValidationField>>();
     bulkValidationErrors.forEach((error) => {
@@ -3325,7 +3409,7 @@ export function StockScreen({
       ["familyId", t("stock.column.family"), family?.name ?? bulkFilters.familyId ?? ""],
       ["subfamilyId", t("stock.column.subfamily"), subfamily?.name ?? bulkFilters.subfamilyId ?? ""],
       ["supplierId", t("stock.column.supplier"), supplier?.tradeName || supplier?.legalName || bulkFilters.supplierId || ""],
-      ["taxId", t("stock.column.tax"), inventoryTaxOptions.find(value => value.value === bulkFilters.taxId)?.label ?? bulkFilters.taxId ?? ""],
+      ["taxId", t("stock.column.tax"), bulkCatalogTaxOptions.find(value => value.value === bulkFilters.taxId)?.label ?? bulkFilters.taxId ?? ""],
       ["priceUseMode", t("product.field.usePrice"), t(stockDiscountTypeLabel(bulkFilters.priceUseMode ?? ""))],
       ["offerActive", t("stock.bulkEdit.filter.offerActive"), t(bulkFilters.offerActive ? "common.yes" : "common.no")],
       ["offerFrom", t("product.field.offerFrom"), bulkFilters.offerFrom ? formatStockFilterDate(bulkFilters.offerFrom, locale) : ""],
@@ -3937,7 +4021,7 @@ export function StockScreen({
   }
 
   function applyBulkFamilyValues(rowIds: string[], familyId: string, subfamilyId: string) {
-    const family = inventoryFamilyTree.find((candidate) => candidate.id === familyId);
+    const family = bulkCatalogFamilyTree.find((candidate) => candidate.id === familyId);
     const subfamily = family?.subfamilies.find((candidate) => candidate.id === subfamilyId);
     if (!family) {
       return false;
@@ -3952,7 +4036,7 @@ export function StockScreen({
   }
 
   function applyBulkTaxValue(rowIds: string[], taxId: string) {
-    const tax = inventoryTaxOptions.find((candidate) => candidate.value === taxId);
+    const tax = bulkCatalogTaxOptions.find((candidate) => candidate.value === taxId);
     if (!tax) {
       return false;
     }
@@ -4706,17 +4790,28 @@ export function StockScreen({
     }
   }
 
-  function importBulkFamilies(familyIds: string[], subfamilyIds: string[]) {
-    const next = prepareLoadedBulkRows(
-      mergeStockBulkFamilyProducts(bulkRows, bulkProducts, familyIds, subfamilyIds)
-    );
-    const previousCount = bulkRows.filter((row) => row.product).length;
-    const nextCount = next.filter((row) => row.product).length;
-    commitBulkRows(() => next);
-    setBulkFamilyDialogOpen(false);
-    setBulkValidationErrors([]);
-    setBulkStatus(t("stock.bulkEdit.families.imported")
-      .replace("{count}", String(nextCount - previousCount)));
+  async function importBulkFamilies(familyIds: string[], subfamilyIds: string[]) {
+    if (!session.accessToken || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const parentIds = stockCatalog.subfamilies.filter((child) => subfamilyIds.includes(child.id))
+        .flatMap((child) => child.familyId ? [child.familyId] : []);
+      const products: StockInventoryRow[] = [];
+      for (const familyId of new Set([...familyIds, ...parentIds])) {
+        products.push(...await loadBulkCatalogRows("", familyId));
+        if (products.length > 5000) throw new Error(t("stock.bulkEdit.catalogLimit"));
+      }
+      const current = bulkRowsRef.current;
+      const next = prepareLoadedBulkRows(mergeStockBulkFamilyProducts(current, products, familyIds, subfamilyIds));
+      if (next.filter((row) => row.product).length > 5000) throw new Error(t("stock.bulkEdit.catalogLimit"));
+      const added = next.filter((row) => row.product).length - current.filter((row) => row.product).length;
+      commitBulkRows(() => next);
+      setBulkFamilyDialogOpen(false);
+      setBulkValidationErrors([]);
+      setBulkStatus(t("stock.bulkEdit.families.imported").replace("{count}", String(added)));
+    } catch (error) {
+      setBulkStatus(error instanceof Error ? error.message : t("stock.bulkEdit.catalogLoadError"));
+    } finally { setBulkBusy(false); }
   }
 
   function currentBulkDecimalField() {
@@ -4855,8 +4950,9 @@ export function StockScreen({
         setBulkStatus(t("stock.bulkEdit.supplierNoProducts"));
         return;
       }
+      const products = await loadBulkProductsByIds(links.map((link) => link.productId));
       commitBulkRows((current) => prepareLoadedBulkRows(mergeStockBulkSupplierProducts(
-        current, bulkProducts, supplier, links
+        current, products, supplier, links
       )));
       setBulkValidationErrors([]);
       setBulkStatus(t("stock.bulkEdit.supplierImported")
@@ -4879,6 +4975,7 @@ export function StockScreen({
     setBulkImportOpen(false);
     setBulkPurchaseDocumentSearch("");
     setBulkSelectedPurchaseDocumentId(null);
+    setBulkPurchaseDocuments([]);
     setBulkPurchaseDocumentKind(kind);
     setBulkBusy(true);
     try {
@@ -4916,8 +5013,9 @@ export function StockScreen({
         setBulkStatus(t(config.noProductsKey));
         return;
       }
+      const products = await loadBulkProductsByIds(lines.map((line) => line.productId));
       commitBulkRows((current) => prepareLoadedBulkRows(mergeStockBulkPurchaseDocumentProducts(
-        current, bulkProducts, lines
+        current, products, lines
       )));
       setBulkValidationErrors([]);
       setBulkStatus(t(config.importedKey)
@@ -5437,8 +5535,9 @@ export function StockScreen({
       "purchasePrice", "purchaseDiscountPercent", "salePrice", "memberPrice", "wholesalePrice", "offerPrice",
       "offerDiscountPercent"
     ].includes(String(key));
-    const belowCost = ["salePrice", "memberPrice", "wholesalePrice", "offerPrice"].includes(String(key))
+    const belowCost = !invalid && ["salePrice", "memberPrice", "wholesalePrice", "offerPrice"].includes(String(key))
       && stockPriceBelowCost(value, row.draft.purchasePrice ?? row.product?.purchasePrice);
+    const warningId = `bulk-price-warning-${row.id}-${key}`;
     const multiline = key === "name" || key === "description";
     const quickField = stockBulkQuickEditFieldsByTab[bulkEditTab].includes(key as BulkValueField)
       ? key as BulkValueField
@@ -5448,6 +5547,8 @@ export function StockScreen({
       "data-bulk-quick-field": quickField,
       "aria-label": t(labelKey),
       "aria-invalid": invalid,
+      title: belowCost ? t("stock.bulkEdit.belowPurchasePrice") : undefined,
+      "aria-describedby": belowCost ? warningId : undefined,
       value: value === "-" ? "" : value,
       disabled: !row.product,
       onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => updateBulkDraft(row.id, key, event.target.value),
@@ -5464,10 +5565,11 @@ export function StockScreen({
       onKeyDown: handleBulkEntryNavigation
     };
     return (
-      <div className={`bulk-edit-cell ${multiline ? "multiline" : ""} ${className} ${changed ? "changed" : ""} ${belowCost ? "danger" : ""} ${invalid ? "invalid" : ""}`}>
+      <div className={`bulk-edit-cell ${multiline ? "multiline" : ""} ${className} ${changed ? "changed" : ""} ${belowCost ? "price-warning" : ""} ${invalid ? "invalid" : ""}`}>
         {multiline
           ? <textarea {...commonProps} rows={2} wrap="soft" />
           : <input {...commonProps} inputMode={numeric ? "decimal" : undefined} />}
+        {belowCost && <small id={warningId} className="bulk-price-warning-label">{t("stock.bulkEdit.belowPurchasePriceLabel")}</small>}
       </div>
     );
   }
@@ -5778,10 +5880,12 @@ export function StockScreen({
       bulkColumnDefinitions.map((definition, index) => [definition.key, cells[index + 1]])
     );
     const orderedCells = [
-      fixedSelection,
+      isValidElement(fixedSelection) ? cloneElement(fixedSelection, { key: "selection" }) : fixedSelection,
       ...visibleBulkColumns.flatMap((column) => {
         const cell = cellsByKey.get(column.key);
-        return cell === undefined ? [] : [cell];
+        // Flattened fragments can reuse React's positional keys (.0, .1, ...).
+        // Column identities remain unique and stable when cells are reordered.
+        return cell === undefined ? [] : [isValidElement(cell) ? cloneElement(cell, { key: column.key }) : cell];
       })
     ];
     return cloneElement(row, { style: { ...row.props.style, ...bulkGridStyle } }, orderedCells);
@@ -6424,12 +6528,12 @@ export function StockScreen({
       || benefitInvalid;
     const search = normalizeBulkQuery(bulkEditorSearch);
     const visibleFamilies = editor.kind === "family"
-      ? inventoryFamilyTree.filter((family) => !search
+      ? bulkCatalogFamilyTree.filter((family) => !search
         || normalizeBulkQuery(family.name).includes(search)
         || family.subfamilies.some((subfamily) => normalizeBulkQuery(subfamily.name).includes(search)))
       : [];
     const visibleTaxes = editor.kind === "tax"
-      ? inventoryTaxOptions.filter((tax) => !search || normalizeBulkQuery(tax.label).includes(search))
+      ? bulkCatalogTaxOptions.filter((tax) => !search || normalizeBulkQuery(tax.label).includes(search))
       : [];
 
     return (
@@ -6787,7 +6891,9 @@ export function StockScreen({
           {renderSearchFilterChip(bulkFinder.query, () => setBulkFinder(current => current ? { ...current, query: "" } : null))}
           </div>
           <div className="bulk-finder-list">
-            {bulkFinderMatches.length === 0 && <span className="stock-empty-state">{t("stock.bulkEdit.noMatches")}</span>}
+            {bulkFinderLoading && <span className="stock-empty-state">{t("common.loading")}</span>}
+            {bulkFinderError && <span role="alert">{bulkFinderError}</span>}
+            {!bulkFinderLoading && !bulkFinderError && bulkFinderMatches.length === 0 && <span className="stock-empty-state">{t("stock.bulkEdit.noMatches")}</span>}
             {bulkFinderMatches.map((product) => (
               <button type="button" className="bulk-finder-row" key={product.productId} onDoubleClick={() => assignBulkProduct(bulkFinder.rowId, product)} onClick={() => assignBulkProduct(bulkFinder.rowId, product)}>
                 <strong className="product-name-text">{product.name}</strong>
@@ -7182,7 +7288,7 @@ export function StockScreen({
     const items: string[] = [];
     if (bulkFilters.productType) items.push(t(`product.type.${bulkFilters.productType.toLowerCase()}`));
     if (bulkFilters.familyId) {
-      const family = inventoryFamilyTree.find((value) => value.id === bulkFilters.familyId);
+      const family = bulkCatalogFamilyTree.find((value) => value.id === bulkFilters.familyId);
       items.push(`${t("stock.column.family")}: ${family?.name ?? bulkFilters.familyId}`);
       if (bulkFilters.subfamilyId) {
         const subfamily = family?.subfamilies.find((value) => value.id === bulkFilters.subfamilyId);
@@ -7194,7 +7300,7 @@ export function StockScreen({
       items.push(`${t("stock.column.supplier")}: ${supplier?.tradeName || supplier?.legalName || bulkFilters.supplierId}`);
     }
     if (bulkFilters.taxId) {
-      const tax = inventoryTaxOptions.find((value) => value.value === bulkFilters.taxId);
+      const tax = bulkCatalogTaxOptions.find((value) => value.value === bulkFilters.taxId);
       items.push(`${t("stock.column.tax")}: ${tax?.label ?? bulkFilters.taxId}`);
     }
     if (bulkFilters.priceUseMode) items.push(t(`product.discount.${bulkFilters.priceUseMode === "NORMAL" ? "salePrice" : bulkFilters.priceUseMode === "MEMBER_PRICE" ? "memberPrice" : bulkFilters.priceUseMode === "OFFER_PRICE" ? "offerPrice" : "offerDiscount"}`));
@@ -7349,12 +7455,12 @@ export function StockScreen({
           allowIndependentSubfamily={app !== "pda"}
           locale={locale}
           value={bulkFilters}
-          families={inventoryFamilyTree}
+          families={bulkCatalogFamilyTree}
           suppliers={bulkSupplierOptions.map((supplier) => ({
             value: supplier.id,
             label: supplier.tradeName || supplier.legalName
           }))}
-          taxes={inventoryTaxOptions}
+          taxes={bulkCatalogTaxOptions}
           onClose={() => setBulkFilterOpen(false)}
           onApply={(value) => void applyBulkFilterSelection(value)}
         />
@@ -7362,7 +7468,7 @@ export function StockScreen({
           open={bulkFamilyDialogOpen}
           app={app}
           locale={locale}
-          families={inventoryFamilyTree}
+          families={bulkCatalogFamilyTree}
           onClose={() => setBulkFamilyDialogOpen(false)}
           onApply={importBulkFamilies}
         />
@@ -7388,7 +7494,7 @@ export function StockScreen({
           currentUsername={session.username}
           isAdmin={session.permissions.includes("ADMIN")}
           products={selectedPriceRuleProducts}
-          families={inventoryFamilyTree}
+          families={bulkCatalogFamilyTree}
           suppliers={bulkSupplierOptions.map((supplier) => ({ value: supplier.id, label: supplier.tradeName || supplier.legalName }))}
           warehouses={warehouseCatalog.map((warehouse) => ({ value: warehouse.id, label: warehouse.name ?? warehouse.id }))}
           onClose={() => setBulkPriceRulesOpen(false)}
