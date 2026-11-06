@@ -57,6 +57,15 @@ public class StockPageOrderRepository {
             String sortDirection,
             UUID cursorId,
             int limit) {
+        return findProductIdsWithChoices(storeId, search, productType, priceUseMode, discountType, offersOnly,
+                familyId, taxId, offerActive, stockStatus, supplierId, warehouseId, sortBy, sortDirection, cursorId,
+                limit, StockListFilterChoices.EMPTY);
+    }
+
+    public List<UUID> findProductIdsWithChoices(UUID storeId, String search, ProductType productType,
+            PriceUseMode priceUseMode, DiscountType discountType, boolean offersOnly, UUID familyId, UUID taxId,
+            Boolean offerActive, String stockStatus, UUID supplierId, UUID warehouseId, String sortBy,
+            String sortDirection, UUID cursorId, int limit, StockListFilterChoices choices) {
         String expression = sortExpression(sortBy);
         String direction = sortDirection(sortDirection);
         String comparison = "asc".equals(direction) ? ">" : "<";
@@ -72,7 +81,15 @@ public class StockPageOrderRepository {
                 .addValue("offerActive", offerActive)
                 .addValue("stockStatus", stockStatus)
                 .addValue("supplierId", supplierId)
+                .addValue("productTypes", StockListFilterChoices.sqlArray(choices.productTypes()))
+                .addValue("priceUseModes", StockListFilterChoices.sqlArray(choices.priceUseModes()))
+                .addValue("familyIds", StockListFilterChoices.sqlArray(choices.familyIds()))
+                .addValue("taxIds", StockListFilterChoices.sqlArray(choices.taxIds()))
+                .addValue("offerStates", StockListFilterChoices.sqlArray(choices.offerStates()))
+                .addValue("stockStatuses", StockListFilterChoices.sqlArray(choices.stockStatuses()))
+                .addValue("supplierIds", StockListFilterChoices.sqlArray(choices.supplierIds()))
                 .addValue("warehouseId", warehouseId)
+                .addValue("warehouseIds", StockListFilterChoices.sqlArray(choices.warehouseIds()))
                 .addValue("cursorId", cursorId)
                 .addValue("limit", limit);
         String sql = """
@@ -109,8 +126,10 @@ public class StockPageOrderRepository {
                     left join lateral (
                         select coalesce(sum(stock.cantidad), 0) as total_stock,
                                coalesce(sum(stock.cantidad) filter (
-                                   where cast(:warehouseId as uuid) is null
-                                      or stock.almacen_id = cast(:warehouseId as uuid)
+                                   where case when cast(:warehouseIds as text) is not null
+                                       then stock.almacen_id = any(cast(string_to_array(:warehouseIds, ',') as uuid[]))
+                                       else cast(:warehouseId as uuid) is null or stock.almacen_id = cast(:warehouseId as uuid)
+                                   end
                                ), 0) as local_stock
                         from existencia stock
                         where stock.producto_id = product.id
@@ -153,6 +172,18 @@ public class StockPageOrderRepository {
                         or (cast(:stockStatus as varchar) = 'EMPTY' and product.activo and stock.local_stock <= 0)
                         or (cast(:stockStatus as varchar) = 'LOW' and product.activo and stock.local_stock > 0 and stock.local_stock <= 5)
                         or (cast(:stockStatus as varchar) = 'OK' and product.activo and stock.local_stock > 5))
+                      and (cast(:productTypes as text) is null or product.product_type = any(cast(string_to_array(:productTypes, ',') as text[])))
+                      and (cast(:priceUseModes as text) is null or product.price_use_mode = any(cast(string_to_array(:priceUseModes, ',') as text[])))
+                      and (cast(:familyIds as text) is null or product.familia_id = any(cast(string_to_array(:familyIds, ',') as uuid[]))
+                        or product.subfamilia_id = any(cast(string_to_array(:familyIds, ',') as uuid[])))
+                      and (cast(:taxIds as text) is null or product.impuesto_id = any(cast(string_to_array(:taxIds, ',') as uuid[])))
+                      and (cast(:offerStates as text) is null or product.oferta_activa = any(cast(string_to_array(:offerStates, ',') as boolean[])))
+                      and (cast(:stockStatuses as text) is null or (case when not product.activo then 'INACTIVE'
+                          when stock.local_stock <= 0 then 'EMPTY' when stock.local_stock <= 5 then 'LOW' else 'OK' end)
+                          = any(cast(string_to_array(:stockStatuses, ',') as text[])))
+                      and (cast(:supplierIds as text) is null or exists (select 1 from producto_proveedor selected_supplier
+                          where selected_supplier.producto_id = product.id
+                            and selected_supplier.proveedor_id = any(cast(string_to_array(:supplierIds, ',') as uuid[]))))
                 ),
                 cursor_row as (
                     select sort_value

@@ -39,6 +39,9 @@ public class FiscalExportJob {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "record_ids", nullable = false, columnDefinition = "jsonb")
     private List<UUID> recordIds;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "opciones_filtro", nullable = false, columnDefinition = "jsonb")
+    private FiscalListChoices choices = FiscalListChoices.EMPTY;
     @Column(name = "fecha_inicio")
     private OffsetDateTime periodStart;
     @Column(name = "fecha_fin")
@@ -113,6 +116,7 @@ public class FiscalExportJob {
         this.dateTo = request.dateTo();
         this.documentNumber = request.documentNumber();
         this.documentNumberPrefix = request.documentNumberPrefix();
+        this.choices = request.choices();
         this.operation = request.operation();
         this.documentType = request.documentType();
         this.fiscalMode = request.fiscalMode();
@@ -140,6 +144,7 @@ public class FiscalExportJob {
     public LocalDate getDateTo() { return dateTo; }
     public String getDocumentNumber() { return documentNumber; }
     public String getDocumentNumberPrefix() { return documentNumberPrefix; }
+    public FiscalListChoices getChoices() { return choices == null ? FiscalListChoices.EMPTY : choices; }
     public FiscalRecordOperation getOperation() { return operation; }
     public FiscalDocumentType getDocumentType() { return documentType; }
     public FiscalMode getFiscalMode() { return fiscalMode; }

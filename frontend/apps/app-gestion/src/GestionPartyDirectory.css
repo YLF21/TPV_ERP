@@ -39,6 +39,7 @@
     grid-template-columns: minmax(220px, 360px) 190px auto minmax(0, 1fr) auto;
     grid-template-rows: auto auto;
     flex: 0 0 auto;
+    width: auto;
     margin: 4px 14px 8px;
   }
   html[data-app="gestion"] .party-directory-toolbar .party-directory-result-count {

@@ -52,6 +52,7 @@ describe("CashActivityPanel", () => {
     expect(within(table).getByText("Cambio").closest("tr")).toHaveTextContent("Caja abierta");
     expect(within(table).getByText("Banco").closest("tr")).toHaveTextContent("Caja cerrada");
     expect(within(table).queryByText("Venta oculta")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
     fireEvent.click(screen.getByRole("button", { name: "Filtrar acción" }));
     expect(screen.queryByRole("option", { name: "Cobro en efectivo" })).toBeNull();
   });
@@ -60,6 +61,7 @@ describe("CashActivityPanel", () => {
     renderPanel();
     const table = await screen.findByRole("table", { name: "Historial de hoy" });
     await within(table).findByText("Banco");
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
     fireEvent.click(screen.getByRole("button", { name: "Filtrar usuario" }));
     fireEvent.click(screen.getByRole("option", { name: "Ana" }));
     fireEvent.click(screen.getByRole("button", { name: "Filtrar estado" }));

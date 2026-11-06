@@ -115,13 +115,12 @@ describe("StockScreen document exports", () => {
     ]);
     await renderScreen("venta");
     fireEvent.change(screen.getByRole("searchbox", { name: "Buscar artículo" }), { target: { value: "Café" } });
-    fireEvent.click(screen.getByRole("button", { name: "Filtrar stock" }));
-    const filter = screen.getByRole("dialog", { name: "Filtrar stock" });
+    const filter = document.querySelector<HTMLElement>(".stock-standard-filters")!;
+    fireEvent.click(within(filter).getByRole("button", { name: "Filtrar" }));
     const t = createTranslator("es");
-    const typeField = within(filter).getByText(t("stock.column.type"), { exact: true }).closest(".filter-field")! as HTMLElement;
-    fireEvent.click(within(typeField).getByRole("button"));
-    fireEvent.click(within(typeField).getByRole("button", { name: t("product.type.unit") }));
-    fireEvent.click(within(filter).getByRole("button", { name: t("salesReport.filter.apply") }));
+    fireEvent.click(within(filter).getByRole("button", { name: t("stock.column.type") }));
+    fireEvent.click(within(filter).getByRole("option", { name: t("product.type.unit") }));
+    expect(within(filter).queryByRole("button", { name: t("salesReport.filter.apply") })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: t("stock.column.name") }));
     fireEvent.click(exportButton("F7")!);
     await waitFor(() => expect(exportPosts()).toHaveLength(1));
@@ -151,11 +150,13 @@ describe("StockScreen document exports", () => {
     expect(exportPosts()).toHaveLength(0);
   });
 
-  it("does not launch PDF with F7 while a filter modal is open", async () => {
+  it("does not launch PDF with F7 while the family filter menu is open", async () => {
     await renderScreen("venta");
-    fireEvent.click(screen.getByRole("button", { name: "Filtrar stock" }));
-    const filter = screen.getByRole("dialog", { name: "Filtrar stock" });
-    fireEvent.keyDown(filter, { key: "F7" });
+    const filter = document.querySelector<HTMLElement>(".stock-standard-filters")!;
+    fireEvent.click(within(filter).getByRole("button", { name: "Filtrar" }));
+    fireEvent.click(within(filter).getByRole("button", { name: "Familia" }));
+    const picker = screen.getByRole("listbox", { name: "Familia" });
+    fireEvent.keyDown(picker, { key: "F7" });
     expect(exportPosts()).toHaveLength(0);
   });
 

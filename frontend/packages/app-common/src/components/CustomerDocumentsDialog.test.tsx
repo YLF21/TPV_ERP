@@ -348,38 +348,37 @@ describe("CustomerDocumentsDialog", () => {
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "  FV-10%_  " } });
     fireEvent.change(screen.getByLabelText("Fecha desde"), { target: { value: "2026-09-01" } });
     fireEvent.change(screen.getByLabelText("Fecha hasta"), { target: { value: "2026-09-09" } });
+    if (screen.getByRole("button", { name: "Filtrar" }).getAttribute("aria-expanded") === "false") fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
     fireEvent.click(screen.getByRole("button", { name: "Estado" }));
     fireEvent.click(screen.getByRole("option", { name: "Pendiente" }));
-    expect(apiRequest).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Exportar a Excel" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar filtro" }));
+    expect(screen.queryByRole("button", { name: "Aplicar filtro" })).not.toBeInTheDocument();
     await waitFor(() => expect(apiRequest).toHaveBeenLastCalledWith(expect.stringContaining("search=FV-10%25_&status=PENDIENTE&dateFrom=2026-09-01&dateTo=2026-09-09"), expect.anything()));
     fireEvent.click(screen.getByRole("button", { name: "Limpiar todos" }));
     await waitFor(() => expect(apiRequest).toHaveBeenLastCalledWith("/customer-document-reports/saas/customer-1/tickets?size=50&sortBy=date&sortDirection=desc", expect.anything()));
     expect(screen.getByRole("searchbox")).toHaveValue("");
   });
 
-  it.each([["Tickets F1", "tickets"], ["Facturas F2", "invoices"], ["Albaranes F3", "delivery-notes"]])("removes an applied criterion from %s while retaining other applied filters and pending drafts", async (tabName, endpoint) => {
+  it.each([["Tickets F1", "tickets"], ["Facturas F2", "invoices"], ["Albaranes F3", "delivery-notes"]])("removes an applied criterion from %s while retaining the other automatically applied filters", async (tabName, endpoint) => {
     mount(); await screen.findByText("T-001");
     fireEvent.click(screen.getByRole("tab", { name: tabName }));
     await screen.findByText("T-001");
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "T-" } });
     fireEvent.change(screen.getByLabelText("Fecha desde"), { target: { value: "2026-09-01" } });
+    if (screen.getByRole("button", { name: "Filtrar" }).getAttribute("aria-expanded") === "false") fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
     fireEvent.click(screen.getByRole("button", { name: "Estado" }));
     fireEvent.click(screen.getByRole("option", { name: "Pendiente" }));
-    expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar filtro" }));
+    expect(screen.getByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("Búsqueda: T-");
     await screen.findByText("T-001");
     expect(screen.getByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("Búsqueda: T-");
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "DRAFT" } });
     fireEvent.change(screen.getByLabelText("Fecha hasta"), { target: { value: "2026-09-22" } });
     fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Estado" }));
     await waitFor(() => expect(apiRequest).toHaveBeenLastCalledWith(
-      `/customer-document-reports/saas/customer-1/${endpoint}?size=50&sortBy=date&sortDirection=desc&search=T-&dateFrom=2026-09-01`, expect.anything()));
+      `/customer-document-reports/saas/customer-1/${endpoint}?size=50&sortBy=date&sortDirection=desc&search=DRAFT&dateFrom=2026-09-01&dateTo=2026-09-22`, expect.anything()));
     expect(screen.getByRole("searchbox")).toHaveValue("DRAFT");
     expect(screen.getByLabelText("Fecha hasta")).toHaveValue("2026-09-22");
-    expect(screen.getByRole("button", { name: "Estado" })).toHaveTextContent("Todos");
-    expect(screen.getByRole("button", { name: "Exportar a Excel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Estado" })).toHaveTextContent("Sin filtro");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Exportar a Excel" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Limpiar todos" }));
     await waitFor(() => expect(apiRequest).toHaveBeenLastCalledWith(
       `/customer-document-reports/saas/customer-1/${endpoint}?size=50&sortBy=date&sortDirection=desc`, expect.anything()));
@@ -391,7 +390,6 @@ describe("CustomerDocumentsDialog", () => {
   it("uses the same applied document chips in the management app", async () => {
     mount({ app: "gestion" }); await screen.findByText("T-001");
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "T-" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar filtro" }));
     await screen.findByText("T-001");
     expect(screen.getByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("Búsqueda: T-");
     fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Búsqueda" }));
@@ -403,10 +401,12 @@ describe("CustomerDocumentsDialog", () => {
   it("rejects inverted dates locally and Escape closes the dropdown before the window", async () => {
     const close = vi.fn(); mount({ onClose: close }); await screen.findByText("T-001");
     fireEvent.change(screen.getByLabelText("Fecha desde"), { target: { value: "2026-09-09" } });
+    await waitFor(() => expect(apiRequest).toHaveBeenLastCalledWith(expect.stringContaining("dateFrom=2026-09-09"), expect.anything()));
+    const validRequests = vi.mocked(apiRequest).mock.calls.length;
     fireEvent.change(screen.getByLabelText("Fecha hasta"), { target: { value: "2026-09-01" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar filtro" }));
     expect(screen.getByRole("alert")).toHaveTextContent("La fecha hasta no puede ser anterior");
-    expect(apiRequest).toHaveBeenCalledTimes(1);
+    expect(apiRequest).toHaveBeenCalledTimes(validRequests);
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
     const status = screen.getByRole("button", { name: "Estado" }); fireEvent.click(status);
     fireEvent.keyDown(status, { key: "Escape" });
     expect(status).toHaveAttribute("aria-expanded", "false"); expect(close).not.toHaveBeenCalled();
@@ -462,7 +462,6 @@ describe("CustomerDocumentsDialog", () => {
     expect(body).toMatchObject({ reportKey: "tickets", customerId: customer.id, filters: {}, documentKeys: [{ storeId: ticket.storeId, documentId: ticket.documentId }], sortBy: "date", sortDirection: "desc" });
     expect(body).toMatchObject({ columns: [{ key: "store", label: "Tienda" }, { key: "number", label: "Documento" }, ...["date", "type", "status", "base", "tax", "total", "terminal", "user", "currency"].map((key) => ({ key, label: expect.any(String) }))] });
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "T-" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar filtro" })); await screen.findByText("T-001");
     await waitFor(() => expect(screen.getByRole("button", { name: "Exportar a Excel" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Exportar a Excel" }));
     await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(2));

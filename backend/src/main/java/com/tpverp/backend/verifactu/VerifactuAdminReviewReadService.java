@@ -64,6 +64,20 @@ public class VerifactuAdminReviewReadService {
     }
 
     @Transactional(readOnly = true)
+    public VerifactuAdminDefectiveRecordPage defectiveRecordsFiltered(LocalDate dateFrom, LocalDate dateTo, FiscalListChoices choices,
+            String documentNumber, int page, int size, String sortBy, String sortDirection) {
+        validatePage(page, size);
+        validateRange(dateFrom, dateTo);
+        choices.statuses().forEach(VerifactuAdminReviewReadService::validateDefectiveStatus);
+        var store = organization.currentStore();
+        var zone = ZoneId.of(store.getTimezone());
+        var scope = scope(store);
+        return reads.findDefectiveRecordsFiltered(scope.companyId(), scope.storeId(), scope.installationId(),
+                startOfDay(dateFrom, zone), startOfNextDay(dateTo, zone), choices,
+                normalizeDocumentNumber(documentNumber), page, size, sortBy, sortDirection);
+    }
+
+    @Transactional(readOnly = true)
     public VerifactuAdminDefectiveRecordPage defectiveRecords(
             LocalDate dateFrom,
             LocalDate dateTo,

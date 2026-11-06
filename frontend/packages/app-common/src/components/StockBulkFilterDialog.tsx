@@ -12,7 +12,8 @@ import {
 } from "./stockBulkAdvanced";
 import type { StockBulkFilterCriteria } from "./stockBulkAdvanced";
 import { enterNavigationIntent, focusRelativeEnterTarget } from "./keyboardNavigation";
-import { ErpSelect } from "./ErpSelect";
+import { ErpListSelect } from "./ErpListSelect";
+import { changeStockBulkOptions, stockBulkOptionValues, type StockBulkOptionKey } from "./stockBulkAdvanced";
 
 export type StockBulkFilterOption = {
   value: string;
@@ -27,6 +28,7 @@ type StockBulkFilterDialogProps = {
   suppliers: StockBulkFilterOption[];
   taxes: StockBulkFilterOption[];
   allowIndependentSubfamily?: boolean;
+  autoApply?: boolean;
   onApply: (value: StockBulkFilterCriteria) => void;
   onClose: () => void;
 };
@@ -62,6 +64,7 @@ export function StockBulkFilterDialog({
   suppliers,
   taxes,
   allowIndependentSubfamily = false,
+  autoApply = false,
   onApply,
   onClose
 }: StockBulkFilterDialogProps) {
@@ -71,22 +74,34 @@ export function StockBulkFilterDialog({
 
   useEffect(() => {
     if (open) setDraft({ ...value });
-  }, [open, value]);
+  }, [open]);
 
   if (!open) return null;
 
-  const selectedFamily = families.find((family) => family.id === draft.familyId);
-  const subfamilyOptions = selectedFamily
-    ? selectedFamily.subfamilies.map(subfamily => ({ value: subfamily.id, label: subfamily.name }))
-    : allowIndependentSubfamily
-      ? families.flatMap(family => family.subfamilies.map(subfamily => ({ value: subfamily.id, label: `${family.name} / ${subfamily.name}` })))
-      : [];
+  const selectedFamilies = stockBulkOptionValues(draft, "familyId");
+  const subfamilyOptions = families
+    .filter(family => selectedFamilies.includes(family.id) || (!selectedFamilies.length && allowIndependentSubfamily))
+    .flatMap(family => family.subfamilies.map(subfamily => ({
+      value: subfamily.id,
+      label: selectedFamilies.length === 1 ? subfamily.name : family.name + " / " + subfamily.name,
+    })));
   const error = validateStockBulkFilter(draft);
   const activeCount = countActiveStockBulkFilters(draft);
-  const update = (patch: Partial<StockBulkFilterCriteria>) => setDraft((current) => ({
-    ...current,
-    ...patch
-  }));
+  const update = (patch: Partial<StockBulkFilterCriteria>) => {
+    const next = { ...draft, ...patch };
+    setDraft(next);
+    if (autoApply && !validateStockBulkFilter(next)) onApply(next);
+  };
+  const selectOptions = (key: StockBulkOptionKey, values: string[]) => {
+    let next = changeStockBulkOptions(draft, key, values);
+    if (key === "familyId") {
+      const allowedSubfamilies = families.filter(family => values.includes(family.id) || (!values.length && allowIndependentSubfamily))
+        .flatMap(family => family.subfamilies.map(subfamily => subfamily.id));
+      next = changeStockBulkOptions(next, "subfamilyId",
+        stockBulkOptionValues(next, "subfamilyId").filter(id => allowedSubfamilies.includes(id)));
+    }
+    update(next);
+  };
   const controlSelector = ".stock-bulk-filter-grid input:not(:disabled), .stock-bulk-filter-grid .erp-select__trigger:not(:disabled)";
   const moveFromActiveControl = (intent: "next" | "previous") => {
     const current = document.activeElement;
@@ -109,7 +124,7 @@ export function StockBulkFilterDialog({
       intent,
       controlSelector
     );
-    if (!moved && intent === "next" && !error) onApply({ ...draft });
+    if (!moved && intent === "next" && !error && !autoApply) onApply({ ...draft });
   };
 
   return (
@@ -133,76 +148,76 @@ export function StockBulkFilterDialog({
         <div className="stock-bulk-filter-grid">
           <div className="stock-bulk-filter-field">
             <span>{t("stock.bulkEdit.filter.productType")}</span>
-            <ErpSelect
+            <ErpListSelect single={!autoApply}
               aria-label={t("stock.bulkEdit.filter.productType")}
-              value={draft.productType ?? ""}
+              values={stockBulkOptionValues(draft, "productType")}
               options={[
                 { value: "", label: t("stock.filter.all") },
                 { value: "UNIT", label: t("product.type.unit") },
                 { value: "WEIGHT", label: t("product.type.weight") },
                 { value: "SERVICE", label: t("product.type.service") }
               ]}
-              onChange={(next) => update({ productType: optionValue(next) })}
+              onChange={values => selectOptions("productType", values)}
               onCommit={() => moveFromActiveControl("next")}
               onNavigatePrevious={() => moveFromActiveControl("previous")}
             />
           </div>
           <div className="stock-bulk-filter-field">
             <span>{t("stock.column.family")}</span>
-            <ErpSelect
+            <ErpListSelect single={!autoApply}
               aria-label={t("stock.column.family")}
-              value={draft.familyId ?? ""}
+              values={stockBulkOptionValues(draft, "familyId")}
               options={[
                 { value: "", label: t("stock.filter.all") },
                 ...families.map((family) => ({ value: family.id, label: family.name }))
               ]}
-              onChange={(next) => update({ familyId: optionValue(next), subfamilyId: null })}
+              onChange={values => selectOptions("familyId", values)}
               onCommit={() => moveFromActiveControl("next")}
               onNavigatePrevious={() => moveFromActiveControl("previous")}
             />
           </div>
           <div className="stock-bulk-filter-field">
             <span>{t("stock.column.subfamily")}</span>
-            <ErpSelect
+            <ErpListSelect single={!autoApply}
               aria-label={t("stock.column.subfamily")}
-              disabled={!selectedFamily && !allowIndependentSubfamily}
-              value={draft.subfamilyId ?? ""}
+              disabled={!selectedFamilies.length && !allowIndependentSubfamily}
+              values={stockBulkOptionValues(draft, "subfamilyId")}
               options={[
                 { value: "", label: t("stock.filter.all") },
                 ...subfamilyOptions
               ]}
-              onChange={(next) => update({ subfamilyId: optionValue(next) })}
+              onChange={values => selectOptions("subfamilyId", values)}
               onCommit={() => moveFromActiveControl("next")}
               onNavigatePrevious={() => moveFromActiveControl("previous")}
             />
           </div>
           <div className="stock-bulk-filter-field">
             <span>{t("stock.column.supplier")}</span>
-            <ErpSelect
+            <ErpListSelect single={!autoApply}
               aria-label={t("stock.column.supplier")}
-              value={draft.supplierId ?? ""}
+              values={stockBulkOptionValues(draft, "supplierId")}
               options={[{ value: "", label: t("stock.filter.all") }, ...suppliers]}
-              onChange={(next) => update({ supplierId: optionValue(next) })}
+              onChange={values => selectOptions("supplierId", values)}
               onCommit={() => moveFromActiveControl("next")}
               onNavigatePrevious={() => moveFromActiveControl("previous")}
             />
           </div>
           <div className="stock-bulk-filter-field">
             <span>{t("stock.column.tax")}</span>
-            <ErpSelect
+            <ErpListSelect single={!autoApply}
               aria-label={t("stock.column.tax")}
-              value={draft.taxId ?? ""}
+              values={stockBulkOptionValues(draft, "taxId")}
               options={[{ value: "", label: t("stock.filter.all") }, ...taxes]}
-              onChange={(next) => update({ taxId: optionValue(next) })}
+              onChange={values => selectOptions("taxId", values)}
               onCommit={() => moveFromActiveControl("next")}
               onNavigatePrevious={() => moveFromActiveControl("previous")}
             />
           </div>
           <div className="stock-bulk-filter-field">
             <span>{t("product.field.usePrice")}</span>
-            <ErpSelect
+            <ErpListSelect single={!autoApply}
               aria-label={t("product.field.usePrice")}
-              value={draft.priceUseMode ?? ""}
+              values={stockBulkOptionValues(draft, "priceUseMode")}
               options={[
                 { value: "", label: t("stock.filter.all") },
                 { value: "NORMAL", label: t("product.discount.salePrice") },
@@ -210,22 +225,22 @@ export function StockBulkFilterDialog({
                 { value: "OFFER_PRICE", label: t("product.discount.offerPrice") },
                 { value: "OFFER_DISCOUNT", label: t("product.discount.offerDiscount") }
               ]}
-              onChange={(next) => update({ priceUseMode: optionValue(next) })}
+              onChange={values => selectOptions("priceUseMode", values)}
               onCommit={() => moveFromActiveControl("next")}
               onNavigatePrevious={() => moveFromActiveControl("previous")}
             />
           </div>
           <div className="stock-bulk-filter-field">
             <span>{t("stock.bulkEdit.filter.offerActive")}</span>
-            <ErpSelect
+            <ErpListSelect single={!autoApply}
               aria-label={t("stock.bulkEdit.filter.offerActive")}
-              value={draft.offerActive === null || draft.offerActive === undefined ? "" : draft.offerActive ? "yes" : "no"}
+              values={stockBulkOptionValues(draft, "offerActive")}
               options={[
                 { value: "", label: t("stock.filter.all") },
                 { value: "yes", label: t("common.yes") },
                 { value: "no", label: t("common.no") }
               ]}
-              onChange={(next) => update({ offerActive: next === "" ? null : next === "yes" })}
+              onChange={values => selectOptions("offerActive", values)}
               onCommit={() => moveFromActiveControl("next")}
               onNavigatePrevious={() => moveFromActiveControl("previous")}
             />
@@ -250,13 +265,13 @@ export function StockBulkFilterDialog({
 
         {error && <p className="stock-bulk-dialog-error" role="alert">{t(error)}</p>}
         <footer className="filter-actions erp-dialog-actions-row">
-          <DialogDismissButton type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>{t("common.cancel")}</DialogDismissButton>
-          <button type="button" onClick={() => setDraft({ ...emptyStockBulkFilterCriteria })}>
+          <DialogDismissButton type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>{t(autoApply ? "common.close" : "common.cancel")}</DialogDismissButton>
+          <button type="button" onClick={() => update({ ...emptyStockBulkFilterCriteria })}>
             {t("stock.bulkEdit.filter.clear")}
           </button>
-          <button type="button" className="erp-dialog-action-confirm" disabled={Boolean(error)} onClick={() => onApply({ ...draft })}>
+          {!autoApply && <button type="button" className="erp-dialog-action-confirm" disabled={Boolean(error)} onClick={() => onApply({ ...draft })}>
             {t("stock.filter.apply")}
-          </button>
+          </button>}
         </footer>
       </section>
     </div>

@@ -4,7 +4,10 @@ import { ApiError, apiRequest } from "../api/client";
 import { loadCashTimeline, type CashTimeline, type CashTimelineEntry } from "../sale/cashSessions";
 import type { LocaleCode } from "../types";
 import { ErpFilterChips } from "./ErpFilterChips";
-import { ErpSelect } from "./ErpSelect";
+import { ErpListFilterPanel } from "./ErpListFilterPanel";
+import { createTranslator } from "../i18n/LocalizedMessages";
+import { ErpListSelect } from "./ErpListSelect";
+import { listFilterChips, matchesListFilter } from "./listFilterValues";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns, type TableColumnDefinition } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
@@ -37,9 +40,9 @@ export function CashActivityPanel({ locale, showTitle = true, refreshContainer, 
   const [timeline, setTimeline] = useState<CashTimeline | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filterUser, setFilterUser] = useState("");
-  const [filterAction, setFilterAction] = useState("");
-  const [filterState, setFilterState] = useState("");
+  const [filterUser, setFilterUser] = useState<string[]>([]);
+  const [filterAction, setFilterAction] = useState<string[]>([]);
+  const [filterState, setFilterState] = useState<string[]>([]);
   const requestRevision = useRef(0);
   const layout = useTableLayoutPreference<CashActivityColumn>({ app: "venta", username: currentUsername, accessToken: token, tableKey: "cash.activity", definitions: columns });
   const visibleColumns = visibleTableColumns(layout.layout);
@@ -71,8 +74,8 @@ export function CashActivityPanel({ locale, showTitle = true, refreshContainer, 
   const stateOptions = ["ABIERTA", "CERRADA"] as const;
   const actionLabel = (action: string) => t.actions[action as keyof typeof t.actions] ?? action.replaceAll("_", " ");
   const stateLabel = (state: string) => state === "ABIERTA" ? t.open : state === "CERRADA" ? t.closed : "—";
-  const visibleItems = sortTableRows(items.filter(item => (!filterUser || (item.userId || item.username) === filterUser)
-    && (!filterAction || item.action === filterAction) && (!filterState || item.cashState === filterState)),
+  const visibleItems = sortTableRows(items.filter(item => matchesListFilter(filterUser, item.userId || item.username)
+    && matchesListFilter(filterAction, item.action) && matchesListFilter(filterState, item.cashState)),
     { column: "reference", direction: "desc" }, item => item.reference, locale);
 
   function cell(item: CashTimelineEntry, column: CashActivityColumn) {
@@ -98,15 +101,17 @@ export function CashActivityPanel({ locale, showTitle = true, refreshContainer, 
     {!token || !terminalId ? <div className="settings-empty-state">{t.missingContext}</div> : <>
       {error && <p className="cash-timeline-error" role="alert">{error}</p>}
       {loading && !timeline && <p role="status">{t.loading}</p>}
-      <div className="cash-timeline-filters"><div><span>{t.filterUser}</span><ErpSelect className="erp-select--compact" aria-label={t.filterUser} value={filterUser} onChange={setFilterUser} options={[{ value: "", label: t.all }, ...userOptions.map(([value, label]) => ({ value, label }))]} /></div>
-        <div><span>{t.filterAction}</span><ErpSelect className="erp-select--compact" aria-label={t.filterAction} value={filterAction} onChange={setFilterAction} options={[{ value: "", label: t.all }, ...actionOptions.map(value => ({ value, label: actionLabel(value) }))]} /></div>
-        <div><span>{t.filterState}</span><ErpSelect className="erp-select--compact" aria-label={t.filterState} value={filterState} onChange={setFilterState} options={[{ value: "", label: t.all }, ...stateOptions.map(value => ({ value, label: stateLabel(value) }))]} /></div></div>
+      <ErpListFilterPanel className="cash-timeline-list-filter" search={null} translate={createTranslator(locale)} filters={<>
+        <label><span>{t.filterUser}</span><ErpListSelect className="erp-select--compact" aria-label={t.filterUser} values={filterUser} onChange={setFilterUser} options={[{ value: "", label: t.all }, ...userOptions.map(([value, label]) => ({ value, label }))]} /></label>
+        <label><span>{t.filterAction}</span><ErpListSelect className="erp-select--compact" aria-label={t.filterAction} values={filterAction} onChange={setFilterAction} options={[{ value: "", label: t.all }, ...actionOptions.map(value => ({ value, label: actionLabel(value) }))]} /></label>
+        <label><span>{t.filterState}</span><ErpListSelect className="erp-select--compact" aria-label={t.filterState} values={filterState} onChange={setFilterState} options={[{ value: "", label: t.all }, ...stateOptions.map(value => ({ value, label: stateLabel(value) }))]} /></label>
+      </>} />
       <ErpFilterChips locale={locale} chips={[
-        { key: "user", label: t.user, value: filterUser ? userOptions.find(([key]) => key === filterUser)?.[1] ?? filterUser : "", onRemove: () => setFilterUser("") },
-        { key: "action", label: t.action, value: filterAction ? actionLabel(filterAction) : "", onRemove: () => setFilterAction("") },
-        { key: "state", label: t.cashState, value: filterState ? stateLabel(filterState) : "", onRemove: () => setFilterState("") },
-      ]} onClear={() => { setFilterUser(""); setFilterAction(""); setFilterState(""); }} />
-      <div className="cash-report-table-wrap"><table className="cash-timeline-table" aria-label={t.timeline} style={{ minWidth: tableWidth }}>
+        ...listFilterChips("user", t.user, filterUser, setFilterUser, value => userOptions.find(([key]) => key === value)?.[1] ?? value),
+        ...listFilterChips("action", t.action, filterAction, setFilterAction, actionLabel),
+        ...listFilterChips("state", t.cashState, filterState, setFilterState, stateLabel),
+      ]} onClear={() => { setFilterUser([]); setFilterAction([]); setFilterState([]); }} />
+      <div className="cash-report-table-wrap erp-list-filter-table"><table className="cash-timeline-table" aria-label={t.timeline} style={{ minWidth: tableWidth }}>
         <colgroup>{visibleColumns.map(column => <col key={column.key} data-column-key={column.key} style={{ width: column.width }} />)}</colgroup>
         <thead><tr>{visibleColumns.map(column => <TableLayoutHeaderCell key={column.key} column={column} constrainColumnMenuToViewport
           className={column.key === "quantity" || column.key === "balance" ? "cash-timeline-amount" : ""}

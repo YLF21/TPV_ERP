@@ -1,7 +1,10 @@
 import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { ErpSelect, type LocaleCode, type UserSession } from "@tpverp/app-common";
+import { ErpListSelect } from "../../../packages/app-common/src/components/ErpListSelect";
+import { compactListFilter, listFilterChips, listFilterValues } from "../../../packages/app-common/src/components/listFilterValues";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { ErpListFilterPanel } from "../../../packages/app-common/src/components/ErpListFilterPanel";
 import { ReportDateRangeFilter, type ReportDateRange } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
 import { useTableArrowRepeat } from "../../../packages/app-common/src/components/useTableArrowRepeat";
 import { ensureTableRowVisible } from "../../../packages/app-common/src/components/ensureTableRowVisible";
@@ -125,12 +128,13 @@ export function CashOpeningAlertsScreen({ session, t, locale, refreshSignal, onR
     if (element.scrollHeight - element.scrollTop - element.clientHeight <= 240) void loadMore();
   }
 
-  function remove(field: "period" | "terminalId" | "userId" | "status") {
-    if (!options) return;
-    const change = field === "period" ? { from: "", to: "" }
-      : field === "status" ? { status: "" as const } : { [field]: "" };
-    setFilters(current => current ? { ...current, ...change } : current);
-    if (field === "period") setRange({ from: "", to: "", label: "" });
+  function changeFilter(key: "terminalId" | "userId" | "status", values: string[]) {
+    setFilters(current => current ? { ...current, [key]: compactListFilter(values) } : current);
+  }
+
+  function clearPeriod() {
+    setFilters(current => current ? { ...current, from: "", to: "" } : current);
+    setRange({ from: "", to: "", label: "" });
   }
 
   function selectRange(value: ReportDateRange) {
@@ -184,21 +188,21 @@ export function CashOpeningAlertsScreen({ session, t, locale, refreshSignal, onR
   return <section className="gestion-cash-alerts" aria-label={t("gestion.cashOpeningAlerts.title")}>
     <div className="gestion-cash-alerts-intro"><h3>{t("gestion.cashOpeningAlerts.title")}</h3><p>{t("gestion.cashOpeningAlerts.subtitle")}</p></div>
     {options && filters && <>
-      <div className="gestion-cash-alerts-filters gestion-filter-toolbar">
-        <label data-filter-active={Boolean(filters.terminalId)}><span>{t("gestion.cashClosures.terminal")}</span><ErpSelect value={filters.terminalId} aria-label={t("gestion.cashClosures.terminal")} options={[{ value: "", label: t("gestion.cashClosures.allTerminals") }, ...options.terminals.map(item => ({ value: item.id, label: item.name }))]} onChange={terminalId => setFilters(current => current ? { ...current, terminalId } : current)} /></label>
-        <label data-filter-active={Boolean(filters.userId)}><span>{t("gestion.cashClosures.user")}</span><ErpSelect value={filters.userId} aria-label={t("gestion.cashClosures.user")} options={[{ value: "", label: t("gestion.cashClosures.allUsers") }, ...options.users.map(item => ({ value: item.id, label: item.name }))]} onChange={userId => setFilters(current => current ? { ...current, userId } : current)} /></label>
-        <label data-filter-active={Boolean(filters.status)}><span>{t("gestion.cashOpeningAlerts.status")}</span><ErpSelect value={filters.status} aria-label={t("gestion.cashOpeningAlerts.status")} options={[{ value: "", label: t("gestion.cashOpeningAlerts.allStatuses") }, { value: "PENDING", label: t("gestion.cashOpeningAlerts.pending") }, { value: "REVIEWED", label: t("gestion.cashOpeningAlerts.reviewed") }]} onChange={status => setFilters(current => current ? { ...current, status: status as CashAlertFilters["status"] } : current)} /></label>
-      </div>
+      <ErpListFilterPanel translate={t} search={null} filters={<>
+        <label data-filter-active={listFilterValues(filters?.terminalId).length > 0}><span>{t("gestion.cashClosures.terminal")}</span><ErpListSelect values={listFilterValues(filters?.terminalId)} aria-label={t("gestion.cashClosures.terminal")} options={[{ value: "", label: t("gestion.cashClosures.allTerminals") }, ...options.terminals.map(item => ({ value: item.id, label: item.name }))]} onChange={values => changeFilter("terminalId", values)} /></label>
+        <label data-filter-active={listFilterValues(filters?.userId).length > 0}><span>{t("gestion.cashClosures.user")}</span><ErpListSelect values={listFilterValues(filters?.userId)} aria-label={t("gestion.cashClosures.user")} options={[{ value: "", label: t("gestion.cashClosures.allUsers") }, ...options.users.map(item => ({ value: item.id, label: item.name }))]} onChange={values => changeFilter("userId", values)} /></label>
+        <label data-filter-active={listFilterValues(filters?.status).length > 0}><span>{t("gestion.cashOpeningAlerts.status")}</span><ErpListSelect values={listFilterValues(filters?.status)} aria-label={t("gestion.cashOpeningAlerts.status")} options={[{ value: "", label: t("gestion.cashOpeningAlerts.allStatuses") }, { value: "PENDING", label: t("gestion.cashOpeningAlerts.pending") }, { value: "REVIEWED", label: t("gestion.cashOpeningAlerts.reviewed") }]} onChange={values => changeFilter("status", values)} /></label>
+      </>} />
       <ErpFilterChips translate={t} onClear={() => { const reset: CashAlertFilters = { from: "", to: "", terminalId: "", userId: "", status: "" }; setFilters(reset); setRange({ from: "", to: "", label: "" }); }} chips={[
-        { key: "period", label: `${t("gestion.cashClosures.from")} / ${t("gestion.cashClosures.to")}`, value: filters?.from && filters.to ? (filters.from === filters.to ? filters.from : `${filters.from} — ${filters.to}`) : filters?.from ? `${t("gestion.cashClosures.from")}: ${filters.from}` : filters?.to ? `${t("gestion.cashClosures.to")}: ${filters.to}` : "", onRemove: () => remove("period") },
-        { key: "terminal", label: t("gestion.cashClosures.terminal"), value: filters?.terminalId ? options.terminals.find(item => item.id === filters.terminalId)?.name ?? filters.terminalId : "", onRemove: () => remove("terminalId") },
-        { key: "user", label: t("gestion.cashClosures.user"), value: filters?.userId ? options.users.find(item => item.id === filters.userId)?.name ?? filters.userId : "", onRemove: () => remove("userId") },
-        { key: "status", label: t("gestion.cashOpeningAlerts.status"), value: filters?.status ? t(`gestion.cashOpeningAlerts.${filters.status.toLowerCase()}`) : "", onRemove: () => remove("status") }
+        { key: "period", label: `${t("gestion.cashClosures.from")} / ${t("gestion.cashClosures.to")}`, value: filters?.from && filters.to ? (filters.from === filters.to ? filters.from : `${filters.from} — ${filters.to}`) : filters?.from ? `${t("gestion.cashClosures.from")}: ${filters.from}` : filters?.to ? `${t("gestion.cashClosures.to")}: ${filters.to}` : "", onRemove: () => clearPeriod() },
+        ...listFilterChips("terminal", t("gestion.cashClosures.terminal"), listFilterValues(filters?.terminalId), values => changeFilter("terminalId", values), id => options.terminals.find(item => item.id === id)?.name ?? id),
+        ...listFilterChips("user", t("gestion.cashClosures.user"), listFilterValues(filters?.userId), values => changeFilter("userId", values), id => options.users.find(item => item.id === id)?.name ?? id),
+        ...listFilterChips("status", t("gestion.cashOpeningAlerts.status"), listFilterValues(filters?.status), values => changeFilter("status", values), value => t("gestion.cashOpeningAlerts." + value.toLowerCase())),
       ]} />
     </>}
     <div className={`gestion-cash-alerts-body${showDetail ? " with-detail" : ""}`}>
     <div className="gestion-cash-alerts-list">
-    <div className="gestion-cash-alerts-table-wrap" role="table" aria-rowcount={rows.length} onScroll={onScroll} ref={tableRef}>
+    <div className="gestion-cash-alerts-table-wrap erp-list-filter-table" role="table" aria-rowcount={rows.length} onScroll={onScroll} ref={tableRef}>
       <div className="gestion-cash-alert-row head" role="row">{["date", "time", "type", "terminal", "user", "expected", "counted", "difference", "status"].map(key => <span key={key} role="columnheader">{t(key === "date" || key === "time" || key === "terminal" || key === "user" ? `gestion.cashClosures.column.${key}` : `gestion.cashOpeningAlerts.${key}`)}</span>)}</div>
       {rows.map(row => <div className={`gestion-cash-alert-row${alertKey(row) === selectedId ? " selected" : ""}`} role="row" aria-selected={alertKey(row) === selectedId} tabIndex={0} data-cash-alert-key={alertKey(row)} key={alertKey(row)} onClick={() => selectAlert(row)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectAlert(row); } else if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); handleArrow(event); } }}>
         <span role="cell">{date.format(new Date(row.occurredAt))}</span><span role="cell">{time.format(new Date(row.occurredAt))}</span><span role="cell">{t(`gestion.cashOpeningAlerts.type.${row.type.toLowerCase()}`)}</span><span role="cell">{row.terminalName}</span><span role="cell">{row.userName}</span><span role="cell">{amount(row.expectedFund)}</span><span role="cell">{amount(row.countedFund)}</span><span role="cell" className={row.difference === null ? "" : row.difference < 0 ? "shortage" : row.difference > 0 ? "surplus" : ""}>{amount(row.difference)}</span><span role="cell">{t(`gestion.cashOpeningAlerts.${row.status.toLowerCase()}`)}</span>

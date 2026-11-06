@@ -1,9 +1,14 @@
+import { changeStockBulkOptions, stockBulkOptionValues, type StockBulkOptionKey } from "./stockBulkAdvanced";
+import { ErpListSelect } from "./ErpListSelect";
+import { listFilterChips, listFilterValues } from "./listFilterValues";
 import { DialogDismissButton } from "./DialogDismissButton";
 import { ShortcutButtonLabel } from "./ShortcutButtonLabel";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { AppBrand } from "./AppBrand";
 import { DesktopHeaderContext } from "./DesktopHeaderContext";
 import { ReportDateRangeFilter, isValidReportDate, type ReportDateRange } from "./ReportDateRangeFilter";
+import { ErpListFilterPanel } from "./ErpListFilterPanel";
+import { WarehouseSearchFrame } from "./WarehouseSearchFrame";
 import "./ErpClassicWindow.css";
 import "./StockTopSales.css";
 import "./StockListControls.css";
@@ -12,14 +17,18 @@ import { Children, Fragment, cloneElement, isValidElement, useEffect, useLayoutE
 import type { ChangeEvent, CSSProperties, FocusEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement, ReactNode, UIEvent } from "react";
 import {
   ChartLineUp,
+  Check,
   FilePdf,
   FileXls,
+  FloppyDisk,
+  FolderOpen,
   IdentificationBadge,
   IdentificationCard,
   Megaphone,
   Package,
   Plus,
   Prohibit,
+  PencilSimple,
   Table,
   Tag,
   Truck,
@@ -102,6 +111,7 @@ import { StockPromotionGroups, type StockPromotionExportContext } from "./StockP
 import { usePromotionManagement } from "./usePromotionManagement";
 import { stockExcelDefaultFileName } from "./stockExcelExportNames";
 import { StockProductInformationPanel } from "./StockProductInformationPanel";
+import { ReplenishmentRequestButton } from "./ReplenishmentRequestButton";
 import "./StockProductDetail.css";
 import "./ErpSearchField.css";
 import "./ErpClassicTables.css";
@@ -446,7 +456,10 @@ export type StockTopSalesFilters = {
   supplier: string;
   search: string;
   warehouse?: string;
+  multiple?: Partial<Record<"family" | "subfamily" | "warehouse", string[]>>;
 };
+
+type StockInventoryOptionKey = "type" | "discount" | "family" | "tax" | "offerActive" | "status" | "supplier" | "warehouse";
 
 export type StockInventoryFilters = {
   type: string;
@@ -457,6 +470,7 @@ export type StockInventoryFilters = {
   warehouse: string;
   status?: string;
   supplier?: string;
+  multiple?: Partial<Record<StockInventoryOptionKey, string[]>>;
 };
 
 type StockExcelExportJob = {
@@ -1261,19 +1275,6 @@ function sharedExcelBoolean(value: string) {
   return ["1", "SI", "SÍ", "TRUE", "YES", "COMMON.YES"].includes(value.trim().toUpperCase());
 }
 
-function uniqueStockOptions(rows: StockInventoryRow[], valueKey: keyof StockInventoryRow, labelKey: keyof StockInventoryRow) {
-  const options = new Map<string, string>();
-  rows.forEach((row) => {
-    const value = String(row[valueKey] ?? "");
-    const label = String(row[labelKey] ?? value);
-    if (value && value !== "-" && !options.has(value)) {
-      options.set(value, label && label !== "-" ? label : value);
-    }
-  });
-  return Array.from(options, ([value, label]) => ({ value, label }))
-    .sort((left, right) => left.label.localeCompare(right.label, "es"));
-}
-
 export function buildStockInventoryRows(
   products: ProductView[],
   warehouses: WarehouseView[],
@@ -1495,13 +1496,16 @@ export function stockBulkProductFromPreviewDatabaseData(
 
 export function selectStockInventoryRows(
   allWarehouseRows: StockInventoryRow[],
-  warehouseId: string
+  warehouseId: string,
+  warehouseIds?: readonly string[]
 ) {
   if (warehouseId !== "TOTAL") {
     return allWarehouseRows.filter((row) => row.warehouseId === warehouseId);
   }
   const rowsByProduct = new Map<string, StockInventoryRow>();
+  const includedWarehouses = warehouseIds?.length ? new Set(warehouseIds) : null;
   allWarehouseRows.forEach((row) => {
+    if (includedWarehouses && !includedWarehouses.has(row.warehouseId)) return;
     const current = rowsByProduct.get(row.productId);
     if (!current) {
       rowsByProduct.set(row.productId, {
@@ -1513,7 +1517,7 @@ export function selectStockInventoryRows(
       return;
     }
     current.quantity += row.quantity;
-    current.totalQuantity = current.quantity;
+    if (!includedWarehouses) current.totalQuantity = current.quantity;
   });
   return Array.from(rowsByProduct.values());
 }
@@ -1608,6 +1612,23 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function stockInventorySelections(filters: StockInventoryFilters, field: StockInventoryOptionKey) {
+  return filters.multiple?.[field] ?? listFilterValues(filters[field]);
+}
+
+function stockListChoices(filters: StockInventoryFilters) {
+  const fields: Record<StockInventoryOptionKey, string> = {
+    type: "productTypes", discount: "priceUseModes", family: "familyIds", tax: "taxIds",
+    offerActive: "offerStates", status: "stockStatuses", supplier: "supplierIds", warehouse: "warehouseIds"
+  };
+  return Object.fromEntries((Object.keys(fields) as StockInventoryOptionKey[]).flatMap(field => {
+    const selections = filters.multiple?.[field];
+    const values = field === "warehouse" ? selections?.filter(isUuid) : selections;
+    if (!values?.length) return [];
+    return [[fields[field], field === "offerActive" ? values.map(value => value === "yes") : values]];
+  }));
+}
+
 export function stockPagePath(
   cursor: string | null | undefined,
   view: StockViewKey,
@@ -1648,7 +1669,11 @@ export function stockPagePath(
   if (filters.supplier && isUuid(filters.supplier)) {
     parameters.set("supplierId", filters.supplier);
   }
-  const effectiveSort = sort ?? (filters.status || filters.supplier
+  const choices = Object.entries(stockListChoices(filters));
+  for (const [key, values] of choices) {
+    for (const value of values) parameters.append(key, String(value));
+  }
+  const effectiveSort = sort ?? (filters.status || filters.supplier || choices.length
     ? { column: "name", direction: "asc" as const }
     : null);
   if (effectiveSort) {
@@ -1797,33 +1822,18 @@ export function filterStockInventoryRows(
     if (selectedView === "stock.bulkEdit") {
       return false;
     }
-    if (filters.type && row.productType !== filters.type) {
-      return false;
-    }
-    if (filters.discount && row.discountType !== filters.discount) {
-      return false;
-    }
-    if (filters.family && row.familyId !== filters.family && row.familyName !== filters.family) {
-      return false;
-    }
-    if (filters.tax && row.taxId !== filters.tax && row.taxName !== filters.tax) {
-      return false;
-    }
-    if (filters.offerActive === "yes" && row.offerActive !== "common.yes") {
-      return false;
-    }
-    if (filters.offerActive === "no" && row.offerActive !== "common.no") {
-      return false;
-    }
-    if (filters.warehouse && row.warehouseId !== filters.warehouse && row.warehouseName !== filters.warehouse) {
-      return false;
-    }
-    if (filters.status && stockInventoryStatus(row.quantity, row.active !== "common.no") !== `stock.status.${filters.status}`) {
-      return false;
-    }
-    if (filters.supplier && !row.supplierIds?.includes(filters.supplier)) {
-      return false;
-    }
+    const matches = (field: StockInventoryOptionKey, ...values: Array<string | undefined>) => {
+      const selections = stockInventorySelections(filters, field);
+      return !selections.length || selections.some(selected => values.includes(selected));
+    };
+    if (!matches("type", row.productType)
+      || !matches("discount", row.discountType)
+      || !matches("family", row.familyId, row.familyName, row.subfamilyId)
+      || !matches("tax", row.taxId, row.taxName)
+      || !matches("offerActive", row.offerActive === "common.yes" ? "yes" : "no")
+      || !matches("status", stockInventoryStatus(row.quantity, row.active !== "common.no").replace("stock.status.", ""))
+      || !matches("supplier", ...(row.supplierIds ?? []))) return false;
+    if (filters.warehouse && row.warehouseId !== filters.warehouse && row.warehouseName !== filters.warehouse) return false;
     if (normalizedSearch.length === 0) {
       return true;
     }
@@ -1857,7 +1867,8 @@ export function stockTopSalesPath(
   period: StockTopSalesPeriod,
   dateFrom: string,
   dateTo = dateFrom,
-  warehouseId = ""
+  warehouseId = "",
+  warehouseIds: readonly string[] = [],
 ) {
   const parameters = new URLSearchParams(period === "custom"
     ? { dateFrom, dateTo }
@@ -1865,6 +1876,7 @@ export function stockTopSalesPath(
   if (warehouseId) {
     parameters.set("warehouseId", warehouseId);
   }
+  for (const id of warehouseIds) parameters.append("warehouseIds", id);
   return `/stock/top-sales?${parameters.toString()}`;
 }
 
@@ -2137,6 +2149,9 @@ export function filterStockTopSalesRows(rows: StockTopSalesRow[], filters: Stock
       (!subfamily || row.subfamilyName.toLocaleLowerCase("es").includes(subfamily) || (row.subfamilyId ?? "").toLocaleLowerCase("es").includes(subfamily)) &&
       (!supplier || supplierText.includes(supplier)) &&
       (!warehouse || row.warehouseId === warehouse) &&
+      (!filters.multiple?.family?.length || filters.multiple.family.includes(row.familyId ?? "")) &&
+      (!filters.multiple?.subfamily?.length || filters.multiple.subfamily.includes(row.subfamilyId ?? "")) &&
+      (!filters.multiple?.warehouse?.length || filters.multiple.warehouse.includes(row.warehouseId ?? "")) &&
       (!search || rowText.includes(search));
   }).sort((left, right) => right.soldQuantity - left.soldQuantity || left.name.localeCompare(right.name, "es"));
 }
@@ -2238,6 +2253,20 @@ export function StockScreen({
   const [inventoryFilterOpen, setInventoryFilterOpen] = useState(false);
   const [inventoryFilters, setInventoryFilters] = useState<StockInventoryFilters>(defaultStockInventoryFilters);
   const [draftInventoryFilters, setDraftInventoryFilters] = useState<StockInventoryFilters>(defaultStockInventoryFilters);
+  useEffect(() => {
+    if (app !== "pda") setDraftInventoryFilters(inventoryFilters);
+  }, [app, inventoryFilters]);
+  useEffect(() => {
+    if (app !== "pda") setDraftTopSalesFilters(current => ({ ...current,
+      family: topSalesFilters.family, subfamily: topSalesFilters.subfamily,
+      supplier: topSalesFilters.supplier, warehouse: topSalesFilters.warehouse, multiple: topSalesFilters.multiple }));
+  }, [app, topSalesFilters.family, topSalesFilters.subfamily, topSalesFilters.supplier, topSalesFilters.warehouse, topSalesFilters.multiple]);
+  useEffect(() => {
+    if (app === "pda") return;
+    setDraftTopSalesPeriod(topSalesPeriod);
+    setDraftTopSalesDateFrom(topSalesDateFrom);
+    setDraftTopSalesDateTo(topSalesDateTo);
+  }, [app, topSalesPeriod, topSalesDateFrom, topSalesDateTo]);
   const [inventoryDropdownOpen, setInventoryDropdownOpen] = useState("");
   const [inventoryFamilyPickerOpen, setInventoryFamilyPickerOpen] = useState(false);
   const [selectedInventoryFamily, setSelectedInventoryFamily] = useState("");
@@ -2281,6 +2310,7 @@ export function StockScreen({
   const [bulkQuickEditField, setBulkQuickEditField] = useState<BulkQuickEditField | null>(null);
   const [bulkFilterOpen, setBulkFilterOpen] = useState(false);
   const [bulkFilters, setBulkFilters] = useState<StockBulkFilterCriteria>({ ...emptyStockBulkFilterCriteria });
+  const bulkSupplierFilterRequest = useRef(0);
   const [bulkFamilyDialogOpen, setBulkFamilyDialogOpen] = useState(false);
   const [bulkDecimalDialogOpen, setBulkDecimalDialogOpen] = useState(false);
   const [bulkPriceRulesOpen, setBulkPriceRulesOpen] = useState(false);
@@ -2378,9 +2408,9 @@ export function StockScreen({
   });
   const inventorySort = isStockInventoryTableView(selectedView) || (app === "venta" && selectedView === "stock.promotions")
     ? inventorySorting.sort : null;
-  const stockSortWarehouseId = inventoryFilters.warehouse === "TOTAL"
-    ? ""
-    : inventoryFilters.warehouse || defaultWarehouseId;
+  const selectedInventoryWarehouseIds = inventoryFilters.multiple?.warehouse;
+  const aggregateInventoryWarehouses = inventoryFilters.warehouse === "TOTAL" || Boolean(selectedInventoryWarehouseIds?.length);
+  const stockSortWarehouseId = aggregateInventoryWarehouses ? "" : inventoryFilters.warehouse || defaultWarehouseId;
   const stockQueryKey = JSON.stringify([selectedView, searchText, inventoryFilters,
     inventorySort?.column, inventorySort?.direction, session.accessToken]);
   const stockDataCurrent = loadedStockQueryKey === stockQueryKey;
@@ -2456,7 +2486,7 @@ export function StockScreen({
           const activeWarehouses = warehouses.filter((warehouse) => warehouse.active !== false);
           const defaultWarehouse = activeWarehouses.find((warehouse) => warehouse.defaultWarehouse)
             ?? activeWarehouses[0] ?? warehouses[0];
-          const warehouseId = inventoryFilters.warehouse === "TOTAL" ? ""
+          const warehouseId = aggregateInventoryWarehouses ? ""
             : inventoryFilters.warehouse || defaultWarehouse?.id || "";
           const page = await apiRequest<PagedResult<StockPageItemView>>(
             stockPagePath(null, selectedView, searchText, inventoryFilters, inventorySort, warehouseId),
@@ -2607,7 +2637,7 @@ export function StockScreen({
     async function loadTopSales() {
       try {
         const rows = await apiRequest<StockTopSalesRow[]>(
-          stockTopSalesPath(topSalesPeriod, topSalesDateFrom, topSalesDateTo, topSalesFilters.warehouse),
+          stockTopSalesPath(topSalesPeriod, topSalesDateFrom, topSalesDateTo, topSalesFilters.warehouse, topSalesFilters.multiple?.warehouse),
           { token: session.accessToken }
         );
         if (!cancelled) {
@@ -2626,12 +2656,16 @@ export function StockScreen({
     return () => {
       cancelled = true;
     };
-  }, [canReadStock, selectedView, session.accessToken, topSalesDateFrom, topSalesDateTo, topSalesFilters.warehouse, topSalesPeriod]);
+  }, [canReadStock, selectedView, session.accessToken, topSalesDateFrom, topSalesDateTo, topSalesFilters.warehouse, topSalesFilters.multiple?.warehouse, topSalesPeriod]);
 
-  const effectiveWarehouseId = inventoryFilters.warehouse || defaultWarehouseId || allStockRows[0]?.warehouseId || "";
+  const effectiveWarehouseId = aggregateInventoryWarehouses ? "TOTAL"
+    : inventoryFilters.warehouse || defaultWarehouseId || allStockRows[0]?.warehouseId || "";
   const stockRows = useMemo(
-    () => attachSupplierNamesToStockRows(selectStockInventoryRows(stockDataCurrent ? allStockRows : [], effectiveWarehouseId), bulkProductSupplierLinks),
-    [allStockRows, bulkProductSupplierLinks, effectiveWarehouseId, stockDataCurrent]
+    () => attachSupplierNamesToStockRows(
+      selectStockInventoryRows(stockDataCurrent ? allStockRows : [], effectiveWarehouseId, selectedInventoryWarehouseIds),
+      bulkProductSupplierLinks
+    ),
+    [allStockRows, bulkProductSupplierLinks, effectiveWarehouseId, selectedInventoryWarehouseIds, stockDataCurrent]
   );
   const visibleRows = filterStockInventoryRows(stockRows, selectedView, searchText, inventoryFilters);
   // The shared promotion browser includes historical promotions. Match their
@@ -2642,7 +2676,9 @@ export function StockScreen({
   const filteredTopSalesRows = filterStockTopSalesRows(topSalesRows, topSalesFilters);
   const familyTree = useMemo(() => buildStockTopSalesFamilyTree(topSalesRows, t("stock.filter.noFamily")), [topSalesRows, t]);
   const inventoryFamilyTree = useMemo(() => buildStockInventoryFamilyTree(stockRows, t("stock.filter.noFamily")), [stockRows, t]);
-  const inventoryTaxOptions = useMemo(() => uniqueStockOptions(stockRows, "taxId", "taxName"), [stockRows]);
+  const inventoryTaxOptions = useMemo(() => stockCatalog.taxes
+    .map(tax => ({ value: tax.id, label: taxDisplayName(tax) }))
+    .sort((left, right) => left.label.localeCompare(right.label, locale, { numeric: true })), [stockCatalog.taxes, locale]);
   const inventoryWarehouseOptions = useMemo(() => [
     { value: "TOTAL", label: t("stock.warehouse.total") },
     ...warehouseCatalog
@@ -3196,14 +3232,12 @@ export function StockScreen({
           && (event.target as HTMLElement | null)?.closest("input, textarea, select, button, [role='combobox']")) {
         return;
       }
-      if ((detailProductCreation && [STOCK_CREATE_PRODUCT_SHORTCUT, "F8"].includes(event.key))
-          || (app === "gestion" && allowSafeRetirement && event.key === "F9")) {
+      if (detailProductCreation && [STOCK_CREATE_PRODUCT_SHORTCUT, "F8"].includes(event.key)) {
         if (event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
         if (document.querySelector('[aria-modal="true"]:not(.stock-detail-overlay)')) return;
         event.preventDefault();
         if (event.key === STOCK_CREATE_PRODUCT_SHORTCUT) { setEditingProduct(null); setProductCreateOpen(true); }
         if (event.key === "F8") setDetailTab("stock");
-        if (event.key === "F9") openProductRetirement(row);
         return;
       }
       const action = stockDetailKeyAction(event.key);
@@ -3239,7 +3273,7 @@ export function StockScreen({
       const target = event.target as HTMLElement | null;
       if (!documentStock && target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable='true']")) return;
       if (partyDirectory || !session.accessToken || stockExportBusy || !isStockAsyncExportView(selectedView) || detailRow) return;
-      if (document.querySelector("[role='dialog'][aria-modal='true']")) return;
+      if (document.querySelector("[role='dialog'][aria-modal='true'], .stock-standard-filters .erp-select--open")) return;
       event.preventDefault();
       event.stopPropagation();
       stockExportShortcutRef.current(event.key === "F7" ? "pdf" : "xlsx");
@@ -3253,7 +3287,7 @@ export function StockScreen({
         || selectedView === "stock.promotions" || productCreateOpen) return;
     function handleAddProductShortcut(event: globalThis.KeyboardEvent) {
       if (event.defaultPrevented || event.key !== STOCK_CREATE_PRODUCT_SHORTCUT || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
-      if (document.querySelector('[aria-modal="true"]')) return;
+      if (document.querySelector('[aria-modal="true"], .stock-standard-filters .erp-select--open')) return;
       event.preventDefault();
       event.stopPropagation();
       setEditingProduct(null);
@@ -3278,6 +3312,7 @@ export function StockScreen({
 
   function updateDraftTopSalesFilter(key: keyof StockTopSalesFilters, value: string) {
     setDraftTopSalesFilters((current) => ({ ...current, [key]: value }));
+    if (app !== "pda") setTopSalesFilters((current) => ({ ...current, [key]: value }));
   }
 
   function updateTopSalesSearch(value: string) {
@@ -3287,6 +3322,10 @@ export function StockScreen({
 
   function updateDraftInventoryFilter<K extends keyof StockInventoryFilters>(key: K, value: StockInventoryFilters[K]) {
     setDraftInventoryFilters((current) => ({ ...current, [key]: value }));
+    if (app !== "pda") {
+      setInventoryFilters((current) => ({ ...current, [key]: value }));
+      setSelectedStockIndex(0);
+    }
   }
 
   function openTopSalesFilters() {
@@ -3319,13 +3358,10 @@ export function StockScreen({
   function clearInventoryFilters() {
     setDraftInventoryFilters(defaultStockInventoryFilters);
     setSelectedInventoryFamily("");
-  }
-
-  function removeInventoryFilter(key: keyof StockInventoryFilters) {
-    setInventoryFilters(current => ({ ...current, [key]: "" }));
-    setDraftInventoryFilters(current => ({ ...current, [key]: "" }));
-    if (key === "family") setSelectedInventoryFamily("");
-    setSelectedStockIndex(0);
+    if (app !== "pda") {
+      setInventoryFilters({ ...defaultStockInventoryFilters });
+      setSelectedStockIndex(0);
+    }
   }
 
   function clearAppliedInventoryFilters() {
@@ -3336,23 +3372,32 @@ export function StockScreen({
     setSelectedStockIndex(0);
   }
 
+  function setInventoryOptions(field: StockInventoryOptionKey, values: string[]) {
+    const update = (current: StockInventoryFilters) => ({
+      ...current,
+      [field]: values.length === 1 ? values[0] : "",
+      multiple: { ...current.multiple, [field]: values.length > 1 ? values : undefined },
+    });
+    setInventoryFilters(update);
+    setDraftInventoryFilters(update);
+    setSelectedStockIndex(0);
+  }
+
   function inventoryFilterChips(): ErpFilterChip[] {
-    const family = stockCatalog.families.find(value => value.id === inventoryFilters.family);
-    const subfamily = stockCatalog.subfamilies.find(value => value.id === inventoryFilters.family);
-    const criteria: Array<[keyof StockInventoryFilters, string, string]> = [
-      ["type", t("stock.column.type"), t(stockProductTypeLabel(inventoryFilters.type))],
-      ["discount", t("product.field.usePrice"), t(stockDiscountTypeLabel(inventoryFilters.discount))],
-      ["family", t("stock.column.family"), family?.name ?? subfamily?.name ?? inventoryFilters.family],
-      ["tax", t("stock.column.tax"), inventoryTaxOptions.find(value => value.value === inventoryFilters.tax)?.label ?? inventoryFilters.tax],
-      ["offerActive", t("stock.column.offerActive"), t(inventoryFilters.offerActive === "yes" ? "common.yes" : "common.no")],
-      ["status", t("stock.column.status"), t(`stock.status.${inventoryFilters.status}`)],
-      ["supplier", t("stock.column.supplier"), inventorySupplierOptions.find(value => value.value === inventoryFilters.supplier)?.label ?? inventoryFilters.supplier ?? ""],
-      ["warehouse", t("stock.column.warehouse"), inventoryWarehouseOptions.find(value => value.value === inventoryFilters.warehouse)?.label ?? inventoryFilters.warehouse]
+    const criteria: Array<[StockInventoryOptionKey, string, (value: string) => string]> = [
+      ["type", t("stock.column.type"), value => t(stockProductTypeLabel(value))],
+      ["discount", t("product.field.usePrice"), value => t(stockDiscountTypeLabel(value))],
+      ["family", t("stock.column.family"), value => stockCatalog.families.find(item => item.id === value)?.name
+        ?? stockCatalog.subfamilies.find(item => item.id === value)?.name ?? value],
+      ["tax", t("stock.column.tax"), value => inventoryTaxOptions.find(item => item.value === value)?.label ?? value],
+      ["offerActive", t("stock.column.offerActive"), value => t(value === "yes" ? "common.yes" : "common.no")],
+      ["status", t("stock.column.status"), value => t("stock.status." + value)],
+      ["supplier", t("stock.column.supplier"), value => inventorySupplierOptions.find(item => item.value === value)?.label ?? value],
+      ["warehouse", t("stock.column.warehouse"), inventoryWarehouseLabel],
     ];
     return [
-      ...criteria.filter(([key]) => Boolean(inventoryFilters[key])).map(([key, label, value]) => ({
-        key, label, value, onRemove: () => removeInventoryFilter(key)
-      })),
+      ...criteria.flatMap(([field, label, describe]) => listFilterChips(field, label, stockInventorySelections(inventoryFilters, field),
+        values => setInventoryOptions(field, values), describe)),
       { key: "search", label: t("salesReport.search"), value: searchText.trim(), onRemove: () => setSearchText("") }
     ];
   }
@@ -3383,16 +3428,28 @@ export function StockScreen({
     if (app === "pda") resetTopSalesPeriod();
   }
 
+  function setTopSalesOptions(field: "family" | "subfamily" | "warehouse", values: string[]) {
+    const update = (current: StockTopSalesFilters): StockTopSalesFilters => ({
+      ...current, [field]: values.length === 1 ? values[0] : "",
+      multiple: { ...current.multiple, [field]: values.length > 1 ? values : undefined },
+    });
+    setTopSalesFilters(update);
+    setDraftTopSalesFilters(update);
+  }
+
   function topSalesFilterChips(): ErpFilterChip[] {
-    const labels: Record<keyof StockTopSalesFilters, string> = {
-      family: t("stock.column.family"), subfamily: t("stock.column.subfamily"),
-      supplier: t("stock.column.supplier"), search: t("salesReport.search"), warehouse: t("stock.column.warehouse")
-    };
-    const chips: ErpFilterChip[] = (Object.keys(labels) as Array<keyof StockTopSalesFilters>).map(key => ({
-      key, label: labels[key],
-      value: key === "warehouse" ? warehouseCatalog.find(value => value.id === topSalesFilters.warehouse)?.name ?? topSalesFilters.warehouse ?? "" : topSalesFilters[key] ?? "",
-      onRemove: () => removeTopSalesFilter(key)
-    }));
+    const criteria = [
+      ["family", t("stock.column.family"), (id: string) => stockCatalog.families.find(item => item.id === id)?.name ?? id],
+      ["subfamily", t("stock.column.subfamily"), (id: string) => stockCatalog.subfamilies.find(item => item.id === id)?.name ?? id],
+      ["warehouse", t("stock.column.warehouse"), (id: string) => warehouseCatalog.find(item => item.id === id)?.name ?? id],
+    ] as const;
+    const chips: ErpFilterChip[] = [
+      ...criteria.flatMap(([field, label, describe]) => listFilterChips(field, label,
+        topSalesFilters.multiple?.[field] ?? listFilterValues(topSalesFilters[field]),
+        values => setTopSalesOptions(field, values), describe)),
+      { key: "supplier", label: t("stock.column.supplier"), value: topSalesFilters.supplier, onRemove: () => removeTopSalesFilter("supplier") },
+      { key: "search", label: t("salesReport.search"), value: topSalesFilters.search, onRemove: () => removeTopSalesFilter("search") },
+    ];
     if (topSalesPeriod !== "week") chips.unshift({
       key: "period", label: t("stock.filter.period"), value: activeTopSalesSummary()[0], onRemove: resetTopSalesPeriod,
       removeLabel: t("filters.resetWeek")
@@ -3401,24 +3458,28 @@ export function StockScreen({
   }
 
   function bulkFilterChips(): ErpFilterChip[] {
-    const family = stockCatalog.families.find(value => value.id === bulkFilters.familyId);
-    const subfamily = stockCatalog.subfamilies.find(value => value.id === bulkFilters.subfamilyId);
-    const supplier = bulkSupplierOptions.find(value => value.id === bulkFilters.supplierId);
-    const criteria: Array<[keyof StockBulkFilterCriteria, string, string]> = [
-      ["productType", t("stock.column.type"), t(stockProductTypeLabel(bulkFilters.productType ?? ""))],
-      ["familyId", t("stock.column.family"), family?.name ?? bulkFilters.familyId ?? ""],
-      ["subfamilyId", t("stock.column.subfamily"), subfamily?.name ?? bulkFilters.subfamilyId ?? ""],
-      ["supplierId", t("stock.column.supplier"), supplier?.tradeName || supplier?.legalName || bulkFilters.supplierId || ""],
-      ["taxId", t("stock.column.tax"), bulkCatalogTaxOptions.find(value => value.value === bulkFilters.taxId)?.label ?? bulkFilters.taxId ?? ""],
-      ["priceUseMode", t("product.field.usePrice"), t(stockDiscountTypeLabel(bulkFilters.priceUseMode ?? ""))],
-      ["offerActive", t("stock.bulkEdit.filter.offerActive"), t(bulkFilters.offerActive ? "common.yes" : "common.no")],
+    const criteria: Array<[StockBulkOptionKey, string, (value: string) => string]> = [
+      ["productType", t("stock.column.type"), value => t(stockProductTypeLabel(value))],
+      ["familyId", t("stock.column.family"), value => stockCatalog.families.find(item => item.id === value)?.name ?? value],
+      ["subfamilyId", t("stock.column.subfamily"), value => stockCatalog.subfamilies.find(item => item.id === value)?.name ?? value],
+      ["supplierId", t("stock.column.supplier"), value => {
+        const supplier = bulkSupplierOptions.find(item => item.id === value);
+        return supplier?.tradeName || supplier?.legalName || value;
+      }],
+      ["taxId", t("stock.column.tax"), value => bulkCatalogTaxOptions.find(item => item.value === value)?.label ?? value],
+      ["priceUseMode", t("product.field.usePrice"), value => t(stockDiscountTypeLabel(value))],
+      ["offerActive", t("stock.bulkEdit.filter.offerActive"), value => t(value === "yes" ? "common.yes" : "common.no")],
+    ];
+    const otherCriteria = [
       ["offerFrom", t("product.field.offerFrom"), bulkFilters.offerFrom ? formatStockFilterDate(bulkFilters.offerFrom, locale) : ""],
       ["offerUntil", t("product.field.offerUntil"), bulkFilters.offerUntil ? formatStockFilterDate(bulkFilters.offerUntil, locale) : ""],
       ["minimumPrice", t("stock.bulkEdit.filter.minimumPrice"), String(bulkFilters.minimumPrice ?? "")],
       ["maximumPrice", t("stock.bulkEdit.filter.maximumPrice"), String(bulkFilters.maximumPrice ?? "")]
-    ];
+    ] as const;
     return [
-      ...criteria.filter(([key]) => bulkFilters[key] !== null && bulkFilters[key] !== undefined && bulkFilters[key] !== "").map(([key, label, value]) => ({
+      ...criteria.flatMap(([key, label, describe]) => listFilterChips(key, label, stockBulkOptionValues(bulkFilters, key),
+        values => setBulkFilters(current => changeStockBulkOptions(current, key, values)), describe)),
+      ...otherCriteria.map(([key, label, value]) => ({
         key, label, value, onRemove: () => setBulkFilters(current => ({ ...current, [key]: null }))
       })),
       { key: "search", label: t("salesReport.search"), value: bulkSearchText.trim(), onRemove: () => setBulkSearchText("") }
@@ -4771,6 +4832,34 @@ export function StockScreen({
     setBulkFilterOpen(false);
   }
 
+  async function updateBulkListFilters(value: StockBulkFilterCriteria) {
+    setBulkFilters(value);
+    if (value.supplierId === bulkFilters.supplierId) return;
+    const request = ++bulkSupplierFilterRequest.current;
+    if (!value.supplierId || !session.accessToken) return;
+    const supplier = bulkSupplierOptions.find((option) => option.id === value.supplierId);
+    if (!supplier) return;
+    try {
+      const links = await apiRequest<StockBulkSupplierProductLink[]>(
+        `/product-bulk-edits/suppliers/${encodeURIComponent(value.supplierId)}/products`,
+        { token: session.accessToken }
+      );
+      if (request !== bulkSupplierFilterRequest.current) return;
+      const linksByProduct = new Map(links.map((link) => [link.productId, link]));
+      setBulkRows((current) => current.map((row) => {
+        if (!row.product) return row;
+        const link = linksByProduct.get(row.product.productId);
+        if (!link) return row;
+        return { ...row, suppliers: [
+          ...(row.suppliers ?? []).filter((item) => item.id !== supplier.id),
+          { ...supplier, ...link }
+        ] };
+      }));
+    } catch (error) {
+      if (request === bulkSupplierFilterRequest.current) setBulkStatus(error instanceof Error ? error.message : t("stock.bulkEdit.supplierLoadError"));
+    }
+  }
+
   async function openBulkPriceRulesDialog() {
     if (selectedStockBulkProductIds(bulkRows).length === 0) {
       setBulkStatus(t("stock.bulkEdit.rules.noSelectedProducts"));
@@ -5149,12 +5238,13 @@ export function StockScreen({
       family: "",
       subfamily: "",
       supplier: "",
-      warehouse: ""
+      warehouse: "", multiple: undefined
     }));
     setTopSalesDateText(formatStockDateRange(range.dateFrom, range.dateTo, locale));
     setCalendarMonth(startOfMonth(new Date()));
     setTopSalesDateRangeStart(null);
     setSelectedFamily({ family: "", subfamily: "" });
+    if (app !== "pda") setTopSalesFilters((current) => ({ ...current, family: "", subfamily: "", supplier: "", warehouse: "", multiple: undefined }));
   }
 
   function applyTopSalesFilters(
@@ -5196,6 +5286,10 @@ export function StockScreen({
 
   function applyInventoryFamilySelection() {
     setDraftInventoryFilters((current) => ({ ...current, family: selectedInventoryFamily }));
+    if (app !== "pda") {
+      setInventoryFilters((current) => ({ ...current, family: selectedInventoryFamily }));
+      setSelectedStockIndex(0);
+    }
     setInventoryFamilyPickerOpen(false);
   }
 
@@ -6357,46 +6451,52 @@ export function StockScreen({
     </button>;
   }
 
-  function renderBulkLeftActions(includeFilter = true) {
+  function renderBulkFileControl() {
+    return <div className="bulk-edit-file" ref={bulkFileMenuRef}>
+      <button type="button" aria-haspopup="menu" aria-expanded={bulkFileOpen} onClick={toggleBulkFileMenu}>
+        {t("stock.bulkEdit.file")}{app !== "pda" && <FileXls size={16} aria-hidden="true" />}
+      </button>
+      {renderBulkFileMenu()}
+    </div>;
+  }
+
+  function renderBulkLeftActions(includeFilter = true, includeFile = true) {
     const priceTabs: StockBulkEditTab[] = ["salePrice", "memberPrice", "wholesalePrice", "offer"];
     return (
       <>
-        <div className="bulk-edit-file" ref={bulkFileMenuRef}>
-          <button type="button" aria-haspopup="menu" aria-expanded={bulkFileOpen} onClick={toggleBulkFileMenu}>{t("stock.bulkEdit.file")}</button>
-          {renderBulkFileMenu()}
-        </div>
+        {includeFile && renderBulkFileControl()}
         {includeFilter && renderBulkFilterButton()}
         <button type="button" disabled={bulkBusy} onClick={() => handleBulkFileAction("stock.bulkEdit.saveList")}>
-          {t("common.save")}
+          {t("common.save")}{app !== "pda" && <FloppyDisk size={16} aria-hidden="true" />}
         </button>
         <button type="button" disabled={bulkBusy} onClick={() => setBulkDialog("apply")}>
-          {t("stock.bulkEdit.applyChanges")}
+          {t("stock.bulkEdit.applyChanges")}{app !== "pda" && <Check size={16} aria-hidden="true" />}
         </button>
         {bulkEditTab === "image" && (
           <>
           <button type="button" onClick={() => bulkImagePanelRef.current?.openFolder()}>
-            {t("stock.bulkEdit.openFolder")}
+            {t("stock.bulkEdit.openFolder")}{app !== "pda" && <FolderOpen size={16} aria-hidden="true" />}
           </button>
           <button
             type="button"
             disabled={bulkImageSnapshot.rows.length === 0}
             onClick={() => bulkImagePanelRef.current?.compareByName()}
           >
-            {t("stock.bulkEdit.compareName")}
+            {t("stock.bulkEdit.compareName")}{app !== "pda" && <Table size={16} aria-hidden="true" />}
           </button>
           <button
             type="button"
             disabled={bulkImageSnapshot.rows.length === 0}
             onClick={() => bulkImagePanelRef.current?.compareByCode()}
           >
-            {t("stock.bulkEdit.compareCode")}
+            {t("stock.bulkEdit.compareCode")}{app !== "pda" && <Table size={16} aria-hidden="true" />}
           </button>
           </>
         )}
         {priceTabs.includes(bulkEditTab) && (
           <>
-            <button type="button" onClick={openBulkDecimalDialog}>{t("stock.bulkEdit.decimalAdjust")}</button>
-            <button type="button" onClick={() => void openBulkPriceRulesDialog()}>{t("stock.bulkEdit.priceRule")}</button>
+            <button type="button" onClick={openBulkDecimalDialog}>{t("stock.bulkEdit.decimalAdjust")}{app !== "pda" && <Tag size={16} aria-hidden="true" />}</button>
+            <button type="button" onClick={() => void openBulkPriceRulesDialog()}>{t("stock.bulkEdit.priceRule")}{app !== "pda" && <Tag size={16} aria-hidden="true" />}</button>
           </>
         )}
       </>
@@ -6411,6 +6511,7 @@ export function StockScreen({
         <button type="button" aria-haspopup="menu" aria-expanded={bulkEditSelectedOpen} onClick={toggleBulkEditSelectedMenu}>
           <span>{t("stock.bulkEdit.editSelected")}</span>
           {selectedCount > 0 && <strong>{selectedCount}</strong>}
+          {app !== "pda" && <PencilSimple size={16} aria-hidden="true" />}
         </button>
         {bulkEditSelectedOpen && (
           <div className="bulk-edit-menu bulk-edit-selected-menu" role="menu">
@@ -6440,6 +6541,7 @@ export function StockScreen({
           onClick={toggleBulkQuickEditMenu}
         >
           {t(bulkQuickEditField ? "stock.bulkEdit.quickFinish" : "stock.bulkEdit.quickEdit")}
+          {app !== "pda" && <PencilSimple size={16} aria-hidden="true" />}
         </button>
         {bulkQuickEditOpen && (
           <div className="bulk-edit-menu bulk-quick-edit-menu" role="menu">
@@ -7350,27 +7452,26 @@ export function StockScreen({
     return (
       <div className="bulk-edit-screen">
         <div className="bulk-edit-controls">
-        <div className={`bulk-edit-toolbar${app === "gestion" ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
-          {app === "gestion" ? <>
-            <div className="gestion-toolbar-start">
-              <label className="report-search stock-top-sales-search">
-                <img alt="" src={stockSearchIcon} />
-                <input type="search" value={bulkSearchText} aria-label={t("stock.bulkEdit.searchList")}
-                  placeholder={t("stock.bulkEdit.searchList")} onChange={(event) => setBulkSearchText(event.target.value)} />
-              </label>
-              {renderBulkFilterButton()}
-            </div>
-            <div className="gestion-toolbar-end bulk-edit-actions gestion-toolbar-actions">
-              {renderBulkLeftActions(false)}
-              {renderBulkEditSelectedControl()}
-              {renderBulkQuickEditControl()}
-            </div>
-          </> : <>
+        {app !== "pda" ? <ErpListFilterPanel translate={t} className="stock-bulk-standard-filters"
+          search={<div className="stock-bulk-standard-search">
+            <label><WarehouseSearchFrame><input className="erp-search-input" type="search" value={bulkSearchText}
+              aria-label={t("stock.bulkEdit.searchList")} placeholder={t("stock.bulkEdit.searchList")}
+              onChange={event => setBulkSearchText(event.target.value)} /></WarehouseSearchFrame></label>
+            {renderBulkFilterButton()}
+          </div>}
+          filters={null}
+          actions={<>
+            {renderBulkLeftActions(false, false)}
+            {renderBulkEditSelectedControl()}
+            {renderBulkQuickEditControl()}
+            {renderBulkFileControl()}
+          </>}
+        /> : <div className="bulk-edit-toolbar">
           <div className="bulk-edit-actions">{renderBulkLeftActions()}</div>
           <div className="bulk-edit-search-actions">
-            {app === "pda" && <div className="active-filter-summary bulk-active-filter-summary" aria-label={t("stock.filters.summary")}>
+            <div className="active-filter-summary bulk-active-filter-summary" aria-label={t("stock.filters.summary")}>
               {activeBulkFilterSummary().map(renderFilterSummaryItem)}
-            </div>}
+            </div>
             {renderBulkEditSelectedControl()}
             {renderBulkQuickEditControl()}
             <label className="report-search stock-top-sales-search">
@@ -7384,8 +7485,7 @@ export function StockScreen({
               />
             </label>
           </div>
-          </>}
-        </div>
+        </div>}
         {app !== "pda" && <ErpFilterChips locale={locale} chips={bulkFilterChips()} onClear={() => {
           setBulkFilters({ ...emptyStockBulkFilterCriteria });
           setBulkSearchText("");
@@ -7453,6 +7553,7 @@ export function StockScreen({
         <StockBulkFilterDialog
           open={bulkFilterOpen}
           allowIndependentSubfamily={app !== "pda"}
+          autoApply={app !== "pda"}
           locale={locale}
           value={bulkFilters}
           families={bulkCatalogFamilyTree}
@@ -7462,7 +7563,7 @@ export function StockScreen({
           }))}
           taxes={bulkCatalogTaxOptions}
           onClose={() => setBulkFilterOpen(false)}
-          onApply={(value) => void applyBulkFilterSelection(value)}
+          onApply={(value) => void (app === "pda" ? applyBulkFilterSelection(value) : updateBulkListFilters(value))}
         />
         <StockBulkFamilyDialog
           open={bulkFamilyDialogOpen}
@@ -7607,12 +7708,14 @@ export function StockScreen({
       const supplier = inventorySupplierOptions.find((candidate) => candidate.value === inventoryFilters.supplier);
       items.push(`${t("stock.column.supplier")}: ${supplier?.label ?? inventoryFilters.supplier}`);
     }
-    const warehouseLabel = effectiveWarehouseId === "TOTAL"
-      ? t("stock.warehouse.total")
-      : inventoryWarehouseOptions.find((warehouse) => warehouse.value === effectiveWarehouseId)?.label
-        ?? valueText(warehouseCatalog.find((warehouse) => warehouse.id === effectiveWarehouseId)?.name ?? effectiveWarehouseId);
+    const warehouseLabel = (selectedInventoryWarehouseIds ?? [effectiveWarehouseId]).map(inventoryWarehouseLabel).join(", ");
     items.push(`${t("stock.column.warehouse")}: ${warehouseLabel}`);
     return items;
+  }
+
+  function inventoryWarehouseLabel(value: string) {
+    return inventoryWarehouseOptions.find(option => option.value === value)?.label
+      ?? valueText(warehouseCatalog.find(warehouse => warehouse.id === value)?.name ?? value);
   }
 
   function toolbarGroup(className: string, children: ReactNode) {
@@ -7621,18 +7724,68 @@ export function StockScreen({
 
   function renderWarehouseSummary() {
     if (!documentStockAppearance) return null;
+    const topSalesWarehouses = topSalesFilters.multiple?.warehouse ?? listFilterValues(topSalesFilters.warehouse);
     const summary = selectedView === "stock.topSales"
-      ? `${t("stock.column.warehouse")}: ${topSalesFilters.warehouse
-        ? valueText(warehouseCatalog.find(warehouse => warehouse.id === topSalesFilters.warehouse)?.name ?? topSalesFilters.warehouse)
-        : t("stock.filter.allWarehouses")}`
+      ? `${t("stock.column.warehouse")}: ${topSalesWarehouses.map(inventoryWarehouseLabel).join(", ") || t("stock.filter.allWarehouses")}`
       : activeInventorySummary().at(-1)!;
     return <div className="stock-warehouse-summary">{renderFilterSummaryItem(summary)}</div>;
+  }
+
+  function desktopInventorySelect(name: StockInventoryOptionKey, label: string, options: Array<{ value: string; label: string }>) {
+    return <label><span>{label}</span><ErpListSelect values={stockInventorySelections(draftInventoryFilters, name)}
+      aria-label={label} options={[{ value: "", label: t("stock.filter.all") }, ...options]}
+      onChange={values => setInventoryOptions(name, values)} /></label>;
+  }
+
+  function renderDesktopInventoryFilters() {
+    return <>
+      {desktopInventorySelect("type", t("stock.column.type"), stockProductTypeOptions.map(type => ({ value: type, label: t(stockProductTypeLabel(type)) })))}
+      {desktopInventorySelect("discount", t("product.field.usePrice"), stockDiscountTypeOptions.map(type => ({ value: type, label: t(stockDiscountTypeLabel(type)) })))}
+      {desktopInventorySelect("family", t("stock.column.family"), inventoryFamilyTree.flatMap(family => [
+        { value: family.id, label: family.name },
+        ...family.subfamilies.map(subfamily => ({ value: subfamily.id, label: family.name + " / " + subfamily.name })),
+      ]))}
+      {desktopInventorySelect("tax", t("stock.column.tax"), inventoryTaxOptions)}
+      {desktopInventorySelect("offerActive", t("stock.column.offerActive"), [{ value: "yes", label: t("common.yes") }, { value: "no", label: t("common.no") }])}
+      <label><span>{t("stock.column.warehouse")}</span><ErpListSelect
+        values={stockInventorySelections(draftInventoryFilters, "warehouse")}
+        placeholder={inventoryWarehouseLabel(defaultWarehouseId) || t("filters.none")}
+        aria-label={t("stock.column.warehouse")} options={inventoryWarehouseOptions}
+        onChange={values => setInventoryOptions("warehouse", values.at(-1) === "TOTAL"
+          ? ["TOTAL"] : values.filter(value => value !== "TOTAL"))} /></label>
+      {desktopInventorySelect("status", t("stock.column.status"), ["ok", "low", "empty", "inactive"].map(value => ({ value, label: t(`stock.status.${value}`) })))}
+      {canManageProducts && desktopInventorySelect("supplier", t("stock.column.supplier"), inventorySupplierOptions)}
+      <div className="stock-inline-filter-actions"><button type="button" onClick={clearInventoryFilters}>{t("salesReport.filter.clear")}</button></div>
+    </>;
+  }
+
+  function renderDesktopTopSalesFilters() {
+    const renderSelect = (field: "family" | "subfamily" | "warehouse", label: string, options: Array<{ value: string; label: string }>) =>
+      <label><span>{label}</span><ErpListSelect
+        values={draftTopSalesFilters.multiple?.[field] ?? listFilterValues(draftTopSalesFilters[field])}
+        aria-label={label} onChange={values => setTopSalesOptions(field, values)}
+        options={[{ value: "", label: t("stock.filter.all") }, ...options]} /></label>;
+    return <>
+      {renderSelect("family", t("stock.column.family"), inventoryFamilyTree.map(family => ({ value: family.id, label: family.name })))}
+      {renderSelect("subfamily", t("stock.column.subfamily"), inventoryFamilyTree.flatMap(family =>
+        family.subfamilies.map(subfamily => ({ value: subfamily.id, label: family.name + " / " + subfamily.name }))))}
+      <label><span>{t("stock.column.supplier")}</span><input aria-label={t("stock.column.supplier")} value={draftTopSalesFilters.supplier}
+        onChange={event => updateDraftTopSalesFilter("supplier", event.target.value)} /></label>
+      {renderSelect("warehouse", t("stock.column.warehouse"), warehouseCatalog.filter(warehouse => warehouse.active !== false)
+        .map(warehouse => ({ value: warehouse.id, label: valueText(warehouse.name ?? warehouse.id) })))}
+      <div className="stock-inline-filter-actions"><button type="button" onClick={clearTopSalesFilters}>{t("salesReport.filter.clear")}</button></div>
+    </>;
   }
 
   function renderInventoryToolbar() {
     return (
       <>
-      <div className={`stock-toolbar${app === "gestion" || desktopPromotions ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
+      {app !== "pda" ? <ErpListFilterPanel translate={t} className="stock-standard-filters"
+        search={<label><WarehouseSearchFrame><input className="erp-search-input" type="search" placeholder={t("stock.search.articlePlaceholder")}
+          value={searchText} aria-label={t("stock.search.article")} onChange={event => setSearchText(event.target.value)} /></WarehouseSearchFrame></label>}
+        filters={renderDesktopInventoryFilters()}
+        actions={renderStockExportButton()}
+      /> : <div className="stock-toolbar">
         {toolbarGroup("gestion-toolbar-start", <>
         <div className="stock-search-stack">
           {!documentStockAppearance && <div className="active-filter-summary" aria-label={t("stock.filters.summary")}>
@@ -7664,7 +7817,7 @@ export function StockScreen({
         {selectedView !== "stock.promotions" && <span className="stock-result-count" role="status">{t("stock.results").replace("{count}", String(visibleRows.length))}</span>}
         {renderStockExportButton()}
         </>)}
-      </div>
+      </div>}
       {app !== "pda" && <ErpFilterChips locale={locale} chips={inventoryFilterChips()} onClear={clearAppliedInventoryFilters} />}
       </>
     );
@@ -7765,6 +7918,12 @@ export function StockScreen({
           ...(exportingPromotions ? { promotionScope,
             promotionId: promotionScope === "SELECTED" ? exportContext!.promotionId : null } : {}),
           search: exportingPromotions ? "" : selectedView === "stock.topSales" ? topSalesFilters.search : searchText,
+          ...(selectedView === "stock.topSales" ? { choices: {
+            topSalesWarehouseIds: topSalesFilters.multiple?.warehouse,
+            topSalesFamilyIds: topSalesFilters.multiple?.family,
+            topSalesSubfamilyIds: topSalesFilters.multiple?.subfamily,
+          } } : !exportingPromotions && Object.keys(stockListChoices(inventoryFilters)).length
+            ? { choices: stockListChoices(inventoryFilters) } : {}),
           productType: exportingPromotions ? null : inventoryFilters.type || null,
           priceUseMode: exportingPromotions ? null : inventoryFilters.discount || null,
           familyId: !exportingPromotions && isUuid(inventoryFilters.family) ? inventoryFilters.family : null,
@@ -7985,7 +8144,13 @@ export function StockScreen({
           ) : selectedView === "stock.topSales" ? (
             <>
               <div className="stock-inventory-controls">
-              <div className={`stock-top-sales-toolbar${app === "gestion" ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
+              {app !== "pda" ? <ErpListFilterPanel translate={t} className="stock-standard-filters"
+                search={<label><WarehouseSearchFrame><input className="erp-search-input" type="search" value={topSalesFilters.search}
+                  aria-label={t("stock.search.topSales")} placeholder={t("salesReport.search")}
+                  onChange={event => updateTopSalesSearch(event.target.value)} /></WarehouseSearchFrame></label>}
+                filters={renderDesktopTopSalesFilters()}
+                actions={renderStockExportButton()}
+              /> : <div className="stock-top-sales-toolbar">
                 {toolbarGroup("gestion-toolbar-start", <>
                 <div className="stock-search-stack">
                   {app === "pda" && <div className="active-filter-summary" aria-label={t("stock.filters.summary")}>
@@ -8017,7 +8182,7 @@ export function StockScreen({
                 <span className="stock-result-count" role="status">{t("stock.results").replace("{count}", String(visibleTopSalesRows.length))}</span>
                 {renderStockExportButton()}
                 </>)}
-              </div>
+              </div>}
               {renderStockExportNotice()}
               {topSalesDetailNotice && <div role={topSalesDetailNotice === "common.loading" ? "status" : "alert"}>
                 {t(topSalesDetailNotice)}
@@ -8423,12 +8588,14 @@ export function StockScreen({
                         onClick={() => setSelectedInventoryFamily(family.id)}
                         onDoubleClick={() => {
                           setDraftInventoryFilters((current) => ({ ...current, family: family.id }));
+                          if (app !== "pda") setInventoryFilters((current) => ({ ...current, family: family.id }));
                           setInventoryFamilyPickerOpen(false);
                         }}
                         onKeyDown={(event) => {
                           if (bulkEnterIntent(event) !== "next") return;
                           event.preventDefault();
                           setDraftInventoryFilters((current) => ({ ...current, family: family.id }));
+                          if (app !== "pda") setInventoryFilters((current) => ({ ...current, family: family.id }));
                           setInventoryFamilyPickerOpen(false);
                         }}
                       >
@@ -8566,12 +8733,11 @@ export function StockScreen({
                 <button
                   type="button"
                   className="safe-retirement-open"
-                  aria-keyshortcuts={app === "gestion" ? "F9" : undefined}
                   onClick={() => openProductRetirement()}
                   disabled={detailRow.code === "0"}
                   title={detailRow.code === "0" ? t("safeManagement.retirement.reason.PROTECTED_SYSTEM_PRODUCT") : undefined}
                 >
-                  {app === "gestion" ? <ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut={t("safeManagement.shortcut.retire")} /> : t("safeManagement.action.retire")}
+                  {t("safeManagement.action.retire")}
                 </button>
               )}
             </div>
@@ -8647,7 +8813,14 @@ export function StockScreen({
             </div>
             <footer className="stock-detail-footer erp-dialog-actions-row">
               <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={() => setDetailRow(null)}>{t("common.close")}</DialogDismissButton>
-              <span className="erp-dialog-actions-group"><kbd>{t("stock.detail.closeKey")}</kbd> {t("common.close")}</span>
+              {app === "pda" && <span className="erp-dialog-actions-group"><kbd>{t("stock.detail.closeKey")}</kbd> {t("common.close")}</span>}
+              {app !== "pda" && <ReplenishmentRequestButton
+                productId={detailRow.productId}
+                packageQuantity={detailRow.packageQuantity}
+                warehouseId={detailRow.warehouseId === "TOTAL" ? defaultWarehouseId : detailRow.warehouseId}
+                token={session.accessToken}
+                locale={locale}
+              />}
             </footer>
           </section>
         </div>

@@ -1,7 +1,9 @@
-.erp-multi-select__popover {
+.erp-multi-select__popover.erp-select__popover {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
+  padding: 0;
+  background: #fff;
   overflow: hidden;
 }
 
@@ -29,7 +31,6 @@
 
 .erp-multi-select__options {
   display: grid;
-  gap: 3px;
   min-height: 0;
   overflow: auto;
 }
@@ -37,7 +38,6 @@
 .erp-multi-select__options > .erp-multi-select__option {
   display: flex;
   align-items: center;
-  gap: 8px;
   width: 100%;
   min-width: 0;
   min-height: 34px;
@@ -54,17 +54,29 @@
   cursor: pointer;
 }
 
-.erp-multi-select__options > .erp-multi-select__option:hover,
 .erp-multi-select__options > .erp-multi-select__option:focus-visible {
-  background: #eaf2fb;
-  color: #173f73;
-  outline: 2px solid #1d6faf;
+  outline: 2px solid #12385f;
   outline-offset: -2px;
 }
 
-.erp-multi-select__options > .erp-multi-select__option[aria-selected="true"] {
-  background: #d9eafa;
-  color: #123759;
+@layer gestion-accents {
+  html body .erp-multi-select__options > .erp-multi-select__option:is(:hover, [aria-selected="true"]):not(:disabled) {
+    background: #0065fe !important;
+    color: #fff !important;
+  }
+
+  html body .erp-multi-select__options > .erp-multi-select__option {
+    justify-content: flex-start !important;
+    text-align: left !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  html body .erp-multi-select__options > .erp-multi-select__option:not(:hover):not([aria-selected="true"]) {
+    background: #fff !important;
+    color: #17233b !important;
+  }
 }
 
 .erp-multi-select__options > .erp-multi-select__option:disabled {
@@ -73,15 +85,7 @@
   opacity: 0.66;
 }
 
-.erp-multi-select__check {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  border: 1px solid #8ea5bd;
-  background: #fff;
-  color: #123759;
-  font-size: 12px;
-  line-height: 1;
+.erp-multi-select__empty {
+  padding: 9px 10px;
+  color: #52637a;
 }

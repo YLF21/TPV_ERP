@@ -152,6 +152,7 @@ export const gestionNavigationGroups: GestionNavigationGroup[] = [
     icon: Warehouse,
     destinations: [
       destination("stock.warehouse.management", "gestion.navigation.destination.warehouses", Warehouse),
+      destination("stock.warehouse.replenishment", "replenishment.title", ListChecks),
       destination("stock.warehouse.transfer", "gestion.navigation.destination.transfers", ArrowsLeftRight),
       destination("stock.warehouse.adjustment", "gestion.navigation.destination.stockAdjustments", PlusMinus),
       destination("stock.warehouse.count", "gestion.navigation.destination.physicalCounts", ClipboardText),

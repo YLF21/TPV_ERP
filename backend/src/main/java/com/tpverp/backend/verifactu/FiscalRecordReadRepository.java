@@ -145,8 +145,19 @@ public class FiscalRecordReadRepository {
             long snapshotSequence,
             FiscalRecordReadCursor cursor,
             int limit) {
+        return findCursorRowsFiltered(companyId, storeId, installationId, dateFrom, dateTo, operation, documentType,
+                documentNumber, numberMatch, fiscalMode, snapshotSequence, cursor, limit, FiscalListChoices.EMPTY);
+    }
+
+    public List<Row> findCursorRowsFiltered(UUID companyId, UUID storeId, UUID installationId,
+            LocalDate dateFrom, LocalDate dateTo, FiscalRecordOperation operation, FiscalDocumentType documentType,
+            String documentNumber, FiscalRecordNumberMatch numberMatch, FiscalMode fiscalMode, long snapshotSequence,
+            FiscalRecordReadCursor cursor, int limit, FiscalListChoices choices) {
         var query = filteredQuery(companyId, storeId, installationId, dateFrom, dateTo,
                 operation, documentType, documentNumber, numberMatch, fiscalMode);
+        var scopedSql = new StringBuilder(query.sql());
+        choices.appendRecordPredicates(scopedSql);
+        choices.bindRecordParameters(query.parameters());
         query.parameters().addValue("snapshotSequence", snapshotSequence);
         var direction = cursor == null
                 ? FiscalRecordReadCursor.Direction.NEXT : cursor.direction();
@@ -177,7 +188,7 @@ public class FiscalRecordReadRepository {
                                record.huella,
                                state.estado,
                                state.actualizado_en
-                        """ + query.sql() + " and record.secuencia <= :snapshotSequence"
+                        """ + scopedSql + " and record.secuencia <= :snapshotSequence"
                         + " and record.secuencia " + anchorComparison
                         + " :anchorSequence order by record.secuencia " + order
                         + ", record.id " + order + " limit :limit",

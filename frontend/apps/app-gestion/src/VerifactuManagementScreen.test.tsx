@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { UserSession } from "@tpverp/app-common";
 import { VerifactuManagementScreen, formatAge } from "./VerifactuManagementScreen";
 import * as api from "./verifactuManagementApi";
@@ -369,25 +369,27 @@ describe("VerifactuManagementScreen", () => {
     expect(screen.getByText("200 verifactu.management.records")).toBeInTheDocument();
   });
 
-  it("validates dates locally and sends document filters through backend pagination", async () => {
+  it.each(["queue", "defective"] as const)("validates dates locally and automatically sends %s document filters", async (view) => {
+    const request = view === "queue" ? api.loadVerifactuAdminSubmissions : api.loadVerifactuAdminDefectiveRecords;
     render(<VerifactuManagementScreen locale="es" session={session} t={t} />);
-    fireEvent.click(screen.getByRole("tab", { name: "verifactu.management.queue" }));
+    fireEvent.click(screen.getByRole("tab", { name: `verifactu.management.${view}` }));
     await screen.findByText("T-2026-0042");
     fireEvent.click(screen.getByRole("button", { name: "verifactu.ui.filters" }));
-    vi.mocked(api.loadVerifactuAdminSubmissions).mockClear();
+    vi.mocked(request).mockClear();
 
     fireEvent.change(screen.getByLabelText("verifactu.management.dateFrom"), { target: { value: "2026-07-21" } });
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+    vi.mocked(request).mockClear();
     fireEvent.change(screen.getByLabelText("verifactu.management.dateTo"), { target: { value: "2026-07-01" } });
-    fireEvent.click(screen.getByRole("button", { name: "verifactu.management.applyFilters" }));
+    expect(screen.queryByRole("button", { name: "verifactu.management.applyFilters" })).not.toBeInTheDocument();
 
-    expect(screen.getByRole("alert")).toHaveTextContent("verifactu.management.invalidDateRange");
-    expect(api.loadVerifactuAdminSubmissions).not.toHaveBeenCalled();
+    expect(within(screen.getByRole("dialog", { name: "verifactu.ui.filters" })).getByRole("alert")).toHaveTextContent("verifactu.management.invalidDateRange");
+    expect(request).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText("verifactu.management.dateTo"), { target: { value: "2026-07-31" } });
     fireEvent.change(screen.getByLabelText("verifactu.management.documentNumber"), { target: { value: " T-42 " } });
-    fireEvent.click(screen.getByRole("button", { name: "verifactu.management.applyFilters" }));
 
-    await waitFor(() => expect(api.loadVerifactuAdminSubmissions).toHaveBeenCalledWith(expect.objectContaining({
+    await waitFor(() => expect(request).toHaveBeenCalledWith(expect.objectContaining({
       dateFrom: "2026-07-21",
       dateTo: "2026-07-31",
       documentNumber: " T-42 ",
@@ -409,8 +411,7 @@ describe("VerifactuManagementScreen", () => {
     fireEvent.click(screen.getByRole("option", { name: "Rechazado" }));
     fireEvent.click(screen.getByRole("button", { name: /^verifactu.management.fiscalOperation:/ }));
     fireEvent.click(screen.getByRole("option", { name: "Alta" }));
-    expect(screen.queryByRole("group", { name: "filters.applied" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "verifactu.management.applyFilters" }));
+    expect(screen.getByRole("group", { name: "filters.applied" })).toBeInTheDocument();
     await waitFor(() => expect(request).toHaveBeenLastCalledWith(expect.objectContaining({ documentNumber: "T-42", dateFrom: "2026-07-01", page: 0 }), "fiscal-token"));
     fireEvent.click(screen.getByRole("button", { name: "verifactu.management.next" }));
     await waitFor(() => expect(request).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }), "fiscal-token"));

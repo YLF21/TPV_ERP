@@ -278,6 +278,7 @@ public class SalesReportExcelExportService {
         row.put("warehouse", warehouseNames.getOrDefault(value.warehouseId(), id(value.warehouseId())));
         row.put("productCount", value.lines().stream().mapToInt(line -> line.quantity()).sum());
         row.put("comment", value.concept());
+        row.put("customerName", id(value.destination()).strip());
         row.put("reason", text(value.destination(), value.status().name()));
         row.put("status", value.status().name());
         row.put("total", value.lines().stream()

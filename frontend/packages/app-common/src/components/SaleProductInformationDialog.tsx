@@ -15,6 +15,7 @@ import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 import type { SaleProduct } from "./SaleScreen";
 import { SaleProductInformationPanel } from "./SaleProductInformationPanel";
+import { ReplenishmentRequestButton } from "./ReplenishmentRequestButton";
 import type { StockInventoryRow } from "./StockScreen";
 
 type ProductDetailView = {
@@ -83,6 +84,7 @@ type Props = {
   product: SaleProduct;
   locale: LocaleCode;
   token?: string;
+  warehouseId?: string;
   interfaceMode: SaleInterfaceMode;
   canManageProducts: boolean;
   onAdd: (product: SaleProduct) => void;
@@ -213,6 +215,7 @@ export function SaleProductInformationDialog({
   product,
   locale,
   token,
+  warehouseId,
   interfaceMode,
   canManageProducts,
   onAdd,
@@ -353,6 +356,13 @@ export function SaleProductInformationDialog({
           <span>{t("sale.productInformation.addToCart")}</span>
           {interfaceMode === "KEYBOARD" && <kbd>Insert</kbd>}
         </button>
+        {information && <ReplenishmentRequestButton
+          productId={information.productId}
+          packageQuantity={information.packageQuantity}
+          warehouseId={warehouseId}
+          token={token}
+          locale={locale}
+        />}
       </footer>
     </dialog>
   ), document.body);

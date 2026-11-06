@@ -12,6 +12,7 @@ import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
 import jakarta.persistence.EntityManager;
 import java.sql.DriverManager;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
@@ -243,6 +244,25 @@ class SafeManagementRetirementPostgreSqlTest {
         assertThat(next.hasMore()).isFalse();
         assertThat(service.page(type, 25, null, "600111222", null).items())
                 .extracting(ManagementItem::id).containsExactly(ids.customerId());
+
+        assertThat(service.addressOptions(type)).extracting(SafeManagementRetirementService.DirectoryAddressOption::location)
+                .contains("Las Palmas, Las Palmas", "Arucas, Las Palmas", "Madrid, Madrid")
+                .doesNotContain("Telde, Las Palmas");
+        assertThat(service.addressOptions(SafeManagementRetirementService.EntityType.SUPPLIER))
+                .extracting(SafeManagementRetirementService.DirectoryAddressOption::location)
+                .containsExactly("Telde, Las Palmas");
+        var locations = List.of("las palmas, las palmas", "madrid, madrid");
+        var choices = new SafeManagementRetirementService.DirectoryAddressChoices(locations, List.of());
+        var firstChoicePage = service.page(type, 1, null, null, null, "code", "asc", Map.of(), choices);
+        assertThat(firstChoicePage.items()).extracting(ManagementItem::id).containsExactly(ids.customerId());
+        assertThat(firstChoicePage.hasMore()).isTrue();
+        assertThat(service.page(type, 1, firstChoicePage.nextCursor(), null, null, "code", "asc", Map.of(), choices)
+                .items()).extracting(ManagementItem::id).containsExactly(secondCustomerId);
+        var portugal = new SafeManagementRetirementService.DirectoryAddressChoices(locations, List.of("pt"));
+        assertThat(service.page(type, 25, null, null, null, "code", "asc", Map.of(), portugal)
+                .items()).extracting(ManagementItem::id).containsExactly(secondCustomerId);
+        var partial = new SafeManagementRetirementService.DirectoryAddressChoices(List.of("Madrid"), List.of());
+        assertThat(service.page(type, 25, null, null, null, "code", "asc", Map.of(), partial).items()).isEmpty();
     }
 
     private Fixture insertFixture() {

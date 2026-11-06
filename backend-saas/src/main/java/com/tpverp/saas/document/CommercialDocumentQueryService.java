@@ -178,7 +178,8 @@ public class CommercialDocumentQueryService {
         };
         Set<Status> statuses = Set.of(Status.values());
         if (filters != null && filters.status() != null && !filters.status().isBlank()) {
-            try { statuses = Set.of(Status.valueOf(filters.status().strip())); }
+            try { statuses = java.util.Arrays.stream(filters.status().split(",", -1)).map(String::strip)
+                    .map(Status::valueOf).collect(java.util.stream.Collectors.toUnmodifiableSet()); }
             catch (IllegalArgumentException exception) { throw invalid("status"); }
         }
         return new Filter(Set.of(), customerId, types, statuses, filters == null ? null : filters.dateFrom(),

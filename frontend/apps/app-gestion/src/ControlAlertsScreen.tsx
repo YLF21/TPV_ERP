@@ -1,3 +1,5 @@
+import { ErpListSelect } from "../../../packages/app-common/src/components/ErpListSelect";
+import { compactListFilter, listFilterChips, listFilterValues } from "../../../packages/app-common/src/components/listFilterValues";
 import { X } from "@phosphor-icons/react";
 import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
@@ -6,13 +8,14 @@ import "../../../packages/app-common/src/components/ErpClassicWindow.css";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { ErpListFilterPanel } from "../../../packages/app-common/src/components/ErpListFilterPanel";
 import { GestionSearchFrame } from "../../../packages/app-common/src/components/GestionSearchFrame";
 import { ReportDateRangeSummary } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
 import { useTableArrowRepeat } from "../../../packages/app-common/src/components/useTableArrowRepeat";
 import { ensureTableRowVisible } from "../../../packages/app-common/src/components/ensureTableRowVisible";
 import { useTableInitialFocus } from "../../../packages/app-common/src/components/useTableInitialFocus";
-import { ArrowClockwise, ArrowRight, BellRinging, CashRegister, FileText, Gear, ListBullets, MinusCircle, Package, Percent, Plus, SlidersHorizontal, Tag, Trash } from "@phosphor-icons/react";
-import { classifyApiFailure, useTableLayoutPreference, TableLayoutHeaderCell, tableLayoutGridTemplate, visibleTableColumns, type LocaleCode, type TableColumnDefinition, type UserSession } from "@tpverp/app-common";
+import { ArrowClockwise, ArrowRight, BellRinging, CashRegister, Eraser, FileText, Gear, ListBullets, MinusCircle, Package, Percent, Plus, SlidersHorizontal, Tag, Trash } from "@phosphor-icons/react";
+import { classifyApiFailure, ErpSelect, useTableLayoutPreference, TableLayoutHeaderCell, tableLayoutGridTemplate, visibleTableColumns, type LocaleCode, type TableColumnDefinition, type UserSession } from "@tpverp/app-common";
 import {
   controlAlertPriorities,
   controlAlertTypes,
@@ -112,7 +115,7 @@ function ControlAlertsWorkspace({ session, t, locale = "es" }: ControlAlertsScre
   const [rulesLoading, setRulesLoading] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [editorType, setEditorType] = useState<ControlAlertType | null | undefined>(undefined);
-  const [activeType, setActiveType] = useState<"" | ControlAlertType>("");
+  const [activeType, setActiveType] = useState<string[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const [documentVisible, setDocumentVisible] = useState(() => document.visibilityState !== "hidden");
@@ -229,17 +232,14 @@ function ControlAlertsWorkspace({ session, t, locale = "es" }: ControlAlertsScre
           <button type="button" onClick={() => setRefreshKey((value) => value + 1)}><ArrowClockwise size={20} />{t("gestion.controlAlerts.refresh")}</button>
         </div>
       </header>
-      <DateRangeToolbar draft={draftRange} applied={range} t={t} locale={locale} timeZone={storeTimezone} onDraftChange={setDraftRange}
-        onApply={(event) => { event.preventDefault(); if (draftRange.from && draftRange.to && draftRange.from <= draftRange.to) setRange(draftRange); }}
-        onPreset={changeRange} />
       {preferenceError && <div className="gestion-control-inline-state error" role="alert">{t("gestion.controlAlerts.preferenceError")}<button type="button" onClick={() => setPreferenceReload((value) => value + 1)}>{t("gestion.controlAlerts.retry")}</button></div>}
       {view.showIndicators && (
         <section className="gestion-control-type-strip" aria-label={t("gestion.controlAlerts.periodTypes")} aria-busy={groupsLoading}>
-          <button type="button" aria-pressed={!activeType} className={!activeType ? "selected" : ""} onClick={() => setActiveType("")}>
+          <button type="button" aria-pressed={activeType.length === 0} className={activeType.length === 0 ? "selected" : ""} onClick={() => setActiveType([])}>
             <ListBullets size={29} /><span>{t("gestion.controlAlerts.all")}<strong>{groupsLoading ? "…" : groupsError ? "—" : groupTotal}</strong></span>
           </button>
-          {groupTypes.map((group) => <button type="button" key={group.ruleId} aria-pressed={activeType === group.type}
-            className={`${alertTypeClass(group.type)} ${activeType === group.type ? "selected" : ""}`} onClick={() => setActiveType(activeType === group.type ? "" : group.type)}>
+          {groupTypes.map((group) => <button type="button" key={group.ruleId} aria-pressed={activeType.includes(group.type)}
+            className={`${alertTypeClass(group.type)} ${activeType.includes(group.type) ? "selected" : ""}`} onClick={() => setActiveType(current => current.includes(group.type) ? current.filter(type => type !== group.type) : [...current, group.type])}>
             <AlertTypeIcon type={group.type} size={28} /><span>{ruleDisplayName(group.type, group.ruleName, t)}<strong>{groupsLoading ? "…" : groupsError ? "—" : group.total}</strong></span>
           </button>)}
         </section>
@@ -250,6 +250,12 @@ function ControlAlertsWorkspace({ session, t, locale = "es" }: ControlAlertsScre
         defaultRange={rangeForPeriod(view.defaultPeriod, storeTimezone)} onResetRange={() => changeRange(rangeForPeriod(view.defaultPeriod, storeTimezone))}
         refreshKey={refreshKey} view={view} timeZone={storeTimezone} onChanged={() => setRefreshKey((value) => value + 1)}
         onFiltersChange={changeMetricsFilters} onSortChange={(sortDirection) => void saveView({ ...view, sortDirection }, false)} preferenceSaving={preferenceSaving || !preferenceLoaded} /> : <div className="gestion-alert-list-state">{t("common.loading")}</div>}
+      <DateRangeToolbar draft={draftRange} applied={range} t={t} locale={locale} timeZone={storeTimezone} onDraftChange={(next) => {
+        setDraftRange(next);
+        if (next.from && next.to && next.from <= next.to) setRange(next);
+      }}
+        onApply={(event) => { event.preventDefault(); if (draftRange.from && draftRange.to && draftRange.from <= draftRange.to) setRange(draftRange); }}
+        onPreset={changeRange} />
       {rulesOpen && <div className="gestion-modal-backdrop" role="presentation"><section className="gestion-control-rules-manager filter-dialog erp-classic-window" role="dialog" aria-modal="true" aria-labelledby="control-rules-manager-title">
         <header className="erp-window-header"><h2 id="control-rules-manager-title">{t("gestion.controlAlerts.configureRules")}</h2><div>
           <WindowCloseButton type="button" aria-label={t("common.close")} onClick={() => setRulesOpen(false)} />
@@ -257,7 +263,7 @@ function ControlAlertsWorkspace({ session, t, locale = "es" }: ControlAlertsScre
         <div className="gestion-control-rules-body">
           {rulesError && <div className="gestion-control-inline-state error" role="alert">{t("gestion.controlAlerts.rulesLoadError")}<button type="button" onClick={() => void refreshRules()}>{t("gestion.controlAlerts.retry")}</button></div>}
           <RuleOverview tiles={tiles} loading={rulesLoading} error={false} canManage={!rulesError} t={t}
-            onOpen={(tile) => { setActiveType(tile.type); setRulesOpen(false); }} onEdit={(tile) => setEditorType(tile.type)} onAdd={() => setEditorType(null)} onRetry={() => void refreshRules()} />
+            onOpen={(tile) => { setActiveType([tile.type]); setRulesOpen(false); }} onEdit={(tile) => setEditorType(tile.type)} onAdd={() => setEditorType(null)} onRetry={() => void refreshRules()} />
         </div>
       </section></div>}
       {editorType !== undefined && <RuleConfigurationDialog token={token} t={t} initialType={editorType} catalog={catalog} rules={rules}
@@ -316,10 +322,12 @@ function DateRangeToolbar({
 }) {
   return (
     <form className="gestion-control-date-toolbar gestion-filter-toolbar" onSubmit={onApply} title={formatRangeLabel(applied, locale)}>
-      <select aria-label={t("gestion.controlAlerts.quickRanges")} value="" onChange={(event) => {
-        const period = event.target.value as ControlAlertViewPreference["defaultPeriod"];
+      <ErpSelect aria-label={t("gestion.controlAlerts.quickRanges")} value="" maxPopoverWidth="trigger" popoverAnchor="control"
+        options={[{ value: "", label: t("gestion.controlAlerts.dateFilter") }, { value: "TODAY", label: t("gestion.controlAlerts.today") }, { value: "LAST_7_DAYS", label: t("gestion.controlAlerts.lastSevenDays") }, { value: "CURRENT_MONTH", label: t("gestion.controlAlerts.currentMonth") }]}
+        onChange={(value) => {
+        const period = value as ControlAlertViewPreference["defaultPeriod"];
         if (period) onPreset(rangeForPeriod(period, timeZone));
-      }}><option value="">{t("gestion.controlAlerts.dateFilter")}</option><option value="TODAY">{t("gestion.controlAlerts.today")}</option><option value="LAST_7_DAYS">{t("gestion.controlAlerts.lastSevenDays")}</option><option value="CURRENT_MONTH">{t("gestion.controlAlerts.currentMonth")}</option></select>
+      }} />
       <label>
         <span>{t("gestion.controlAlerts.from")}</span>
         <input type="date" required value={draft.from} max={draft.to} onChange={(event) => onDraftChange({ ...draft, from: event.target.value })} />
@@ -328,7 +336,6 @@ function DateRangeToolbar({
         <span>{t("gestion.controlAlerts.to")}</span>
         <input type="date" required value={draft.to} min={draft.from} onChange={(event) => onDraftChange({ ...draft, to: event.target.value })} />
       </label>
-      <button type="submit" className="primary" disabled={!draft.from || !draft.to || draft.from > draft.to}>{t("gestion.controlAlerts.applyDates")}</button>
       <ReportDateRangeSummary locale={locale} value={{ ...applied, label: "" }} />
     </form>
   );
@@ -421,9 +428,9 @@ function RuleOverview({ tiles, loading, error, canManage, t, onOpen, onEdit, onA
 }
 
 function AlertsTimelineView({ session, t, locale, range, defaultRange, onResetRange, activeType, onTypeChange, refreshKey, view, onChanged, timeZone, onFiltersChange, onSortChange, preferenceSaving }: {
-  session: UserSession; t: Translator; locale: LocaleCode; range: DateRange; activeType: "" | ControlAlertType;
+  session: UserSession; t: Translator; locale: LocaleCode; range: DateRange; activeType: string[];
   defaultRange: DateRange; onResetRange: () => void;
-  onTypeChange: (type: "" | ControlAlertType) => void; refreshKey: number;
+  onTypeChange: (types: string[]) => void; refreshKey: number;
   view: ControlAlertViewPreference; onChanged: () => void; timeZone: string;
   onFiltersChange: (filters: Pick<ControlAlertFilters, "search" | "status" | "priority" | "assigneeId" | "overdue">) => void;
   onSortChange: (direction: "asc" | "desc") => void; preferenceSaving: boolean;
@@ -463,7 +470,7 @@ function AlertsTimelineView({ session, t, locale, range, defaultRange, onResetRa
   const [loadedScope, setLoadedScope] = useState("");
   const canManageAlerts = canManageControlAlerts(session);
   const rowVersion = rows.find((row) => row.id === selectedId)?.version;
-  const scope = JSON.stringify({ ...filters, type: activeType, from: instants.from, to: instants.to });
+  const scope = JSON.stringify({ ...filters, type: compactListFilter(activeType), from: instants.from, to: instants.to });
   const previousScope = useRef({ from: instants.from, to: instants.to, type: activeType });
   const timelineLayout = useTableLayoutPreference({ app: "gestion", username: session.username, accessToken: token,
     tableKey: "gestion.controlAlerts.timeline", definitions: timelineColumns });
@@ -630,38 +637,42 @@ function AlertsTimelineView({ session, t, locale, range, defaultRange, onResetRa
     return <span role="cell"><span className={`gestion-alert-status ${alert.status.toLowerCase()}`}>{t(`gestion.controlAlerts.status.${alert.status}`)}</span></span>;
   }
 
+  function changeChoices(field: "status" | "priority" | "assigneeId", values: string[]) {
+    setFilters(current => ({ ...current, [field]: compactListFilter(values), page: 0 }));
+  }
+
+  function clearListFilters() {
+    setQuery("");
+    setFilters((current) => ({ ...current, search: "", status: "", priority: "", assigneeId: "", overdue: false, page: 0 }));
+    onTypeChange([]);
+    onResetRange();
+  }
+
   return (
     <div className="gestion-control-list-stage">
-      <form className="gestion-alert-filters compact gestion-filter-toolbar" onSubmit={(event) => { event.preventDefault(); setFilters((current) => ({ ...current, search: query, page: 0 })); }}>
-        <label><span>{t("gestion.controlAlerts.search")}</span><GestionSearchFrame><input value={query} maxLength={160} placeholder={t("gestion.controlAlerts.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} /></GestionSearchFrame></label>
-        <label data-filter-active={Boolean(filters.status)}><span>{t("gestion.controlAlerts.filterStatus")}</span><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value as "" | ControlAlertStatus, page: 0 }))}><option value="">{t("gestion.controlAlerts.all")}</option>{controlAlertStatuses.map((status) => <option key={status} value={status}>{t(`gestion.controlAlerts.status.${status}`)}</option>)}</select></label>
-        <label data-filter-active={Boolean(activeType)}><span>{t("gestion.controlAlerts.filterType")}</span><select value={activeType} onChange={(event) => onTypeChange(event.target.value as "" | ControlAlertType)}><option value="">{t("gestion.controlAlerts.all")}</option>{controlAlertTypes.map((type) => <option key={type} value={type}>{t(`gestion.controlAlerts.type.${type}`)}</option>)}</select></label>
-        <details className="gestion-alert-extra-filters"><summary>{t("gestion.controlAlerts.moreFilters")}</summary><div>
-          <label data-filter-active={Boolean(filters.priority)}><span>{t("gestion.controlAlerts.filterPriority")}</span><select value={filters.priority ?? ""} onChange={(event) => setFilters((current) => ({ ...current, priority: event.target.value as "" | ControlAlertPriority, page: 0 }))}><option value="">{t("gestion.controlAlerts.all")}</option>{controlAlertPriorities.map((priority) => <option key={priority} value={priority}>{t(`gestion.controlAlerts.priority.${priority}`)}</option>)}</select></label>
-          <label data-filter-active={Boolean(filters.assigneeId)}><span>{t("gestion.controlAlerts.filterAssignee")}</span><select disabled={!assigneesLoaded} value={filters.assigneeId ?? ""} onChange={(event) => setFilters((current) => ({ ...current, assigneeId: event.target.value, page: 0 }))}><option value="">{t("gestion.controlAlerts.all")}</option>{assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.name} ({assignee.userName})</option>)}</select></label>
+      <ErpListFilterPanel translate={t} search={<label><span>{t("gestion.controlAlerts.search")}</span><GestionSearchFrame><input className="erp-search-input" value={query} maxLength={160} placeholder={t("gestion.controlAlerts.searchPlaceholder")} onChange={(event) => { const value = event.target.value; setQuery(value); setFilters((current) => ({ ...current, search: value, page: 0 })); }} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} /></GestionSearchFrame></label>}
+        actions={<button type="button" onClick={clearListFilters}><Eraser size={16} aria-hidden="true" />{t("party.filter.clear")}</button>}
+        filters={<>
+        <label data-filter-active={listFilterValues(filters.status).length > 0}><span>{t("gestion.controlAlerts.filterStatus")}</span><ErpListSelect aria-label={t("gestion.controlAlerts.filterStatus")} values={listFilterValues(filters.status)} options={[{ value: "", label: t("gestion.controlAlerts.all") }, ...controlAlertStatuses.map((status) => ({ value: status, label: t(`gestion.controlAlerts.status.${status}`) }))]} onChange={values => changeChoices("status", values)} /></label>
+        <label data-filter-active={activeType.length > 0}><span>{t("gestion.controlAlerts.filterType")}</span><ErpListSelect aria-label={t("gestion.controlAlerts.filterType")} values={activeType} options={[{ value: "", label: t("gestion.controlAlerts.all") }, ...controlAlertTypes.map((type) => ({ value: type, label: t(`gestion.controlAlerts.type.${type}`) }))]} onChange={onTypeChange} /></label>
+          <label data-filter-active={listFilterValues(filters.priority).length > 0}><span>{t("gestion.controlAlerts.filterPriority")}</span><ErpListSelect aria-label={t("gestion.controlAlerts.filterPriority")} values={listFilterValues(filters.priority)} options={[{ value: "", label: t("gestion.controlAlerts.all") }, ...controlAlertPriorities.map((priority) => ({ value: priority, label: t(`gestion.controlAlerts.priority.${priority}`) }))]} onChange={values => changeChoices("priority", values)} /></label>
+          <label data-filter-active={listFilterValues(filters.assigneeId).length > 0}><span>{t("gestion.controlAlerts.filterAssignee")}</span><ErpListSelect aria-label={t("gestion.controlAlerts.filterAssignee")} disabled={!assigneesLoaded} values={listFilterValues(filters.assigneeId)} options={[{ value: "", label: t("gestion.controlAlerts.all") }, ...assignees.map((assignee) => ({ value: assignee.id, label: `${assignee.name} (${assignee.userName})` }))]} onChange={values => changeChoices("assigneeId", values)} /></label>
           <label className="gestion-alert-overdue-filter"><input type="checkbox" checked={filters.overdue ?? false} onChange={(event) => setFilters((current) => ({ ...current, overdue: event.target.checked, page: 0 }))} /><span>{t("gestion.controlAlerts.filterOverdue")}</span></label>
-        </div></details>
-        <button type="submit" className="primary">{t("gestion.controlAlerts.apply")}</button>
-      </form>
-      <ErpFilterChips locale={locale} translate={t} onClear={() => {
-        setQuery("");
-        setFilters((current) => ({ ...current, search: "", status: "", priority: "", assigneeId: "", overdue: false, page: 0 }));
-        onTypeChange("");
-        onResetRange();
-      }} chips={[
+        </>} />
+      <ErpFilterChips locale={locale} translate={t} onClear={clearListFilters} chips={[
         { key: "period", label: t("gestion.controlAlerts.dateFilter"), value: range.from !== defaultRange.from || range.to !== defaultRange.to ? formatRangeLabel(range, locale) : "", onRemove: onResetRange },
         { key: "search", label: t("gestion.controlAlerts.search"), value: filters.search, onRemove: () => { setQuery(""); setFilters((current) => ({ ...current, search: "", page: 0 })); } },
-        { key: "status", label: t("gestion.controlAlerts.filterStatus"), value: filters.status ? t(`gestion.controlAlerts.status.${filters.status}`) : "", onRemove: () => setFilters((current) => ({ ...current, status: "", page: 0 })) },
-        { key: "type", label: t("gestion.controlAlerts.filterType"), value: activeType ? t(`gestion.controlAlerts.type.${activeType}`) : "", onRemove: () => onTypeChange("") },
-        { key: "priority", label: t("gestion.controlAlerts.filterPriority"), value: filters.priority ? t(`gestion.controlAlerts.priority.${filters.priority}`) : "", onRemove: () => setFilters((current) => ({ ...current, priority: "", page: 0 })) },
-        { key: "assignee", label: t("gestion.controlAlerts.filterAssignee"), value: filters.assigneeId ? assignees.find((assignee) => assignee.id === filters.assigneeId)?.name ?? filters.assigneeId : "", onRemove: () => setFilters((current) => ({ ...current, assigneeId: "", page: 0 })) },
+        ...listFilterChips("status", t("gestion.controlAlerts.filterStatus"), listFilterValues(filters.status), values => changeChoices("status", values), value => t("gestion.controlAlerts.status." + value)),
+        ...listFilterChips("type", t("gestion.controlAlerts.filterType"), activeType, onTypeChange, value => t("gestion.controlAlerts.type." + value)),
+        ...listFilterChips("priority", t("gestion.controlAlerts.filterPriority"), listFilterValues(filters.priority), values => changeChoices("priority", values), value => t("gestion.controlAlerts.priority." + value)),
+        ...listFilterChips("assignee", t("gestion.controlAlerts.filterAssignee"), listFilterValues(filters.assigneeId), values => changeChoices("assigneeId", values), value => assignees.find(item => item.id === value)?.name ?? value),
         { key: "overdue", label: t("gestion.controlAlerts.filterOverdue"), value: filters.overdue ? t("common.yes") : "", onRemove: () => setFilters((current) => ({ ...current, overdue: false, page: 0 })) }
       ]} />
       {!detailOpen && assigneesErrorMessage}
       <div className="gestion-control-grid without-detail">
         <section className="gestion-alert-list" aria-label={t("gestion.controlAlerts.list")}>
           <header className="gestion-alert-list-heading"><div className="gestion-alert-list-title"><h3>{t("gestion.controlAlerts.chronologyList")}</h3><small id="control-alert-open-hint">{t("gestion.controlAlerts.openDetailHint")}</small></div><div><details className="gestion-alert-columns"><summary aria-label={t("gestion.controlAlerts.columns")}><SlidersHorizontal size={18} /></summary><div>{timelineLayout.layout.map((column) => <label key={column.key}><input type="checkbox" checked={column.visible} disabled={column.visible && timelineColumnsVisible.length === 1} onChange={() => timelineLayout.toggleColumnVisibility(column.key)} />{t(`gestion.controlAlerts.${column.key === "status" ? "filterStatus" : column.key}`)}</label>)}</div></details><select aria-label={t("gestion.controlAlerts.sortOrder")} disabled={preferenceSaving} value={filters.sortDirection} onChange={(event) => onSortChange(event.target.value as "asc" | "desc")}><option value="desc">{t("gestion.controlAlerts.newestFirst")}</option><option value="asc">{t("gestion.controlAlerts.oldestFirst")}</option></select></div></header>
-          <div className="gestion-alert-table" role="table" aria-label={t("gestion.controlAlerts.chronologyList")} aria-busy={loading} ref={tableRef}>
+          <div className="gestion-alert-table erp-list-filter-table" role="table" aria-label={t("gestion.controlAlerts.chronologyList")} aria-busy={loading} ref={tableRef}>
             <div className="gestion-alert-row gestion-alert-row-head" role="row" style={tableStyle}>{timelineColumnsVisible.map((column) => <TableLayoutHeaderCell key={column.key} as="span" column={column} resizeLabel={t("gestion.controlAlerts.resize")} onReorder={timelineLayout.reorderColumns} onMove={timelineLayout.moveColumn} onResize={timelineLayout.resizeColumn}>{t(`gestion.controlAlerts.${column.key === "status" ? "filterStatus" : column.key}`)}</TableLayoutHeaderCell>)}</div>
             {(loadError || staleRows) && <div className="gestion-control-inline-state" role={loadError ? "alert" : "status"}>{t(loadError ? "gestion.controlAlerts.loadError" : "gestion.controlAlerts.previousResults")} {loadError && <button type="button" onClick={onChanged}>{t("gestion.controlAlerts.retry")}</button>}</div>}
             {rows.map((alert, index) => {

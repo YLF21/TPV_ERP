@@ -194,16 +194,16 @@ public class CashController {
     public PagedResult<CashActivityView> activity(
             @RequestParam(required = false) LocalDate from,
             @RequestParam(required = false) LocalDate to,
-            @RequestParam(required = false) UUID terminalId,
-            @RequestParam(required = false) UUID userId,
-            @RequestParam(required = false) String action,
-            @RequestParam(required = false) String cashState,
+            @RequestParam(required = false) List<UUID> terminalId,
+            @RequestParam(required = false) List<UUID> userId,
+            @RequestParam(required = false) List<String> action,
+            @RequestParam(required = false) List<String> cashState,
             @RequestParam(defaultValue = "50") @Min(1) @Max(100) int limit,
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) String sortBy,
             @RequestParam(required = false) String sortDirection,
             Authentication authentication) {
-        return activity.list(from, to, terminalId, userId, action, cashState, limit, cursor,
+        return activity.listFiltered(from, to, terminalId, userId, action, cashState, limit, cursor,
                 sortBy, sortDirection, authentication);
     }
 
@@ -272,11 +272,11 @@ public class CashController {
     @GetMapping("/opening-alerts")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + GESTION_CUENTAS + "','" + CASH_READ + "')")
     public CashOpeningAlertPage openingAlerts(@RequestParam(required=false) LocalDate from,
-            @RequestParam(required=false) LocalDate to, @RequestParam(required=false) UUID terminalId,
-            @RequestParam(required=false) UUID userId, @RequestParam(required=false) String status,
+            @RequestParam(required=false) LocalDate to, @RequestParam(required=false) List<UUID> terminalId,
+            @RequestParam(required=false) List<UUID> userId, @RequestParam(required=false) List<String> status,
             @RequestParam(defaultValue="50") int limit, @RequestParam(required=false) String cursor,
             Authentication authentication) {
-        return openingAlerts.list(from,to,terminalId,userId,status,limit,cursor,authentication);
+        return openingAlerts.listFiltered(from,to,terminalId,userId,status,limit,cursor,authentication);
     }
 
     @PostMapping("/opening-alerts/{id}/review")

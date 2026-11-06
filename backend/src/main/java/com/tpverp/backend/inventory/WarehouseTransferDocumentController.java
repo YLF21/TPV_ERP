@@ -29,13 +29,13 @@ public class WarehouseTransferDocumentController {
 
     @GetMapping public PagedResult<WarehouseTransferDocumentService.ListItem> list(
             @RequestParam(required = false) Integer page, @RequestParam(required = false) Integer limit,
-            @RequestParam(required = false) WarehouseTransferDocument.Status status,
-            @RequestParam(required = false) UUID sourceWarehouseId,
-            @RequestParam(required = false) UUID targetWarehouseId,
+            @RequestParam(required = false) List<WarehouseTransferDocument.Status> status,
+            @RequestParam(required = false) List<UUID> sourceWarehouseId,
+            @RequestParam(required = false) List<UUID> targetWarehouseId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant before,
             @RequestParam(required = false) String search) {
-        return service.list(page, limit, status, sourceWarehouseId, targetWarehouseId, from, before, search);
+        return service.listFiltered(page, limit, status, sourceWarehouseId, targetWarehouseId, from, before, search);
     }
     @GetMapping("/{id}") public WarehouseTransferDocumentService.View get(@PathVariable UUID id) {
         return service.get(id);

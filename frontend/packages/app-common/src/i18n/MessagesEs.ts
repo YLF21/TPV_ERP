@@ -15,6 +15,8 @@ export class MessagesEs {
     "party.filter.fields": "Filtros por campo",
     "filters.remove": "Quitar filtro",
     "filters.clearAll": "Limpiar todos",
+    "filters.noOptions": "No hay opciones disponibles",
+    "filters.none": "Sin filtro",
     "filters.resetWeek": "Restablecer período a Semana",
     "stock.history.saas.allStores": "Todas las tiendas",
     "stock.history.saas.view": "Vista del historial",

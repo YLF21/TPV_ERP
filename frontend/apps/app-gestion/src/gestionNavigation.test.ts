@@ -7,9 +7,9 @@ import {
 } from "./gestionNavigation";
 
 describe("APP GESTIÓN navigation registry", () => {
-  it("keeps the approved 11 groups and 49 destinations in order", () => {
+  it("keeps the approved 11 groups and registered destinations in order", () => {
     expect(gestionNavigationGroupCount).toBe(11);
-    expect(gestionNavigationDestinationCount).toBe(49);
+    expect(gestionNavigationDestinationCount).toBe(50);
     expect(gestionNavigationGroups.map((group) => group.key)).toEqual([
       "overview", "control-alerts", "cash", "customer-documents", "supplier-documents",
       "products", "warehouse", "third-parties", "fiscal", "security", "configuration",
@@ -29,6 +29,7 @@ describe("APP GESTIÓN navigation registry", () => {
     expect(gestionNavigationGroups[6].destinations.slice(-2).map((item) => item.key)).toEqual([
       "stock.warehouse.input", "stock.warehouse.output",
     ]);
+    expect(gestionNavigationGroups[6].destinations.some((item) => item.key === "stock.warehouse.replenishment" && item.labelKey === "replenishment.title")).toBe(true);
     expect(gestionNavigationGroups[10].destinations.map((item) => item.key)).toEqual([
       "paymentMethods", "taxes", "memberLoyaltySettings", "internalEan", "documentPrintSettings",
       "documentTemplates", "voucherSettings", "licenses", "productManagement", "customerManagement",
@@ -64,6 +65,7 @@ describe("APP GESTIÓN navigation registry", () => {
       "Facturas de entrada",
       "Comprobación de pedido",
     ]);
+    expect(gestionNavigationGroups[6].destinations.map((item) => t(item.labelKey))).toContain("Pendiente de reposición");
     expect(gestionNavigationGroups[6].destinations.map((item) => t(item.labelKey)).slice(-4)).toEqual([
       "Ajustes de stock",
       "Hacer inventario",

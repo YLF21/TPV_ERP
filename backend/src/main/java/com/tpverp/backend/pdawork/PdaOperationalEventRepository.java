@@ -33,13 +33,19 @@ public interface PdaOperationalEventRepository extends JpaRepository<PdaOperatio
             UUID storeId, Instant occurredAt, Pageable pageable);
     Page<PdaOperationalEvent> findByStoreIdAndTerminalIdAndOccurredAtGreaterThanEqualOrderByOccurredAtDescIdDesc(
             UUID storeId, UUID terminalId, Instant occurredAt, Pageable pageable);
+    Page<PdaOperationalEvent> findByStoreIdAndTerminalIdInAndOccurredAtGreaterThanEqualOrderByOccurredAtDescIdDesc(
+            UUID storeId, Collection<UUID> terminalIds, Instant occurredAt, Pageable pageable);
     long countByStoreIdAndTipoAndOccurredAtGreaterThanEqual(UUID storeId, PdaOperationalEventType type, Instant occurredAt);
     long countByStoreIdAndTerminalIdAndTipoAndOccurredAtGreaterThanEqual(
             UUID storeId, UUID terminalId, PdaOperationalEventType type, Instant occurredAt);
+    long countByStoreIdAndTerminalIdInAndTipoAndOccurredAtGreaterThanEqual(
+            UUID storeId, Collection<UUID> terminalIds, PdaOperationalEventType type, Instant occurredAt);
     List<PdaOperationalEvent> findByStoreIdAndTipoInAndOccurredAtGreaterThanEqualOrderByOccurredAtDescIdDesc(
             UUID storeId, Collection<PdaOperationalEventType> types, Instant occurredAt, Pageable pageable);
     List<PdaOperationalEvent> findByStoreIdAndTerminalIdAndTipoInAndOccurredAtGreaterThanEqualOrderByOccurredAtDescIdDesc(
             UUID storeId, UUID terminalId, Collection<PdaOperationalEventType> types, Instant occurredAt, Pageable pageable);
+    List<PdaOperationalEvent> findByStoreIdAndTerminalIdInAndTipoInAndOccurredAtGreaterThanEqualOrderByOccurredAtDescIdDesc(
+            UUID storeId, Collection<UUID> terminalIds, Collection<PdaOperationalEventType> types, Instant occurredAt, Pageable pageable);
 
     @Query(value = """
             select count(*) as sampleCount,
@@ -61,6 +67,18 @@ public interface PdaOperationalEventRepository extends JpaRepository<PdaOperatio
                and tipo='REQUEST_LATENCY' and ocurrido_en>=:from
             """, nativeQuery = true)
     LatencyAggregate latencyForTerminal(@Param("storeId") UUID storeId, @Param("terminalId") UUID terminalId,
+            @Param("from") Instant from);
+
+    @Query(value = """
+            select count(*) as sampleCount,
+                   coalesce(avg(duracion_ms),0) as averageLatencyMs,
+                   coalesce(percentile_cont(0.95) within group (order by duracion_ms),0) as p95LatencyMs,
+                   coalesce(max(duracion_ms),0) as maxLatencyMs
+              from pda_evento_operativo
+             where tienda_id=:storeId and terminal_id in (:terminalIds)
+               and tipo='REQUEST_LATENCY' and ocurrido_en>=:from
+            """, nativeQuery = true)
+    LatencyAggregate latencyForTerminals(@Param("storeId") UUID storeId, @Param("terminalIds") Collection<UUID> terminalIds,
             @Param("from") Instant from);
 
     @Modifying

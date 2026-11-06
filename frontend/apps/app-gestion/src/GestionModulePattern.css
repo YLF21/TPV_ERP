@@ -150,12 +150,6 @@
     grid-template-columns: minmax(200px, 1fr) 170px auto auto max-content;
   }
 
-  html[data-app="gestion"] :is(.gestion-safe-management, .erp-management-screen.gestion-party-screen) .gestion-party-output-actions {
-    flex-wrap: nowrap;
-    width: max-content;
-    align-self: end;
-  }
-
   html[data-app="gestion"] :is(.gestion-safe-management, .erp-management-screen.gestion-party-screen) .party-directory-result-count { align-self: center; }
 
   html[data-app="gestion"] :is(.gestion-safe-management, .erp-management-screen.gestion-party-screen) .party-directory-table {

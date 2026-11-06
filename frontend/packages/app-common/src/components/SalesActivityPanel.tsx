@@ -775,16 +775,12 @@ export function SalesActivityPanel({
       value={dailyDate} onChange={(event) => setDailyDate(event.target.value)} />;
     const weekday = app === "gestion" ? reportDateWeekday(dailyDate, locale) : "";
     return <>
-      <div className={`sales-activity-toolbar${app === "gestion" ? " sales-activity-toolbar--daily gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
-        <label className={`sales-activity-date${app === "gestion" ? " gestion-toolbar-start" : ""}`}>
+      <div className={`sales-activity-toolbar${app !== "pda" ? " sales-activity-toolbar--list" : ""}${app === "gestion" ? " sales-activity-toolbar--daily gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
+        {app === "pda" && <label className="sales-activity-date">
           <span>{t("date")}</span>
-          {app === "gestion" ? <span className="sales-activity-query-date">
-            {dateInput}
-            {weekday && <small className="report-date-range-weekday">{weekday}</small>}
-          </span> : dateInput}
-        </label>
+          {dateInput}
+        </label>}
         {outputActions(false)}
-        {app === "venta" && <ReportDateRangeSummary collapseSingleDay={false} showWeekday={false} locale={locale} value={{ from: dailyDate, to: dailyDate, label: "" }} />}
       </div>
       {loading && <p className="sales-activity-state" role="status">{t("loading")}</p>}
       {(error || errorKey) && <div className="sales-activity-state sales-activity-state--error" role="alert"><span>{errorKey ? t(errorKey) : error}</span><button type="button" onClick={retry}>{t("retry")}</button></div>}
@@ -798,11 +794,20 @@ export function SalesActivityPanel({
           {daily.users.length === 0 && <p className="sales-activity-state">{t("noActivity")}</p>}
         </section>
       </div>}
+      {app !== "pda" && <div className="sales-activity-daily-date-footer">
+        <label className="sales-activity-date">
+          <span>{t("date")}</span>
+          {app === "gestion" ? <span className="sales-activity-query-date">{dateInput}
+            {weekday && <small className="report-date-range-weekday">{weekday}</small>}
+          </span> : dateInput}
+        </label>
+        <ReportDateRangeSummary collapseSingleDay={app === "gestion"} showWeekday={app === "gestion"} locale={locale} value={{ from: dailyDate, to: dailyDate, label: "" }} />
+      </div>}
     </>;
   }
 
   function documentsContent() {
-    const toolbar = <div className={`sales-activity-toolbar${app !== "pda" ? " sales-activity-toolbar--desktop" : ""}${app === "gestion" ? " gestion-toolbar-layout" : ""}`}>
+    const toolbar = <div className={`sales-activity-toolbar${app !== "pda" ? " sales-activity-toolbar--desktop sales-activity-toolbar--list" : ""}${app === "gestion" ? " gestion-toolbar-layout" : ""}`}>
         {app === "pda" && <div className="sales-documents-period"><span>{t("currentPeriod")}</span><strong>{rangeLabel(range)}</strong><small>{formatDate(range.from, locale)} — {formatDate(range.to, locale)}</small></div>}
         {app !== "pda" && <div className={app === "gestion" ? "gestion-toolbar-start" : undefined}>{visualizationActions()}</div>}
         {outputActions(true)}
@@ -811,7 +816,6 @@ export function SalesActivityPanel({
     const resetPeriod = () => setRange(currentDayRange(t("today"), today));
     const emptyDocuments = viewMode === "DAY" ? dailyRows.length === 0 : rows.length === 0;
     const documentSummary = viewMode === "DAY" ? dailyPage : page;
-    const visibleLines = viewMode === "DAY" ? dailyRows.length : rows.length;
     return <div className={`sales-documents-layout${app !== "pda" ? " sales-documents-layout--desktop" : ""}`}>
       {app !== "pda" ? <div className="sales-documents-controls">
         {toolbar}
@@ -823,7 +827,7 @@ export function SalesActivityPanel({
       </div> : toolbar}
       {loading && <p className="sales-activity-state" role="status">{t("loading")}</p>}
       {(error || errorKey) && <div className="sales-activity-state sales-activity-state--error" role="alert"><span>{errorKey ? t(errorKey) : error}</span><button type="button" onClick={retry}>{t("retry")}</button></div>}
-      {!loading && !error && !errorKey && <div ref={tableRef} className={`sales-documents-table-scroll${app !== "pda" ? " erp-classic-tables report-classic-document-table" : ""}`}>
+      {!loading && !error && !errorKey && <div ref={tableRef} className={`sales-documents-table-scroll${app !== "pda" ? " erp-classic-tables report-classic-document-table erp-list-filter-table" : ""}`}>
         {app === "pda" && emptyDocuments && <p className="sales-activity-state">{t("noDocuments")}</p>}
         {(app !== "pda" || !emptyDocuments) && (viewMode === "DAY" ? dailyDocumentTable() : <table className="sales-documents-table" style={documentTableStyle}>
           <colgroup>{visibleDocumentColumns.map((column) => <col
@@ -876,7 +880,6 @@ export function SalesActivityPanel({
         {((viewMode === "DAY" ? dailyPage : page)?.hasMore) && <button className="sales-documents-load-more" type="button" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? t("loading") : t("loadMore")}</button>}
       </div>}
       {app !== "pda" && !loading && !error && !errorKey && <div className="report-total-row">
-        <span>{`${t("visibleLines")}: ${visibleLines}`}</span>
         <strong>{`${t("ticketCount")}: ${documentSummary?.ticketCount ?? 0}`}</strong>
         <strong>{`${t("invoiceCount")}: ${documentSummary?.invoiceCount ?? 0}`}</strong>
         <strong className="report-main-total">{`${t("total")}: ${formatEuroAmount(documentSummary?.total ?? 0, locale)}`}</strong>
@@ -886,7 +889,7 @@ export function SalesActivityPanel({
     </div>;
   }
 
-  return <section className={`sales-activity-panel sales-activity-panel--${mode}`}>
+  return <section className={`sales-activity-panel sales-activity-panel--${mode}${app !== "pda" ? " sales-activity-panel--desktop" : ""}`}>
     {mode === "daily" ? dailyContent() : documentsContent()}
     {notice && <div className={`sales-activity-notice sales-activity-notice--${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>{notice.key ? t(notice.key) : notice.text}</div>}
   </section>;

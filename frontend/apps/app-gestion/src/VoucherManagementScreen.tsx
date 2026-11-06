@@ -2,7 +2,6 @@ import { WindowCloseButton } from "../../../packages/app-common/src/components/W
 import "../../../packages/app-common/src/components/SalesReportClassicTables.css";
 import { ArrowClockwise } from "@phosphor-icons/react";
 import {
-  ErpSelect,
   TableLayoutHeaderCell,
   outputIssuedVoucher,
   tableLayoutGridTemplate,
@@ -14,8 +13,11 @@ import {
   type UserSession
 } from "@tpverp/app-common";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { ErpListSelect } from "../../../packages/app-common/src/components/ErpListSelect";
+import { listFilterChips } from "../../../packages/app-common/src/components/listFilterValues";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { GestionSearchFrame } from "../../../packages/app-common/src/components/GestionSearchFrame";
+import { ErpListFilterPanel } from "../../../packages/app-common/src/components/ErpListFilterPanel";
 import { ReportDateRangeFilter, type ReportDateRange } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
 import { useReportDateOptions } from "../../../packages/app-common/src/components/useReportDateOptions";
 import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
@@ -162,7 +164,11 @@ export function VoucherManagementScreen({ locale, session, terminalContext, t }:
     [locale]
   );
 
-  function removeFilter(field: keyof VoucherFilters) {
+  function setStatuses(statuses: string[]) {
+    setFilters(current => ({ ...current, statuses: statuses as VoucherStatus[] }));
+  }
+
+  function removeFilter(field: "query" | "from" | "to") {
     if (field === "query") setSearchInput("");
     setFilters((current) => ({ ...current, [field]: "" }));
   }
@@ -250,27 +256,28 @@ export function VoucherManagementScreen({ locale, session, terminalContext, t }:
         </header>
         <section className="report-workspace">
           <header className="report-options">
-            <div className="report-heading"><h1>{t("gestion.vouchers.title")}</h1></div>
+            <div className="report-heading gestion-voucher-heading"><h1>{t("gestion.vouchers.title")}</h1><button type="button" className="erp-list-filter-refresh" onClick={() => setReload((value) => value + 1)} disabled={loading}><ArrowClockwise size={17} aria-hidden="true" />{t("common.refresh")}</button></div>
           </header>
           <div className="report-data gestion-vouchers-workspace">
             {message && <p className={`gestion-voucher-message ${message.kind}`} role={message.kind === "error" ? "alert" : "status"}>{message.text}</p>}
 
-            <div className="report-data-toolbar gestion-voucher-filters gestion-filter-toolbar">
-              <label className="query"><span>{t("gestion.vouchers.search")}</span><GestionSearchFrame><input type="search" value={searchInput} placeholder={t("gestion.vouchers.searchPlaceholder")} onChange={(event) => setSearchInput(event.target.value)} /></GestionSearchFrame></label>
-              <label data-filter-active={Boolean(filters.status)}><span>{t("gestion.vouchers.status")}</span><ErpSelect value={filters.status} options={statusOptions(t)} onChange={(status) => setFilters((current) => ({ ...current, status: status as VoucherFilters["status"] }))} aria-label={t("gestion.vouchers.status")} /></label>
-              <div className="gestion-toolbar-end"><button type="button" onClick={() => setReload((value) => value + 1)} disabled={loading}><ArrowClockwise size={17} aria-hidden="true" />{t("common.refresh")}</button></div>
-            </div>
+            <ErpListFilterPanel translate={t} search={<label className="query"><span>{t("gestion.vouchers.search")}</span><GestionSearchFrame><input className="erp-search-input" type="search" aria-label={t("gestion.vouchers.search")} value={searchInput} placeholder={t("gestion.vouchers.searchPlaceholder")} onChange={(event) => setSearchInput(event.target.value)} /></GestionSearchFrame></label>}
+              filters={<label data-filter-active={Boolean(filters.statuses?.length)}><span>{t("gestion.vouchers.status")}</span><ErpListSelect values={filters.statuses ?? []} placeholder={t("filters.none")} options={statusOptions(t).filter(option => option.value)} onChange={setStatuses} aria-label={t("gestion.vouchers.status")} /></label>} />
 
-            <ErpFilterChips locale={locale} translate={t} chips={[
+            <ErpFilterChips locale={locale} translate={t} onClear={() => {
+              setSearchInput("");
+              setFilters(initialFilters);
+              setQuickRange({ from: "", to: "", label: "" });
+            }} chips={[
               { key: "query", label: t("gestion.vouchers.search"), value: filters.query, onRemove: () => removeFilter("query") },
-              { key: "status", label: t("gestion.vouchers.status"), value: filters.status ? t(`gestion.vouchers.status.${filters.status}`) : "", onRemove: () => removeFilter("status") },
+              ...listFilterChips("status", t("gestion.vouchers.status"), filters.statuses ?? [], setStatuses, value => t("gestion.vouchers.status." + value)),
               { key: "from", label: t("gestion.vouchers.from"), value: filters.from, onRemove: () => removeFilter("from") },
               { key: "to", label: t("gestion.vouchers.to"), value: filters.to, onRemove: () => removeFilter("to") }
             ]} />
 
             <div className={`report-table-region gestion-voucher-content ${selected ? "has-detail" : ""}`}>
               <section className="gestion-voucher-list" aria-label={t("gestion.vouchers.title")}>
-                <div className="gestion-voucher-table" role="table" aria-rowcount={rows.length} ref={tableRef} onScroll={(event) => {
+                <div className="gestion-voucher-table erp-list-filter-table" role="table" aria-rowcount={rows.length} ref={tableRef} onScroll={(event) => {
                   const table = event.currentTarget;
                   if (searchInput.trim() === filters.query && table.scrollHeight - table.scrollTop - table.clientHeight <= 240) void loadPage(true);
                 }}>
@@ -301,7 +308,7 @@ export function VoucherManagementScreen({ locale, session, terminalContext, t }:
               <span>{t("salesReport.loadError")}</span>
               <button type="button" onClick={retryDateOptions}>{t("salesReport.retry")}</button>
             </div>}
-            <ReportDateRangeFilter locale={locale} today={dateOptions?.currentDate ?? ""} earliestDate={dateOptions?.earliestDate ?? ""}
+            <ReportDateRangeFilter inlineCustomRange collapseSingleDay showWeekday locale={locale} today={dateOptions?.currentDate ?? ""} earliestDate={dateOptions?.earliestDate ?? ""}
               value={{ from: filters.from, to: filters.to, label: "", preset: quickRange.from === filters.from && quickRange.to === filters.to ? quickRange.preset : undefined }}
               onChange={(range) => {
                 setQuickRange(range);

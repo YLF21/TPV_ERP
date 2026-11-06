@@ -1,0 +1,107 @@
+.replenishment-request { margin: 0; display: inline-flex; align-items: center; }
+.replenishment-request > button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 34px; padding: 6px 13px; font-size: 13px; white-space: nowrap; }
+.replenishment-request > button kbd { margin-left: 5px; }
+.replenishment-request > .replenishment-request-trigger { width: auto; min-width: 230px; }
+.replenishment-request > p { order: -1; margin: 0 8px 0 0; font-size: 12px; }
+.replenishment-request-dialog { box-sizing: border-box; position: fixed; inset: 0; margin: auto; width: min(470px, calc(100vw - 24px)); max-height: min(90vh, 620px); overflow: visible; padding: 0; border: 1px solid #aebfd2; box-shadow: 0 16px 38px #0005; color: #172e4c; background: #fff; }
+.replenishment-request-dialog::backdrop { background: #0008; }
+.replenishment-request-dialog .filter-header { display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 4px 12px; }
+.replenishment-request-dialog .filter-header h2 { margin: 0; font-size: 16px; }
+.replenishment-request-dialog form { margin: 0; padding: 14px; }
+.replenishment-request-fields { display: grid; gap: 10px; }
+.replenishment-request-fields > label { display: grid; gap: 4px; min-width: 0; font-size: 13px; font-weight: 600; }
+.replenishment-request-fields > label :is(input, .erp-select, .erp-select__trigger) { box-sizing: border-box; width: 100%; min-height: 32px; }
+.replenishment-request-fields small { font-weight: 400; font-size: 12px; }
+.replenishment-request-dialog .erp-select__popover { z-index: 4; }
+.replenishment-request-dialog .erp-dialog-actions-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.replenishment-request-dialog .erp-dialog-actions-row button { min-height: 32px; }
+.replenishment-request-error { color: #a12626; margin: 8px 0 0; }
+
+/* Keep this control treatment local to replenishment, including the editable select. */
+.replenishment-request,
+.replenishment-request-dialog {
+  --tpv-v3-radius: 6px;
+  font-family: "Segoe UI", "Microsoft YaHei UI", Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 400;
+}
+.replenishment-request-dialog .filter-header h2 { font: inherit; font-size: 16px; font-weight: 600; }
+.replenishment-request-fields { gap: 14px; }
+.replenishment-request-fields > label { gap: 6px; font-weight: 600; }
+.replenishment-request-fields small { color: #52667c; }
+.replenishment-request-dialog.filter-dialog.erp-classic-window .replenishment-request-fields .erp-select {
+  border: 1px solid #aebfd2;
+  border-radius: 6px !important;
+  background: #fff;
+  font-weight: 400;
+}
+.replenishment-request-dialog.filter-dialog.erp-classic-window .replenishment-request-fields .erp-select:focus-within {
+  border-color: #1f5a94;
+  box-shadow: 0 0 0 2px #1f5a941f !important;
+}
+.replenishment-request-dialog.filter-dialog.erp-classic-window .replenishment-request-fields .erp-select > .erp-select__trigger {
+  height: 36px !important;
+  min-height: 36px !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background: transparent;
+  grid-template-columns: minmax(0, 1fr) 36px !important;
+  font: inherit;
+  font-weight: 400;
+}
+.replenishment-request-dialog.filter-dialog.erp-classic-window .replenishment-request-fields .erp-select--editable { grid-template-columns: minmax(0, 1fr) 36px; }
+.replenishment-request-dialog.filter-dialog.erp-classic-window .replenishment-request-fields .erp-select--editable > .erp-select__trigger {
+  grid-template-columns: 1fr !important;
+  border-radius: 0 5px 5px 0 !important;
+}
+.replenishment-request-dialog.filter-dialog.erp-classic-window .replenishment-request-fields .erp-select--editable > input {
+  height: 36px !important;
+  min-height: 36px !important;
+  border: 0 !important;
+  border-radius: 5px 0 0 5px !important;
+  padding: 0 10px;
+  outline: none !important;
+  box-shadow: none !important;
+  background: #fff;
+  text-align: left;
+  font: inherit;
+}
+.replenishment-request-dialog.filter-dialog.erp-classic-window .replenishment-request-fields .erp-select__arrow {
+  width: 36px !important;
+  height: 100% !important;
+  min-height: 36px !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 5px 5px 0 !important;
+}
+.replenishment-request-dialog.filter-dialog.erp-classic-window .replenishment-request-fields > label > input {
+  height: 38px;
+  min-height: 38px;
+  border: 1px solid #aebfd2;
+  border-radius: 6px !important;
+  padding: 0 10px;
+  background: #fff;
+  font: inherit;
+  font-weight: 400;
+}
+.replenishment-request-dialog.filter-dialog.erp-classic-window .replenishment-request-fields > label > input:focus-visible {
+  border-color: #1f5a94;
+  outline: none !important;
+  box-shadow: 0 0 0 2px #1f5a941f !important;
+}
+.replenishment-request-dialog .erp-select__popover { border-radius: 6px !important; font-weight: 400; }
+.replenishment-request-dialog .erp-select__option { border-radius: 4px !important; font: inherit; font-weight: 400 !important; }
+.replenishment-request > .replenishment-request-trigger,
+.replenishment-request-dialog .erp-dialog-actions-row > button {
+  min-height: 38px;
+  padding: 8px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+}
+.replenishment-request-dialog .erp-dialog-actions-row > button { min-width: 96px; }
+.replenishment-request > button kbd { font-family: inherit; font-size: 11px; font-weight: 600; }

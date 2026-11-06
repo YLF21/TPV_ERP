@@ -2,6 +2,7 @@ package com.tpverp.backend.control;
 
 import jakarta.validation.Valid;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -29,11 +30,11 @@ public class ControlAlertController {
 
     @GetMapping
     public Page<ControlAlertService.AlertSummaryView> list(
-            @RequestParam(required = false) ControlAlertStatus status,
-            @RequestParam(required = false) ControlAlertType type,
+            @RequestParam(required = false) List<ControlAlertStatus> status,
+            @RequestParam(required = false) List<ControlAlertType> type,
             @RequestParam(required = false) UUID ruleId,
-            @RequestParam(required = false) ControlAlertPriority priority,
-            @RequestParam(required = false) UUID assigneeId,
+            @RequestParam(required = false) List<ControlAlertPriority> priority,
+            @RequestParam(required = false) List<UUID> assigneeId,
             @RequestParam(required = false) Boolean overdue,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
@@ -42,7 +43,7 @@ public class ControlAlertController {
             @RequestParam(defaultValue = "25") int size,
             @RequestParam(required = false) String sortBy,
             @RequestParam(required = false) String sortDirection) {
-        return service.list(status, type, ruleId, priority, assigneeId, overdue, from, to, search, page, size, sortBy, sortDirection);
+        return service.listFiltered(status, type, ruleId, priority, assigneeId, overdue, from, to, search, page, size, sortBy, sortDirection);
     }
 
     @GetMapping("/assignees")
@@ -54,12 +55,12 @@ public class ControlAlertController {
     public java.util.List<ControlAlertService.RuleAlertCountView> groups(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
-            @RequestParam(required = false) ControlAlertStatus status,
-            @RequestParam(required = false) ControlAlertPriority priority,
-            @RequestParam(required = false) UUID assigneeId,
+            @RequestParam(required = false) List<ControlAlertStatus> status,
+            @RequestParam(required = false) List<ControlAlertPriority> priority,
+            @RequestParam(required = false) List<UUID> assigneeId,
             @RequestParam(required = false) Boolean overdue,
             @RequestParam(required = false) String search) {
-        return service.countsByRule(from, to, status, priority, assigneeId, overdue, search);
+        return service.countsByRuleFiltered(from, to, status, priority, assigneeId, overdue, search);
     }
 
     @GetMapping("/summary")

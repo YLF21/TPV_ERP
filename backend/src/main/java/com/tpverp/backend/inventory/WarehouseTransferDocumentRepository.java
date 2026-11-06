@@ -3,6 +3,7 @@ package com.tpverp.backend.inventory;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -24,12 +25,20 @@ public interface WarehouseTransferDocumentRepository extends JpaRepository<Wareh
     default Page<WarehouseTransferDocument> pageFiltered(UUID storeId, WarehouseTransferDocument.Status status,
             UUID sourceWarehouseId, UUID targetWarehouseId, Instant from, Instant before,
             String search, Pageable pageable) {
+        return pageFilteredValues(storeId, WarehouseTransferDocumentService.single(status),
+                WarehouseTransferDocumentService.single(sourceWarehouseId), WarehouseTransferDocumentService.single(targetWarehouseId),
+                from, before, search, pageable);
+    }
+
+    default Page<WarehouseTransferDocument> pageFilteredValues(UUID storeId, List<WarehouseTransferDocument.Status> statuses,
+            List<UUID> sourceWarehouseIds, List<UUID> targetWarehouseIds, Instant from, Instant before,
+            String search, Pageable pageable) {
         org.springframework.data.jpa.domain.Specification<WarehouseTransferDocument> filters = (root, query, cb) -> {
             var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
             predicates.add(cb.equal(root.get("storeId"), storeId));
-            if (status != null) predicates.add(cb.equal(root.get("status"), status));
-            if (sourceWarehouseId != null) predicates.add(cb.equal(root.get("sourceWarehouseId"), sourceWarehouseId));
-            if (targetWarehouseId != null) predicates.add(cb.equal(root.get("targetWarehouseId"), targetWarehouseId));
+            if (statuses != null && !statuses.isEmpty()) predicates.add(root.get("status").in(statuses));
+            if (sourceWarehouseIds != null && !sourceWarehouseIds.isEmpty()) predicates.add(root.get("sourceWarehouseId").in(sourceWarehouseIds));
+            if (targetWarehouseIds != null && !targetWarehouseIds.isEmpty()) predicates.add(root.get("targetWarehouseId").in(targetWarehouseIds));
             if (from != null) predicates.add(cb.greaterThanOrEqualTo(root.<Instant>get("createdAt"), from));
             if (before != null) predicates.add(cb.lessThan(root.<Instant>get("createdAt"), before));
             if (search != null) predicates.add(cb.or(

@@ -1,6 +1,7 @@
 package com.tpverp.backend.excel;
 
 import com.tpverp.backend.catalog.ProductCodeOrder;
+import com.tpverp.backend.inventory.StockListFilterChoices;
 import com.tpverp.backend.inventory.StockTopSalesRow;
 import com.tpverp.backend.inventory.StockTopSalesService;
 import java.io.IOException;
@@ -218,7 +219,10 @@ public class StockExcelExportService {
 
     private void writeTopSalesRows(Sheet sheet, ExportJob job, Styles styles) {
         var request = job.request;
-        var rankedRows = topSales.topSales(job.storeId, request.dateFrom(), request.dateTo(), request.warehouseId());
+        var rankedRows = request.choices().topSalesWarehouseIds().isEmpty()
+                ? topSales.topSales(job.storeId, request.dateFrom(), request.dateTo(), request.warehouseId())
+                : topSales.topSalesFiltered(job.storeId, request.dateFrom(), request.dateTo(), request.warehouseId(),
+                        request.choices().topSalesWarehouseIds());
         var rankByRow = new HashMap<StockTopSalesRow, Integer>();
         for (int index = 0; index < rankedRows.size(); index++) {
             rankByRow.put(rankedRows.get(index), index);
@@ -259,6 +263,14 @@ public class StockExcelExportService {
         bind(statement, 14, request.promotionScope(), Types.VARCHAR);
         bind(statement, 15, request.promotionId(), Types.OTHER);
         statement.setObject(16, job.exportDate);
+        bind(statement, 17, StockListFilterChoices.sqlArray(request.choices().productTypes()), Types.VARCHAR);
+        bind(statement, 18, StockListFilterChoices.sqlArray(request.choices().priceUseModes()), Types.VARCHAR);
+        bind(statement, 19, StockListFilterChoices.sqlArray(request.choices().familyIds()), Types.VARCHAR);
+        bind(statement, 20, StockListFilterChoices.sqlArray(request.choices().taxIds()), Types.VARCHAR);
+        bind(statement, 21, StockListFilterChoices.sqlArray(request.choices().offerStates()), Types.VARCHAR);
+        bind(statement, 22, StockListFilterChoices.sqlArray(request.choices().stockStatuses()), Types.VARCHAR);
+        bind(statement, 23, StockListFilterChoices.sqlArray(request.choices().supplierIds()), Types.VARCHAR);
+        bind(statement, 24, StockListFilterChoices.sqlArray(request.choices().warehouseIds()), Types.VARCHAR);
     }
 
     private static void bind(
@@ -289,7 +301,15 @@ public class StockExcelExportService {
                            cast(? as boolean) promotions_only,
                            cast(? as varchar) promotion_scope,
                            cast(? as uuid) promotion_id,
-                           cast(? as date) export_date
+                           cast(? as date) export_date,
+                           cast(? as text) product_types,
+                           cast(? as text) price_use_modes,
+                           cast(? as text) family_ids,
+                           cast(? as text) tax_ids,
+                           cast(? as text) offer_states,
+                           cast(? as text) stock_statuses,
+                           cast(? as text) supplier_ids,
+                           cast(string_to_array(?, ',') as uuid[]) warehouse_ids
                 )
                 select product.id,
                        code.valor as code,
@@ -312,7 +332,7 @@ public class StockExcelExportService {
                        product.oferta_activa as offer_active,
                        product.oferta_desde as offer_from,
                        product.oferta_hasta as offer_until,
-                       coalesce(warehouse.nombre, 'TOTAL') as warehouse_name,
+                       coalesce(selected_warehouses.names, warehouse.nombre, 'TOTAL') as warehouse_name,
                        stock.local_stock,
                        stock.total_stock,
                        product.stock_min,
@@ -342,6 +362,11 @@ public class StockExcelExportService {
                   on offer_price.producto_id = product.id and offer_price.tarifa = 'OFERTA'
                 left join almacen warehouse on warehouse.id = filter.warehouse_id
                 left join lateral (
+                    select string_agg(selected.nombre, ', ' order by selected.nombre) as names
+                    from almacen selected
+                    where selected.tienda_id = filter.store_id and selected.id = any(filter.warehouse_ids)
+                ) selected_warehouses on true
+                left join lateral (
                     select selected_supplier.razon_social
                     from producto_proveedor product_supplier
                     join proveedor selected_supplier on selected_supplier.id = product_supplier.proveedor_id
@@ -355,8 +380,10 @@ public class StockExcelExportService {
                 left join lateral (
                     select coalesce(sum(level.cantidad), 0) as total_stock,
                            coalesce(sum(level.cantidad) filter (
-                               where filter.warehouse_id is null
-                                  or level.almacen_id = filter.warehouse_id
+                               where case when filter.warehouse_ids is not null
+                                   then level.almacen_id = any(filter.warehouse_ids)
+                                   else filter.warehouse_id is null or level.almacen_id = filter.warehouse_id
+                               end
                            ), 0) as local_stock
                     from existencia level
                     where level.producto_id = product.id
@@ -420,6 +447,18 @@ public class StockExcelExportService {
                     or (filter.stock_status = 'EMPTY' and product.activo and stock.local_stock <= 0)
                     or (filter.stock_status = 'LOW' and product.activo and stock.local_stock > 0 and stock.local_stock <= 5)
                     or (filter.stock_status = 'OK' and product.activo and stock.local_stock > 5))
+                  and (cast(filter.product_types as text) is null or product.product_type = any(cast(string_to_array(filter.product_types, ',') as text[])))
+                  and (cast(filter.price_use_modes as text) is null or product.price_use_mode = any(cast(string_to_array(filter.price_use_modes, ',') as text[])))
+                  and (cast(filter.family_ids as text) is null or product.familia_id = any(cast(string_to_array(filter.family_ids, ',') as uuid[]))
+                        or product.subfamilia_id = any(cast(string_to_array(filter.family_ids, ',') as uuid[])))
+                  and (cast(filter.tax_ids as text) is null or product.impuesto_id = any(cast(string_to_array(filter.tax_ids, ',') as uuid[])))
+                  and (cast(filter.offer_states as text) is null or product.oferta_activa = any(cast(string_to_array(filter.offer_states, ',') as boolean[])))
+                  and (cast(filter.stock_statuses as text) is null or (case when not product.activo then 'INACTIVE'
+                          when stock.local_stock <= 0 then 'EMPTY' when stock.local_stock <= 5 then 'LOW' else 'OK' end)
+                          = any(cast(string_to_array(filter.stock_statuses, ',') as text[])))
+                  and (cast(filter.supplier_ids as text) is null or exists (select 1 from producto_proveedor selected_supplier
+                          where selected_supplier.producto_id = product.id
+                            and selected_supplier.proveedor_id = any(cast(string_to_array(filter.supplier_ids, ',') as uuid[]))))
                   and (not filter.promotions_only or promotion.names is not null)
                 order by (""" + nullableExpression + " is null), " + expression + " " + direction
                 + ", product.id " + direction;
@@ -549,7 +588,9 @@ public class StockExcelExportService {
         String suppliers = row.suppliers().stream()
                 .map(supplier -> supplier.supplierCode() + " " + supplier.supplierName())
                 .reduce((left, right) -> left + " " + right).orElse("");
-        return contains(row.familyName() + " " + row.familyId(), request.topSalesFamily())
+        return (request.choices().topSalesFamilyIds().isEmpty() || request.choices().topSalesFamilyIds().contains(row.familyId()))
+                && (request.choices().topSalesSubfamilyIds().isEmpty() || request.choices().topSalesSubfamilyIds().contains(row.subfamilyId()))
+                && contains(row.familyName() + " " + row.familyId(), request.topSalesFamily())
                 && contains(row.subfamilyName() + " " + row.subfamilyId(), request.topSalesSubfamily())
                 && contains(suppliers, request.topSalesSupplier())
                 && contains(String.join(" ", row.code(), row.barcode(), row.name(), row.familyName(),
@@ -722,7 +763,7 @@ public class StockExcelExportService {
                 request.dateFrom(), request.dateTo(),
                 trim(request.topSalesFamily(), 160), trim(request.topSalesSubfamily(), 160),
                 trim(request.topSalesSupplier(), 160), List.copyOf(columns),
-                promotionScope, request.promotionId());
+                promotionScope, request.promotionId(), request.choices());
     }
 
     private static boolean isTopSales(ExportRequest request) {
@@ -857,7 +898,22 @@ public class StockExcelExportService {
             String topSalesSupplier,
             List<ExportColumn> columns,
             String promotionScope,
-            UUID promotionId) {
+            UUID promotionId,
+            StockListFilterChoices choices) {
+        public ExportRequest {
+            if (choices == null) choices = StockListFilterChoices.EMPTY;
+        }
+
+        public ExportRequest(String view, String search, String productType, String priceUseMode,
+                UUID familyId, UUID taxId, Boolean offerActive, String stockStatus, UUID supplierId,
+                UUID warehouseId, String sortBy, String sortDirection, String language,
+                LocalDate dateFrom, LocalDate dateTo, String topSalesFamily, String topSalesSubfamily,
+                String topSalesSupplier, List<ExportColumn> columns, String promotionScope, UUID promotionId) {
+            this(view, search, productType, priceUseMode, familyId, taxId, offerActive, stockStatus,
+                    supplierId, warehouseId, sortBy, sortDirection, language, dateFrom, dateTo,
+                    topSalesFamily, topSalesSubfamily, topSalesSupplier, columns, promotionScope, promotionId, null);
+        }
+
         public ExportRequest(String view, String search, String productType, String priceUseMode,
                 UUID familyId, UUID taxId, Boolean offerActive, String stockStatus, UUID supplierId,
                 UUID warehouseId, String sortBy, String sortDirection, String language,

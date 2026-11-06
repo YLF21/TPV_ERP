@@ -36,7 +36,7 @@ class WarehouseTransferListExportServiceTest {
         when(store.getId()).thenReturn(storeId); when(store.getTimezone()).thenReturn("Europe/Madrid");
         when(store.getNombreEfectivo()).thenReturn("Tienda de ejemplo"); when(organization.currentStore()).thenReturn(store);
         when(warehouses.findByStoreIdOrderByNombre(storeId)).thenReturn(List.of(source, target));
-        when(transfers.list(anyInt(), eq(100), eq(filters.status()), eq(source.getId()), eq(target.getId()),
+        when(transfers.listFiltered(anyInt(), eq(100), eq(List.of(filters.status())), eq(List.of(source.getId())), eq(List.of(target.getId())),
                 eq(filters.from()), eq(filters.before()), eq("TRA"))).thenAnswer(invocation -> {
             int page = invocation.getArgument(0);
             return new PagedResult<>(IntStream.range(page * 100, Math.min(120, page * 100 + 100))
@@ -62,7 +62,7 @@ class WarehouseTransferListExportServiceTest {
             assertThat(sheet.getRow(1).getCell(7).getNumericCellValue()).isEqualTo(18.5);
             assertThat(sheet.getRow(2).getCell(4).getCellType()).isEqualTo(org.apache.poi.ss.usermodel.CellType.STRING);
         }
-        verify(transfers).list(1, 100, filters.status(), source.getId(), target.getId(), filters.from(), filters.before(), "TRA");
+        verify(transfers).listFiltered(1, 100, List.of(filters.status()), List.of(source.getId()), List.of(target.getId()), filters.from(), filters.before(), "TRA");
         saveArtifact("traspasos.xlsx", bytes);
     }
 
@@ -85,7 +85,7 @@ class WarehouseTransferListExportServiceTest {
     }
 
     @Test void refusesIncompletePaginationInsteadOfExportingPartialData() {
-        when(transfers.list(anyInt(), anyInt(), any(), any(), any(), any(), any(), any()))
+        when(transfers.listFiltered(anyInt(), anyInt(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PagedResult<>(List.of(), "1", true));
         assertThatThrownBy(() -> service.export("xlsx", filters)).isInstanceOf(IllegalStateException.class);
     }

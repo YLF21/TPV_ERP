@@ -18,8 +18,18 @@ public class CashActivityRepository {
         this.jdbc = jdbc;
     }
 
+    private static <T> List<T> single(T value) {
+        return value == null ? null : List.of(value);
+    }
+
     public List<Row> find(UUID storeId, Instant from, Instant to, UUID terminalId, UUID userId,
             String action, String cashState, String sortBy, String direction, Cursor cursor, int limit) {
+        return findFiltered(storeId, from, to, single(terminalId), single(userId), single(action), single(cashState),
+                sortBy, direction, cursor, limit);
+    }
+
+    public List<Row> findFiltered(UUID storeId, Instant from, Instant to, List<UUID> terminalIds, List<UUID> userIds,
+            List<String> actions, List<String> cashStates, String sortBy, String direction, Cursor cursor, int limit) {
         var sort = sortExpression(sortBy);
         if (!direction.equals("asc") && !direction.equals("desc")) {
             throw new IllegalArgumentException("Direccion de ordenacion no valida");
@@ -27,22 +37,22 @@ public class CashActivityRepository {
         var parameters = new MapSqlParameterSource("storeId", storeId)
                 .addValue("from", Timestamp.from(from)).addValue("to", Timestamp.from(to)).addValue("limit", limit);
         var terminals = "";
-        if (terminalId != null) {
-            terminals = " and t.id=:terminalId";
-            parameters.addValue("terminalId", terminalId);
+        if (terminalIds != null && !terminalIds.isEmpty()) {
+            terminals = " and t.id in (:terminalIds)";
+            parameters.addValue("terminalIds", terminalIds);
         }
         var filters = new StringBuilder();
-        if (userId != null) {
-            filters.append(" and b.user_id=:userId");
-            parameters.addValue("userId", userId);
+        if (userIds != null && !userIds.isEmpty()) {
+            filters.append(" and b.user_id in (:userIds)");
+            parameters.addValue("userIds", userIds);
         }
-        if (action != null) {
-            filters.append(" and b.action=:action");
-            parameters.addValue("action", action);
+        if (actions != null && !actions.isEmpty()) {
+            filters.append(" and b.action in (:actions)");
+            parameters.addValue("actions", actions);
         }
-        if (cashState != null) {
-            filters.append(" and b.cash_state=:cashState");
-            parameters.addValue("cashState", cashState);
+        if (cashStates != null && !cashStates.isEmpty()) {
+            filters.append(" and b.cash_state in (:cashStates)");
+            parameters.addValue("cashStates", cashStates);
         }
         var continuation = "";
         if (cursor != null) {

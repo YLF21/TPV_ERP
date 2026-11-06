@@ -1577,6 +1577,7 @@ export function SalesDocumentScreen({
       {productInformationProduct && (
         <SaleProductInformationDialog
           product={productInformationProduct}
+          warehouseId={warehouseId}
           locale={locale}
           token={session.accessToken}
           interfaceMode={interfaceMode}

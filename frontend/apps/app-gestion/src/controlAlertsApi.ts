@@ -1,3 +1,4 @@
+import { appendListFilter, type ListFilterValue } from "../../../packages/app-common/src/components/listFilterValues";
 import { apiRequest } from "@tpverp/app-common";
 
 export const controlAlertTypes = [
@@ -85,11 +86,11 @@ type ControlAlertDetailResponse = {
 
 export type ControlAlertFilters = {
   search: string;
-  status: "" | ControlAlertStatus;
-  type?: "" | ControlAlertType;
+  status: ListFilterValue;
+  type?: ListFilterValue;
   ruleId?: string;
-  priority?: "" | ControlAlertPriority;
-  assigneeId?: string;
+  priority?: ListFilterValue;
+  assigneeId?: ListFilterValue;
   overdue?: boolean;
   from?: string;
   to?: string;
@@ -254,11 +255,11 @@ function queryString(filters: ControlAlertFilters): string {
     size: String(filters.size)
   });
   if (filters.search.trim()) params.set("search", filters.search.trim());
-  if (filters.status) params.set("status", filters.status);
-  if (filters.type) params.set("type", filters.type);
+  appendListFilter(params, "status", filters.status);
+  appendListFilter(params, "type", filters.type);
   if (filters.ruleId) params.set("ruleId", filters.ruleId);
-  if (filters.priority) params.set("priority", filters.priority);
-  if (filters.assigneeId) params.set("assigneeId", filters.assigneeId);
+  appendListFilter(params, "priority", filters.priority);
+  appendListFilter(params, "assigneeId", filters.assigneeId);
   if (filters.overdue) params.set("overdue", "true");
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
@@ -330,10 +331,10 @@ export function loadControlRuleCatalog(token?: string) {
 export function loadControlAlertGroups(from: string, to: string, token?: string, signal?: AbortSignal,
   filters?: Pick<ControlAlertFilters, "status" | "search" | "priority" | "assigneeId" | "overdue">) {
   const params = new URLSearchParams({ from, to });
-  if (filters?.status) params.set("status", filters.status);
+  appendListFilter(params, "status", filters?.status);
   if (filters?.search.trim()) params.set("search", filters.search.trim());
-  if (filters?.priority) params.set("priority", filters.priority);
-  if (filters?.assigneeId) params.set("assigneeId", filters.assigneeId);
+  appendListFilter(params, "priority", filters?.priority);
+  appendListFilter(params, "assigneeId", filters?.assigneeId);
   if (filters?.overdue) params.set("overdue", "true");
   return apiRequest<ControlRuleAlertGroup[]>(`/control/alerts/groups?${params}`, { token, signal });
 }

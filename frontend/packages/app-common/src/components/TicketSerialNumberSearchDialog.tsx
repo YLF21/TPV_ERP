@@ -12,6 +12,8 @@ import type { TableColumnDefinition } from "./tableLayoutPreferences";
 import { useTableInitialFocus } from "./useTableInitialFocus";
 import { useTableArrowRepeat } from "./useTableArrowRepeat";
 import { ensureTableRowVisible } from "./ensureTableRowVisible";
+import { ErpListFilterPanel } from "./ErpListFilterPanel";
+import { WarehouseSearchFrame } from "./WarehouseSearchFrame";
 
 type ColumnKey = "number" | "date" | "productCode" | "productName" | "serialNumber" | "total" | "status" | "action";
 type SearchSort = { key: Exclude<ColumnKey, "action">; direction: "asc" | "desc" };
@@ -158,17 +160,24 @@ export function TicketSerialNumberSearchDialog({ locale, token, app = "venta", u
         <WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose}>×</WindowCloseButton>
       </header>
       <section className="serial-search-body">
-        <form className="serial-search-toolbar" onSubmit={(event) => { event.preventDefault(); clearTimeout(debounce.current); void search(serial); }}>
-          <label>{t("salesReport.serialSearch.input")} <input ref={input} value={serial} maxLength={128}
+        {app !== "pda" ? <ErpListFilterPanel className="serial-search-list-filter" translate={t} filters={null}
+          search={<form id="serial-search-form" className="serial-search-toolbar" onSubmit={(event) => { event.preventDefault(); clearTimeout(debounce.current); void search(serial); }}>
+          <label><span>{t("salesReport.serialSearch.input")}</span><WarehouseSearchFrame><input className="erp-search-input" ref={input} value={serial} maxLength={128}
             onKeyDown={(event) => {
               if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
               event.preventDefault();
               repeatMatchArrow(event);
             }}
-            onChange={(event) => { generation.current++; loading.current = true; setSerial(event.target.value); setResult(null); setError(""); }} /></label>
-          <button className="serial-search-primary" type="submit" disabled={busy || !token}>{t("salesReport.serialSearch.search")}</button>
-        </form>
-        <div className="serial-search-results" ref={scrollRoot} onScroll={(event) => {
+            onChange={(event) => { generation.current++; loading.current = true; setSerial(event.target.value); setResult(null); setError(""); }} /></WarehouseSearchFrame></label>
+          </form>}
+          actions={<button form="serial-search-form" type="submit" disabled={busy || !token}>{t("salesReport.serialSearch.search")}</button>} />
+          : <form className="serial-search-toolbar" onSubmit={(event) => { event.preventDefault(); clearTimeout(debounce.current); void search(serial); }}>
+            <label>{t("salesReport.serialSearch.input")} <input ref={input} value={serial} maxLength={128}
+              onKeyDown={(event) => { if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return; event.preventDefault(); repeatMatchArrow(event); }}
+              onChange={(event) => { generation.current++; loading.current = true; setSerial(event.target.value); setResult(null); setError(""); }} /></label>
+            <button className="serial-search-primary" type="submit" disabled={busy || !token}>{t("salesReport.serialSearch.search")}</button>
+          </form>}
+        <div className={`serial-search-results${app !== "pda" ? " erp-list-filter-table" : ""}`} ref={scrollRoot} onScroll={(event) => {
           const element = event.currentTarget;
           if (element.scrollHeight - element.scrollTop - element.clientHeight < 100) loadMore();
         }}><table

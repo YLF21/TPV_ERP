@@ -5,7 +5,10 @@ import {
   useTableSortPreference, visibleTableColumns,
   type LocaleCode, type TableColumnDefinition, type UserSession
 } from "@tpverp/app-common";
+import { ErpListSelect } from "../../../packages/app-common/src/components/ErpListSelect";
+import { compactListFilter, listFilterChips, listFilterValues } from "../../../packages/app-common/src/components/listFilterValues";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { ErpListFilterPanel } from "../../../packages/app-common/src/components/ErpListFilterPanel";
 import { ReportDateRangeFilter, type ReportDateRange } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
 import { useTableArrowRepeat } from "../../../packages/app-common/src/components/useTableArrowRepeat";
 import { ensureTableRowVisible } from "../../../packages/app-common/src/components/ensureTableRowVisible";
@@ -117,8 +120,8 @@ export function CashActivityView({ session, t, locale, refreshSignal }: Props) {
     return () => { detailGeneration.current++; };
   }, [rows, selectedId, token]);
 
-  function changeFilter(key: "terminalId" | "userId" | "action" | "cashState", value: string) {
-    setFilters(current => current ? { ...current, [key]: value } : current);
+  function changeFilter(key: "terminalId" | "userId" | "action" | "cashState", value: string[]) {
+    setFilters(current => current ? { ...current, [key]: compactListFilter(value) } : current);
   }
 
   async function loadMore() {
@@ -189,28 +192,28 @@ export function CashActivityView({ session, t, locale, refreshSignal }: Props) {
   }
 
   return <section className="gestion-cash-activity-view">
-    <div className="gestion-cash-activity-filters gestion-filter-toolbar">
-      <label data-filter-active={Boolean(filters?.terminalId)}><span>{t("gestion.cashClosures.terminal")}</span><ErpSelect value={filters?.terminalId || ""} disabled={!options}
+    <ErpListFilterPanel translate={t} search={null} filters={<>
+      <label data-filter-active={listFilterValues(filters?.terminalId).length > 0}><span>{t("gestion.cashClosures.terminal")}</span><ErpListSelect values={listFilterValues(filters?.terminalId)} disabled={!options}
         options={[{ value: "", label: t("gestion.cashClosures.allTerminals") }, ...(options?.terminals || []).map(item => ({ value: item.id, label: item.name }))]}
         onChange={value => changeFilter("terminalId", value)} aria-label={t("gestion.cashClosures.terminal")} /></label>
-      <label data-filter-active={Boolean(filters?.userId)}><span>{t("gestion.cashClosures.user")}</span><ErpSelect value={filters?.userId || ""} disabled={!options}
+      <label data-filter-active={listFilterValues(filters?.userId).length > 0}><span>{t("gestion.cashClosures.user")}</span><ErpListSelect values={listFilterValues(filters?.userId)} disabled={!options}
         options={[{ value: "", label: t("gestion.cashClosures.allUsers") }, ...(options?.users || []).map(item => ({ value: item.id, label: item.secondaryName && item.secondaryName !== item.name ? `${item.name} · ${item.secondaryName}` : item.name }))]}
         onChange={value => changeFilter("userId", value)} aria-label={t("gestion.cashClosures.user")} /></label>
-      <label data-filter-active={Boolean(filters?.action)}><span>{t("gestion.cashActivity.column.action")}</span><ErpSelect value={filters?.action || ""} disabled={!options}
+      <label data-filter-active={listFilterValues(filters?.action).length > 0}><span>{t("gestion.cashActivity.column.action")}</span><ErpListSelect values={listFilterValues(filters?.action)} disabled={!options}
         options={[{ value: "", label: t("gestion.cashActivity.allActions") }, ...actions.map(action => ({ value: action, label: labelForAction(action) }))]}
         onChange={value => changeFilter("action", value)} aria-label={t("gestion.cashActivity.column.action")} /></label>
-      <label data-filter-active={Boolean(filters?.cashState)}><span>{t("gestion.cashActivity.column.cashState")}</span><ErpSelect value={filters?.cashState || ""} disabled={!options}
+      <label data-filter-active={listFilterValues(filters?.cashState).length > 0}><span>{t("gestion.cashActivity.column.cashState")}</span><ErpListSelect values={listFilterValues(filters?.cashState)} disabled={!options}
         options={[{ value: "", label: t("gestion.cashActivity.allStates") }, ...states.map(state => ({ value: state, label: labelForState(state) }))]}
         onChange={value => changeFilter("cashState", value)} aria-label={t("gestion.cashActivity.column.cashState")} /></label>
-    </div>
+    </>} />
     {filters && options && <ErpFilterChips translate={t} onClear={() => setFilters({ ...filters, terminalId: "", userId: "", action: "", cashState: "" })}
       chips={[
-        { key: "terminal", label: t("gestion.cashClosures.terminal"), value: options.terminals.find(item => item.id === filters.terminalId)?.name || "", onRemove: () => changeFilter("terminalId", "") },
-        { key: "user", label: t("gestion.cashClosures.user"), value: options.users.find(item => item.id === filters.userId)?.name || "", onRemove: () => changeFilter("userId", "") },
-        { key: "action", label: t("gestion.cashActivity.column.action"), value: filters.action ? labelForAction(filters.action) : "", onRemove: () => changeFilter("action", "") },
-        { key: "state", label: t("gestion.cashActivity.column.cashState"), value: filters.cashState ? labelForState(filters.cashState) : "", onRemove: () => changeFilter("cashState", "") }
+        ...listFilterChips("terminal", t("gestion.cashClosures.terminal"), listFilterValues(filters?.terminalId), values => changeFilter("terminalId", values), id => options.terminals.find(item => item.id === id)?.name ?? id),
+        ...listFilterChips("user", t("gestion.cashClosures.user"), listFilterValues(filters?.userId), values => changeFilter("userId", values), id => options.users.find(item => item.id === id)?.name ?? id),
+        ...listFilterChips("action", t("gestion.cashActivity.column.action"), listFilterValues(filters?.action), values => changeFilter("action", values), labelForAction),
+        ...listFilterChips("state", t("gestion.cashActivity.column.cashState"), listFilterValues(filters?.cashState), values => changeFilter("cashState", values), labelForState),
       ]} />}
-    <div className="gestion-cash-activity-table-wrap" role="table" aria-label={t("gestion.cashClosures.title")} aria-rowcount={rows.length} onScroll={onScroll} ref={tableRef}>
+    <div className="gestion-cash-activity-table-wrap erp-list-filter-table" role="table" aria-label={t("gestion.cashClosures.title")} aria-rowcount={rows.length} onScroll={onScroll} ref={tableRef}>
       <div className="gestion-cash-activity-row head" role="row" style={tableStyle}>
         {visible.map(column => <TableLayoutHeaderCell as="span" key={column.key} column={column}
           sortDirection={effectiveSort?.column === column.key ? effectiveSort.direction : null}

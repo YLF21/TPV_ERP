@@ -157,6 +157,7 @@ it("searches and filters the full paged list while removing one filter chip at a
   render(<WarehouseTransferScreen session={{ username: "admin", displayName: "Admin",
     accessToken: "token", permissions: ["GESTION_ALMACEN"] }} t={(key) => key} />);
   await waitFor(() => expect(api.loadTransferDocuments).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
   fireEvent.click(screen.getByRole("button", { name: "warehouse.count.status" }));
   fireEvent.click(screen.getByRole("option", { name: "warehouse.count.status.DRAFT" }));
   fireEvent.click(screen.getByRole("button", { name: "warehouse.transfer.source" }));
@@ -166,6 +167,12 @@ it("searches and filters the full paged list while removing one filter chip at a
   await waitFor(() => expect(api.loadTransferDocuments).toHaveBeenLastCalledWith(0, expect.objectContaining({
     status: "DRAFT", sourceWarehouseId: "source", search: "TRA-2026"
   }), "token"));
+  const filterToggle = screen.getByRole("button", { name: "salesReport.filter" });
+  fireEvent.click(filterToggle);
+  expect(filterToggle).toHaveAttribute("aria-expanded", "false");
+  expect(screen.getByRole("group", { name: "filters.applied" })).toHaveTextContent("ORIGEN");
+  fireEvent.click(filterToggle);
+  expect(screen.getByRole("button", { name: "warehouse.transfer.source" })).toHaveTextContent("ORIGEN");
   const applied = screen.getByRole("group", { name: "filters.applied" });
   expect(within(applied).getByText("TRA-2026")).toBeInTheDocument();
   fireEvent.click(within(applied).getByRole("button", { name: "filters.remove warehouse.transfer.search" }));
@@ -274,12 +281,12 @@ it("exports the complete filtered list as PDF and Excel independently of loaded 
   render(<WarehouseTransferScreen session={listSession} t={(key) => key} locale="es" />);
   await waitFor(() => expect(api.loadTransferDocuments).toHaveBeenCalled());
   fireEvent.change(screen.getByRole("searchbox", { name: "warehouse.transfer.search" }), { target: { value: "TRA" } });
+  fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
   fireEvent.click(screen.getByRole("button", { name: "warehouse.transfer.source" }));
   fireEvent.click(await screen.findByRole("option", { name: "ORIGEN" }));
   const dock = screen.getByRole("contentinfo", { name: "Periodo seleccionado" });
   fireEvent.change(within(dock).getByLabelText("Desde"), { target: { value: "2026-09-01" } });
   fireEvent.change(within(dock).getByLabelText("Hasta"), { target: { value: "2026-09-24" } });
-  fireEvent.click(within(dock).getByRole("button", { name: "Aplicar" }));
   for (const [label, format] of [["warehouse.count.exportPdf", "pdf"], ["warehouse.count.exportExcel", "xlsx"]]) {
     const button = screen.getByRole("button", { name: label });
     await waitFor(() => expect(button).toBeEnabled());
@@ -330,6 +337,7 @@ it("applies transfer periods to list requests and exports while retaining the ot
   const dock = await screen.findByRole("contentinfo", { name: "Periodo seleccionado" });
   await waitFor(() => expect(within(dock).getByRole("button", { name: "Hoy" })).toBeEnabled());
   expect(within(dock).getByRole("button", { name: "Hoy" })).toHaveAttribute("aria-pressed", "false");
+  fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
   fireEvent.click(screen.getByRole("button", { name: "warehouse.count.status" }));
   fireEvent.click(screen.getByRole("option", { name: "warehouse.count.status.DRAFT" }));
   fireEvent.click(within(dock).getByRole("button", { name: "Ayer" }));
@@ -375,6 +383,7 @@ it("discards an old scroll response when filters change and restarts from the fi
   await screen.findByRole("row", { name: /TRA-OLD/ });
   scrollTransferList();
   await waitFor(() => expect(api.loadTransferDocuments).toHaveBeenCalledTimes(2));
+  fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
   fireEvent.click(screen.getByRole("button", { name: "warehouse.count.status" }));
   fireEvent.click(screen.getByRole("option", { name: "warehouse.count.status.DRAFT" }));
   await screen.findByRole("row", { name: /TRA-NEW/ });

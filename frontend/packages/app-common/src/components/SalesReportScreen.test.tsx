@@ -900,7 +900,7 @@ describe("SalesReportScreen", () => {
     expect(html).toContain("esPOS VENTA");
     expect(html).toContain("Salidas");
     expect(html).toContain("Entradas");
-    expect(html).toContain('class="sales-activity-toolbar"');
+    expect(html).toContain('sales-activity-toolbar--list');
     expect(html).toContain('class="report-footer-context"');
     expect(html).toContain('class="report-user-button"');
     expect(html).toContain('class="top-date-time"');
@@ -1121,9 +1121,10 @@ describe("SalesReportScreen", () => {
     expect(screen.getAllByLabelText("Fecha de consulta")).toHaveLength(1);
     if (app === "gestion") {
       expect(await within(dateInput.closest("label")!).findByText("Jueves")).toBeVisible();
-      const toolbar = dateInput.closest(".sales-activity-toolbar")!;
+      const footer = dateInput.closest(".sales-activity-daily-date-footer")!;
+      expect(footer).toBeVisible();
+      const toolbar = document.querySelector(".sales-activity-toolbar--daily")!;
       expect(toolbar).toHaveClass("gestion-filter-toolbar");
-      expect(toolbar.querySelector(".report-date-range-summary")).toBeNull();
       expect([...toolbar.querySelectorAll(".sales-activity-output-actions button > span")].map((label) => label.textContent)).toEqual(["Imprimir", "Excel", "PDF"]);
     }
     fireEvent.change(dateInput, { target: { value: "2026-07-05" } });
@@ -1292,12 +1293,12 @@ describe("SalesReportScreen", () => {
       />
     );
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Aplicar" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByLabelText("Desde")).toBeEnabled());
     expect(screen.getByLabelText("Desde")).toHaveValue("2026-08-16");
     expect(screen.getByLabelText("Hasta")).toHaveValue("2026-08-16");
     fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-08-15" } });
     fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-08-16" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    expect(screen.queryByRole("button", { name: "Aplicar" })).not.toBeInTheDocument();
     await waitFor(() => expect(request).toHaveBeenCalledWith(
       "/sales-activity/documents/by-day?dateFrom=2026-08-15&dateTo=2026-08-16&limit=250", { token: "token" }
     ));
@@ -1709,7 +1710,7 @@ describe("SalesReportScreen", () => {
     expect(within(dock).getByRole("button", { name: "Semana actual" })).toBeVisible();
     expect(within(dock).getByLabelText("Desde")).toBeVisible();
     expect(within(dock).getByLabelText("Hasta")).toBeVisible();
-    expect(within(dock).getByRole("button", { name: "Aplicar" })).toBeVisible();
+    expect(within(dock).queryByRole("button", { name: "Aplicar" })).not.toBeInTheDocument();
   });
 
   it("localizes integrated document payment methods while preserving custom identifiers", async () => {
@@ -2725,7 +2726,7 @@ describe("SalesReportScreen", () => {
     expect(previewWindow.location.replace).not.toHaveBeenCalled();
   });
 
-  it("closes the report filter dialog with Escape", () => {
+  it("collapses inline document filters with Escape and returns focus to the toggle", () => {
     render(
       <SalesReportScreen
         app="venta"
@@ -2740,9 +2741,14 @@ describe("SalesReportScreen", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
-    expect(screen.getByRole("dialog", { name: "Filtrar" })).toBeVisible();
-    fireEvent.keyDown(window, { key: "Escape" });
+    const toggle = screen.getByRole("button", { name: "Filtrar" });
+    const panel = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+    expect(panel).toBeVisible();
     expect(screen.queryByRole("dialog", { name: "Filtrar" })).not.toBeInTheDocument();
+    fireEvent.keyDown(panel, { key: "Escape" });
+    expect(panel).not.toBeVisible();
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveFocus();
   });
 
   it("builds V67-compatible report table definitions with sensible defaults", () => {

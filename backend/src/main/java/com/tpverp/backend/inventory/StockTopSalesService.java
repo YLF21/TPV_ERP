@@ -96,6 +96,18 @@ public class StockTopSalesService {
     @Transactional(readOnly = true)
     public List<StockTopSalesRow> topSales(
             UUID storeId, LocalDate dateFrom, LocalDate dateTo, UUID warehouseId) {
+        return topSalesFiltered(storeId, dateFrom, dateTo, warehouseId, List.of());
+    }
+
+    @Transactional(readOnly = true)
+    public List<StockTopSalesRow> topSalesFiltered(LocalDate dateFrom, LocalDate dateTo,
+            UUID warehouseId, List<UUID> warehouseIds) {
+        return topSalesFiltered(organization.currentStore().getId(), dateFrom, dateTo, warehouseId, warehouseIds);
+    }
+
+    @Transactional(readOnly = true)
+    public List<StockTopSalesRow> topSalesFiltered(UUID storeId, LocalDate dateFrom, LocalDate dateTo,
+            UUID warehouseId, List<UUID> warehouseIds) {
         var selectedFrom = Objects.requireNonNull(dateFrom, "dateFrom");
         var selectedTo = Objects.requireNonNull(dateTo, "dateTo");
         var startDate = selectedFrom.isAfter(selectedTo) ? selectedTo : selectedFrom;
@@ -107,7 +119,8 @@ public class StockTopSalesService {
                         startDate,
                         endDate,
                         SALE_TYPES,
-                        warehouseId)
+                        warehouseId).stream()
+                .filter(document -> warehouseIds == null || warehouseIds.isEmpty() || warehouseIds.contains(document.getAlmacenId()))
                 .forEach(document -> accumulate(totals, document));
 
         var positiveKeys = totals.entrySet().stream()
@@ -136,10 +149,10 @@ public class StockTopSalesService {
                 .collect(Collectors.toMap(Family::getId, Family::getName));
         var subfamiliesById = subfamilies.findAllById(subfamilyIds).stream()
                 .collect(Collectors.toMap(Subfamily::getId, Subfamily::getName));
-        var warehouseIds = positiveKeys.stream()
+        var soldWarehouseIds = positiveKeys.stream()
                 .map(ProductWarehouse::warehouseId)
                 .collect(Collectors.toSet());
-        var warehousesById = warehouses.findAllById(warehouseIds).stream()
+        var warehousesById = warehouses.findAllById(soldWarehouseIds).stream()
                 .collect(Collectors.toMap(Warehouse::getId, Warehouse::getName));
 
         return positiveKeys.stream()

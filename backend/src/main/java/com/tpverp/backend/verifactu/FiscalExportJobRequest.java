@@ -21,11 +21,21 @@ public record FiscalExportJobRequest(
         FiscalRecordOperation operation,
         FiscalDocumentType documentType,
         FiscalMode fiscalMode,
-        FiscalExportJobScope scope) {
+        FiscalExportJobScope scope,
+        FiscalListChoices choices) {
 
     public FiscalExportJobRequest {
+        if (choices == null) choices = FiscalListChoices.EMPTY;
         recordIds = recordIds == null ? List.of()
                 : java.util.Collections.unmodifiableList(new ArrayList<>(recordIds));
+    }
+
+    public FiscalExportJobRequest(FiscalExportKind kind, OffsetDateTime periodStart,
+            OffsetDateTime periodEnd, List<UUID> recordIds, LocalDate dateFrom, LocalDate dateTo,
+            String documentNumber, String documentNumberPrefix, FiscalRecordOperation operation,
+            FiscalDocumentType documentType, FiscalMode fiscalMode, FiscalExportJobScope scope) {
+        this(kind, periodStart, periodEnd, recordIds, dateFrom, dateTo, documentNumber,
+                documentNumberPrefix, operation, documentType, fiscalMode, scope, null);
     }
 
     /** Compatibility constructor for existing non-HTTP worker tests/callers. */
@@ -73,13 +83,13 @@ public record FiscalExportJobRequest(
 
     @AssertTrue(message = "El scope fiscal y sus filtros no son compatibles")
     public boolean hasValidScope() {
-        if (scope == null || kind == null) return false;
+        if (scope == null || kind == null || !choices.statuses().isEmpty()) return false;
         var ids = safeRecordIds();
         var hasPeriod = periodStart != null || periodEnd != null;
         var completePeriod = periodStart != null && periodEnd != null;
         var hasOther = dateFrom != null || dateTo != null || documentNumber != null
                 || documentNumberPrefix != null || operation != null || documentType != null
-                || fiscalMode != null;
+                || fiscalMode != null || choices.hasValues();
         return switch (scope) {
             case CURRENT -> kind == FiscalExportKind.BILLING && ids.size() == 1
                     && !hasPeriod && !hasOther;

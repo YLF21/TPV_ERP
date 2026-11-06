@@ -72,7 +72,7 @@ public class SaasProductSalesHistoryService {
         var from = filters.from(); var to = filters.to();
         if (from != null && to != null && from.isAfter(to)) { var previous = from; from = to; to = previous; }
         var status = filters.status() == null || filters.status().isBlank() ? null : filters.status();
-        if (status != null && !STATUSES.contains(status)) invalid();
+        if (status != null && !STATUSES.containsAll(java.util.Arrays.asList(status.split(",", -1)))) invalid();
         var stores = filters.storeIds() == null ? List.<UUID>of() : filters.storeIds();
         if (stores.size() > 2000 || stores.stream().anyMatch(java.util.Objects::isNull) || new HashSet<>(stores).size() != stores.size()) invalid();
         var sort = filters.sortBy() == null || filters.sortBy().isBlank() ? "occurredAt" : filters.sortBy();

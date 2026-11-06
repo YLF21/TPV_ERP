@@ -56,6 +56,14 @@ public class WarehouseTransferDocumentService {
     public PagedResult<ListItem> list(Integer requestedPage, Integer requestedLimit,
             WarehouseTransferDocument.Status status, UUID sourceWarehouseId, UUID targetWarehouseId,
             Instant from, Instant before, String search) {
+        return listFiltered(requestedPage, requestedLimit, single(status), single(sourceWarehouseId),
+                single(targetWarehouseId), from, before, search);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<ListItem> listFiltered(Integer requestedPage, Integer requestedLimit,
+            List<WarehouseTransferDocument.Status> statuses, List<UUID> sourceWarehouseIds, List<UUID> targetWarehouseIds,
+            Instant from, Instant before, String search) {
         int page = requestedPage == null ? 0 : Math.max(0, requestedPage);
         int limit = requestedLimit == null ? 50 : Math.max(1, Math.min(requestedLimit, 100));
         if (from != null && before != null && !from.isBefore(before)) {
@@ -64,8 +72,8 @@ public class WarehouseTransferDocumentService {
         String pattern = search == null || search.isBlank() ? null
                 : "%" + search.trim().toLowerCase(Locale.ROOT)
                         .replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
-        var result = documents.pageFiltered(organization.currentStore().getId(), status,
-                sourceWarehouseId, targetWarehouseId, from, before, pattern, PageRequest.of(page, limit));
+        var result = documents.pageFilteredValues(organization.currentStore().getId(), statuses,
+                sourceWarehouseIds, targetWarehouseIds, from, before, pattern, PageRequest.of(page, limit));
         var pageItems = result.getContent();
         Map<UUID, WarehouseTransferLineTotals> totals = pageItems.isEmpty() ? Map.of()
                 : lines.totalsForTransfers(pageItems.stream().map(WarehouseTransferDocument::getId).toList())
@@ -73,6 +81,10 @@ public class WarehouseTransferDocumentService {
         var items = pageItems.stream().map(document -> ListItem.from(document, totals.get(document.getId()))).toList();
         return new PagedResult<>(items, result.hasNext() ? String.valueOf(page + 1) : null,
                 result.hasNext());
+    }
+
+    static <T> List<T> single(T value) {
+        return value == null ? List.of() : List.of(value);
     }
 
     @Transactional(readOnly = true)

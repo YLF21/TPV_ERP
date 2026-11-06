@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
+import { createTranslator } from "../i18n/LocalizedMessages";
 import { WarehouseOperationsPanel } from "./WarehouseOperationsPanel";
 import type { UserSession } from "../types";
 
@@ -56,6 +57,31 @@ function show(options: {
 function reportCalls() {
   return apiRequestMock.mock.calls.filter(([path]) => String(path).startsWith("/sales-reports/"));
 }
+
+it.each(["ALBARAN_ENTRADA", "FACTURA_ENTRADA"] as const)("exports the selected supplier code and warehouse with %s", async documentType => {
+  apiRequestMock.mockImplementation(async path => {
+    if (String(path).startsWith("/document-reports/date-options")) return { currentDate: "2026-10-15", earliestDate: "2026-01-01" };
+    if (String(path).startsWith("/sales-reports/")) return new Blob(["report"]);
+    return { items: [{ id: "doc", number: "AE-001", date: "2026-10-01", status: "CONFIRMADA", supplierId: "supplier-uuid", warehouseId: "warehouse-uuid", lines: [] }], hasMore: false };
+  });
+  render(<WarehouseOperationsPanel app="gestion" mode="input" documentType={documentType} token="token" session={session}
+    products={[]} customers={[]} warehouses={[{ id: "warehouse-uuid", name: "Reserva" }]}
+    suppliers={[{ id: "supplier-uuid", supplierId: "P-01", legalName: "Proveedor Norte" }]} t={createTranslator("es")} locale="es" />);
+  await screen.findByText("AE-001");
+  fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
+  fireEvent.click(screen.getByRole("button", { name: "Proveedor" }));
+  fireEvent.click(screen.getByRole("option", { name: "P-01 · Proveedor Norte" }));
+  fireEvent.click(screen.getByRole("button", { name: "Almacén" }));
+  fireEvent.click(screen.getByRole("option", { name: "Reserva" }));
+  for (const [key, endpoint] of [["F6", "/sales-reports/export"], ["F7", "/sales-reports/export-pdf"]]) {
+    fireEvent.keyDown(window, { key });
+    await waitFor(() => expect(apiRequestMock).toHaveBeenCalledWith(endpoint, expect.objectContaining({
+      body: expect.objectContaining({ filters: expect.objectContaining({ suppliers: ["P-01"], warehouses: ["Reserva"] }) })
+    })));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Excel" })).toBeEnabled());
+  }
+  expect(reportCalls()).toHaveLength(2);
+});
 
 beforeEach(() => {
   localStorage.clear();

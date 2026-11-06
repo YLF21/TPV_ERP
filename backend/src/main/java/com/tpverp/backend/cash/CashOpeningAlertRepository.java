@@ -29,15 +29,27 @@ public class CashOpeningAlertRepository {
             where s.tienda_id=:storeId and s.apertura_diferencia <> 0
             """;
 
+    private static <T> List<T> single(T value) {
+        return value == null ? null : List.of(value);
+    }
+
     public List<CashOpeningAlertView> find(UUID storeId, Instant from, Instant toExclusive,
             UUID terminalId, UUID userId, String status, Cursor cursor, int limit) {
+        return findFiltered(storeId, from, toExclusive, single(terminalId), single(userId), single(status), cursor, limit);
+    }
+
+    public List<CashOpeningAlertView> findFiltered(UUID storeId, Instant from, Instant toExclusive,
+            List<UUID> terminalIds, List<UUID> userIds, List<String> statuses, Cursor cursor, int limit) {
         var sql = new StringBuilder(SELECT);
         var params = new MapSqlParameterSource("storeId", storeId).addValue("limit", limit);
         if (from != null) { sql.append(" and s.abierta_en >= :from"); params.addValue("from", Timestamp.from(from)); }
         if (toExclusive != null) { sql.append(" and s.abierta_en < :to"); params.addValue("to", Timestamp.from(toExclusive)); }
-        if (terminalId != null) { sql.append(" and s.terminal_id=:terminalId"); params.addValue("terminalId", terminalId); }
-        if (userId != null) { sql.append(" and s.usuario_apertura_id=:userId"); params.addValue("userId", userId); }
-        if (status != null) sql.append(status.equals("PENDING") ? " and s.apertura_revisada_en is null" : " and s.apertura_revisada_en is not null");
+        if (terminalIds != null && !terminalIds.isEmpty()) { sql.append(" and s.terminal_id in (:terminalIds)"); params.addValue("terminalIds", terminalIds); }
+        if (userIds != null && !userIds.isEmpty()) { sql.append(" and s.usuario_apertura_id in (:userIds)"); params.addValue("userIds", userIds); }
+        if (statuses != null && !statuses.isEmpty()) {
+            sql.append(" and (case when s.apertura_revisada_en is null then 'PENDING' else 'REVIEWED' end) in (:statuses)");
+            params.addValue("statuses", statuses);
+        }
         if (cursor != null) {
             sql.append(" and (s.abierta_en,s.id) < (:cursorAt,:cursorId)");
             params.addValue("cursorAt", Timestamp.from(cursor.at())).addValue("cursorId", cursor.id());

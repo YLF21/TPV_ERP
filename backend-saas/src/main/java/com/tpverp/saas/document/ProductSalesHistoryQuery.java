@@ -18,7 +18,9 @@ final class ProductSalesHistoryQuery {
             }
             if (from != null && to != null && from.isAfter(to)) throw invalid("date range");
             if (status != null) {
-                try { CommercialDocumentQuery.Status.valueOf(status); }
+                try {
+                    for (String selected : status.split(",", -1)) CommercialDocumentQuery.Status.valueOf(selected);
+                }
                 catch (IllegalArgumentException exception) { throw invalid("status"); }
             }
             storeIds = storeIds == null ? Set.of() : Set.copyOf(storeIds);

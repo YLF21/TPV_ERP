@@ -94,6 +94,7 @@ describe("CashOpeningAlertsScreen", () => {
     render(<CashOpeningAlertsScreen session={session(["CASH_READ"])} t={t} locale="es" refreshSignal={0} onReviewed={vi.fn()} />);
     await screen.findByText("CAJA 01");
 
+    fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
     fireEvent.click(screen.getByRole("button", { name: "gestion.cashClosures.terminal" }));
     fireEvent.click(screen.getByRole("option", { name: "CAJA 01" }));
     await waitFor(() => expect(alertsApi.loadCashAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ terminalId: "terminal-1", status: "" }), null, "token"));
@@ -241,6 +242,7 @@ describe("CashOpeningAlertsScreen", () => {
   it("applies terminal, user and status immediately and preserves them when a tag is removed", async () => {
     render(<CashOpeningAlertsScreen session={session(["CASH_READ"])} t={t} locale="es" refreshSignal={0} onReviewed={vi.fn()} />);
     await screen.findByText("CAJA 01");
+    fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
     fireEvent.click(screen.getByRole("button", { name: "gestion.cashClosures.terminal" }));
     fireEvent.click(screen.getByRole("option", { name: "CAJA 01" }));
     await waitFor(() => expect(alertsApi.loadCashAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ terminalId: "terminal-1", userId: "", status: "" }), null, "token"));
@@ -264,6 +266,7 @@ describe("CashOpeningAlertsScreen", () => {
     });
     render(<CashOpeningAlertsScreen session={session(["CASH_READ"])} t={t} locale="es" refreshSignal={0} onReviewed={vi.fn()} />);
     await screen.findByText("CAJA 01");
+    fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
     fireEvent.click(screen.getByRole("button", { name: "gestion.cashClosures.terminal" }));
     fireEvent.click(screen.getByRole("option", { name: "CAJA 01" }));
     fireEvent.click(screen.getByRole("button", { name: "gestion.cashClosures.user" }));
@@ -277,6 +280,7 @@ describe("CashOpeningAlertsScreen", () => {
   it("applies a preset immediately with the applied criteria and synchronizes the manual dates", async () => {
     render(<CashOpeningAlertsScreen session={session(["CASH_READ"])} t={t} locale="es" refreshSignal={0} onReviewed={vi.fn()} />);
     await screen.findByText("CAJA 01");
+    fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
     fireEvent.click(screen.getByRole("button", { name: "gestion.cashClosures.terminal" }));
     fireEvent.click(screen.getByRole("option", { name: "CAJA 01" }));
     await waitFor(() => expect(alertsApi.loadCashAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ terminalId: "terminal-1" }), null, "token"));
@@ -296,7 +300,6 @@ describe("CashOpeningAlertsScreen", () => {
     expect(screen.queryByLabelText("gestion.cashClosures.to")).toBeNull();
     fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-09-29" } });
     fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-10-01" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
     await waitFor(() => expect(alertsApi.loadCashAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ from: "2026-09-29", to: "2026-10-01" }), null, "token"));
     fireEvent.click(screen.getByRole("button", { name: "filters.remove gestion.cashClosures.from / gestion.cashClosures.to" }));
     await waitFor(() => expect(alertsApi.loadCashAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ from: "", to: "", status: "" }), null, "token"));
@@ -306,6 +309,7 @@ describe("CashOpeningAlertsScreen", () => {
   it("preserves the preset when removing another chip and clears all criteria together", async () => {
     render(<CashOpeningAlertsScreen session={session(["CASH_READ"])} t={t} locale="es" refreshSignal={0} onReviewed={vi.fn()} />);
     await screen.findByText("CAJA 01");
+    fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
     fireEvent.click(screen.getByRole("button", { name: "gestion.cashOpeningAlerts.status" }));
     fireEvent.click(screen.getByRole("option", { name: "gestion.cashOpeningAlerts.pending" }));
     await waitFor(() => expect(alertsApi.loadCashAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ status: "PENDING" }), null, "token"));

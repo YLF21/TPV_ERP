@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
 import {
   ApiError,
-  ErpSelect,
   TableLayoutHeaderCell,
   apiRequest,
   useTableLayoutPreference,
@@ -14,8 +13,11 @@ import {
 import "./MemberCategoriesScreen.css";
 import "../../../packages/app-common/src/components/ErpClassicTables.css";
 import "../../../packages/app-common/src/components/ErpClassicWindow.css";
+import { ErpListSelect } from "../../../packages/app-common/src/components/ErpListSelect";
+import { listFilterChips, matchesListFilter } from "../../../packages/app-common/src/components/listFilterValues";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { GestionSearchFrame } from "../../../packages/app-common/src/components/GestionSearchFrame";
+import { ErpListFilterPanel } from "../../../packages/app-common/src/components/ErpListFilterPanel";
 
 type Translate = (key: string) => string;
 type Request = typeof apiRequest;
@@ -28,7 +30,6 @@ type Draft = {
   id: string; name: string; minPoints: string; discountPercent: string;
   discountEnabled: boolean; manualOnly: boolean;
 };
-type StatusFilter = "all" | "active" | "inactive";
 type CategoryColumnKey = "code" | "name" | "type" | "minPoints" | "discount" | "status";
 
 const categoryColumnDefinitions = [
@@ -55,7 +56,7 @@ export function MemberCategoriesScreen({ session, t, request = apiRequest }: {
 }) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<StatusFilter>("all");
+  const [filter, setFilter] = useState<string[]>([]);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -112,8 +113,7 @@ export function MemberCategoriesScreen({ session, t, request = apiRequest }: {
   useEffect(() => { void load(); }, [load]);
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const visible = categories.filter((category) => (filter === "all"
-    || (filter === "active" ? category.active : !category.active))
+  const visible = categories.filter((category) => matchesListFilter(filter, category.active ? "active" : "inactive")
     && (!normalizedQuery || category.name.toLocaleLowerCase().includes(normalizedQuery)
       || category.code.toLocaleLowerCase().includes(normalizedQuery)));
 
@@ -195,16 +195,13 @@ export function MemberCategoriesScreen({ session, t, request = apiRequest }: {
       {canManage && <button type="button" className="stock-add-product-button" disabled={busy} onClick={openNew}>{t("gestion.memberCategories.new")}</button>}
     </header>
 
-    <div className="party-directory-toolbar party-directory-toolbar--classic gestion-filter-toolbar">
-      <label className="party-directory-search-label" htmlFor="member-category-search">{t("party.searchLabel")}</label>
-      <GestionSearchFrame><input id="member-category-search" aria-label={t("gestion.memberCategories.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("gestion.memberCategories.search")} /></GestionSearchFrame>
-      <label className="party-directory-status-filter" data-filter-active={filter !== "all"}><span>{t("party.status")}</span><ErpSelect className="erp-select--compact" value={filter} aria-label={t("party.status")} onChange={(value) => setFilter(value as StatusFilter)} options={["all", "active", "inactive"].map((value) => ({ value, label: t(value === "all" ? "gestion.memberCategories.filter.all" : `party.${value}`) }))} /></label>
-      <span className="party-directory-result-count">{t("party.results").replace("{count}", String(visible.length))}</span>
-    </div>
+    <ErpListFilterPanel translate={t} search={<label><span>{t("party.searchLabel")}</span>
+      <GestionSearchFrame><input id="member-category-search" className="erp-search-input" aria-label={t("gestion.memberCategories.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("gestion.memberCategories.search")} /></GestionSearchFrame>
+    </label>} filters={<label className="party-directory-status-filter" data-filter-active={filter.length > 0}><span>{t("party.status")}</span><ErpListSelect className="erp-select--compact" values={filter} aria-label={t("party.status")} onChange={setFilter} options={["all", "active", "inactive"].map((value) => ({ value: value === "all" ? "" : value, label: t(value === "all" ? "gestion.memberCategories.filter.all" : `party.${value}`) }))} /></label>} />
     <ErpFilterChips translate={t} chips={[
       { key: "search", label: t("party.searchLabel"), value: query, onRemove: () => setQuery("") },
-      { key: "active", label: t("party.status"), value: filter === "all" ? "" : t(`party.${filter}`), onRemove: () => setFilter("all") }
-    ]} onClear={() => { setQuery(""); setFilter("all"); }} />
+      ...listFilterChips("active", t("party.status"), filter, setFilter, value => t("party." + value)),
+    ]} onClear={() => { setQuery(""); setFilter([]); }} />
 
     <div ref={tableRef} className="party-directory-table member-categories-table" role="table" aria-label={t("gestion.memberCategories.title")}>
       <div className="party-directory-row member-category-row header" role="row" style={gridStyle}>

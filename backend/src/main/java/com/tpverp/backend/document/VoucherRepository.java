@@ -75,12 +75,12 @@ public interface VoucherRepository extends JpaRepository<Voucher, UUID> {
                     or v.creado_en < cast(:untilInstant as timestamptz))
                and (
                     cast(:effectiveStatus as text) is null
-                    or (:effectiveStatus = 'ACTIVE' and v.status = 'ACTIVE'
+                    or ('ACTIVE' = any(string_to_array(:effectiveStatus, ',')) and v.status = 'ACTIVE'
                         and (v.caduca_el is null or v.caduca_el >= cast(:today as date)))
-                    or (:effectiveStatus = 'EXPIRED' and v.status = 'ACTIVE'
+                    or ('EXPIRED' = any(string_to_array(:effectiveStatus, ',')) and v.status = 'ACTIVE'
                         and v.caduca_el is not null and v.caduca_el < cast(:today as date))
-                    or (:effectiveStatus = 'CONSUMED' and v.status = 'CONSUMED')
-                    or (:effectiveStatus = 'INVALIDATED' and v.status = 'INVALIDATED')
+                    or ('CONSUMED' = any(string_to_array(:effectiveStatus, ',')) and v.status = 'CONSUMED')
+                    or ('INVALIDATED' = any(string_to_array(:effectiveStatus, ',')) and v.status = 'INVALIDATED')
                )
              order by v.creado_en desc, v.id desc
             """,
@@ -99,12 +99,12 @@ public interface VoucherRepository extends JpaRepository<Voucher, UUID> {
                     or v.creado_en < cast(:untilInstant as timestamptz))
                and (
                     cast(:effectiveStatus as text) is null
-                    or (:effectiveStatus = 'ACTIVE' and v.status = 'ACTIVE'
+                    or ('ACTIVE' = any(string_to_array(:effectiveStatus, ',')) and v.status = 'ACTIVE'
                         and (v.caduca_el is null or v.caduca_el >= cast(:today as date)))
-                    or (:effectiveStatus = 'EXPIRED' and v.status = 'ACTIVE'
+                    or ('EXPIRED' = any(string_to_array(:effectiveStatus, ',')) and v.status = 'ACTIVE'
                         and v.caduca_el is not null and v.caduca_el < cast(:today as date))
-                    or (:effectiveStatus = 'CONSUMED' and v.status = 'CONSUMED')
-                    or (:effectiveStatus = 'INVALIDATED' and v.status = 'INVALIDATED')
+                    or ('CONSUMED' = any(string_to_array(:effectiveStatus, ',')) and v.status = 'CONSUMED')
+                    or ('INVALIDATED' = any(string_to_array(:effectiveStatus, ',')) and v.status = 'INVALIDATED')
                )
             """,
             nativeQuery = true)

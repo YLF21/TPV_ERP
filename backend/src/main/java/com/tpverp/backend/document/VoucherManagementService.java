@@ -56,6 +56,12 @@ public class VoucherManagementService {
             LocalDate to,
             int page,
             int size) {
+        return listFiltered(query, status == null ? List.of() : List.of(status), from, to, page, size);
+    }
+
+    @Transactional(readOnly = true)
+    public ManagementPage listFiltered(
+            String query, List<VoucherEffectiveStatus> statuses, LocalDate from, LocalDate to, int page, int size) {
         if (page < 0 || size < 1 || size > 200) {
             throw new IllegalArgumentException("voucher_page_invalid");
         }
@@ -70,7 +76,7 @@ public class VoucherManagementService {
         var result = vouchers.findManagementPage(
                 store.getId(),
                 normalizedQuery,
-                status == null ? null : status.name(),
+                statuses == null || statuses.isEmpty() ? null : String.join(",", statuses.stream().map(Enum::name).toList()),
                 from == null ? null : from.atStartOfDay(zone).toInstant(),
                 to == null ? null : to.plusDays(1).atStartOfDay(zone).toInstant(),
                 today,

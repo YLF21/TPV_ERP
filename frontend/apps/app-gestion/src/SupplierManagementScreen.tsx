@@ -5,7 +5,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTableArrowRepeat } from "../../../packages/app-common/src/components/useTableArrowRepeat";
 import { ensureTableRowVisible } from "../../../packages/app-common/src/components/ensureTableRowVisible";
 import { useTableInitialFocus } from "../../../packages/app-common/src/components/useTableInitialFocus";
-import { Plus } from "@phosphor-icons/react";
+import { Archive, PencilSimple, Plus } from "@phosphor-icons/react";
+import { ErpListFilterPanel } from "../../../packages/app-common/src/components/ErpListFilterPanel";
 import {
   ErpSelect,
   PartyDirectoryPanel,
@@ -26,6 +27,8 @@ import type {
 } from "../../../packages/app-common/src";
 import "./safe-management.css";
 import "./supplier-management-classic.css";
+import { ErpListSelect } from "../../../packages/app-common/src/components/ErpListSelect";
+import { listFilterChips } from "../../../packages/app-common/src/components/listFilterValues";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { ErpConfirmDialog } from "../../../packages/app-common/src/components/ErpConfirmDialog";
 import { ShortcutButtonLabel } from "../../../packages/app-common/src/components/ShortcutButtonLabel";
@@ -106,10 +109,10 @@ function representativeForm(view: SalesRepresentativeView): RepresentativeForm {
   };
 }
 
-function representativePagePath(query: string, active: "all" | "active" | "inactive", cursor?: string | null) {
+function representativePagePath(query: string, active: readonly string[], cursor?: string | null) {
   const parameters = new URLSearchParams({ size: "50" });
   if (query.trim()) parameters.set("search", query.trim());
-  if (active !== "all") parameters.set("active", String(active === "active"));
+  if (active.length === 1) parameters.set("active", String(active[0] === "active"));
   if (cursor) parameters.set("cursor", cursor);
   return `/sales-representatives/management/page?${parameters.toString()}`;
 }
@@ -154,7 +157,7 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
   const t = useMemo(() => createTranslator(locale), [locale]);
   const [rows, setRows] = useState<SalesRepresentativeView[]>([]);
   const [query, setQuery] = useState("");
-  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
+  const [activeFilter, setActiveFilter] = useState<string[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -449,28 +452,27 @@ function SalesRepresentativeManagementPanel({ locale, session, headerExtra }: Su
           <span>{t("safeManagement.representatives.subtitle")}</span>
         </div>
         <div className="management-record-actions gestion-toolbar-actions">
-          <button type="button" className="gestion-module-action" aria-keyshortcuts="F7" disabled={!toolbarRepresentative || loading} onClick={() => toolbarRepresentative && openRepresentative(toolbarRepresentative)}><ShortcutButtonLabel label={t("safeManagement.representatives.edit")} shortcut={t("safeManagement.shortcut.modify")} /></button>
           <button type="button" className="gestion-module-action primary" aria-keyshortcuts="F5" onClick={openNew}><span><Plus size={16} aria-hidden="true" />{t("safeManagement.representatives.new")}</span>{" "}<kbd>{t("safeManagement.shortcut.add")}</kbd></button>
-          <button type="button" aria-keyshortcuts="F9" className="gestion-module-action safe-retirement-open" disabled={!toolbarRepresentative || loading} onClick={retireToolbarRepresentative}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut={t("safeManagement.shortcut.retire")} /></button>
         </div>
       </header>
       {headerExtra}
-      <div className="party-directory-toolbar party-directory-toolbar--classic gestion-filter-toolbar">
-        <label className="party-directory-search-label" htmlFor="representative-search">{t("party.searchLabel")}</label>
-        <GestionSearchFrame><input id="representative-search" type="search" aria-label={t("safeManagement.representatives.search")} placeholder={t("safeManagement.representatives.search")} value={query} onChange={(event) => setQuery(event.target.value)} /></GestionSearchFrame>
-        <label className="party-directory-status-filter" data-filter-active={activeFilter !== "all"}><span>{t("party.column.status")}</span><ErpSelect
+      <ErpListFilterPanel translate={t} search={<label><span>{t("party.searchLabel")}</span>
+        <GestionSearchFrame><input id="representative-search" className="erp-search-input" type="search" aria-label={t("safeManagement.representatives.search")} placeholder={t("safeManagement.representatives.search")} value={query} onChange={(event) => setQuery(event.target.value)} /></GestionSearchFrame>
+      </label>} filters={<label className="party-directory-status-filter" data-filter-active={activeFilter.length > 0}><span>{t("party.column.status")}</span><ErpListSelect
           className="erp-select--compact"
           aria-label={t("safeManagement.representatives.column.status")}
-          value={activeFilter}
-          onChange={(value) => setActiveFilter(value as "all" | "active" | "inactive")}
-          options={["all", "active", "inactive"].map((value) => ({ value, label: t(`party.filter.status.${value}`) }))}
+          values={activeFilter}
+          onChange={setActiveFilter}
+          options={["all", "active", "inactive"].map((value) => ({ value: value === "all" ? "" : value, label: t("party.filter.status." + value) }))}
         />
-        </label>
-      </div>
+        </label>} actions={<>
+          <button type="button" aria-keyshortcuts="F7" disabled={!toolbarRepresentative || loading} onClick={() => toolbarRepresentative && openRepresentative(toolbarRepresentative)}><PencilSimple size={16} aria-hidden="true" /><ShortcutButtonLabel label={t("safeManagement.representatives.edit")} shortcut={t("safeManagement.shortcut.modify")} /></button>
+          <button type="button" aria-keyshortcuts="F9" className="safe-retirement-open" disabled={!toolbarRepresentative || loading} onClick={retireToolbarRepresentative}><Archive size={16} aria-hidden="true" /><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut={t("safeManagement.shortcut.retire")} /></button>
+        </>} />
       <ErpFilterChips translate={t} chips={[
         { key: "search", label: t("party.searchLabel"), value: query, onRemove: () => setQuery("") },
-        { key: "active", label: t("party.status"), value: activeFilter === "all" ? "" : t(`party.filter.status.${activeFilter}`), onRemove: () => setActiveFilter("all") }
-      ]} onClear={() => { setQuery(""); setActiveFilter("all"); }} />
+        ...listFilterChips("active", t("party.status"), activeFilter, setActiveFilter, value => t("party.filter.status." + value)),
+      ]} onClear={() => { setQuery(""); setActiveFilter([]); }} />
       {status && <p className="product-create-status safe-management-notice" role={loadError ? "alert" : "status"}>{status}</p>}
       <div ref={tableRef} className="representative-management-table-wrap gestion-module-table">
       <div className="representative-management-table" role="table" aria-label={t("safeManagement.representatives.title")}

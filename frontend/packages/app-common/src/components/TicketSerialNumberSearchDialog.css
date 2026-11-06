@@ -25,6 +25,35 @@
   flex-direction: column;
   overflow: hidden;
 }
+.ticket-serial-search-dialog .serial-search-list-filter {
+  width: calc(100% - 32px);
+  margin: 10px 16px 4px;
+}
+.ticket-serial-search-dialog .serial-search-list-filter .serial-search-toolbar {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.ticket-serial-search-dialog .serial-search-list-filter .serial-search-toolbar label {
+  display: grid;
+  gap: 5px;
+  color: #516175;
+  font-size: 12px;
+  font-weight: 700;
+}
+.ticket-serial-search-dialog .serial-search-list-filter .gestion-warehouse-search-frame > input.erp-search-input {
+  width: 100%;
+  font-size: 12px;
+  font-weight: 400;
+}
+.ticket-serial-search-dialog .serial-search-list-filter .erp-list-filter-actions > button {
+  min-width: 0;
+}
+.ticket-serial-search-dialog .serial-search-results.erp-list-filter-table {
+  width: calc(100% - 32px);
+  margin: 0 16px 10px;
+}
 .ticket-serial-search-dialog .serial-search-toolbar {
   flex: 0 0 auto;
   display: flex;

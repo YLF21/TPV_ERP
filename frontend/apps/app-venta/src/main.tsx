@@ -13,6 +13,7 @@ import {
 } from "../../../packages/app-common/src/components/saleInterfacePreferences";
 import "../../../packages/app-common/src/styles/ShortcutButtons.css";
 import "../../../packages/app-common/src/styles/DesktopWindowCorners.css";
+import "../../../packages/app-common/src/styles/DesktopFieldControls.css";
 import "../../../packages/app-common/src/styles/tpv.css";
 import type { LocaleCode, TerminalContext, UserSession } from "../../../packages/app-common/src/types";
 import { useSaleUserLocalePreference } from "./saleUserLocale";
@@ -632,7 +633,7 @@ function AppContent({ localePreference, recoveryEpoch }: { localePreference: Ret
     || hasPermission(session, "GESTION_ALMACEN")
     || hasPermission(session, "GESTION_CUENTAS");
   const canOpenCustomerReceivables = hasPermission(session, "CUSTOMER_RECEIVABLES_READ");
-  const canOpenWarehouse = hasPermission(session, "GESTION_ALMACEN");
+  const canOpenWarehouse = hasPermission(session, "GESTION_ALMACEN") || hasPermission(session, "STOCK_READ");
   const canConfigureTerminal = hasPermission(session, "CONFIGURACION_TERMINAL");
 
   const customerReceivablesDialog = receivablesOpen && canOpenCustomerReceivables
@@ -741,6 +742,7 @@ function AppContent({ localePreference, recoveryEpoch }: { localePreference: Ret
     return withHomeEscapeConfirmation(
       <WarehouseScreen
         app="venta"
+          initialSection={hasPermission(session, "GESTION_ALMACEN") ? "input" : "replenishment"}
         locale={locale}
         session={session}
         terminalContext={terminalContext}

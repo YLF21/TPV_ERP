@@ -1,5 +1,29 @@
 /* Match the customer selector on desktop, retaining supplier columns and actions. */
 @layer gestion-accents {
+  .warehouse-picker-classic .warehouse-supplier-list-filter {
+    width: calc(100% - 24px);
+    margin: 8px 12px 4px;
+  }
+  .warehouse-picker-classic .warehouse-supplier-list-filter .warehouse-supplier-search span {
+    color: #516175;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+  .warehouse-picker-classic .warehouse-supplier-list-filter .gestion-warehouse-search-frame > input.erp-search-input {
+    font-size: 12px;
+    font-weight: 400;
+  }
+  .warehouse-picker-classic .warehouse-supplier-applied-filters {
+    margin: 0 12px;
+  }
+  .warehouse-picker-classic .warehouse-supplier-table.erp-list-filter-table {
+    width: calc(100% - 24px);
+    margin: 0 12px 8px;
+    border: 1px solid var(--erp-table-border, #aebfd2) !important;
+    border-radius: 6px !important;
+  }
   .warehouse-picker-classic .warehouse-supplier-action-bar {
     padding: 9px 18px !important;
     background: #f4f7fa !important;

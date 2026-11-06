@@ -17,16 +17,20 @@ public final class SaasCustomerDocumentApi {
     private static final Set<String> SORTS = Set.of("number", "date", "type", "status", "base", "tax", "total", "terminal", "user", "store", "currency");
     private SaasCustomerDocumentApi() { }
 
-    public record Filters(String search, DocumentStatus status, LocalDate dateFrom, LocalDate dateTo) {
+    public record Filters(String search, DocumentStatus status, LocalDate dateFrom, LocalDate dateTo, List<DocumentStatus> statuses) {
         public Filters {
             search = search == null || search.isBlank() ? null : search.strip();
             if (search != null && (search.length() > 120 || search.codePoints().anyMatch(Character::isISOControl))) invalid();
-            if (status == DocumentStatus.BORRADOR) invalid();
+            statuses = statuses == null ? List.of() : List.copyOf(statuses);
+            if (status == DocumentStatus.BORRADOR || statuses.stream().anyMatch(value -> value == DocumentStatus.BORRADOR)) invalid();
             if (dateFrom != null && (dateFrom.getYear() < 1 || dateFrom.getYear() > 9999)
                     || dateTo != null && (dateTo.getYear() < 1 || dateTo.getYear() > 9999)
                     || dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) invalid();
         }
-        public boolean active() { return search != null || status != null || dateFrom != null || dateTo != null; }
+        public Filters(String search, DocumentStatus status, LocalDate dateFrom, LocalDate dateTo) {
+            this(search, status, dateFrom, dateTo, null);
+        }
+        public boolean active() { return search != null || status != null || !statuses.isEmpty() || dateFrom != null || dateTo != null; }
     }
     public record DocumentKey(@NotNull UUID storeId, @NotNull UUID documentId) { }
     public record ExportRequest(@NotNull UUID customerId,

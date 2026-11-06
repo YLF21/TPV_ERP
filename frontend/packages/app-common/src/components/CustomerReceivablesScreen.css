@@ -142,6 +142,7 @@
 }
 
 .customer-receivables-dialog-body > .erp-filter-applied { flex: none; margin: 0; }
+.customer-receivables-dialog-body > .receivables-date-footer { border-radius: 6px; }
 
 .customer-receivables-dialog .customer-receivables-filters {
   flex: 0 0 auto;

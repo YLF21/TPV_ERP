@@ -1,7 +1,11 @@
+import { listFilterValues, matchesListFilter } from "./listFilterValues";
 import type { StockInventoryRow } from "./StockScreen";
 import type { StockBulkEditRowData } from "./stockBulkEdit";
 
+export type StockBulkOptionKey = "productType" | "familyId" | "subfamilyId" | "supplierId" | "taxId" | "priceUseMode" | "offerActive";
+
 export type StockBulkFilterCriteria = {
+  multiple?: Partial<Record<StockBulkOptionKey, string[]>>;
   productType?: string | null;
   familyId?: string | null;
   subfamilyId?: string | null;
@@ -50,10 +54,30 @@ export const emptyStockBulkFilterCriteria: StockBulkFilterCriteria = {
   maximumPrice: null
 };
 
+export function stockBulkOptionValues(criteria: StockBulkFilterCriteria, key: StockBulkOptionKey): readonly string[] {
+  const selected = criteria.multiple?.[key];
+  if (selected) return selected;
+  const value = criteria[key];
+  if (typeof value === "boolean") return [value ? "yes" : "no"];
+  return listFilterValues(value ?? undefined);
+}
+
+export function changeStockBulkOptions(criteria: StockBulkFilterCriteria, key: StockBulkOptionKey, values: string[]): StockBulkFilterCriteria {
+  const single = values.length === 1 ? values[0] : null;
+  const multiple = { ...criteria.multiple };
+  if (values.length > 1) multiple[key] = values;
+  else delete multiple[key];
+  return {
+    ...criteria,
+    [key]: key === "offerActive" && single !== null ? single === "yes" : single,
+    multiple: Object.keys(multiple).length ? multiple : undefined,
+  };
+}
+
 export function countActiveStockBulkFilters(criteria: StockBulkFilterCriteria) {
-  return Object.values(criteria).filter(
-    (value) => value !== null && value !== undefined && value !== ""
-  ).length;
+  const { multiple, ...scalar } = criteria;
+  return Object.values(scalar).filter(value => value !== null && value !== undefined && value !== "").length
+    + Object.values(multiple ?? {}).filter(values => values.length).length;
 }
 
 export function filterStockBulkRows(
@@ -65,17 +89,18 @@ export function filterStockBulkRows(
       return !hasActiveCriteria(criteria);
     }
     const value = <K extends keyof StockInventoryRow>(field: K) => row.draft[field] ?? row.product?.[field];
-    if (criteria.productType && value("productType") !== criteria.productType) return false;
-    if (criteria.familyId && value("familyId") !== criteria.familyId) return false;
-    if (criteria.subfamilyId && value("subfamilyId") !== criteria.subfamilyId) return false;
-    if (criteria.taxId && value("taxId") !== criteria.taxId) return false;
-    if (criteria.priceUseMode && value("discountType") !== criteria.priceUseMode) return false;
-    if (criteria.supplierId && !row.suppliers?.some((supplier) => supplier.id === criteria.supplierId)) return false;
+    if (!matchesListFilter(stockBulkOptionValues(criteria, "productType"), value("productType"))) return false;
+    if (!matchesListFilter(stockBulkOptionValues(criteria, "familyId"), value("familyId"))) return false;
+    if (!matchesListFilter(stockBulkOptionValues(criteria, "subfamilyId"), value("subfamilyId"))) return false;
+    if (!matchesListFilter(stockBulkOptionValues(criteria, "taxId"), value("taxId"))) return false;
+    if (!matchesListFilter(stockBulkOptionValues(criteria, "priceUseMode"), value("discountType"))) return false;
+    const supplierIds = stockBulkOptionValues(criteria, "supplierId");
+    if (supplierIds.length && !row.suppliers?.some(supplier => supplierIds.includes(supplier.id))) return false;
 
     const offerActiveValue = booleanFlag(value("offerActive"));
     const offerActive = offerActiveValue ?? ["OFFER_PRICE", "OFFER_DISCOUNT"]
       .includes(String(value("discountType") ?? "NORMAL"));
-    if (criteria.offerActive !== null && criteria.offerActive !== undefined && offerActive !== criteria.offerActive) {
+    if (!matchesListFilter(stockBulkOptionValues(criteria, "offerActive"), offerActive ? "yes" : "no")) {
       return false;
     }
     const offerFrom = nullableText(value("offerFrom"));

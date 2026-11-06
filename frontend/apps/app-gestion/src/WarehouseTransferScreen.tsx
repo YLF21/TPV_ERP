@@ -3,9 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FilePdf, FileXls, Plus, Trash } from "@phosphor-icons/react";
 import type { LocaleCode, TerminalContext, UserSession } from "../../../packages/app-common/src/types";
+import { ErpListSelect } from "../../../packages/app-common/src/components/ErpListSelect";
+import { compactListFilter, listFilterChips } from "../../../packages/app-common/src/components/listFilterValues";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { ErpConfirmDialog } from "../../../packages/app-common/src/components/ErpConfirmDialog";
-import { ErpSelect } from "../../../packages/app-common/src/components/ErpSelect";
+import { ErpListFilterPanel } from "../../../packages/app-common/src/components/ErpListFilterPanel";
 import { WarehouseSearchFrame } from "../../../packages/app-common/src/components/WarehouseSearchFrame";
 import { ReportDateRangeFilter, type ReportDateRange } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
 import { useReportDateOptions } from "../../../packages/app-common/src/components/useReportDateOptions";
@@ -62,11 +64,11 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
   const [documents, setDocuments] = useState<TransferListItem[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<TransferDocument["status"] | "">("");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
-  const [sourceFilter, setSourceFilter] = useState("");
-  const [targetFilter, setTargetFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState<string[]>([]);
+  const [targetFilter, setTargetFilter] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [quickRange, setQuickRange] = useState<ReportDateRange>({ from: "", to: "", label: "" });
@@ -125,8 +127,8 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
     }
     setError("");
     setListLoading(true);
-    const filters: TransferDocumentFilters = { status: statusFilter, search: searchFilter,
-      sourceWarehouseId: sourceFilter, targetWarehouseId: targetFilter, dateFrom, dateTo };
+    const filters: TransferDocumentFilters = { status: compactListFilter(statusFilter), search: searchFilter,
+      sourceWarehouseId: compactListFilter(sourceFilter), targetWarehouseId: compactListFilter(targetFilter), dateFrom, dateTo };
     try {
       const result = await loadTransferDocuments(requestedPage, filters, token);
       if (requestId !== listRequestId.current) return;
@@ -243,8 +245,8 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
     if (!token || exportBusy.current) return;
     exportBusy.current = true; setExporting(true); setError("");
     try {
-      const file = await exportTransferList(format, { status: statusFilter, search: searchInput.trim(),
-        sourceWarehouseId: sourceFilter, targetWarehouseId: targetFilter, dateFrom, dateTo }, locale, token);
+      const file = await exportTransferList(format, { status: compactListFilter(statusFilter), search: searchInput.trim(),
+        sourceWarehouseId: compactListFilter(sourceFilter), targetWarehouseId: compactListFilter(targetFilter), dateFrom, dateTo }, locale, token);
       const url = URL.createObjectURL(file);
       const link = document.createElement("a");
       link.href = url; link.download = `traspasos-almacen.${format}`; link.click();
@@ -261,28 +263,27 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
     </header>
     {error && <p role="alert" className="gestion-warehouse-operations-message error">{error}</p>}
     {notice && <p role="status" className="gestion-warehouse-operations-message success">{notice}</p>}
-    <div className="stock-history-toolbar gestion-warehouse-transfer-toolbar gestion-warehouse-toolbar gestion-toolbar-layout">
-      <label><span>{t("warehouse.transfer.search")}</span>
+    <ErpListFilterPanel translate={t} search={<label><span>{t("warehouse.transfer.search")}</span>
         <WarehouseSearchFrame><input ref={searchRef} className="erp-search-input" type="search" maxLength={120} value={searchInput}
           placeholder={t("warehouse.transfer.searchPlaceholder")}
-          onChange={(event) => setSearchInput(event.target.value)} /></WarehouseSearchFrame></label>
-      <div className="stock-history-filter-field gestion-warehouse-status-filter" data-filter-active={Boolean(statusFilter)}><span>{t("warehouse.count.status")}</span>
-        <ErpSelect aria-label={t("warehouse.count.status")} value={statusFilter}
-          onChange={(value) => { setStatusFilter(value as typeof statusFilter); }}
+          onChange={(event) => setSearchInput(event.target.value)} /></WarehouseSearchFrame></label>} filters={<>
+      <div className="stock-history-filter-field gestion-warehouse-status-filter" data-filter-active={statusFilter.length > 0}><span>{t("warehouse.count.status")}</span>
+        <ErpListSelect aria-label={t("warehouse.count.status")} values={statusFilter}
+          onChange={setStatusFilter}
           options={[{ value: "", label: t("warehouse.count.all") },
             ...(["DRAFT", "CONFIRMED", "CANCELLED"] as const).map((value) =>
               ({ value, label: t(`warehouse.count.status.${value}`) }))]} /></div>
       <div className="stock-history-filter-field"><span>{t("warehouse.transfer.source")}</span>
-        <ErpSelect aria-label={t("warehouse.transfer.source")} value={sourceFilter}
-          onChange={(value) => { setSourceFilter(value); }}
+        <ErpListSelect aria-label={t("warehouse.transfer.source")} values={sourceFilter}
+          onChange={setSourceFilter}
           options={[{ value: "", label: t("warehouse.count.all") },
             ...warehouses.map((item) => ({ value: item.id, label: item.name }))]} /></div>
       <div className="stock-history-filter-field"><span>{t("warehouse.transfer.target")}</span>
-        <ErpSelect aria-label={t("warehouse.transfer.target")} value={targetFilter}
-          onChange={(value) => { setTargetFilter(value); }}
+        <ErpListSelect aria-label={t("warehouse.transfer.target")} values={targetFilter}
+          onChange={setTargetFilter}
           options={[{ value: "", label: t("warehouse.count.all") },
             ...warehouses.map((item) => ({ value: item.id, label: item.name }))]} /></div>
-      <div className="warehouse-document-actions gestion-warehouse-transfer-actions gestion-warehouse-actions gestion-warehouse-list-actions gestion-toolbar-end">
+      </>} actions={<>
         <button type="button" disabled={selectedDocument?.status !== "DRAFT" || cancelling || listLoading}
           onClick={() => {
             if (selectedDocument?.status !== "DRAFT") return;
@@ -290,27 +291,21 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
           }}><span><Trash size={16} aria-hidden="true" />{t("warehouse.transfer.cancelDocument")}</span></button>
         <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.excel} disabled={!token || exporting} onClick={() => void exportList("xlsx")}><span><FileXls size={16} aria-hidden="true" />{t("warehouse.count.exportExcel")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.excel}</kbd></button>
         <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.pdf} disabled={!token || exporting} onClick={() => void exportList("pdf")}><span><FilePdf size={16} aria-hidden="true" />{t("warehouse.count.exportPdf")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.pdf}</kbd></button>
-      </div>
-    </div>
+      </>} />
     <ErpFilterChips translate={t} focusRef={searchRef} className="gestion-warehouse-transfer-chips"
       chips={[
         { key: "search", label: t("warehouse.transfer.search"), value: searchFilter,
           onRemove: () => { setSearchInput(""); setSearchFilter(""); } },
-        { key: "status", label: t("warehouse.count.status"), value: statusFilter ? t(`warehouse.count.status.${statusFilter}`) : "",
-          onRemove: () => { setStatusFilter(""); } },
-        { key: "source", label: t("warehouse.transfer.source"), value: sourceFilter ? warehouseName(sourceFilter) : "",
-          onRemove: () => { setSourceFilter(""); } },
-        { key: "target", label: t("warehouse.transfer.target"), value: targetFilter ? warehouseName(targetFilter) : "",
-          onRemove: () => { setTargetFilter(""); } },
+        ...listFilterChips("status", t("warehouse.count.status"), statusFilter, setStatusFilter, value => t("warehouse.count.status." + value)),
+        ...listFilterChips("source", t("warehouse.transfer.source"), sourceFilter, setSourceFilter, warehouseName),
+        ...listFilterChips("target", t("warehouse.transfer.target"), targetFilter, setTargetFilter, warehouseName),
         { key: "from", label: t("warehouse.report.from"), value: dateFrom,
           onRemove: () => { setDateFrom(""); } },
         { key: "to", label: t("warehouse.report.to"), value: dateTo,
           onRemove: () => { setDateTo(""); } }
-      ]} onClear={() => { setSearchInput(""); setSearchFilter(""); setStatusFilter("");
-        setSourceFilter(""); setTargetFilter(""); setDateFrom(""); setDateTo(""); }} />
-    <div className="stock-history-context gestion-warehouse-transfer-context"><strong>{t("warehouse.transfer.navigation")}</strong>
-      <span>{t("warehouse.transfer.results").replace("{count}", String(documents.length))}</span></div>
-    <div className="stock-history-table-scroll gestion-warehouse-transfer-table erp-classic-tables warehouse-classic-table"
+      ]} onClear={() => { setSearchInput(""); setSearchFilter(""); setStatusFilter([]);
+        setSourceFilter([]); setTargetFilter([]); setDateFrom(""); setDateTo(""); }} />
+    <div className="stock-history-table-scroll gestion-warehouse-transfer-table erp-list-filter-table erp-classic-tables warehouse-classic-table"
       ref={scrollRef} onScroll={(event) => {
         const table = event.currentTarget;
         if (searchInput.trim() === searchFilter && table.scrollHeight - table.scrollTop - table.clientHeight <= 240) {
@@ -353,6 +348,10 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
             <tr><td colSpan={visibleColumns.length}>{t("warehouse.adjustment.empty")}</td></tr>}
         </tbody></table></div>
 
+    <ReportDateRangeFilter locale={locale} today={dateOptions?.currentDate ?? ""} earliestDate={dateOptions?.earliestDate ?? ""}
+      value={{ from: dateFrom, to: dateTo, label: "", preset: quickRange.from === dateFrom && quickRange.to === dateTo ? quickRange.preset : undefined }}
+      onChange={(range) => { setQuickRange(range); setDateFrom(range.from); setDateTo(range.to); }} />
+
     {cancelDocumentId && <ErpConfirmDialog
       title={t("warehouse.transfer.cancelTitle")} message={t("warehouse.transfer.cancelMessage")}
       cancelLabel={t("common.cancel")} confirmLabel={t("warehouse.transfer.cancelAction")}
@@ -370,9 +369,6 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
         void loadDocuments(); }} />, document.body)}
 
     {dateOptionsFailed && <div className="report-date-options-error" role="alert"><span>{t("salesReport.loadError")}</span><button type="button" onClick={retryDateOptions}>{t("salesReport.retry")}</button></div>}
-    <ReportDateRangeFilter locale={locale} today={dateOptions?.currentDate ?? ""} earliestDate={dateOptions?.earliestDate ?? ""}
-      value={{ from: dateFrom, to: dateTo, label: "", preset: quickRange.from === dateFrom && quickRange.to === dateTo ? quickRange.preset : undefined }}
-      onChange={(range) => { setQuickRange(range); setDateFrom(range.from); setDateTo(range.to); }} />
 
   </section>;
 }

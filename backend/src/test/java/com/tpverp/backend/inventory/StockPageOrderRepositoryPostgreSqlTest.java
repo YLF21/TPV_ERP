@@ -238,6 +238,31 @@ class StockPageOrderRepositoryPostgreSqlTest {
                 null, null, null, "OK", null, context.warehouseId(),
                 "name", "asc", null, 10))
                 .containsExactly(context.cheapestId());
+        var choices = new StockListFilterChoices(null, null, null, null, null,
+                List.of("LOW", "OK"), null, null, null, null, null);
+        assertThat(repository.findProductIdsWithChoices(
+                context.storeId(), null, null, null, null, false, null, null, null, null, null,
+                context.warehouseId(), "name", "asc", null, 10, choices))
+                .containsExactlyInAnyOrder(context.middleId(), context.expensiveId(), context.cheapestId());
+    }
+
+    @Test
+    void usesSelectedWarehouseTotalsForStatusAndOrdering() {
+        var context = insertContext();
+        var second = UUID.randomUUID();
+        var excluded = UUID.randomUUID();
+        jdbc.update("insert into almacen (id,tienda_id,nombre) values (?,?,'RESERVA'),(?,?,'EXCLUIDO')",
+                second, context.storeId(), excluded, context.storeId());
+        jdbc.update("insert into existencia (id,producto_id,almacen_id,cantidad) values (?,?,?,6),(?,?,?,30)",
+                UUID.randomUUID(), context.middleId(), second,
+                UUID.randomUUID(), context.expensiveId(), excluded);
+        var choices = new StockListFilterChoices(null, null, null, null, null,
+                null, null, List.of(context.warehouseId(), second), null, null, null);
+
+        assertThat(repository.findProductIdsWithChoices(
+                context.storeId(), null, null, null, null, false, null, null, null, "OK", null,
+                null, "localStock", "desc", null, 10, choices))
+                .containsExactly(context.middleId(), context.cheapestId());
     }
 
     @Test

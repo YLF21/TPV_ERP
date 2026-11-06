@@ -123,12 +123,18 @@ describe("Gestión directory export actions", () => {
 
   it.each(["customers", "suppliers"] as const)("exports every management %s page with identical active filters and sort, preserving the visible page", async kind => {
     localStorage.setItem(partyDirectoryPreferenceStorageKey("gestion", writer.username, kind), JSON.stringify({
-      query: "  an  ", statusFilter: "active", sort: { column: "name", direction: "desc" }, fieldFilters: { code: "  001  " }
+      query: "  an  ", statusFilter: "active", sort: { column: "name", direction: "desc" },
+      choiceFilters: true, fieldFilters: { location: ["madrid, madrid", "sintra, lisboa"], country: "pt" }
     }));
     const first = kind === "customers" ? customer : supplier;
     const second = kind === "customers" ? { ...customer, id: "c2", clientId: "C-002", fiscalName: "Berta" }
       : { ...supplier, id: "s2", supplierId: "P-002", legalName: "Segundo" };
     vi.mocked(apiRequest).mockImplementation(async path => {
+      if (path === `/${kind}/management/address-options`) return [
+        { location: "Madrid, Madrid", country: "ES" },
+        { location: "Sintra, Lisboa", country: "PT" },
+        { location: "Toledo, Toledo", country: "ES" },
+      ];
       if (path.startsWith(`/${kind}/management/page?`)) {
         const cursor = new URL(path, "http://test").searchParams.get("cursor");
         return cursor ? { items: [second], hasMore: false } : { items: [first], hasMore: true, nextCursor: "next" };
@@ -138,6 +144,10 @@ describe("Gestión directory export actions", () => {
     render(<PartyDirectoryPanel app="gestion" kind={kind} locale="es" session={writer} allowSafeRetirement />);
     const table = screen.getByRole("table");
     await within(table).findByText(kind === "customers" ? "Ana" : "Proveedor");
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Población / Provincia" }));
+    expect(await screen.findByRole("option", { name: "Toledo, Toledo" })).toHaveAttribute("aria-selected", "false");
+    fireEvent.click(screen.getByRole("button", { name: "Población / Provincia" }));
     await waitForReadyExportShortcut("F6");
     fireEvent.keyDown(window, { key: "F6" });
     await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledOnce());
@@ -145,9 +155,10 @@ describe("Gestión directory export actions", () => {
     expect(paths).toHaveLength(3); // one visible-page request, then both export pages
     for (const path of paths) {
       const params = new URL(path, "http://test").searchParams;
-      expect(Object.fromEntries(["search", "active", "sort", "direction", "field.code"].map(key => [key, params.get(key)]))).toEqual({
-        search: "an", active: "true", sort: "name", direction: "desc", "field.code": "001"
+      expect(Object.fromEntries(["search", "active", "sort", "direction", "field.countryChoice"].map(key => [key, params.get(key)]))).toEqual({
+        search: "an", active: "true", sort: "name", direction: "desc", "field.countryChoice": "pt"
       });
+      expect(params.getAll("field.locationChoice")).toEqual(["madrid, madrid", "sintra, lisboa"]);
     }
     expect(new URL(paths[2], "http://test").searchParams.get("cursor")).toBe("next");
     const report = vi.mocked(savePartyDirectoryExport).mock.calls[0][1];
@@ -155,7 +166,10 @@ describe("Gestión directory export actions", () => {
     expect(report.rows[0][report.columns.findIndex(column => column.key === "name")]).toContain(kind === "customers" ? "Ana" : "Proveedor");
     expect(report.rows[1][report.columns.findIndex(column => column.key === "name")]).toContain(kind === "customers" ? "Berta" : "Segundo");
     expect(report.rows.flat()).toEqual(expect.arrayContaining([expect.any(String)]));
-    expect(report.filters).toEqual(expect.arrayContaining([expect.objectContaining({ value: "an" }), expect.objectContaining({ value: "001" })]));
+    expect(report.filters).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: "an" }), expect.objectContaining({ value: "Sintra, Lisboa" }),
+      expect.objectContaining({ value: "Portugal" }),
+    ]));
     expect(within(table).getByText(kind === "customers" ? "Ana" : "Proveedor")).toBeVisible();
     expect(within(table).queryByText(kind === "customers" ? "Berta" : "Segundo")).not.toBeInTheDocument();
   });

@@ -131,18 +131,19 @@ class CashControllerContractTest {
     @Test
     void activityUsesManagementPermissionsAndPassesAllFiltersToTheService() throws Exception {
         var userId = UUID.randomUUID();
-        when(activity.list(any(), any(), any(), any(), any(), any(), eq(25), any(), any(), any(), any()))
+        when(activity.listFiltered(any(), any(), any(), any(), any(), any(), eq(25), any(), any(), any(), any()))
                 .thenReturn(new com.tpverp.backend.shared.api.PagedResult<>(List.of(), "next", true));
         mvc.perform(get("/api/v1/cash/activity")
                         .param("from", "2026-08-01").param("to", "2026-08-31")
                         .param("terminalId", TERMINAL_ID.toString()).param("userId", userId.toString())
-                        .param("action", "ENTRADA").param("cashState", "ABIERTA").param("limit", "25")
+                        .param("action", "ENTRADA", "RETIRADA").param("cashState", "ABIERTA").param("limit", "25")
                         .param("cursor", "previous").param("sortBy", "reference").param("sortDirection", "desc")
                         .with(user("reader").authorities(() -> CASH_READ)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.hasMore").value(true))
                 .andExpect(jsonPath("$.nextCursor").value("next"));
-        verify(activity).list(eq(LocalDate.parse("2026-08-01")), eq(LocalDate.parse("2026-08-31")),
-                eq(TERMINAL_ID), eq(userId), eq("ENTRADA"), eq("ABIERTA"), eq(25), eq("previous"),
+        verify(activity).listFiltered(eq(LocalDate.parse("2026-08-01")), eq(LocalDate.parse("2026-08-31")),
+                eq(List.of(TERMINAL_ID)), eq(List.of(userId)), eq(List.of("ENTRADA", "RETIRADA")),
+                eq(List.of("ABIERTA")), eq(25), eq("previous"),
                 eq("reference"), eq("desc"), any());
         for (var authority : List.of(VENTA, CASH_OPERATE)) {
             mvc.perform(get("/api/v1/cash/activity").with(user("seller").authorities(() -> authority)))

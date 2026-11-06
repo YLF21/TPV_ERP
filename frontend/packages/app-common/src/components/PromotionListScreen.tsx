@@ -12,6 +12,10 @@ import type { PromotionView } from "./PromotionWizard";
 import type { TableColumnDefinition } from "./tableLayoutPreferences";
 import { ErpFilterChips } from "./ErpFilterChips";
 import { ErpSelect } from "./ErpSelect";
+import { ErpListSelect } from "./ErpListSelect";
+import { matchesListFilter } from "./listFilterValues";
+import { ErpListFilterPanel } from "./ErpListFilterPanel";
+import { WarehouseSearchFrame } from "./WarehouseSearchFrame";
 import { useOutsidePointerDown } from "./useOutsidePointerDown";
 import { useTableInitialFocus } from "./useTableInitialFocus";
 import { useTableArrowRepeat } from "./useTableArrowRepeat";
@@ -82,7 +86,7 @@ export function PromotionListScreen({
   const [status, setStatus] = useState("");
   const [pendingAction, setPendingAction] = useState("");
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const actionsRef = useRef<HTMLDivElement>(null);
@@ -96,8 +100,7 @@ export function PromotionListScreen({
     const translate = createTranslator(locale);
     const normalized = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase(locale).trim();
     const criterion = normalized(query);
-    return promotions.filter(promotion => (statusFilter === "ALL" || (statusFilter === "EXPIRED"
-      ? isPromotionExpired(promotion, today) : !isPromotionExpired(promotion, today) && promotion.status === statusFilter)) && (!criterion || [promotion.name,
+    return promotions.filter(promotion => matchesListFilter(statusFilter, isPromotionExpired(promotion, today) ? "EXPIRED" : promotion.status) && (!criterion || [promotion.name,
       translate(`promotion.status.${promotion.status}`), translate(`promotion.type.${promotion.type}`),
       promotionDateRange(promotion), translate(`promotion.segment.${promotion.customerSegment ?? "ALL"}`)]
       .some(value => normalized(value).includes(criterion))));
@@ -231,24 +234,37 @@ export function PromotionListScreen({
         </header>
 
         <section className="promotion-list-panel" aria-label={t("promotion.list.heading")}>
-          <div className={`promotion-list-filters${app === "gestion" ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
-            <label className={`promotion-search-field${app === "gestion" ? " gestion-search-frame" : ""}`}>
+          {app !== "pda" ? <ErpListFilterPanel translate={t} className="promotion-standard-filters"
+            search={<label><WarehouseSearchFrame><input ref={searchRef} className="erp-search-input" aria-label={t("salesReport.search")} type="search"
+              placeholder={t("promotion.list.search")} value={query} onChange={event => setQuery(event.target.value)} /></WarehouseSearchFrame></label>}
+            filters={<label><span>{t("promotion.column.status")}</span><ErpListSelect values={statusFilter} aria-label={t("promotion.column.status")}
+              maxPopoverWidth="trigger"
+              options={[
+                { value: "", label: t("promotion.filter.all") },
+                ...(["ACTIVE", "DRAFT", "INACTIVE"] as const).map(value => ({ value, label: t(`promotion.status.${value}`) })),
+                { value: "EXPIRED", label: t("promotion.list.expired") }
+              ]} onChange={setStatusFilter} /></label>}
+          /> : <div className="promotion-list-filters">
+            <label className="promotion-search-field">
               <input ref={searchRef} aria-label={t("salesReport.search")} type="search"
                 placeholder={t("promotion.list.search")} value={query} onChange={event => setQuery(event.target.value)} />
               <MagnifyingGlass size={17} aria-hidden="true" />
             </label>
-            <div className="promotion-status-filter" data-filter-active={statusFilter !== "ALL"}><ErpSelect value={statusFilter} aria-label={t("promotion.column.status")}
+            <div className="promotion-status-filter" data-filter-active={statusFilter.length > 0}><ErpSelect value={statusFilter[0] ?? "ALL"} aria-label={t("promotion.column.status")}
               options={[
                 { value: "ALL", label: t("promotion.filter.all") },
                 ...(["ACTIVE", "DRAFT", "INACTIVE"] as const).map(value => ({ value, label: t(`promotion.status.${value}`) })),
                 { value: "EXPIRED", label: t("promotion.list.expired") }
               ]}
-              onChange={setStatusFilter}
+              onChange={value => setStatusFilter(value === "ALL" ? [] : [value])}
             /><CaretDown size={13} aria-hidden="true" /></div>
             <ErpFilterChips locale={locale} focusRef={searchRef} chips={query.trim() ? [{
               key: "search", label: t("salesReport.search"), value: query.trim(), onRemove: () => setQuery("")
             }] : []} onClear={() => setQuery("")} />
-          </div>
+          </div>}
+          {app !== "pda" && <ErpFilterChips locale={locale} focusRef={searchRef} chips={query.trim() ? [{
+            key: "search", label: t("salesReport.search"), value: query.trim(), onRemove: () => setQuery("")
+          }] : []} onClear={() => setQuery("")} />}
           <div ref={listRef} className="promotion-list-scroll" aria-busy={loading}>
             <PromotionGroup promotions={activePromotions} selectedId={selectedId} locale={locale} t={t} onSelect={setSelectedId} onArrowKeyDown={repeatPromotionArrow} expired={false} />
             <PromotionGroup promotions={expiredPromotions} selectedId={selectedId} locale={locale} t={t} onSelect={setSelectedId} onArrowKeyDown={repeatPromotionArrow} expired />

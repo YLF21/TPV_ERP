@@ -1,0 +1,80 @@
+/* Opt-in list toolbar. Editors, PDA and unrelated screens keep their own skin. */
+html body .erp-list-filter-panel.erp-list-filter-panel {
+  box-sizing: border-box; display: flex !important; flex: 0 0 auto; flex-wrap: wrap !important;
+  align-items: flex-end !important; gap: 8px !important; min-width: 0; max-width: 100%;
+  width: 100%; height: auto; margin: 0; padding: 8px 12px !important;
+  border: 1px solid #aebfd0 !important; border-radius: 6px !important; background: #fff !important; box-shadow: none !important;
+}
+.erp-list-filter-panel > .erp-list-filter-search { flex: 1 1 280px; min-width: min(260px, 100%); max-width: 360px; }
+.erp-list-filter-search > label { display: grid; gap: 5px; min-width: 0; margin: 0; }
+.erp-list-filter-panel > .erp-filter-applied { flex: 1 0 100%; width: 100%; margin: 0; }
+.erp-list-filter-panel :is(.gestion-warehouse-search-frame, .gestion-search-frame) {
+  box-sizing: border-box; display: flex; align-items: center; gap: 8px; height: 34px; min-height: 34px;
+  width: 100%; min-width: 0; padding: 0 8px; border: 1px solid #aebfd0; border-radius: 4px; background: #fff;
+}
+.erp-list-filter-panel :is(.gestion-warehouse-search-frame, .gestion-search-frame) > img { width: 18px; height: 18px; flex: 0 0 18px; object-fit: contain; }
+html body .erp-list-filter-panel :is(.gestion-warehouse-search-frame, .gestion-search-frame) > input.erp-search-input {
+  box-sizing: border-box; flex: 1; width: 100%; min-width: 0; height: 30px !important; min-height: 0 !important;
+  padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; font-weight: 400; outline: none !important; box-shadow: none !important;
+}
+.erp-list-filter-panel input[type="search"]::placeholder { color: #526780; font-size: 11px; font-weight: 400; opacity: 1; }
+.erp-list-filter-panel :is(.gestion-warehouse-search-frame, .gestion-search-frame):focus-within { outline: 2px solid #0065fe; outline-offset: 1px; }
+html body .erp-list-filter-panel > .erp-list-filter-actions {
+  display: flex; align-items: center; justify-content: flex-end; flex: 0 1 auto; flex-wrap: wrap; gap: 6px;
+  width: auto; min-width: 0; margin: 0 0 0 auto; padding: 0; border: 0; background: transparent;
+}
+html body .erp-list-filter-panel > .erp-list-filter-fields {
+  box-sizing: border-box; display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 180px)); justify-content: start;
+  flex: 1 0 100%; width: 100%; min-width: 0; gap: 12px; margin: 0; padding: 10px;
+  border: 1px solid #c0d1e3; border-radius: 6px !important; background: #f4f7fb;
+}
+html body .erp-list-filter-panel > .erp-list-filter-fields[hidden] { display: none !important; }
+.erp-list-filter-fields > :is(label, .stock-history-filter-field) { display: grid; min-width: 0; gap: 5px; margin: 0; }
+.erp-list-filter-fields > label:has(> input[type="checkbox"]) { display: flex; align-items: center; min-height: 34px; align-self: end; }
+.erp-list-filter-panel :is(label, .stock-history-filter-field) { font-size: 12px; font-weight: 700; color: #516175; }
+html body .erp-list-filter-panel .erp-list-filter-fields :is(label, .stock-history-filter-field) > span:first-child { background: transparent !important; }
+html body .erp-list-filter-panel.erp-list-filter-panel .erp-list-filter-fields :is(input:not([type="checkbox"]):not([type="radio"]), select, .erp-select__trigger) {
+  box-sizing: border-box; width: 100%; min-width: 0; height: 34px !important; min-height: 34px !important; max-height: none;
+  border-radius: 4px !important;
+}
+html body .erp-list-filter-panel.erp-list-filter-panel .erp-select { width: 100%; min-width: 0; min-height: 34px !important; height: 34px !important; border: 0 !important; }
+html body .erp-list-filter-panel .erp-list-filter-fields input:not([type="checkbox"]):not([type="radio"]):not(:disabled) { background: #fff !important; }
+html body .erp-list-filter-panel .erp-list-filter-fields select { padding: 0 8px; border: 1px solid #aebfd0; background: #fff; color: #172e4c; font: inherit; }
+.erp-list-filter-panel .erp-select__trigger { overflow: hidden; box-shadow: none !important; }
+.erp-list-filter-panel .erp-select__arrow { width: 42px; min-height: 0; height: 100%; margin: 0; border-radius: 0 3px 3px 0; }
+html body .erp-list-filter-panel .erp-select__popover { border-radius: 6px !important; }
+html body .erp-list-filter-panel .erp-select__option { border-radius: 4px !important; }
+html body .erp-list-filter-panel :is(.erp-list-filter-toggle, .erp-list-filter-actions > button) {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 0 0 auto;
+  box-sizing: border-box; min-width: 0; height: 34px !important; min-height: 34px !important;
+  padding: 5px 8px; border: 1px solid #68798b !important; border-radius: 3px !important;
+  background: #eef1f4 !important; color: #12385f !important; font-family: inherit; font-size: 11px !important; font-weight: 700; white-space: nowrap; box-shadow: none !important;
+}
+.erp-list-filter-actions > button > span { display: inline-flex; align-items: center; gap: 5px; }
+.erp-list-filter-actions > button > kbd { align-self: stretch; display: inline-flex; align-items: center; margin-left: 4px; padding-left: 10px; border-left: 1px solid #aebfd0; }
+.erp-list-filter-panel :is(.erp-list-filter-toggle, .erp-list-filter-actions > button):disabled { opacity: .5; cursor: not-allowed; }
+html body button.erp-list-filter-refresh { display: inline-flex; align-items: center; gap: 6px; box-sizing: border-box; height: 34px; min-height: 34px; padding: 5px 8px; border: 1px solid #68798b !important; border-radius: 3px !important; background: #eef1f4 !important; color: #12385f !important; font-family: inherit; font-size: 11px !important; font-weight: 700; }
+html body .erp-list-filter-table.erp-list-filter-table {
+  box-sizing: border-box;
+  border: 1px solid var(--erp-table-border, #aebfd2) !important; border-radius: 6px !important; box-shadow: none !important; overflow: auto;
+}
+html body .erp-list-filter-table > table { border: 0 !important; box-shadow: none !important; }
+html body .erp-list-filter-table > .inventory-table.warehouse-classic-table { border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+/* Split workflows keep their panes but do not surround the toolbar/table twice. */
+html body .erp-list-filter-host { border: 0 !important; border-radius: 0 !important; box-shadow: none !important; background: transparent !important; gap: 8px; overflow: visible; }
+html body .erp-list-filter-host > header { border: 0 !important; background: transparent; }
+/* Important layers also own the desktop accent and editor corner rules. */
+@layer gestion-accents {
+  html[data-app] body .erp-list-filter-panel.erp-list-filter-panel { display: flex !important; flex-wrap: wrap !important; align-items: flex-end !important; }
+  .erp-list-filter-panel > :is(.erp-list-filter-toggle, .erp-list-filter-actions) { align-self: flex-end !important; }
+  .erp-list-filter-panel :is(.erp-list-filter-toggle, .erp-list-filter-actions > button) { background: #eef1f4 !important; color: #12385f !important; border-color: #68798b !important; }
+  .erp-list-filter-panel :is(.erp-list-filter-toggle, .erp-list-filter-actions > button):hover:not(:disabled) { background: #e0e8f0 !important; }
+  .erp-list-filter-panel .erp-list-filter-actions > button :is(span, kbd) { color: inherit !important; background: transparent !important; }
+  .erp-list-filter-panel .erp-select__popover > .erp-select__option[aria-selected="true"]:not(:hover):not(:disabled) { background: var(--tpv-v3-surface-alt, #f4f7fa) !important; color: #172e4c !important; border-color: #aebfd2 !important; }
+  .erp-list-filter-panel .erp-select__popover > .erp-select__option:hover:not(:disabled) { background: #0065fe !important; color: #fff !important; }
+  .erp-list-filter-panel .erp-select__arrow { background: #12385f !important; }
+  .erp-list-filter-panel .erp-select__trigger:is(:hover, :focus-visible, [aria-expanded="true"]) .erp-select__arrow { background: #0065fe !important; }
+}
+@layer erp-desktop-window-corners {
+  .erp-list-filter-table.erp-classic-tables table thead tr:first-child :is(th:first-child, th:last-child) { border-radius: 0 !important; }
+}

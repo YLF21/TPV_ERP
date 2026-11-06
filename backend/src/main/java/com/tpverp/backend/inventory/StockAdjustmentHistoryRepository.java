@@ -15,18 +15,25 @@ public interface StockAdjustmentHistoryRepository extends JpaRepository<StockAdj
     @Query("""
             select row from StockAdjustmentHistory row
             where row.storeId = :storeId
-              and (:warehouseId is null or row.warehouseId = :warehouseId)
+              and (:allWarehouses = true or row.warehouseId in :warehouseIds)
               and (:search is null or lower(row.code) like :search
                    or lower(row.barcode) like :search or lower(row.name) like :search
                    or lower(row.reason) like :search)
               and row.createdAt >= :from and row.createdAt < :to
             order by row.createdAt desc, row.movementId desc
             """)
-    Page<StockAdjustmentHistory> page(@Param("storeId") UUID storeId,
-                                      @Param("warehouseId") UUID warehouseId,
+    Page<StockAdjustmentHistory> pageFiltered(@Param("storeId") UUID storeId,
+                                      @Param("allWarehouses") boolean allWarehouses,
+                                      @Param("warehouseIds") java.util.List<UUID> warehouseIds,
                                       @Param("search") String search,
                                       @Param("from") java.time.Instant from,
                                       @Param("to") java.time.Instant to, Pageable pageable);
+    default Page<StockAdjustmentHistory> page(UUID storeId, UUID warehouseId, String search,
+            Instant from, Instant to, Pageable pageable) {
+        return pageFiltered(storeId, warehouseId == null,
+                java.util.List.of(warehouseId == null ? new UUID(0, 0) : warehouseId), search, from, to, pageable);
+    }
+
     interface AdjustmentAuthor {
         UUID getMovementId();
         String getUserName();

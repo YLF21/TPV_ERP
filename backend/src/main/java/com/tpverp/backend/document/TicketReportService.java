@@ -60,6 +60,11 @@ public class TicketReportService {
     }
 
     @Transactional(readOnly = true)
+    public List<CustomerDocumentReportQueryRepository.CustomerOption> customerOptions(LocalDate dateFrom, LocalDate dateTo) {
+        return customerReports.customerOptions(organization.currentStore().getId(), TICKETS, dateFrom, dateTo);
+    }
+
+    @Transactional(readOnly = true)
     public PagedResult<TicketReportView> list(Integer requestedLimit, String cursor) {
         return list(requestedLimit, cursor, null);
     }

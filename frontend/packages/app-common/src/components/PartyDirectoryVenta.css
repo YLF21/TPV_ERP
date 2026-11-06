@@ -171,7 +171,7 @@
     .stock-screen.stock-screen--venta .party-directory-toolbar .party-directory-result-count { grid-column: 2; grid-row: 3; }
     .stock-screen.stock-screen--venta .party-directory-toolbar .party-directory-filter-fields { grid-row: 4; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
-  @media (hover: none), (any-pointer: coarse) {
+  @media (any-hover: none) {
     .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header > .table-layout-header-cell { --party-sort-space: 17px; }
     .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header > .table-layout-header-cell.has-column-menu { --party-menu-space: 25px; }
     .stock-screen.stock-screen--venta .party-desktop-table .party-directory-row.header .table-layout-column-menu-button { opacity: 1 !important; visibility: visible !important; }

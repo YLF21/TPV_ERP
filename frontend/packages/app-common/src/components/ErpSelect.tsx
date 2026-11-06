@@ -61,6 +61,8 @@ type ErpSelectProps = {
   className?: string;
   placeholder?: string;
   maxPopoverWidth?: number | "trigger";
+  /** Align to the whole field when its visible border surrounds the trigger. */
+  popoverAnchor?: "trigger" | "control";
   title?: string;
   /** Optional editable text; selection still uses the same accessible option menu. */
   editable?: { text: string; onChange: (text: string) => void; label: string; maxLength?: number };
@@ -115,6 +117,7 @@ export function ErpSelect({
   className,
   placeholder = "-",
   maxPopoverWidth = 360,
+  popoverAnchor = "trigger",
   title,
   editable,
   "aria-label": ariaLabel,
@@ -167,7 +170,7 @@ export function ErpSelect({
   useEffect(() => {
     if (!open) return;
     const positionPopover = () => {
-      const trigger = editable ? rootRef.current : triggerRef.current;
+      const trigger = editable || popoverAnchor === "control" ? rootRef.current : triggerRef.current;
       const popover = popoverRef.current;
       if (!trigger || !popover) return;
       const triggerBounds = trigger.getBoundingClientRect();
@@ -191,7 +194,7 @@ export function ErpSelect({
       window.removeEventListener("resize", positionPopover);
       window.removeEventListener("scroll", positionPopover, true);
     };
-  }, [open, options.length, Boolean(editable), maxPopoverWidth]);
+  }, [open, options.length, Boolean(editable), maxPopoverWidth, popoverAnchor]);
 
   useOutsidePointerDown(open, rootRef, () => setOpen(false));
 

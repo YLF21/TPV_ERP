@@ -18,6 +18,15 @@ function warehouseSession(permissions: UserSession["permissions"]): UserSession 
 }
 
 describe("WarehouseScreen", () => {
+  it("gives replenishment one heading and its own full-height warehouse panel", () => {
+    const html = renderToStaticMarkup(<WarehouseScreen app="venta" locale="es"
+      session={warehouseSession(["GESTION_ALMACEN"])} terminalContext={terminalContext}
+      onBack={vi.fn()} onLocaleChange={vi.fn()} initialSection="replenishment" />);
+    expect(html).toContain("replenishment-host");
+    expect(html.match(/<h2[^>]*>Pendiente de reposición<\/h2>/g)).toHaveLength(1);
+    expect(html).toContain("replenishment-screen");
+  });
+
   it("only grants access to ADMIN and GESTION_ALMACEN", () => {
     expect(userCanManageWarehouse(warehouseSession(["ADMIN"]))).toBe(true);
     expect(userCanManageWarehouse(warehouseSession(["GESTION_ALMACEN"]))).toBe(true);
@@ -78,8 +87,9 @@ describe("WarehouseScreen", () => {
     expect(html).not.toContain("Edición masiva");
     expect(html).toContain('class="stock-nav"');
     expect(html).toContain('class="module-nav-back-icon"');
-    expect(html.match(/class="module-nav-item-icon"/g)).toHaveLength(5);
-    expect(html.match(/class="module-nav-item-label"/g)).toHaveLength(5);
+    expect(html).toContain("Pendiente de reposición");
+    expect(html.match(/class="module-nav-item-icon"/g)).toHaveLength(6);
+    expect(html.match(/class="module-nav-item-label"/g)).toHaveLength(6);
     expect(html).not.toContain(">Clientes<");
     expect(html).not.toContain(">Proveedores<");
   });

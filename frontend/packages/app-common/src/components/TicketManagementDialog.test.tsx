@@ -46,7 +46,8 @@ describe("TicketManagementDialog", () => {
     render(<TicketManagementDialog token="token" locale="es" terminalContext={{ storeName: "Tienda", terminalCode: "01" }} onClose={vi.fn()} />);
 
     expect(await screen.findByText("25 resultados")).toBeVisible();
-    fireEvent.change(screen.getByLabelText("Estado"), { target: { value: "ANULADO" } });
+    fireEvent.click(screen.getByRole("button", { name: "Estado" }));
+    fireEvent.click(screen.getByRole("option", { name: /anulad/i }));
     expect(await screen.findByText("5 resultados")).toBeVisible();
     expect(screen.getByRole("button", { name: /T-001/ })).toHaveAttribute("aria-pressed", "true");
 

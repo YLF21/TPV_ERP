@@ -28,6 +28,8 @@ import com.tpverp.backend.inventory.WarehouseInputDocumentType;
 import com.tpverp.backend.inventory.WarehouseInputStatus;
 import com.tpverp.backend.inventory.WarehouseInputView;
 import com.tpverp.backend.inventory.WarehouseOutputService;
+import com.tpverp.backend.inventory.WarehouseOutput;
+import com.tpverp.backend.inventory.WarehouseOutputLineCommand;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
@@ -48,12 +50,14 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 class SalesReportMultiFilterExportTest {
     private final DocumentReportService reports = mock(DocumentReportService.class);
     private final WarehouseInputReportService inputs = mock(WarehouseInputReportService.class);
+    private final WarehouseOutputService outputs = mock(WarehouseOutputService.class);
+    private final WarehouseRepository warehouses = mock(WarehouseRepository.class);
     private final TicketReportService tickets = mock(TicketReportService.class);
     private final Authentication authentication = new UsernamePasswordAuthenticationToken("admin", "unused",
             List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
     private final SalesReportExcelExportService excel = new SalesReportExcelExportService(
-            mock(DocumentService.class), reports, inputs, mock(WarehouseOutputService.class),
-            mock(WarehouseRepository.class), organization(), mock(DocumentAttributionResolver.class),
+            mock(DocumentService.class), reports, inputs, outputs,
+            warehouses, organization(), mock(DocumentAttributionResolver.class),
             mock(AuditService.class), tickets);
 
     @Test
@@ -116,6 +120,43 @@ class SalesReportMultiFilterExportTest {
             assertThat(sheet.getRow(9).getCell(0).getStringCellValue()).isEqualTo("INCLUIDA1");
             assertThat(sheet.getRow(10).getCell(0).getStringCellValue()).isEqualTo("INCLUIDA2");
         }
+    }
+
+    @Test
+    void exportsOnlyOutputsMatchingTheSelectedSavedCustomersAndWarehouses() throws Exception {
+        var storeId = UUID.randomUUID();
+        var general = new com.tpverp.backend.catalog.Warehouse(storeId, "GENERAL");
+        var reserve = new com.tpverp.backend.catalog.Warehouse(storeId, "RESERVA");
+        var other = new com.tpverp.backend.catalog.Warehouse(storeId, "OTRO");
+        when(warehouses.findAll()).thenReturn(List.of(general, reserve, other));
+        when(outputs.list()).thenReturn(List.of(
+                output(storeId, general.getId(), "INCLUIDA1", "Ana - 123"),
+                output(storeId, reserve.getId(), "INCLUIDA2", "Cliente histórico"),
+                output(storeId, general.getId(), "OTROCLIENTE", "Ana - 1234"),
+                output(storeId, other.getId(), "OTROALMACEN", "Ana - 123"),
+                output(storeId, general.getId(), "SINCLIENTE", null)));
+        var filters = new SalesReportExportRequest.Filters("", "", "", "", "", "", "", "", "",
+                null, List.of("Ana - 123", "Cliente histórico"), null, null, null, null, List.of("GENERAL", "RESERVA"));
+        var request = request("salesReport.warehouseOutputs", "output", filters);
+
+        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(excel.export(request, authentication)))) {
+            var sheet = workbook.getSheetAt(0);
+            assertThat(sheet.getLastRowNum()).isEqualTo(10);
+            assertThat(sheet.getRow(9).getCell(0).getStringCellValue()).isEqualTo("INCLUIDA1");
+            assertThat(sheet.getRow(10).getCell(0).getStringCellValue()).isEqualTo("INCLUIDA2");
+        }
+        try (var pdf = Loader.loadPDF(new SalesReportPdfExportService(excel).export(request, authentication))) {
+            assertThat(new PDFTextStripper().getText(pdf)).contains("INCLUIDA1", "INCLUIDA2")
+                    .doesNotContain("OTROCLIENTE", "OTROALMACEN", "SINCLIENTE");
+        }
+    }
+
+    private WarehouseOutput output(UUID store, UUID warehouse, String number, String destination) {
+        var user = UUID.randomUUID();
+        var value = new WarehouseOutput(store, warehouse, LocalDate.of(2026, 9, 22), user);
+        value.replace(destination, null, List.of(new WarehouseOutputLineCommand(UUID.randomUUID(), 1)));
+        value.confirm(number, user, java.time.Instant.parse("2026-09-22T10:00:00Z"));
+        return value;
     }
 
     @Test

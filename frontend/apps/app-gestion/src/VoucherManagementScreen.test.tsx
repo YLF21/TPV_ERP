@@ -70,6 +70,7 @@ describe("VoucherManagementScreen", () => {
     await waitFor(() => expect(requests.at(-1)?.searchParams.get("from")).toBe("2026-10-17"));
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "V-" } });
     await waitFor(() => expect(requests.at(-1)?.searchParams.get("query")).toBe("V-"));
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
     fireEvent.click(screen.getByRole("button", { name: t("gestion.vouchers.status") }));
     fireEvent.click(screen.getByRole("option", { name: t("gestion.vouchers.status.EXPIRED") }));
     await waitFor(() => expect(requests.at(-1)?.searchParams.get("status")).toBe("EXPIRED"));
@@ -87,9 +88,15 @@ describe("VoucherManagementScreen", () => {
     expect(screen.queryByRole("button", { name: "Anterior" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Siguiente" })).not.toBeInTheDocument();
     expect(screen.getByRole("contentinfo", { name: "Periodo seleccionado" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar todos" }));
+    await waitFor(() => expect(requests.at(-1)?.searchParams.has("status")).toBe(false));
+    expect(requests.at(-1)?.searchParams.has("from")).toBe(false);
+    expect(requests.at(-1)?.searchParams.has("to")).toBe(false);
+    expect(requests.at(-1)?.searchParams.get("page")).toBe("0");
+    expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
   });
 
-  it("keeps custom dates as a draft until Apply and preserves the remaining range when a chip is removed", async () => {
+  it("applies custom dates automatically and preserves the remaining range when a chip is removed", async () => {
     const requests: URL[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), "http://localhost");
@@ -106,9 +113,7 @@ describe("VoucherManagementScreen", () => {
     const custom = within(footer).getByRole("form", { name: "Periodo personalizado" });
     fireEvent.change(within(custom).getByLabelText("Desde"), { target: { value: "2026-08-01" } });
     fireEvent.change(within(custom).getByLabelText("Hasta"), { target: { value: "2026-08-31" } });
-    expect(requests).toHaveLength(1);
-    expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
-    fireEvent.click(within(custom).getByRole("button", { name: "Aplicar" }));
+    expect(within(custom).queryByRole("button", { name: "Aplicar" })).not.toBeInTheDocument();
     await waitFor(() => expect(requests.at(-1)?.searchParams.get("to")).toBe("2026-08-31"));
     expect(requests.at(-1)?.searchParams.get("from")).toBe("2026-08-01");
     fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Emitido desde" }));
@@ -165,6 +170,7 @@ describe("VoucherManagementScreen", () => {
     expect(await screen.findByText("OLD")).toBeInTheDocument();
     fireEvent.scroll(screen.getByRole("table"));
     await waitFor(() => expect(requests).toHaveLength(2));
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
     fireEvent.click(screen.getByRole("button", { name: "Estado" }));
     fireEvent.click(screen.getByRole("option", { name: "Caducado" }));
     expect(await screen.findByText("NEW")).toBeInTheDocument();

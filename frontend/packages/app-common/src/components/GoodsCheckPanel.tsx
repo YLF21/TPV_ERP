@@ -3,6 +3,9 @@ import { DownloadSimple } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode } from "../types";
 import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
+import { ErpListFilterPanel } from "./ErpListFilterPanel";
+import { ErpListSelect } from "./ErpListSelect";
+import { listFilterChips, matchesListFilter } from "./listFilterValues";
 import { TableSortButton } from "./TableSortButton";
 import { nextTableSort, sortTableRows, type TableSort } from "./tableSorting";
 import { WarehouseSearchFrame } from "./WarehouseSearchFrame";
@@ -132,13 +135,23 @@ export function goodsCheckDocumentIsAvailable(document: PurchaseDocument) {
 export function filterGoodsCheckDocuments(
   documents: PurchaseDocument[],
   search: string,
-  typeFilter: GoodsCheckDocumentTypeFilter
+  typeFilter: GoodsCheckDocumentTypeFilter | readonly string[],
+  parties: {
+    supplierId?: string; supplierCode?: string | null; warehouseId?: string;
+    supplierIds?: readonly string[]; warehouseIds?: readonly string[];
+  } = {}
 ) {
   const query = search.trim().toLocaleLowerCase();
   return documents.filter((document) => {
     const type = document.documentType ?? document.tipo;
-    if (typeFilter === "deliveryNotes" && type !== "ALBARAN_ENTRADA") return false;
-    if (typeFilter === "invoices" && type !== "FACTURA_ENTRADA") return false;
+    const selectedTypes = typeof typeFilter === "string" ? (typeFilter === "all" ? [] : [typeFilter]) : typeFilter;
+    const category = type === "ALBARAN_ENTRADA" ? "deliveryNotes" : type === "FACTURA_ENTRADA" ? "invoices" : undefined;
+    if (!matchesListFilter(selectedTypes, category)
+      || !matchesListFilter(parties.supplierIds, document.supplierId)
+      || !matchesListFilter(parties.warehouseIds, document.warehouseId)) return false;
+    if (parties.supplierId && document.supplierId !== parties.supplierId
+      && (!parties.supplierCode || document.supplierId !== parties.supplierCode)) return false;
+    if (parties.warehouseId && document.warehouseId !== parties.warehouseId) return false;
     if (!query) return true;
     return [
       document.number ?? document.numero,
@@ -213,7 +226,9 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
   const [documents, setDocuments] = useState<PurchaseDocument[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<GoodsCheckDocumentTypeFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [supplierFilter, setSupplierFilter] = useState<string[]>([]);
+  const [warehouseFilter, setWarehouseFilter] = useState<string[]>([]);
   const [lineFilter, setLineFilter] = useState<GoodsCheckLineFilter>("all");
   const [check, setCheck] = useState<GoodsCheckView | null>(null);
   const [lastProductId, setLastProductId] = useState<string | null>(null);
@@ -244,8 +259,33 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
     proveedorNombre: goodsCheckSupplierLabel(document, suppliers),
     almacenNombre: goodsCheckWarehouseLabel(document, warehouses)
   })), [documents, suppliers, warehouses]);
+  const supplierFilterOptions = useMemo(() => {
+    const options = suppliers.map(item => ({ value: item.id, code: item.supplierId,
+      label: [item.supplierId, item.tradeName || item.legalName || item.razonSocial].filter(Boolean).join(" · ") || item.id }));
+    for (const item of displayDocuments) {
+      if (item.supplierId && !options.some(option => option.value === item.supplierId || option.code === item.supplierId)) {
+        options.push({ value: item.supplierId, code: undefined, label: item.proveedorNombre || item.supplierId });
+      }
+    }
+    return options;
+  }, [displayDocuments, suppliers]);
+  const warehouseFilterOptions = useMemo(() => {
+    const options = warehouses.map(item => ({ value: item.id, label: item.name || item.nombre || item.id }));
+    for (const item of displayDocuments) {
+      if (item.warehouseId && !options.some(option => option.value === item.warehouseId)) {
+        options.push({ value: item.warehouseId, label: item.almacenNombre || item.warehouseId });
+      }
+    }
+    return options;
+  }, [displayDocuments, warehouses]);
   const visibleDocuments = useMemo(() => sortTableRows(
-    filterGoodsCheckDocuments(displayDocuments, search, typeFilter),
+    filterGoodsCheckDocuments(displayDocuments, search, typeFilter, app !== "pda" ? {
+      supplierIds: supplierFilter.flatMap(id => {
+        const code = supplierFilterOptions.find(option => option.value === id)?.code;
+        return code ? [id, code] : [id];
+      }),
+      warehouseIds: warehouseFilter
+    } : undefined),
     documentSort,
     (document, column) => {
       if (column === "type") return t((document.documentType ?? document.tipo) === "ALBARAN_ENTRADA" ? "goodsCheck.deliveryNote" : "goodsCheck.invoice");
@@ -255,7 +295,7 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
       return document.almacenNombre ?? document.warehouseId;
     },
     locale
-  ), [displayDocuments, documentSort, locale, search, t, typeFilter]);
+  ), [app, displayDocuments, documentSort, locale, search, t, typeFilter, supplierFilter, supplierFilterOptions, warehouseFilter]);
   const selectedDocument = visibleDocuments.find(
     (document) => document.id === selectedDocumentId
   ) ?? null;
@@ -297,9 +337,14 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
   if (search.trim()) documentFilterChips.push({
     key: "search", label: t("salesReport.search"), value: search.trim(), onRemove: () => setSearch("")
   });
-  if (typeFilter !== "all") documentFilterChips.push({
-    key: "type", label: t("goodsCheck.column.type"), value: t(`goodsCheck.filter.${typeFilter}`), onRemove: () => setTypeFilter("all")
-  });
+  documentFilterChips.push(...listFilterChips("type", t("goodsCheck.column.type"), typeFilter, setTypeFilter,
+    value => t(`goodsCheck.filter.${value}`)));
+  if (app !== "pda") {
+    documentFilterChips.push(...listFilterChips("supplier", t("stock.column.supplier"), supplierFilter, setSupplierFilter,
+      value => supplierFilterOptions.find(item => item.value === value)?.label || value));
+    documentFilterChips.push(...listFilterChips("warehouse", t("stock.column.warehouse"), warehouseFilter, setWarehouseFilter,
+      value => warehouseFilterOptions.find(item => item.value === value)?.label || value));
+  }
 
   function openWorkflowView(nextView: "documents" | "check") {
     setWorkflowView(nextView);
@@ -458,15 +503,15 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
 
   return (
     <section className={`goods-check-panel${separateWorkflow ? " goods-check-panel-separate" : ""}${app === "gestion" ? " gestion-warehouse-screen" : ""}`}>
-      {(!separateWorkflow || workflowView === "documents") && <div className="goods-check-documents">
+      {(!separateWorkflow || workflowView === "documents") && <div className={`goods-check-documents${app !== "pda" ? " erp-list-filter-host" : ""}`}>
         <header className="goods-check-documents-header">
-          <div className={`stock-history-toolbar goods-check-toolbar${app === "gestion" ? " gestion-warehouse-toolbar" : ""}`}>
+          {app === "pda" ? <><div className="stock-history-toolbar goods-check-toolbar">
             <label className="goods-check-search">
               <span>{t("salesReport.search")}</span>
-              {app === "gestion" ? <WarehouseSearchFrame>{documentSearchInput}</WarehouseSearchFrame> : documentSearchInput}
+              {documentSearchInput}
             </label>
-            <button type="button" className={app === "gestion" ? "primary" : undefined} disabled={!selectedDocument || busy} onClick={() => void importDocument()}>
-              {app === "gestion" ? <span><DownloadSimple size={16} aria-hidden="true" />{busy ? t("common.loading") : t("goodsCheck.import")}</span> : busy ? t("common.loading") : t("goodsCheck.import")}
+            <button type="button" disabled={!selectedDocument || busy} onClick={() => void importDocument()}>
+              {busy ? t("common.loading") : t("goodsCheck.import")}
             </button>
           </div>
           <div
@@ -482,18 +527,42 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
               <button
                 key={value}
                 type="button"
-                className={typeFilter === value ? "selected" : ""}
-                aria-pressed={typeFilter === value}
-                onClick={() => setTypeFilter(value)}
+                className={(typeFilter[0] ?? "all") === value ? "selected" : ""}
+                aria-pressed={(typeFilter[0] ?? "all") === value}
+                onClick={() => setTypeFilter(value === "all" ? [] : [value])}
               >
                 {t(label)}
               </button>
             ))}
-          </div>
+          </div></> : <ErpListFilterPanel
+            translate={t}
+            search={<label><span>{t("salesReport.search")}</span><WarehouseSearchFrame>{documentSearchInput}</WarehouseSearchFrame></label>}
+            filters={<><label><span>{t("goodsCheck.filter.type")}</span><ErpListSelect
+              aria-label={t("goodsCheck.filter.type")}
+              values={typeFilter}
+              options={([
+                ["", "goodsCheck.filter.all"],
+                ["deliveryNotes", "goodsCheck.filter.deliveryNotes"],
+                ["invoices", "goodsCheck.filter.invoices"]
+              ] as const).map(([value, label]) => ({ value, label: t(label) }))}
+              onChange={setTypeFilter}
+
+            /></label>
+              <label><span>{t("stock.column.supplier")}</span><ErpListSelect aria-label={t("stock.column.supplier")} values={supplierFilter}
+                options={[{ value: "", label: t("goodsCheck.filter.all") }, ...supplierFilterOptions]} onChange={setSupplierFilter}
+                /></label>
+              <label><span>{t("stock.column.warehouse")}</span><ErpListSelect aria-label={t("stock.column.warehouse")} values={warehouseFilter}
+                options={[{ value: "", label: t("goodsCheck.filter.all") }, ...warehouseFilterOptions]} onChange={setWarehouseFilter}
+                /></label>
+            </>}
+            actions={<button type="button" disabled={!selectedDocument || busy} onClick={() => void importDocument()}>
+              <DownloadSimple size={16} aria-hidden="true" />{busy ? t("common.loading") : t("goodsCheck.import")}
+            </button>}
+          />}
           {app !== "pda" && <ErpFilterChips locale={locale} chips={documentFilterChips}
             className="goods-check-document-filter-chips" focusRef={searchRef}
-            onClear={() => { setSearch(""); setTypeFilter("all"); }} />}
-          <div className="goods-check-documents-summary">
+            onClear={() => { setSearch(""); setTypeFilter([]); setSupplierFilter([]); setWarehouseFilter([]); }} />}
+          {app === "pda" && <div className="goods-check-documents-summary">
             <div>
               <strong>{t("goodsCheck.availableDocuments")}</strong>
               <small>{t("goodsCheck.purchaseDocuments")}</small>
@@ -502,7 +571,7 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
               <strong>{visibleDocuments.length}</strong>
               <small>{t("goodsCheck.documents")}</small>
             </span>
-          </div>
+          </div>}
           {separateWorkflow && check?.status === "ABIERTA" && (
             <button type="button" className="goods-check-resume" onClick={() => openWorkflowView("check")}>
               <span>{t("goodsCheck.active")}</span>
@@ -511,7 +580,7 @@ export function GoodsCheckPanel({ app = "venta", locale, token, t, warehouses = 
             </button>
           )}
         </header>
-        <div ref={documentListRef} className={`stock-history-table-scroll goods-check-document-list${app !== "pda" ? " erp-classic-tables warehouse-classic-table" : ""}`}>
+        <div ref={documentListRef} className={`stock-history-table-scroll goods-check-document-list${app !== "pda" ? " erp-classic-tables warehouse-classic-table erp-list-filter-table" : ""}`}>
           {loading ? (
             <div className="goods-check-empty" role="status" aria-live="polite">
               <strong>{t("common.loading")}</strong>

@@ -5,6 +5,7 @@ import { useTableArrowRepeat } from "../../../packages/app-common/src/components
 import { ensureTableRowVisible } from "../../../packages/app-common/src/components/ensureTableRowVisible";
 import { useTableInitialFocus } from "../../../packages/app-common/src/components/useTableInitialFocus";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
+import { ErpListFilterPanel } from "../../../packages/app-common/src/components/ErpListFilterPanel";
 import { GestionSearchFrame } from "../../../packages/app-common/src/components/GestionSearchFrame";
 import { GestionModuleHeading } from "./GestionModuleHeading";
 import {
@@ -191,13 +192,10 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
         <button type="button" className="primary" onClick={() => setDialog("create")}>{t("gestion.users.new")}</button>
       </GestionModuleHeading>
 
-      <div className="gestion-security-toolbar gestion-filter-toolbar">
-        <label>
+      <ErpListFilterPanel translate={t} filters={null} search={<label>
           <span>{t("gestion.security.search")}</span>
-          <GestionSearchFrame><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("gestion.users.searchPlaceholder")} /></GestionSearchFrame>
-        </label>
-        <span>{t("gestion.security.results").replace("{count}", String(filteredUsers.length))}</span>
-      </div>
+          <GestionSearchFrame><input className="erp-search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("gestion.users.searchPlaceholder")} /></GestionSearchFrame>
+        </label>} />
       <ErpFilterChips translate={t} chips={[
         { key: "search", label: t("gestion.security.search"), value: query, onRemove: () => setQuery("") }
       ]} onClear={() => setQuery("")} />
@@ -476,7 +474,7 @@ function RoleAdministration({ session, t }: { session: UserSession; t: Translato
 
       <div className="gestion-role-layout">
         <aside className="gestion-role-list gestion-module-panel">
-          <label className="gestion-filter-toolbar"><span>{t("gestion.security.search")}</span><GestionSearchFrame><input value={query} onChange={(event) => setQuery(event.target.value)} /></GestionSearchFrame></label>
+          <ErpListFilterPanel translate={t} filters={null} search={<label><span>{t("gestion.security.search")}</span><GestionSearchFrame><input className="erp-search-input" value={query} onChange={(event) => setQuery(event.target.value)} /></GestionSearchFrame></label>} />
           <ErpFilterChips translate={t} chips={[
             { key: "search", label: t("gestion.security.search"), value: query, onRemove: () => setQuery("") }
           ]} onClear={() => setQuery("")} />

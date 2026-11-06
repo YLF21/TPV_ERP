@@ -151,7 +151,15 @@ public class SaasCustomerDocumentService {
     }
     private static LinkedHashMap<String, Object> query(String reportKey, Filters filters, String sortBy, String sortDirection) {
         var result = new LinkedHashMap<String, Object>();
-        result.put("reportKey", reportKey); result.put("filters", filters);
+        result.put("reportKey", reportKey);
+        var selected = new LinkedHashMap<String, Object>();
+        if (filters == null) filters = new Filters(null, null, null, null);
+        selected.put("search", filters.search());
+        selected.put("dateFrom", filters.dateFrom());
+        selected.put("dateTo", filters.dateTo());
+        selected.put("status", filters.statuses().isEmpty() ? filters.status()
+                : String.join(",", filters.statuses().stream().map(Enum::name).toList()));
+        result.put("filters", selected);
         result.put("sortBy", sort(sortBy)); result.put("sortDirection", direction(sortDirection));
         return result;
     }

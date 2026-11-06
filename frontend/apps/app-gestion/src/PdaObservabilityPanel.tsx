@@ -1,6 +1,10 @@
+import { ErpListSelect } from "../../../packages/app-common/src/components/ErpListSelect";
+import { appendListFilter, listFilterChips, type ListFilterValue } from "../../../packages/app-common/src/components/listFilterValues";
+import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest } from "@tpverp/app-common";
+import { apiRequest, ErpSelect } from "@tpverp/app-common";
 import type { LocaleCode } from "@tpverp/app-common";
+import { ErpListFilterPanel } from "../../../packages/app-common/src/components/ErpListFilterPanel";
 import type { RegisteredTerminal } from "./TerminalManagementScreen";
 import "./PdaObservabilityPanel.css";
 
@@ -18,9 +22,9 @@ export type PdaObservabilityView = {
   page: number; size: number; totalEvents: number; totalPages: number;
 };
 
-export function pdaObservabilityPath(windowHours: number, terminalId: string) {
+export function pdaObservabilityPath(windowHours: number, terminalId: ListFilterValue) {
   const query = new URLSearchParams({ windowHours: String(windowHours), page: "0", size: "50" });
-  if (terminalId) query.set("terminalId", terminalId);
+  appendListFilter(query, "terminalId", terminalId);
   return `/pda-observability?${query.toString()}`;
 }
 
@@ -35,7 +39,7 @@ export function PdaObservabilityPanel({ token, terminals, t, locale = "es" }: {
   token?: string; terminals: RegisteredTerminal[]; t: (key: string) => string; locale?: LocaleCode;
 }) {
   const [windowHours, setWindowHours] = useState(24);
-  const [terminalId, setTerminalId] = useState("");
+  const [terminalId, setTerminalId] = useState<string[]>([]);
   const [category, setCategory] = useState<Category>("failures");
   const [value, setValue] = useState<PdaObservabilityView | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,17 +73,20 @@ export function PdaObservabilityPanel({ token, terminals, t, locale = "es" }: {
       <div><span>{t("gestion.pdaObservability.eyebrow")}</span><h3 id="pda-observability-title">{t("gestion.pdaObservability.title")}</h3><p>{t("gestion.pdaObservability.subtitle")}</p></div>
       <button type="button" disabled={loading} onClick={() => void load()}>{t("common.refresh")}</button>
     </header>
-    <div className="gestion-pda-observability-filters" role="group" aria-label={t("gestion.pdaObservability.filters")}>
-      <label><span>{t("gestion.pdaObservability.window")}</span><select value={windowHours} onChange={event => setWindowHours(Number(event.target.value))}>
-        <option value={1}>{t("gestion.pdaObservability.window.1")}</option><option value={24}>{t("gestion.pdaObservability.window.24")}</option><option value={168}>{t("gestion.pdaObservability.window.168")}</option>
-      </select></label>
-      <label><span>{t("gestion.pdaObservability.terminal")}</span><select value={terminalId} onChange={event => setTerminalId(event.target.value)}>
-        <option value="">{t("gestion.pdaObservability.allTerminals")}</option>{visibleTerminals.map(terminal => <option key={terminal.id} value={terminal.id}>{terminal.name}</option>)}
-      </select></label>
-      <label><span>{t("gestion.pdaObservability.category")}</span><select value={category} onChange={event => setCategory(event.target.value as Category)}>
-        <option value="failures">{t("gestion.pdaObservability.failures")}</option><option value="blocked">{t("gestion.pdaObservability.blocked")}</option><option value="inactive">{t("gestion.pdaObservability.inactive")}</option>
-      </select></label>
-    </div>
+    <ErpListFilterPanel translate={t} search={null} filters={<>
+      <label><span>{t("gestion.pdaObservability.window")}</span><ErpSelect value={String(windowHours)} aria-label={t("gestion.pdaObservability.window")} maxPopoverWidth="trigger" popoverAnchor="control"
+        options={[1, 24, 168].map(hours => ({ value: String(hours), label: t(`gestion.pdaObservability.window.${hours}`) }))}
+        onChange={next => setWindowHours(Number(next))} /></label>
+      <label><span>{t("gestion.pdaObservability.terminal")}</span><ErpListSelect values={terminalId} aria-label={t("gestion.pdaObservability.terminal")}
+        options={[{ value: "", label: t("gestion.pdaObservability.allTerminals") }, ...visibleTerminals.map(terminal => ({ value: terminal.id, label: terminal.name }))]}
+        onChange={setTerminalId} /></label>
+      <label><span>{t("gestion.pdaObservability.category")}</span><ErpSelect value={category} aria-label={t("gestion.pdaObservability.category")} maxPopoverWidth="trigger" popoverAnchor="control"
+        options={(["failures", "blocked", "inactive"] as const).map(next => ({ value: next, label: t(`gestion.pdaObservability.${next}`) }))}
+        onChange={next => setCategory(next as Category)} /></label>
+    </>} />
+    <ErpFilterChips translate={t} onClear={() => setTerminalId([])}
+      chips={listFilterChips("terminal", t("gestion.pdaObservability.terminal"), terminalId, setTerminalId,
+        id => visibleTerminals.find(terminal => terminal.id === id)?.name ?? id)} />
     {error && <div className="gestion-pda-observability-error" role="alert"><span>{error}</span><button type="button" onClick={() => void load()}>{t("gestion.pdaObservability.retry")}</button></div>}
     {loading && !value ? <div className="gestion-pda-observability-loading" role="status">{t("common.loading")}</div> : value && <>
       <div className="gestion-pda-observability-kpis" aria-label={t("gestion.pdaObservability.summary")}>
@@ -88,7 +95,7 @@ export function PdaObservabilityPanel({ token, terminals, t, locale = "es" }: {
         <button type="button" className={category === "inactive" ? "selected" : ""} onClick={() => setCategory("inactive")}><span>{t("gestion.pdaObservability.inactive")}</span><strong>{value.summary.inactiveTerminals}</strong></button>
         <article><span>{t("gestion.pdaObservability.latency")}</span><strong>{`${Math.round(value.performance.p95LatencyMs)} ms`}</strong><small>{`${t("gestion.pdaObservability.average")}: ${Math.round(value.performance.averageLatencyMs)} ms · ${value.performance.sampleCount} ${t("gestion.pdaObservability.samples")}`}</small></article>
       </div>
-      <div className="gestion-pda-observability-table-wrap">
+      <div className="gestion-pda-observability-table-wrap erp-list-filter-table">
         <table><caption className="sr-only">{t(`gestion.pdaObservability.${category}`)}</caption><thead><tr>
           <th>{t("gestion.pdaObservability.terminal")}</th><th>{category === "inactive" ? t("gestion.pdaObservability.lastSeen") : t("gestion.pdaObservability.code")}</th>
           {category !== "inactive" && <th>{t("gestion.pdaObservability.occurredAt")}</th>}

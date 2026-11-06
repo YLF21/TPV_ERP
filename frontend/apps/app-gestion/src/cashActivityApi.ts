@@ -1,3 +1,4 @@
+import { appendListFilter, type ListFilterValue } from "../../../packages/app-common/src/components/listFilterValues";
 import { apiRequest, type TableSort } from "@tpverp/app-common";
 
 export type CashActivityRow = {
@@ -22,10 +23,10 @@ export type CashActivityRow = {
 export type CashActivityFilters = {
   from: string;
   to: string;
-  terminalId: string;
-  userId: string;
-  action: string;
-  cashState: string;
+  terminalId: ListFilterValue;
+  userId: ListFilterValue;
+  action: ListFilterValue;
+  cashState: ListFilterValue;
 };
 
 export type CashActivityFilterOptions = {
@@ -49,7 +50,7 @@ export function loadCashActivityFilterOptions(token?: string, signal?: AbortSign
 export function loadCashActivity(filters: CashActivityFilters, cursor: string | null, token?: string, sort?: TableSort | null, signal?: AbortSignal) {
   const query = new URLSearchParams({ from: filters.from, to: filters.to, limit: "50" });
   for (const key of ["terminalId", "userId", "action", "cashState"] as const) {
-    if (filters[key]) query.set(key, filters[key]);
+    appendListFilter(query, key, filters[key]);
   }
   if (cursor) query.set("cursor", cursor);
   if (sort) { query.set("sortBy", sort.column === "hour" ? "time" : sort.column); query.set("sortDirection", sort.direction); }
