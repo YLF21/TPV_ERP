@@ -1293,9 +1293,11 @@ describe("SalesReportScreen", () => {
       />
     );
 
-    await waitFor(() => expect(screen.getByLabelText("Desde")).toBeEnabled());
-    expect(screen.getByLabelText("Desde")).toHaveValue("2026-08-16");
-    expect(screen.getByLabelText("Hasta")).toHaveValue("2026-08-16");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Desde")).toBeEnabled();
+      expect(screen.getByLabelText("Desde")).toHaveValue("2026-08-16");
+      expect(screen.getByLabelText("Hasta")).toHaveValue("2026-08-16");
+    });
     fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-08-15" } });
     fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-08-16" } });
     expect(screen.queryByRole("button", { name: "Aplicar" })).not.toBeInTheDocument();
