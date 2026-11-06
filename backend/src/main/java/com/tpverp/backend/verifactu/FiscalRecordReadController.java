@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -92,7 +93,7 @@ public class FiscalRecordReadController {
             @RequestParam(defaultValue = "25") int size,
             @RequestParam(required = false) String cursor) {
         return recordsCursor(dateFrom, dateTo, operation, documentType, documentNumber, number,
-                fiscalMode, mode, FiscalRecordNumberMatch.PREFIX, size, cursor);
+                fiscalMode, mode, FiscalRecordNumberMatch.PREFIX, size, cursor, FiscalListChoices.EMPTY);
     }
 
     @GetMapping("/cursor")
@@ -109,7 +110,8 @@ public class FiscalRecordReadController {
             @RequestParam(name = "mode", required = false) FiscalMode mode,
             @RequestParam(defaultValue = "PREFIX") FiscalRecordNumberMatch numberMatch,
             @RequestParam(defaultValue = "25") int size,
-            @RequestParam(required = false) String cursor) {
+            @RequestParam(required = false) String cursor,
+            @ModelAttribute FiscalListChoices choices) {
         if (documentNumber != null && number != null
                 && !documentNumber.trim().equals(number.trim())) {
             throw new IllegalArgumentException("documentNumber y number no pueden diferir");
@@ -118,6 +120,10 @@ public class FiscalRecordReadController {
             throw new IllegalArgumentException("fiscalMode y mode no pueden diferir");
         }
         var effectiveDocumentNumber = documentNumber == null ? number : documentNumber;
+        if (choices.hasValues()) {
+            return service.recordsCursorFiltered(dateFrom, dateTo, operation, documentType, effectiveDocumentNumber,
+                    numberMatch, fiscalMode == null ? mode : fiscalMode, size, cursor, choices);
+        }
         return service.recordsCursor(dateFrom, dateTo, operation, documentType,
                 effectiveDocumentNumber, numberMatch, fiscalMode == null ? mode : fiscalMode,
                 size, cursor);

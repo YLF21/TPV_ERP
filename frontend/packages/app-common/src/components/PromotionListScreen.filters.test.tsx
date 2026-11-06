@@ -115,6 +115,7 @@ describe("Promotion list filters and detail", () => {
     const t = createTranslator("es");
     render(<PromotionListScreen {...props} app="gestion" locale="es" />);
     await screen.findByRole("button", { name: "Agua" });
+    fireEvent.click(screen.getByRole("button", { name: t("salesReport.filter") }));
     fireEvent.click(screen.getByRole("button", { name: t("promotion.column.status") }));
     fireEvent.click(screen.getByRole("option", { name: t("promotion.list.expired") }));
     expect(screen.getByRole("button", { name: "Promoción caducada" })).toBeVisible();

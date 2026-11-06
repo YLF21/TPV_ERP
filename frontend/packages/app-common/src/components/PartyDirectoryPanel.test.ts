@@ -207,21 +207,13 @@ describe("PartyDirectoryPanel", () => {
       .toEqual([secondaryContactCustomer.id]);
   });
 
-  it.each([
-    { phone: " 699888 " }, { email: "SECUNDARIA@EXAMPLE.TEST" }, { location: "Sintra" },
-    { location: "Lisboa" }, { location: "Sintra Lisboa" }, { postalCode: "2710" }, { country: "pt" },
-  ])("matches customer field filters against secondary contacts: %o", (filters) => {
-    expect(filterPartyDirectoryEntries([secondaryContactCustomer], "customers", "", "all", "es", filters, true).map(entry => entry.id))
-      .toEqual([secondaryContactCustomer.id]);
-  });
-
-  it("combines secondary contact filters with other criteria and keeps legacy primary contacts searchable", () => {
+  it("matches selected location and country using secondary contacts", () => {
     const customer = { ...secondaryContactCustomer, creditEnabled: true };
-    expect(filterPartyDirectoryEntries([customer], "customers", "", "active", "es", { phone: "699", postalCode: "2710", creditEnabled: "true" }, true))
-      .toEqual([customer]);
-    expect(filterPartyDirectoryEntries([customer], "customers", "", "active", "es", { phone: "699", postalCode: "9999" }, true)).toEqual([]);
+    expect(filterPartyDirectoryEntries([customer], "customers", "", "active", "es", {
+      location: "Sintra, Lisboa", country: "pt", creditEnabled: "true",
+    })).toEqual([customer]);
+    expect(filterPartyDirectoryEntries([customer], "customers", "", "all", "es", { location: "Sintra" })).toEqual([]);
     expect(filterPartyDirectoryEntries([customer], "customers", "699", "inactive", "es")).toEqual([]);
-    expect(filterPartyDirectoryEntries([customer], "customers", "", "all", "es", { phone: "600111", country: "ES" }, true)).toEqual([customer]);
     expect(filterPartyDirectoryEntries([{ ...customer, addresses: [] }], "customers", "600111", "all", "es")).toHaveLength(1);
   });
 

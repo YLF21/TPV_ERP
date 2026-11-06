@@ -41,8 +41,11 @@ public class WarehouseTransferListExportService {
         var dateFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm").withZone(ZoneId.of(store.getTimezone()));
         var rows = new ArrayList<List<String>>();
         for (int page = 0; ; page++) {
-            var batch = transfers.list(page, 100, filters.status(), filters.sourceWarehouseId(),
-                    filters.targetWarehouseId(), filters.from(), filters.before(), filters.search());
+            var batch = transfers.listFiltered(page, 100,
+                    filters.statuses() == null ? WarehouseTransferDocumentService.single(filters.status()) : filters.statuses(),
+                    filters.sourceWarehouseIds() == null ? WarehouseTransferDocumentService.single(filters.sourceWarehouseId()) : filters.sourceWarehouseIds(),
+                    filters.targetWarehouseIds() == null ? WarehouseTransferDocumentService.single(filters.targetWarehouseId()) : filters.targetWarehouseIds(),
+                    filters.from(), filters.before(), filters.search());
             for (var item : batch.items()) {
                 if (rows.size() >= MAX_ROWS) throw new IllegalArgumentException("El informe supera 50000 documentos");
                 rows.add(List.of(item.number() == null ? copy.status(WarehouseTransferDocument.Status.DRAFT) : item.number(),

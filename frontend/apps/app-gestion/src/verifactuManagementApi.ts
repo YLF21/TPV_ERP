@@ -1,3 +1,4 @@
+import { listFilterValues, type ListFilterValue } from "../../../packages/app-common/src/components/listFilterValues";
 import { apiBaseUrl, apiRequest } from "@tpverp/app-common";
 
 export const verifactuSubmissionStatuses = [
@@ -114,9 +115,9 @@ export type VerifactuAdminSubmissionPage = {
 export type VerifactuAdminSubmissionFilters = {
   dateFrom: string;
   dateTo: string;
-  status: "" | VerifactuSubmissionStatus;
-  documentType: "" | VerifactuDocumentType;
-  operation: "" | VerifactuOperation;
+  status: ListFilterValue;
+  documentType: ListFilterValue;
+  operation: ListFilterValue;
   documentNumber: string;
   page: number;
   size: number;
@@ -144,9 +145,7 @@ export type VerifactuAdminDefectiveRecordPage = {
   totalPages: number;
 };
 
-export type VerifactuAdminDefectiveFilters = Omit<VerifactuAdminSubmissionFilters, "status"> & {
-  status: "" | "RECHAZADO" | "DEFECTUOSO" | "ACEPTADO_CON_ERRORES";
-};
+export type VerifactuAdminDefectiveFilters = VerifactuAdminSubmissionFilters;
 
 export type VerifactuAdminAttempt = {
   attemptId: string;
@@ -334,6 +333,7 @@ export type FiscalExportJob = {
 };
 
 export type FiscalExportJobRequest = {
+  choices?: { operations?: readonly string[]; documentTypes?: readonly string[]; fiscalModes?: readonly string[] };
   kind: FiscalExportKind;
   scope: FiscalExportJobScope;
   periodStart?: string | null;
@@ -372,6 +372,7 @@ export type FiscalExport = {
 };
 
 export type FiscalExportScope = {
+  choices?: FiscalExportJobRequest["choices"];
   recordIds?: string[];
   dateFrom?: string | null;
   dateTo?: string | null;
@@ -617,7 +618,8 @@ function fiscalExportJobBody(request: FiscalExportJobRequest) {
     ...(request.documentNumberPrefix?.trim() ? { documentNumberPrefix: request.documentNumberPrefix.trim() } : {}),
     ...(request.operation ? { operation: request.operation } : {}),
     ...(request.documentType ? { documentType: request.documentType } : {}),
-    ...(request.fiscalMode ? { fiscalMode: request.fiscalMode } : {})
+    ...(request.fiscalMode ? { fiscalMode: request.fiscalMode } : {}),
+    ...(request.choices && Object.values(request.choices).some(values => values?.length) ? { choices: request.choices } : {})
   };
 }
 
@@ -831,9 +833,11 @@ function submissionParams(filters: VerifactuAdminSubmissionFilters | VerifactuAd
   });
   if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
   if (filters.dateTo) params.set("dateTo", filters.dateTo);
-  if (filters.status) params.set("status", filters.status);
-  if (filters.documentType) params.set("documentType", filters.documentType);
-  if (filters.operation) params.set("operation", filters.operation);
+  for (const [field, plural] of [["status", "statuses"], ["documentType", "documentTypes"], ["operation", "operations"]] as const) {
+    const choices = listFilterValues(filters[field]);
+    if (choices.length === 1) params.set(field, choices[0]);
+    else choices.forEach(value => params.append(plural, value));
+  }
   if (filters.documentNumber.trim()) params.set("documentNumber", filters.documentNumber.trim());
   if (filters.sortBy) params.set("sortBy", filters.sortBy);
   if (filters.sortDirection) params.set("sortDirection", filters.sortDirection);

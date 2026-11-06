@@ -193,12 +193,13 @@ test.describe("APP GESTIÓN · recorridos esenciales", () => {
     if (showIndicators) await expect(workspace.locator(".gestion-control-type-strip")).toBeVisible();
 
     const dates = workspace.locator(".gestion-control-date-toolbar");
-    const quickPeriod = dates.getByRole("combobox", { name: "Periodos rápidos", exact: true });
+    const quickPeriod = dates.getByRole("button", { name: "Periodos rápidos", exact: true });
     // Seven days may already be the saved default; move to Today before requesting it again.
     if (await dates.getByLabel("Desde", { exact: true }).inputValue() !== await dates.getByLabel("Hasta", { exact: true }).inputValue()) {
       const todayResponse = page.waitForResponse((response) => apiPath(response, "/api/v1/control/alerts/groups"));
       const todayListResponse = page.waitForResponse((response) => apiPath(response, "/api/v1/control/alerts"));
-      await quickPeriod.selectOption("TODAY");
+      await quickPeriod.click();
+      await page.getByRole("option", { name: "Hoy", exact: true }).click();
       expect((await todayResponse).ok()).toBeTruthy();
       expect((await todayListResponse).ok()).toBeTruthy();
     }
@@ -207,7 +208,8 @@ test.describe("APP GESTIÓN · recorridos esenciales", () => {
       apiPath(response, "/api/v1/control/alerts/groups")
     ));
     const sevenDaysListResponse = page.waitForResponse((response) => apiPath(response, "/api/v1/control/alerts"));
-    await quickPeriod.selectOption("LAST_7_DAYS");
+    await quickPeriod.click();
+    await page.getByRole("option", { name: "7 días", exact: true }).click();
     const response = await sevenDaysResponse;
     expect(response.ok()).toBeTruthy();
     const query = new URL(response.url()).searchParams;

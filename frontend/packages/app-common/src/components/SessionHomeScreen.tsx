@@ -71,7 +71,7 @@ export function SessionHomeScreen({
     || hasPermission(session, "GESTION_VENTAS")
     || hasPermission(session, "STOCK_READ")
   );
-  const canOpenWarehouse = Boolean(onOpenWarehouse) && hasPermission(session, "GESTION_ALMACEN");
+  const canOpenWarehouse = Boolean(onOpenWarehouse) && (hasPermission(session, "GESTION_ALMACEN") || hasPermission(session, "STOCK_READ"));
   const canOpenReport = Boolean(onOpenSalesReport) && canOpenSalesReport;
   const canOpenSettings = Boolean(onOpenSettings);
   const [cashSessionState, setCashSessionState] = useState<HomeCashSessionState>("LOADING");

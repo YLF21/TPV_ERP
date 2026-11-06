@@ -4,6 +4,10 @@
 .cash-activity-panel .cash-timeline-filters { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
 .cash-activity-panel .cash-timeline-filters > div { display:grid; gap:4px; min-width:180px; font-size:12px; color:#52667c; }
 .cash-activity-panel .cash-timeline-filters .erp-select__trigger { min-height:34px; }
+html body .cash-activity-panel .cash-timeline-list-filter { margin: 10px 0 4px; }
+.cash-activity-panel .cash-timeline-list-filter .erp-list-filter-search:empty { display: none; }
+html body .cash-activity-panel .cash-timeline-list-filter .erp-list-filter-fields label { width: 180px; }
+html body .cash-activity-panel .cash-report-table-wrap.erp-list-filter-table { border-radius: 6px !important; }
 .cash-activity-panel .cash-report-table-wrap { box-sizing:border-box; min-height:326px; max-width:100%; overflow:auto; border:1px solid #aebfd2; }
 .cash-activity-panel .cash-timeline-table { width:100%; table-layout:fixed; }
 .cash-activity-panel .cash-timeline-table th { height:36px; padding:5px 8px; background:#12385f; color:#fff; font-size:12px; text-align:left; }

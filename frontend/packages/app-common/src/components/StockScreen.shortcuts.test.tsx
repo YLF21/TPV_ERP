@@ -174,10 +174,12 @@ describe("StockScreen F5 add-product shortcut", () => {
     expect(screen.queryByRole("button", { name: /Añadir producto/ })).toBeNull();
   });
 
-  it("does not open Añadir producto while another aria-modal dialog is open", async () => {
+  it("does not open Añadir producto while the family filter menu is open", async () => {
     await renderStock();
-    fireEvent.click(screen.getByRole("button", { name: "Filtrar stock" }));
-    const filter = screen.getByRole("dialog", { name: "Filtrar stock" });
+    const panel = document.querySelector<HTMLElement>(".stock-standard-filters")!;
+    fireEvent.click(within(panel).getByRole("button", { name: "Filtrar" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Familia" }));
+    const filter = screen.getByRole("listbox", { name: "Familia" });
 
     fireEvent.keyDown(filter, { key: "F5" });
 

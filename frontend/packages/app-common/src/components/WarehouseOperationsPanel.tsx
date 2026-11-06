@@ -22,6 +22,8 @@ import {
   type WarehouseSupplierOption
 } from "./WarehouseDocumentDialog";
 import type { WarehouseImportProduct } from "./warehouseDocumentImport";
+import { ErpListSelect } from "./ErpListSelect";
+import { listFilterChips, matchesListFilter } from "./listFilterValues";
 import { ErpSelect } from "./ErpSelect";
 import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
 import { ReportDateRangeFilter, ReportDateRangeSummary, type ReportDateRange } from "./ReportDateRangeFilter";
@@ -35,6 +37,7 @@ import { sortTableRows, useTableSortPreference } from "./tableSorting";
 import { useWarehouseListShortcuts, WAREHOUSE_LIST_SHORTCUTS } from "./useWarehouseListShortcuts";
 import { useReportDateOptions } from "./useReportDateOptions";
 import { WarehouseSearchFrame } from "./WarehouseSearchFrame";
+import { ErpListFilterPanel } from "./ErpListFilterPanel";
 
 export type {
   WarehouseCustomerOption,
@@ -117,7 +120,13 @@ type WarehouseOperationsColumnKey = typeof warehouseOperationsColumnDefinitions[
 export type WarehouseOperationsFilterOptions = {
   mode: WarehouseDocumentMode;
   query: string;
-  status: string;
+  status?: string;
+  statuses?: readonly string[];
+  supplierId?: string;
+  supplierIds?: readonly string[];
+  destinations?: readonly string[];
+  warehouseId?: string;
+  warehouseIds?: readonly string[];
   warehouses: WarehouseOption[];
   customers: WarehouseCustomerOption[];
   suppliers: WarehouseSupplierOption[];
@@ -265,6 +274,12 @@ export function warehouseOperationsFilter(
     if (options.status && document.status !== options.status) {
       return false;
     }
+    if (!matchesListFilter(options.statuses, document.status)
+      || !matchesListFilter(options.supplierIds, document.supplierId)
+      || !matchesListFilter(options.destinations, document.destination?.trim())
+      || !matchesListFilter(options.warehouseIds, document.warehouseId)) return false;
+    if (options.supplierId && document.supplierId !== options.supplierId) return false;
+    if (options.warehouseId && document.warehouseId !== options.warehouseId) return false;
     if (!normalizedQuery) {
       return true;
     }
@@ -351,12 +366,15 @@ export function WarehouseOperationsPanel({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [partyFilter, setPartyFilter] = useState<string[]>([]);
+  const [warehouseFilter, setWarehouseFilter] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const purchasePeriodFilter = app === "gestion" && mode === "input"
     && (documentType === "FACTURA_ENTRADA" || documentType === "ALBARAN_ENTRADA");
   const warehouseDesktopActions = app === "gestion";
+  const desktopPartyFilters = app !== "pda" && mode !== "transfer";
   const [quickRange, setQuickRange] = useState<ReportDateRange>({ from: "", to: "", label: "" });
   const dateReport = mode === "output" ? "warehouseOutputs"
     : documentType === "FACTURA_ENTRADA" ? "inputInvoices"
@@ -411,7 +429,10 @@ export function WarehouseOperationsPanel({
     warehouseOperationsFilter(documents, {
       mode,
       query,
-      status: statusFilter,
+      statuses: statusFilter,
+      supplierIds: desktopPartyFilters && mode === "input" ? partyFilter : undefined,
+      destinations: desktopPartyFilters && mode === "output" ? partyFilter : undefined,
+      warehouseIds: desktopPartyFilters ? warehouseFilter : undefined,
       warehouses,
       customers,
       suppliers
@@ -430,15 +451,39 @@ export function WarehouseOperationsPanel({
       return warehouseOperationsTotalUnits(document);
     },
     locale
-  ), [customers, dateFrom, dateTo, documents, locale, mode, query, statusFilter, suppliers, tableSort.sort, warehouses]);
+  ), [customers, dateFrom, dateTo, desktopPartyFilters, documents, locale, mode, partyFilter, query, statusFilter, warehouseFilter, suppliers, tableSort.sort, warehouses]);
   const statuses = useMemo(
     () => Array.from(new Set(documents.map((document) => document.status).filter(Boolean))).sort(),
     [documents]
   );
+  const supplierById = (id: string) => suppliers.find(item => item.id === id);
+  const partyOptions = useMemo(() => mode === "input"
+    ? suppliers.map(item => ({
+      value: item.id,
+      label: [item.supplierId, item.legalName ?? item.razonSocial ?? item.tradeName].filter(Boolean).join(" · ") || item.id,
+    }))
+    : Array.from(new Set(documents.flatMap(document => document.destination?.trim() || [])))
+      .sort((left, right) => left.localeCompare(right, locale))
+      .map(destination => ({ value: destination, label: destination })),
+  [documents, locale, mode, suppliers]);
+  const warehouseOptions = useMemo(() => {
+    const usedIds = new Set(documents.map(document => document.warehouseId));
+    return warehouses.filter(item => item.active !== false || usedIds.has(item.id))
+      .map(item => ({ value: item.id, label: item.name?.trim() || item.nombre?.trim() || item.id }));
+  }, [documents, warehouses]);
+  const activeWarehouses = useMemo(() => warehouses.filter(warehouse => warehouse.active !== false), [warehouses]);
+  const warehouseLabel = (id: string) => {
+    return warehouseOptions.find(item => item.value === id)?.label ?? id;
+  };
   const filterChips: ErpFilterChip[] = [];
   if (query.trim()) filterChips.push({ key: "query", label: labels.search, value: query.trim(), onRemove: () => setQuery("") });
-  if (statusFilter) filterChips.push({ key: "status", label: labels.status,
-    value: warehouseOperationsStatusLabel(statusFilter, t), onRemove: () => setStatusFilter("") });
+  filterChips.push(...listFilterChips("status", labels.status, statusFilter, setStatusFilter,
+    value => warehouseOperationsStatusLabel(value, t)));
+  if (desktopPartyFilters) {
+    filterChips.push(...listFilterChips("party", labels.counterparty, partyFilter, setPartyFilter,
+      value => partyOptions.find(option => option.value === value)?.label ?? value));
+    filterChips.push(...listFilterChips("warehouse", labels.warehouse, warehouseFilter, setWarehouseFilter, warehouseLabel));
+  }
   if (dateFrom) filterChips.push({ key: "dateFrom", label: t("warehouse.report.from"), value: dateFrom, onRemove: () => setDateFrom("") });
   if (dateTo) filterChips.push({ key: "dateTo", label: t("warehouse.report.to"), value: dateTo, onRemove: () => setDateTo("") });
 
@@ -458,7 +503,17 @@ export function WarehouseOperationsPanel({
       const file = await apiRequest<Blob>(`/sales-reports/${format === "pdf" ? "export-pdf" : "export"}`, {
         token, method: "POST", responseType: "blob", body: {
           reportKey,
-          filters: { dateFrom: dateFrom || null, dateTo: dateTo || null, status: statusFilter || null },
+          filters: {
+            dateFrom: dateFrom || null, dateTo: dateTo || null,
+            status: statusFilter.length === 1 ? statusFilter[0] : null,
+            ...(statusFilter.length > 1 ? { statuses: statusFilter } : {}),
+            ...(mode === "input" && partyFilter.length ? { suppliers: partyFilter.map(id => {
+              const supplier = supplierById(id);
+              return supplier?.supplierId?.trim() || supplier?.legalName?.trim() || supplier?.razonSocial?.trim() || id;
+            }) } : {}),
+            ...(mode === "output" && partyFilter.length ? { customers: partyFilter } : {}),
+            ...(warehouseFilter.length ? { warehouses: warehouseFilter.map(warehouseLabel) } : {})
+          },
           search: query.trim(),
           columns: keys.map((key) => ({ key, label: t(`salesReport.column.${key}`) }))
         }
@@ -499,7 +554,9 @@ export function WarehouseOperationsPanel({
 
   useEffect(() => {
     setQuery("");
-    setStatusFilter("");
+    setStatusFilter([]);
+    setPartyFilter([]);
+    setWarehouseFilter([]);
     setDateFrom("");
     setDateTo("");
     setSelectedId("");
@@ -734,7 +791,7 @@ export function WarehouseOperationsPanel({
     className={warehouseDesktopActions ? "primary gestion-warehouse-action--create gestion-warehouse-command" : undefined}
     aria-keyshortcuts={warehouseDesktopActions ? WAREHOUSE_LIST_SHORTCUTS.create : undefined}
     disabled={!token || deleting} onClick={openCreateDialog}>
-    {warehouseDesktopActions ? <><span><Plus size={16} weight="bold" aria-hidden="true" focusable="false" />{labels.create}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.create}</kbd></> : labels.create}
+    {app !== "pda" ? <><span><Plus size={16} weight="bold" aria-hidden="true" focusable="false" />{labels.create}</span>{warehouseDesktopActions && <kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.create}</kbd>}</> : labels.create}
   </button>;
   const searchInput = <input
     ref={searchRef}
@@ -746,7 +803,11 @@ export function WarehouseOperationsPanel({
     onKeyDown={(event) => {
       if (enterNavigationIntent(event.key, event) === "next") {
         event.preventDefault();
-        toolbarRef.current?.querySelector<HTMLElement>(".erp-select__trigger:not(:disabled)")?.focus();
+        const statusControl = toolbarRef.current?.querySelector<HTMLElement>(".erp-select__trigger:not(:disabled)");
+        if (statusControl?.closest(".erp-list-filter-fields[hidden]")) {
+          toolbarRef.current?.querySelector<HTMLButtonElement>(".erp-list-filter-toggle")?.click();
+          requestAnimationFrame(() => statusControl.focus());
+        } else statusControl?.focus();
       }
     }}
   />;
@@ -762,6 +823,36 @@ export function WarehouseOperationsPanel({
     ["ADMIN", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_CUENTAS"].includes(value))
     && (purchasePeriodFilter || mode === "output" || !documentType || documentType === "ENTRADA_ALMACEN")
     && <>{excelAction}{pdfAction}</>;
+  const statusField = <div className="stock-history-filter-field gestion-warehouse-status-filter" data-filter-active={statusFilter.length > 0}>
+    <span>{labels.status}</span>
+    <ErpListSelect aria-label={labels.status} values={statusFilter}
+      options={[{ value: "", label: labels.all }, ...statuses.map(status => ({ value: status, label: warehouseOperationsStatusLabel(status, t) }))]}
+      onChange={setStatusFilter} />
+  </div>;
+  const periodFooter = warehouseDesktopActions ? <>
+    {dateOptionsFailed && <div className="report-date-options-error" role="alert">
+      <span>{t("salesReport.loadError")}</span><button type="button" onClick={retryDateOptions}>{t("salesReport.retry")}</button>
+    </div>}
+    <ReportDateRangeFilter collapseSingleDay={app === "gestion"} showWeekday={app === "gestion"} locale={locale} today={dateOptions?.currentDate ?? ""}
+      earliestDate={dateOptions?.earliestDate ?? ""}
+      value={{ from: dateFrom, to: dateTo, label: "", preset: quickRange.from === dateFrom && quickRange.to === dateTo ? quickRange.preset : undefined }}
+      onChange={range => { setQuickRange(range); setDateFrom(range.from); setDateTo(range.to); }} />
+  </> : <footer className="report-date-range-filter sales-activity-filter-dock" aria-label={`${t("warehouse.report.from")} / ${t("warehouse.report.to")}`}>
+    <label><span>{t("warehouse.report.from")}</span><input type="date" value={dateFrom} max={dateTo || undefined} onChange={event => setDateFrom(event.target.value)} /></label>
+    <label><span>{t("warehouse.report.to")}</span><input type="date" value={dateTo} min={dateFrom || undefined} onChange={event => setDateTo(event.target.value)} /></label>
+    {(dateFrom || dateTo) && <ReportDateRangeSummary collapseSingleDay={false} showWeekday={false} locale={locale} value={{ from: dateFrom, to: dateTo, label: "" }} />}
+  </footer>;
+  const listActions = <>
+    {!headingWithCreate && createAction}
+    <button type="button" className="gestion-warehouse-action--open" disabled={!selectedCanOpen || deleting}
+      onClick={() => selectedDocument && openDocument(selectedDocument)}>
+      {selectedDocument && warehouseOperationsIsDraft(selectedDocument) ? <PencilSimple size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+      {warehouseDesktopActions ? t("warehouseDocument.open") : selectedDocument && warehouseOperationsIsDraft(selectedDocument) ? labels.edit : labels.view}
+    </button>
+    {resolvedPermissions.delete && <button type="button" className="gestion-warehouse-action--delete" disabled={!selectedCanDelete || deleting}
+      onClick={() => void deleteSelectedDocument()}><Trash size={16} aria-hidden="true" />{deleting ? labels.deleting : labels.delete}</button>}
+    {exportActions}
+  </>;
 
   return (
     <section
@@ -775,7 +866,9 @@ export function WarehouseOperationsPanel({
         }
         event.preventDefault();
         setQuery("");
-        setStatusFilter("");
+        setStatusFilter([]);
+        setPartyFilter([]);
+        setWarehouseFilter([]);
         setSelectedId("");
         notify(onClose);
       }}
@@ -784,22 +877,37 @@ export function WarehouseOperationsPanel({
         <div><h2>{headingWithCreate.title}</h2><span>{headingWithCreate.subtitle}</span></div>
         <div className="gestion-warehouse-title-actions gestion-warehouse-actions">{createAction}</div>
       </header>}
-      <div className={`stock-history-toolbar${warehouseDesktopActions ? " warehouse-purchase-toolbar gestion-warehouse-toolbar gestion-toolbar-layout" : ""}`} ref={toolbarRef}>
+      {app !== "pda" ? <ErpListFilterPanel translate={t} toolbarRef={toolbarRef}
+        className="stock-history-toolbar warehouse-purchase-toolbar gestion-warehouse-toolbar gestion-toolbar-layout"
+        actionsClassName="warehouse-document-actions gestion-warehouse-list-actions"
+        search={<label><span>{labels.search}</span><WarehouseSearchFrame>{searchInput}</WarehouseSearchFrame></label>}
+        filters={<>{statusField}{desktopPartyFilters && <>
+          <div className="stock-history-filter-field">
+            <span>{labels.counterparty}</span>
+            <ErpListSelect aria-label={labels.counterparty} values={partyFilter} onChange={setPartyFilter}
+              options={partyOptions} placeholder={labels.all} emptyLabel={t("filters.noOptions")} />
+          </div>
+          <div className="stock-history-filter-field">
+            <span>{labels.warehouse}</span>
+            <ErpListSelect aria-label={labels.warehouse} values={warehouseFilter} onChange={setWarehouseFilter}
+              options={warehouseOptions} placeholder={labels.all} emptyLabel={t("filters.noOptions")} />
+          </div>
+        </>}</>} actions={listActions} /> : <div className={`stock-history-toolbar${warehouseDesktopActions ? " warehouse-purchase-toolbar gestion-warehouse-toolbar gestion-toolbar-layout" : ""}`} ref={toolbarRef}>
         <label>
           <span>{labels.search}</span>
           {warehouseDesktopActions ? <WarehouseSearchFrame>{searchInput}</WarehouseSearchFrame> : searchInput}
         </label>
         <div className={`stock-history-filter-field${warehouseDesktopActions ? " gestion-warehouse-status-filter" : ""}`}
-          data-filter-active={warehouseDesktopActions ? Boolean(statusFilter) : undefined}>
+          data-filter-active={warehouseDesktopActions ? statusFilter.length > 0 : undefined}>
           <span>{labels.status}</span>
           <ErpSelect
             aria-label={labels.status}
-            value={statusFilter}
+            value={statusFilter[0] ?? ""}
             options={[
               { value: "", label: labels.all },
               ...statuses.map((status) => ({ value: status, label: warehouseOperationsStatusLabel(status, t) }))
             ]}
-            onChange={setStatusFilter}
+            onChange={value => setStatusFilter(value ? [value] : [])}
             onCommit={() => (panelRef.current?.querySelector<HTMLElement>(".gestion-warehouse-title-actions button:not(:disabled)")
               ?? toolbarRef.current?.querySelector<HTMLElement>(".warehouse-document-actions button:not(:disabled)"))?.focus()}
             onNavigatePrevious={() => searchRef.current?.focus()}
@@ -838,21 +946,21 @@ export function WarehouseOperationsPanel({
           )}
           {exportActions}
         </div>
-      </div>
+      </div>}
 
       {app !== "pda" && <ErpFilterChips locale={locale} chips={filterChips} focusRef={searchRef}
-        onClear={() => { setQuery(""); setStatusFilter(""); setDateFrom(""); setDateTo(""); }} />}
+        onClear={() => { setQuery(""); setStatusFilter([]); setPartyFilter([]); setWarehouseFilter([]); setDateFrom(""); setDateTo(""); }} />}
 
-      <div className="stock-history-context">
+      {app === "pda" && <div className="stock-history-context">
         <strong>{labels.title}</strong>
         <span>{labels.resultCount.replace("{count}", String(visibleDocuments.length))}</span>
-      </div>
+      </div>}
 
       {loading && <p className="stock-operation-status" aria-live="polite">{labels.loading}</p>}
       {error && <p className="stock-operation-status error" role="alert">{error}</p>}
       {notice && <p className="stock-operation-status" aria-live="polite">{notice}</p>}
 
-      <div ref={tableScrollRef} className={`stock-history-table-scroll${app !== "pda" ? " erp-classic-tables warehouse-classic-table" : ""}`}>
+      <div ref={tableScrollRef} className={`stock-history-table-scroll${app !== "pda" ? " erp-classic-tables warehouse-classic-table erp-list-filter-table" : ""}`}>
         <table className="report-table warehouse-document-table">
           <colgroup>
             {visibleColumns.map((column) => (
@@ -935,16 +1043,7 @@ export function WarehouseOperationsPanel({
         </table>
       </div>
 
-      {warehouseDesktopActions && <>
-        {dateOptionsFailed && <div className="report-date-options-error" role="alert">
-          <span>{t("salesReport.loadError")}</span>
-          <button type="button" onClick={retryDateOptions}>{t("salesReport.retry")}</button>
-        </div>}
-        <ReportDateRangeFilter collapseSingleDay={app === "gestion"} showWeekday={app === "gestion"} locale={locale} today={dateOptions?.currentDate ?? ""}
-          earliestDate={dateOptions?.earliestDate ?? ""}
-          value={{ from: dateFrom, to: dateTo, label: "", preset: quickRange.from === dateFrom && quickRange.to === dateTo ? quickRange.preset : undefined }}
-          onChange={(range) => { setQuickRange(range); setDateFrom(range.from); setDateTo(range.to); }} />
-      </>}
+      {app !== "pda" && periodFooter}
 
       <WarehouseDocumentDialog
         mode={mode}
@@ -958,7 +1057,7 @@ export function WarehouseOperationsPanel({
        locale={locale}
         token={token}
         products={products}
-        warehouses={warehouses}
+        warehouses={activeWarehouses}
         customers={customers}
         suppliers={suppliers}
         document={dialogDocument}

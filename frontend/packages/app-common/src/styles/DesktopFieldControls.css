@@ -1,0 +1,42 @@
+/* Desktop entry points only. Field geometry and business/validation states stay local. */
+@layer erp-desktop-fields {
+  @media screen {
+    :where(
+      input:not([type]), input[type="text"], input[type="search"], input[type="password"],
+      input[type="email"], input[type="tel"], input[type="url"], input[type="number"],
+      input[type="date"], input[type="datetime-local"], input[type="time"], input[type="month"], input[type="week"],
+      textarea, select, .erp-select__trigger
+    ) {
+      border: 1px solid #aebfd0;
+      border-radius: 4px !important;
+    }
+
+    :is(.gestion-search-frame, .gestion-warehouse-search-frame, .erp-search-frame, .report-search, .date-range-control) {
+      border-radius: 4px !important;
+    }
+    :is(.gestion-search-frame, .gestion-warehouse-search-frame, .erp-search-frame, .report-search, .date-range-control) > input {
+      border-radius: 0 !important;
+    }
+
+    .erp-select:not(.erp-select--editable) { border: 0 !important; border-radius: 4px !important; box-shadow: none !important; }
+    .erp-select:not(.erp-select--editable) > .erp-select__trigger { overflow: hidden !important; }
+    .erp-select__arrow { width: 100% !important; height: 100% !important; min-height: 0 !important; margin: 0 !important; border-radius: 0 3px 3px 0 !important; }
+    .erp-select__popover { border-radius: 6px !important; }
+    .erp-select__option { border-radius: 4px !important; }
+
+    /* Input and arrow form one continuous frame, without adding a wrapper border. */
+    .erp-select--editable { border: 0 !important; border-radius: 4px !important; }
+    .erp-select--editable > input { border-radius: 4px 0 0 4px !important; }
+    .erp-select--editable > .erp-select__trigger { grid-template-columns: 1fr !important; border-left: 0 !important; border-radius: 0 4px 4px 0 !important; overflow: hidden !important; }
+
+    /* Native selects keep their native keyboard, option and validation behaviour. */
+    select:not([multiple]):not([size]), select[size="1"]:not([multiple]) {
+      appearance: none !important;
+      padding-inline-end: 3em !important;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='m4 7 6 6 6-6' fill='none' stroke='white' stroke-width='2.5'/%3E%3C/svg%3E"), linear-gradient(to left, #12385f 2.5em, transparent 2.5em) !important;
+      background-position: right .6em center, right center !important;
+      background-size: 1.3em 1.3em, 100% 100% !important;
+      background-repeat: no-repeat !important;
+    }
+  }
+}

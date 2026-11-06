@@ -85,6 +85,9 @@ class CashActivityRepositoryPostgreSqlTest {
                     assertThat(row.item().balance()).isEqualByComparingTo("130");
                     assertThat(row.item().amount()).isEqualByComparingTo("-5");
                 });
+                var multiple = repository.findFiltered(store, from, to, List.of(terminal, foreignTerminal),
+                        null, List.of("ENTRADA", "RETIRADA_CIERRE"), List.of("ABIERTA"), "date", "asc", null, 100);
+                assertThat(multiple).containsExactly(terminalRows.get(0), terminalRows.get(1));
                 assertThat(repository.find(store, Instant.parse("2026-08-01T18:00:01Z"), to,
                         terminal, null, null, null, "date", "asc", null, 100))
                         .containsExactly(terminalRows.getLast());

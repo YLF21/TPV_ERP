@@ -15,6 +15,8 @@ export class MessagesEn {
     "party.filter.fields": "Field filters",
     "filters.remove": "Remove filter",
     "filters.clearAll": "Clear all",
+    "filters.noOptions": "No options available",
+    "filters.none": "No filter",
     "filters.resetWeek": "Reset period to Week",
     "stock.history.saas.allStores": "All stores",
     "stock.history.saas.view": "History view",

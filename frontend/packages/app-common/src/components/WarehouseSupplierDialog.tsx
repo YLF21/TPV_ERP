@@ -13,6 +13,8 @@ import {
 import { PartyFormFields } from "./PartyFormFields";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { ErpFilterChips } from "./ErpFilterChips";
+import { ErpListFilterPanel } from "./ErpListFilterPanel";
+import { WarehouseSearchFrame } from "./WarehouseSearchFrame";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
 import { useTableArrowRepeat } from "./useTableArrowRepeat";
@@ -241,20 +243,25 @@ export function WarehouseSupplierDialog({
               if (event.key === "Enter" || event.key === "Insert") { event.preventDefault(); event.stopPropagation(); selectActive(); }
             }}
           >
-            <div className="warehouse-supplier-action-bar sale-customer-action-bar" aria-label={t("warehouseDocument.supplierListTitle")}>
+            {!tableTheme && <div className="warehouse-supplier-action-bar sale-customer-action-bar" aria-label={t("warehouseDocument.supplierListTitle")}>
               {canWrite && <button type="button" onClick={openNew}><span>{t("party.suppliers.new")}</span><kbd>F5</kbd></button>}
               {canWrite && <button type="button" disabled={!activeId} onClick={() => void openEdit()}><span>{t("warehouseDocument.supplierEdit")}</span><kbd>Ctrl+F7</kbd></button>}
-            </div>
-            <div className="warehouse-supplier-toolbar">
+            </div>}
+            {tableTheme ? <ErpListFilterPanel className="warehouse-supplier-list-filter" translate={t} filters={null}
+              search={<label className="warehouse-supplier-search"><span>{t("warehouseDocument.supplierSearch")}</span>
+                <WarehouseSearchFrame><input className="erp-search-input" ref={searchRef} autoFocus value={query} placeholder={t("sale.customer.placeholder")} onChange={(event) => setQuery(event.target.value)} /></WarehouseSearchFrame>
+              </label>}
+              actions={canWrite ? <><button type="button" onClick={openNew}><span>{t("party.suppliers.new")}</span><kbd>F5</kbd></button>
+                <button type="button" disabled={!activeId} onClick={() => void openEdit()}><span>{t("warehouseDocument.supplierEdit")}</span><kbd>Ctrl+F7</kbd></button></> : null} /> : <div className="warehouse-supplier-toolbar">
               <label className="warehouse-supplier-search">
                 <span>{t("warehouseDocument.supplierSearch")}</span>
                 <input ref={searchRef} autoFocus value={query} placeholder={t("sale.customer.placeholder")} onChange={(event) => setQuery(event.target.value)} />
               </label>
-              {tableTheme && <ErpFilterChips locale={locale} focusRef={searchRef} chips={query.trim() ? [{
+            </div>}
+            {tableTheme && <div className="warehouse-supplier-applied-filters"><ErpFilterChips locale={locale} focusRef={searchRef} chips={query.trim() ? [{
                 key: "search", label: t("warehouseDocument.supplierSearch"), value: query.trim(), onRemove: () => setQuery("")
-              }] : []} onClear={() => setQuery("")} />}
-            </div>
-            <div ref={tableRef} className="warehouse-supplier-table" role="table" aria-label={t("warehouseDocument.supplierListTitle")}>
+              }] : []} onClear={() => setQuery("")} /></div>}
+            <div ref={tableRef} className={`warehouse-supplier-table${tableTheme ? " erp-list-filter-table" : ""}`} role="table" aria-label={t("warehouseDocument.supplierListTitle")}>
               <div className="warehouse-supplier-table-header" role="row">
                 <span role="columnheader">{t("warehouseDocument.supplierColumn.code")}</span>
                 <span role="columnheader">{t("warehouseDocument.supplierColumn.legalName")}</span>

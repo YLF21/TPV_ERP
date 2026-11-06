@@ -1,3 +1,4 @@
+import { appendListFilter, type ListFilterValue } from "../../../packages/app-common/src/components/listFilterValues";
 import { apiRequest } from "../../../packages/app-common/src/api/client";
 import type { WarehouseImportProduct } from "../../../packages/app-common/src/components/warehouseDocumentImport";
 import type { WarehouseInputPriceSource } from "../../../packages/app-common/src/components/WarehouseDocumentDialog";
@@ -65,13 +66,13 @@ export function loadStockBalance(productId: string, warehouseId: string, token: 
 
 export function loadStockAdjustmentHistory(token: string, options: {
   page?: number;
-  warehouseId?: string;
+  warehouseId?: ListFilterValue;
   search?: string;
   from?: string;
   to?: string;
 } = {}) {
   const params = new URLSearchParams({ limit: "50", page: String(options.page ?? 0) });
-  if (options.warehouseId) params.set("warehouseId", options.warehouseId);
+  appendListFilter(params, "warehouseId", options.warehouseId);
   if (options.search) params.set("search", options.search);
   if (options.from) params.set("from", options.from);
   if (options.to) params.set("to", options.to);
@@ -123,10 +124,10 @@ export type TransferDocumentLine = {
 export type TransferDocumentView = { document: TransferDocument; lines: TransferDocumentLine[] };
 
 export type TransferDocumentFilters = {
-  status: TransferDocument["status"] | "";
+  status: ListFilterValue;
   search: string;
-  sourceWarehouseId: string;
-  targetWarehouseId: string;
+  sourceWarehouseId: ListFilterValue;
+  targetWarehouseId: ListFilterValue;
   dateFrom: string;
   dateTo: string;
 };
@@ -141,10 +142,10 @@ export function loadTransferDocuments(page: number, filters: TransferDocumentFil
 
 function transferFilterParams(filters: TransferDocumentFilters) {
   const params = new URLSearchParams();
-  if (filters.status) params.set("status", filters.status);
+  appendListFilter(params, "status", filters.status);
   if (filters.search.trim()) params.set("search", filters.search.trim());
-  if (filters.sourceWarehouseId) params.set("sourceWarehouseId", filters.sourceWarehouseId);
-  if (filters.targetWarehouseId) params.set("targetWarehouseId", filters.targetWarehouseId);
+  appendListFilter(params, "sourceWarehouseId", filters.sourceWarehouseId);
+  appendListFilter(params, "targetWarehouseId", filters.targetWarehouseId);
   if (filters.dateFrom) params.set("from", new Date(`${filters.dateFrom}T00:00:00`).toISOString());
   if (filters.dateTo) {
     const nextDay = new Date(`${filters.dateTo}T00:00:00`);
@@ -155,8 +156,15 @@ function transferFilterParams(filters: TransferDocumentFilters) {
 }
 
 export function exportTransferList(format: "pdf" | "xlsx", filters: TransferDocumentFilters, locale: string, token: string) {
+  const params = transferFilterParams(filters);
+  const body: Record<string, string | string[]> = { locale };
+  for (const key of new Set(params.keys())) {
+    const values = params.getAll(key);
+    if (values.length === 1) body[key] = values[0];
+    else body[key === "status" ? "statuses" : key + "s"] = values;
+  }
   return apiRequest<Blob>(`/warehouse-transfers/report.${format}`, {
-    token, method: "POST", responseType: "blob", body: { ...Object.fromEntries(transferFilterParams(filters)), locale }
+    token, method: "POST", responseType: "blob", body
   });
 }
 

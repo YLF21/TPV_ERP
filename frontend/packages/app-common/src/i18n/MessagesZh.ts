@@ -15,6 +15,8 @@ export class MessagesZh {
     "party.filter.fields": "字段筛选",
     "filters.remove": "移除筛选",
     "filters.clearAll": "清除全部",
+    "filters.noOptions": "没有可用选项",
+    "filters.none": "未筛选",
     "filters.resetWeek": "将时间范围重置为本周",
     "stock.history.saas.allStores": "所有门店",
     "stock.history.saas.view": "历史视图",

@@ -6,6 +6,8 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "rea
 import { apiProblemCode, apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, Permission, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
+import { ErpListSelect } from "./ErpListSelect";
+import { compactListFilter, listFilterChips, listFilterValues, matchesListFilter } from "./listFilterValues";
 import { ErpSelect } from "./ErpSelect";
 import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
 import { MemberLoyaltyPanel } from "./MemberLoyaltyPanel";
@@ -21,7 +23,8 @@ import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
 import { ShortcutButtonLabel } from "./ShortcutButtonLabel";
 import { GestionSearchFrame } from "./GestionSearchFrame";
-import { FilePdf, FileXls, Plus } from "@phosphor-icons/react";
+import "./ErpListFilterPanel.css";
+import { Archive, FilePdf, FileXls, PencilSimple, Plus } from "@phosphor-icons/react";
 import { savePartyDirectoryExport } from "./partyDirectoryExport";
 import { customerDocumentType, customerIdentityFailure } from "./customerDocumentIdentity";
 import { CustomerDocumentValidation, ExistingCustomerNotice, type ExistingCentralCustomer } from "./CustomerDocumentValidation";
@@ -29,6 +32,7 @@ import { CustomerAddressBookHeading } from "./CustomerAddressBookHeading";
 import { customerContactRequests, firstInvalidCustomerContact, formWithDefaultContact, uppercaseContactLocation } from "./customerContactAddresses";
 import { customerAddressError, useCustomerAddressBookEditor } from "./useCustomerAddressBookEditor";
 import stockFilterIcon from "../assets/stock/filter.png";
+import "./PartyDirectoryBase.css";
 import "./PartyDirectoryFilters.css";
 import "./PartyDirectoryDesktop.css";
 import "./PartyDirectoryVenta.css";
@@ -36,16 +40,22 @@ import "./PartyCustomerEditor.css";
 import type { CustomerContactAddress, CustomerAddressSyncStatus } from "./customerContactAddresses";
 
 export type PartyDirectoryKind = "customers" | "members" | "suppliers";
-export type PartyStatusFilter = "all" | "active" | "inactive";
+export type PartyStatusFilter = "all" | "active" | "inactive" | readonly string[];
 export type PartyDirectoryColumnKey = "code" | "name" | "document" | "phone" | "email" | "location" | "balance" | "status" | "debt" | "creditEnabled" | "creditLimit" | "creditBlocked" | "paymentTermDays" | "discount" | "isMember" | "category" | "points" | "memberSince" | "tradeName" | "address" | "postalCode" | "country" | "notes" | "commercialConsent";
 export type PartyDirectorySort = { column: PartyDirectoryColumnKey; direction: "asc" | "desc" };
-export type PartyDirectoryFieldFilters = Partial<Record<"code" | "name" | "document" | "phone" | "email" | "location" | "category" | "postalCode" | "country" | "creditEnabled" | "creditBlocked" | "isMember" | "commercialConsent" | "debt", string>>;
+type AddressFilter = "location" | "country";
+type PartyDirectoryFilterField = AddressFilter | "category" | "creditEnabled" | "creditBlocked" | "isMember" | "commercialConsent" | "debt";
+export type PartyDirectoryFieldFilters = Partial<Record<PartyDirectoryFilterField, string | readonly string[]>>;
 
-function partyDirectoryFilterFields(kind: PartyDirectoryKind, extended = false): Array<keyof PartyDirectoryFieldFilters> {
-  const fields: Array<keyof PartyDirectoryFieldFilters> = ["code", "name", "document", "phone", "email", kind === "members" ? "category" : "location"];
-  if (extended) fields.push("postalCode", "country", ...(kind === "suppliers" ? [] : ["debt", "creditEnabled", "creditBlocked"] as const), ...(kind === "customers" ? ["isMember", "commercialConsent"] as const : []));
+function partyDirectoryFilterFields(kind: PartyDirectoryKind): PartyDirectoryFilterField[] {
+  const fields: PartyDirectoryFilterField[] = ["location", "country"];
+  if (kind === "members") fields.push("category");
+  if (kind !== "suppliers") fields.push("debt", "creditEnabled", "creditBlocked");
+  if (kind === "customers") fields.push("isMember", "commercialConsent");
   return fields;
 }
+
+type DirectoryAddressOption = { location?: string | null; country?: string | null };
 
 type PartyDirectoryPreferences = {
   query: string;
@@ -241,6 +251,32 @@ function customerDirectoryContacts(customer: CustomerView) {
   return [{ phone: customer.phone, email: customer.email, address: customer.address }, ...(customer.addresses ?? [])];
 }
 
+function directoryAddressOptions(entry: PartyDirectoryEntry, kind: PartyDirectoryKind): DirectoryAddressOption[] {
+  const addresses = kind === "suppliers" ? [entry.address]
+    : customerDirectoryContacts(entry as CustomerView).map(contact => contact.address);
+  return addresses.map(address => ({
+    location: [address?.city?.trim(), address?.province?.trim()].filter(Boolean).join(", "),
+    country: address?.country?.trim(),
+  }));
+}
+
+function isDirectoryChoice(field: PartyDirectoryFilterField) {
+  return field === "location" || field === "country" || field === "category";
+}
+
+function directoryChoiceOptions(values: readonly (string | null | undefined)[], locale: LocaleCode,
+    labelFor = (value: string) => value) {
+  const options = new Map<string, string>();
+  for (const raw of values) {
+    const text = raw?.trim();
+    if (!text) continue;
+    const value = normalizedText(text, locale);
+    if (!options.has(value)) options.set(value, labelFor(text));
+  }
+  return Array.from(options, ([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, locale));
+}
+
 export function partyDirectorySearchValues(entry: PartyDirectoryEntry, kind: PartyDirectoryKind): Array<string | null | undefined> {
   if (kind === "members") {
     const member = entry as MemberDirectoryView;
@@ -264,32 +300,25 @@ export function filterPartyDirectoryEntries(
   query: string,
   statusFilter: PartyStatusFilter,
   locale: LocaleCode,
-  fieldFilters: PartyDirectoryFieldFilters = {},
-  extended = false
+  fieldFilters: PartyDirectoryFieldFilters = {}
 ): PartyDirectoryEntry[] {
   const normalized = normalizedText(query.trim(), locale);
   return entries.filter((entry) => {
     const matchesQuery = !normalized || partyDirectorySearchValues(entry, kind)
       .some((value) => normalizedText(value, locale).includes(normalized));
-    const matchesStatus = statusFilter === "all" || entry.active === (statusFilter === "active");
-    const matchesFields = partyDirectoryFilterFields(kind, extended).every((field) => {
-      const criterion = normalizedText(fieldFilters[field]?.trim(), locale);
-      if (!criterion) return true;
+    const matchesStatus = statusFilter === "all" || matchesListFilter(listFilterValues(statusFilter), entry.active ? "active" : "inactive");
+    const matchesFields = partyDirectoryFilterFields(kind).every((field) => {
+      const selected = listFilterValues(fieldFilters[field]).map(value => value.trim()).filter(Boolean);
+      if (!selected.length) return true;
       const customer = entry as CustomerView;
-      if (field === "debt") return customer.outstandingDebt != null && (Number(customer.outstandingDebt) > 0) === (criterion === "with");
-      if (field === "creditEnabled" || field === "creditBlocked" || field === "isMember" || field === "commercialConsent") return customer[field] != null && customer[field] === (criterion === "true");
-      let values: Array<string | null | undefined>;
-      if (field === "category") values = [(entry as MemberDirectoryView).categoryName];
-      else if (kind === "customers" && (field === "phone" || field === "email" || field === "location" || field === "postalCode" || field === "country")) {
-        values = customerDirectoryContacts(customer).map(contact => field === "location"
-          ? `${contact.address?.city ?? ""} ${contact.address?.province ?? ""}`
-          : field === "phone" || field === "email" ? contact[field] : contact.address?.[field]);
+      if (field === "debt") return customer.outstandingDebt != null && selected.includes(Number(customer.outstandingDebt) > 0 ? "with" : "without");
+      if (field === "location" || field === "country" || field === "category") {
+        const values = field === "category" ? [(entry as MemberDirectoryView).categoryName]
+          : directoryAddressOptions(entry, kind).map(address => address[field]);
+        const normalized = selected.map(value => normalizedText(value, locale));
+        return values.some(value => normalized.includes(normalizedText(value?.trim(), locale)));
       }
-      else if (field === "name" && kind === "suppliers") {
-        const supplier = entry as SupplierView;
-        values = [supplier.legalName, supplier.tradeName];
-      } else values = [String(partyDirectorySortValue(entry, kind, field as PartyDirectoryColumnKey))];
-      return values.some(value => normalizedText(value, locale).includes(criterion));
+      return customer[field] != null && selected.includes(String(customer[field]));
     });
     return matchesQuery && matchesStatus && matchesFields;
   });
@@ -303,14 +332,21 @@ function readPartyDirectoryPreferences(app: AppKind, username: string, kind: Par
   const fallback: PartyDirectoryPreferences = { query: "", statusFilter: "all", sort: { column: app === "venta" ? "code" : "name", direction: "asc" }, fieldFilters: {} };
   if (typeof localStorage === "undefined") return fallback;
   try {
-    const saved = JSON.parse(localStorage.getItem(partyDirectoryPreferenceStorageKey(app, username, kind)) ?? "null") as Partial<PartyDirectoryPreferences> | null;
+    const saved = JSON.parse(localStorage.getItem(partyDirectoryPreferenceStorageKey(app, username, kind)) ?? "null") as
+      (Partial<PartyDirectoryPreferences> & { choiceFilters?: boolean }) | null;
     const validColumns = new Set(partyDirectoryColumnDefinitions(kind, app !== "pda").map((column) => column.key));
     return {
       query: typeof saved?.query === "string" ? saved.query : "",
-      statusFilter: saved?.statusFilter === "active" || saved?.statusFilter === "inactive" ? saved.statusFilter : "all",
-      fieldFilters: app !== "pda" ? Object.fromEntries(partyDirectoryFilterFields(kind, true).flatMap(field => {
+      statusFilter: Array.isArray(saved?.statusFilter) && app !== "pda"
+        ? saved.statusFilter.filter(value => value === "active" || value === "inactive")
+        : saved?.statusFilter === "active" || saved?.statusFilter === "inactive" ? saved.statusFilter : "all",
+      fieldFilters: app !== "pda" ? Object.fromEntries(partyDirectoryFilterFields(kind).flatMap<[PartyDirectoryFilterField, string | readonly string[]]>(field => {
         const value = saved?.fieldFilters?.[field];
-        return typeof value === "string" ? [[field, value]] : [];
+        if (isDirectoryChoice(field) && saved?.choiceFilters !== true) return [];
+        const candidates = typeof value === "string" ? [value] : Array.isArray(value) ? value : [];
+        const allowed = field === "debt" ? ["with", "without"] : ["true", "false"];
+        const values = candidates.filter(item => typeof item === "string" && item.trim() && (isDirectoryChoice(field) || allowed.includes(item)));
+        return values.length ? [[field, compactListFilter(values)]] : [];
       })) : {},
       sort: saved?.sort && validColumns.has(saved.sort.column as PartyDirectoryColumnKey)
         ? { column: saved.sort.column as PartyDirectoryColumnKey, direction: saved.sort.direction === "desc" ? "desc" : "asc" }
@@ -376,10 +412,16 @@ export function partyManagementPagePath(
   const parameters = new URLSearchParams({ size: "50" });
   if (cursor) parameters.set("cursor", cursor);
   if (query.trim()) parameters.set("search", query.trim());
-  if (statusFilter !== "all") parameters.set("active", String(statusFilter === "active"));
+  const statuses = statusFilter === "all" ? [] : listFilterValues(statusFilter);
+  if (statuses.length === 1) parameters.set("active", String(statuses[0] === "active"));
   parameters.set("sort", sort.column);
   parameters.set("direction", sort.direction);
-  for (const [key, value] of Object.entries(fieldFilters)) if (value?.trim()) parameters.set(`field.${key}`, value.trim());
+  for (const [key, value] of Object.entries(fieldFilters)) {
+    const selections = listFilterValues(value).map(item => item.trim()).filter(Boolean);
+    if (key === "location" || key === "country") {
+      for (const selection of selections) parameters.append(`field.${key}Choice`, selection);
+    } else if (selections.length) parameters.set("field." + key, selections.join(","));
+  }
   return `/${entityPath}/management/page?${parameters.toString()}`;
 }
 
@@ -402,6 +444,8 @@ export function PartyDirectoryPanel({
   const [statusFilter, setStatusFilter] = useState<PartyStatusFilter>(initialPreferences.statusFilter);
   const [fieldFilters, setFieldFilters] = useState<PartyDirectoryFieldFilters>(initialPreferences.fieldFilters);
   const [fieldFiltersOpen, setFieldFiltersOpen] = useState(false);
+  const [managementAddressOptions, setManagementAddressOptions] = useState<DirectoryAddressOption[]>([]);
+  const [memberCategoryNames, setMemberCategoryNames] = useState<string[]>([]);
   const fieldFiltersId = useId();
   const filterButtonRef = useRef<HTMLButtonElement>(null);
   const [sort, setSort] = useState<PartyDirectorySort>(initialPreferences.sort);
@@ -459,7 +503,7 @@ export function PartyDirectoryPanel({
   }, [ventaEditor, customerEditor, dialogOpen, addressBook.busy, selectedId]);
   const [confirmation, setConfirmation] = useState<"discard" | "active" | null>(null);
   const supportsFieldFilters = app !== "pda";
-  const directoryFilterFields = partyDirectoryFilterFields(kind, app !== "pda");
+  const directoryFilterFields = partyDirectoryFilterFields(kind);
   const title = t(`party.${kind}.title`);
   const canWrite = session.permissions.includes("ADMIN")
     || session.permissions.includes("GESTION_CLIENTE_PROVEEDOR")
@@ -473,6 +517,20 @@ export function PartyDirectoryPanel({
     });
   }, [customers, members]);
   const entries: PartyDirectoryEntry[] = isSupplier ? suppliers : isMember && app !== "pda" ? enrichedMembers : isMember ? members : customers;
+  const addressChoices = useMemo(() => {
+    const addresses = managementMode ? managementAddressOptions : entries.flatMap(entry => directoryAddressOptions(entry, kind));
+    const countries = new Intl.DisplayNames([locale], { type: "region" });
+    return {
+      location: directoryChoiceOptions(addresses.map(address => address.location), locale),
+      country: directoryChoiceOptions(addresses.map(address => address.country), locale, value => {
+        const code = value.toUpperCase();
+        return /^[A-Z]{2}$/.test(code) ? countries.of(code) ?? code : value;
+      }),
+    };
+  }, [entries, kind, locale, managementAddressOptions, managementMode]);
+  const categoryChoices = useMemo(() => directoryChoiceOptions(
+    [...memberCategoryNames, ...members.map(member => member.categoryName)], locale),
+    [locale, memberCategoryNames, members]);
   const selected = entries.find((entry) => entry.id === selectedId) ?? null;
   const memberCandidate = customers.find((customer) => customer.id === memberCandidateId) ?? null;
   const columnDefinitions = useMemo(() => partyDirectoryColumnDefinitions(kind, app !== "pda"), [kind, app]);
@@ -671,12 +729,29 @@ export function PartyDirectoryPanel({
     return () => { window.clearTimeout(timeoutId); loadRequestRef.current++; };
   }, [kind, managementMode, query, session.accessToken, sort.column, sort.direction, statusFilter, fieldFilters]);
 
+  const showDirectoryChoices = fieldFiltersOpen || Boolean(fieldFilters.location || fieldFilters.country || fieldFilters.category);
+  useEffect(() => {
+    if (!supportsFieldFilters || !showDirectoryChoices) return;
+    const controller = new AbortController();
+    const options = { token: session.accessToken, signal: controller.signal };
+    if (managementMode) {
+      void apiRequest<DirectoryAddressOption[]>(`${endpoint}/management/address-options`, options)
+        .then(values => { if (!controller.signal.aborted && Array.isArray(values)) setManagementAddressOptions(values); })
+        .catch(() => { /* The directory remains available if the choices fail to load. */ });
+    } else if (isMember) {
+      void apiRequest<{ name: string }[]>("/member-categories", options)
+        .then(values => { if (!controller.signal.aborted && Array.isArray(values)) setMemberCategoryNames(values.map(category => category.name)); })
+        .catch(() => { /* Assigned categories remain available from the member list. */ });
+    }
+    return () => controller.abort();
+  }, [endpoint, isMember, managementMode, session.accessToken, showDirectoryChoices, supportsFieldFilters]);
+
   useEffect(() => {
     if (typeof localStorage === "undefined") return;
     try {
       localStorage.setItem(
         partyDirectoryPreferenceStorageKey(app, session.username, kind),
-        JSON.stringify({ query, statusFilter, sort, ...(supportsFieldFilters ? { fieldFilters } : {}) })
+        JSON.stringify({ query, statusFilter, sort, ...(supportsFieldFilters ? { fieldFilters, choiceFilters: true } : {}) })
       );
     } catch {
       // The directory remains usable when browser storage is unavailable.
@@ -685,9 +760,9 @@ export function PartyDirectoryPanel({
 
   const rows = useMemo(() => {
     if (managementMode) return entries;
-    const filtered = filterPartyDirectoryEntries(entries, kind, query, statusFilter, locale, supportsFieldFilters ? fieldFilters : {}, app !== "pda");
-    return managementMode ? filtered : sortPartyDirectoryEntries(filtered, kind, sort, locale);
-  }, [customers, members, suppliers, enrichedMembers, app, query, statusFilter, kind, locale, managementMode, sort, supportsFieldFilters, fieldFilters]);
+    const filtered = filterPartyDirectoryEntries(entries, kind, query, statusFilter, locale, supportsFieldFilters ? fieldFilters : {});
+    return sortPartyDirectoryEntries(filtered, kind, sort, locale);
+  }, [entries, query, statusFilter, kind, locale, managementMode, sort, supportsFieldFilters, fieldFilters]);
   const memberCandidates = useMemo(
     () => availableMemberCustomers(customers, memberCandidateQuery, locale),
     [customers, memberCandidateQuery, locale]
@@ -914,46 +989,49 @@ export function PartyDirectoryPanel({
       : isMember ? selectedMember?.memberId
         : (selected as CustomerView).clientId
     : null;
-  function fieldFilterLabel(field: keyof PartyDirectoryFieldFilters) {
+  function fieldFilterLabel(field: PartyDirectoryFilterField) {
     return field === "category" ? t("party.members.category") : columnLabel(field);
   }
-  function filterOptions(field: keyof PartyDirectoryFieldFilters) {
-    if (["creditEnabled", "creditBlocked", "isMember", "commercialConsent"].includes(field)) return [
-      { value: "", label: t("party.filter.status.all") }, { value: "true", label: t("common.yes") }, { value: "false", label: t("common.no") }
-    ];
+  function filterOptions(field: PartyDirectoryFilterField) {
+    if (field === "location" || field === "country") return addressChoices[field];
+    if (field === "category") return categoryChoices;
     if (field === "debt") return [
-      { value: "", label: t("party.filter.status.all") }, { value: "with", label: t("party.gestion.debt.with") }, { value: "without", label: t("party.gestion.debt.without") }
+      { value: "with", label: t("party.gestion.debt.with") }, { value: "without", label: t("party.gestion.debt.without") }
     ];
-    return null;
+    return [
+      { value: "true", label: t("common.yes") }, { value: "false", label: t("common.no") }
+    ];
   }
-  function filterValueLabel(field: keyof PartyDirectoryFieldFilters, value: string) {
-    return value ? filterOptions(field)?.find(option => option.value === value)?.label ?? value : "";
+  function changeFieldFilter(field: PartyDirectoryFilterField, values: string[]) {
+    setFieldFilters(current => ({ ...current, [field]: compactListFilter(values) }));
   }
   function clearDirectoryFilters() {
     setQuery(""); setStatusFilter("all"); setFieldFilters({});
   }
-  const activeFieldFilterCount = Number(statusFilter !== "all") + directoryFilterFields.filter(field => fieldFilters[field]?.trim()).length;
+  function changeStatusFilter(values: string[]) {
+    setStatusFilter((compactListFilter(values) || "all") as PartyStatusFilter);
+  }
+  const statuses = statusFilter === "all" ? [] : listFilterValues(statusFilter);
+  const activeFieldFilterCount = statuses.length + directoryFilterFields.filter(field => listFilterValues(fieldFilters[field]).some(value => value.trim())).length;
+  const statusOptions = ["", "active", "inactive"].map(value => ({
+    value, label: t("party.filter.status." + (value || "all")),
+  }));
   const filterChips: ErpFilterChip[] = [
     { key: "query", label: t("party.searchLabel"), value: query.trim(), onRemove: () => setQuery("") },
-    { key: "status", label: t("party.column.status"), value: statusFilter === "all" ? "" : t(`party.filter.status.${statusFilter}`), onRemove: () => setStatusFilter("all") },
-    ...(supportsFieldFilters ? directoryFilterFields.map(field => ({
-      key: field, label: fieldFilterLabel(field), value: filterValueLabel(field, fieldFilters[field]?.trim() ?? ""),
-      onRemove: () => setFieldFilters(current => ({ ...current, [field]: "" }))
-    })) : [])
-  ].filter((chip) => chip.value !== "");
+    ...listFilterChips("status", t("party.column.status"), statuses, changeStatusFilter, value => t("party.filter.status." + value)),
+    ...(supportsFieldFilters ? directoryFilterFields.flatMap(field => listFilterChips(
+      field, fieldFilterLabel(field), listFilterValues(fieldFilters[field]), values => changeFieldFilter(field, values),
+      value => filterOptions(field).find(option => option.value === value)?.label ?? value,
+    )) : []),
+  ];
   const statusFilterControl = <label className={supportsFieldFilters ? undefined : "party-directory-status-filter"}
-    data-filter-active={classicWindow && statusFilter !== "all"}>
+    data-filter-active={classicWindow && statuses.length > 0}>
     <span>{t("party.column.status")}</span>
-    <ErpSelect
-      className="erp-select--compact"
-      value={statusFilter}
-      aria-label={t("party.column.status")}
-      onChange={(value) => setStatusFilter(value as PartyStatusFilter)}
-      options={["all", "active", "inactive"].map((value) => ({
-        value,
-        label: t(`party.filter.status.${value}`)
-      }))}
-    />
+    {app === "pda" ? <ErpSelect className="erp-select--compact" value={statuses[0] ?? ""}
+      aria-label={t("party.column.status")} options={statusOptions}
+      onChange={value => setStatusFilter((value || "all") as PartyStatusFilter)} />
+      : <ErpListSelect className="erp-select--compact" values={statuses}
+        aria-label={t("party.column.status")} options={statusOptions} onChange={changeStatusFilter} />}
   </label>;
   function creditOverview(customer: CustomerView | MemberDirectoryView) {
     return <section className="party-desktop-credit-overview" aria-label={t("party.gestion.section.account")}>
@@ -1140,19 +1218,17 @@ export function PartyDirectoryPanel({
     <header className={`work-panel-heading stock-panel-heading party-directory-heading${app === "gestion" ? " gestion-party-directory-heading" : ""}`}>
       <div><h2>{title}</h2><span>{t(`party.${kind}.subtitle`)}</span></div>
       {classicWindow ? <div className={`management-record-actions${app === "gestion" ? " gestion-toolbar-actions" : ""}`}>
-        {app !== "gestion" && canWrite && <button type="button" aria-keyshortcuts="F7" disabled={!toolbarEntry} onClick={() => toolbarEntry && openEntry(toolbarEntry)}><ShortcutButtonLabel label={t(`party.${kind}.edit`)} shortcut="F7" /></button>}
         {canWrite && (app === "gestion" ? <button type="button" className="gestion-party-add" aria-keyshortcuts="F5" onClick={openNew}><span><Plus size={16} aria-hidden="true" />{t(`party.${kind}.new`).replace(/\s+\(?F8\)?$/, "")}</span>{" "}<kbd>F5</kbd></button>
           : <button type="button" className="party-directory-add" aria-keyshortcuts="F8" onClick={openNew}><Plus size={16} aria-hidden="true" /><ShortcutButtonLabel label={t(`party.${kind}.new`)} shortcut="F8" /></button>)}
-        {app !== "gestion" && allowSafeRetirement && !isMember && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!toolbarEntry} onClick={retireToolbarEntry}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut={t("safeManagement.shortcut.retire")} /></button>}
       </div> : canWrite && <button type="button" className="stock-add-product-button" onClick={openNew}>{t(`party.${kind}.new`)}</button>}
     </header>
     {headerExtra}
-    <div className={`party-directory-toolbar${classicWindow ? " party-directory-toolbar--classic" : ""}${supportsFieldFilters ? " party-directory-toolbar--field-filters" : ""}${app === "gestion" ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
-      {classicWindow && <label className="party-directory-search-label" htmlFor="party-management-search">{t("party.searchLabel")}</label>}
-      {classicWindow ? <GestionSearchFrame><input id={classicWindow ? "party-management-search" : undefined} ref={searchRef} aria-label={t("party.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("party.search")} /></GestionSearchFrame>
-        : <input id={classicWindow ? "party-management-search" : undefined} ref={searchRef} aria-label={t("party.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("party.search")} />}
+    <div className={`party-directory-toolbar${classicWindow ? " party-directory-toolbar--classic" : ""}${supportsFieldFilters ? " party-directory-toolbar--field-filters erp-list-filter-panel" : ""}${app === "gestion" ? " gestion-filter-toolbar gestion-toolbar-layout" : ""}`}>
+      {supportsFieldFilters ? <div className="erp-list-filter-search"><label><span>{t("party.searchLabel")}</span>
+        <GestionSearchFrame><input id="party-management-search" className="erp-search-input" ref={searchRef} aria-label={t("party.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("party.search")} /></GestionSearchFrame>
+      </label></div> : <input ref={searchRef} aria-label={t("party.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("party.search")} />}
       {!supportsFieldFilters && statusFilterControl}
-      {supportsFieldFilters && <button ref={filterButtonRef} type="button" className="stock-filter-button party-directory-filter-button"
+      {supportsFieldFilters && <button ref={filterButtonRef} type="button" className="stock-filter-button party-directory-filter-button erp-list-filter-toggle"
         aria-label={t("salesReport.filter")} aria-expanded={fieldFiltersOpen} aria-controls={fieldFiltersId}
         onClick={() => setFieldFiltersOpen(current => !current)}>
         <img alt="" className="report-action-icon" src={stockFilterIcon} />
@@ -1170,28 +1246,28 @@ export function PartyDirectoryPanel({
           {t("party.filter.clear")}
         </button>
       )}
-      <span className="party-directory-result-count">
+      {app === "pda" && <span className="party-directory-result-count">
         {t("party.results").replace("{count}", String(rows.length))}
-      </span>
-      {app === "gestion" && <div className="gestion-party-output-actions gestion-toolbar-actions">
-        {allowSafeRetirement && !isMember && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!toolbarEntry} onClick={retireToolbarEntry}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut="F9" /></button>}
-        <button type="button" aria-keyshortcuts="F6" disabled={loading || loadError || exporting} onClick={() => void exportDirectory("xlsx")}><span><FileXls size={16} aria-hidden="true" />{t("salesReport.excel")}</span>{" "}<kbd>F6</kbd></button>
-        <button type="button" aria-keyshortcuts="F7" disabled={loading || loadError || exporting} onClick={() => void exportDirectory("pdf")}><span><FilePdf size={16} aria-hidden="true" />{t("salesReport.pdf")}</span>{" "}<kbd>F7</kbd></button>
+      </span>}
+      {app !== "pda" && <div className="gestion-party-output-actions gestion-toolbar-actions erp-list-filter-actions">
+        {app === "venta" && classicWindow && canWrite && <button type="button" aria-keyshortcuts="F7" disabled={!toolbarEntry} onClick={() => toolbarEntry && openEntry(toolbarEntry)}><PencilSimple size={16} aria-hidden="true" /><ShortcutButtonLabel label={t(`party.${kind}.edit`)} shortcut="F7" /></button>}
+        {allowSafeRetirement && !isMember && session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!toolbarEntry} onClick={retireToolbarEntry}><Archive size={16} aria-hidden="true" /><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut="F9" /></button>}
+        {app === "gestion" && <><button type="button" aria-keyshortcuts="F6" disabled={loading || loadError || exporting} onClick={() => void exportDirectory("xlsx")}><span><FileXls size={16} aria-hidden="true" />{t("salesReport.excel")}</span>{" "}<kbd>F6</kbd></button>
+        <button type="button" aria-keyshortcuts="F7" disabled={loading || loadError || exporting} onClick={() => void exportDirectory("pdf")}><span><FilePdf size={16} aria-hidden="true" />{t("salesReport.pdf")}</span>{" "}<kbd>F7</kbd></button></>}
       </div>}
-      {supportsFieldFilters && fieldFiltersOpen && <div id={fieldFiltersId} className="party-directory-filter-fields"
+      {supportsFieldFilters && fieldFiltersOpen && <div id={fieldFiltersId} className="party-directory-filter-fields erp-list-filter-fields"
         role="group" aria-label={t("party.filter.fields")}
         onKeyDown={event => {
-          if (event.key === "Escape") {
+          if (!event.defaultPrevented && event.key === "Escape") {
             event.preventDefault(); event.stopPropagation(); setFieldFiltersOpen(false); filterButtonRef.current?.focus();
           }
         }}>
         {statusFilterControl}
         {directoryFilterFields.map(field => <label key={field}>
           <span>{fieldFilterLabel(field)}</span>
-          {filterOptions(field) ? <ErpSelect aria-label={fieldFilterLabel(field)} value={fieldFilters[field] ?? ""} options={filterOptions(field)!} onChange={value => setFieldFilters(current => ({ ...current, [field]: value }))} /> : <input type="text" maxLength={120} value={fieldFilters[field] ?? ""} onChange={event => {
-            const value = event.target.value;
-            setFieldFilters(current => ({ ...current, [field]: value }));
-          }} />}
+          <ErpListSelect aria-label={fieldFilterLabel(field)} values={listFilterValues(fieldFilters[field])}
+            options={filterOptions(field)} placeholder={t("filters.none")} emptyLabel={t("filters.noOptions")}
+            onChange={values => changeFieldFilter(field, values)} />
         </label>)}
       </div>}
       {app === "pda" && (query || statusFilter !== "all") && <div className="party-directory-active-filters" aria-label={t("party.filter.active")}>
@@ -1201,7 +1277,7 @@ export function PartyDirectoryPanel({
       {app !== "pda" && <ErpFilterChips locale={locale} chips={filterChips} focusRef={searchRef}
         className="party-directory-active-filters" onClear={clearDirectoryFilters} />}
     </div>
-    <div ref={directoryTableRef} className={`party-directory-table${app !== "pda" ? " party-desktop-table" : ""}`} role="table" aria-label={title}>
+    <div ref={directoryTableRef} className={`party-directory-table${app !== "pda" ? " party-desktop-table erp-list-filter-table" : ""}`} role="table" aria-label={title}>
       <div className="party-directory-row header" role="row" style={gridStyle}>
         {visibleColumns.map((column) => (
           <TableLayoutHeaderCell

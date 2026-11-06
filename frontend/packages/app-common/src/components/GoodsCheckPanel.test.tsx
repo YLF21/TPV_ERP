@@ -19,6 +19,20 @@ const apiRequestMock = vi.hoisted(() => vi.fn());
 vi.mock("../api/client", () => ({ apiRequest: apiRequestMock }));
 
 describe("GoodsCheckPanel", () => {
+  it("matches supplier identities and legacy codes without including documents without a supplier", () => {
+    const documents = [
+      { id: "canonical", supplierId: "supplier-id", warehouseId: "warehouse-2" },
+      { id: "legacy", supplierId: "P-01", warehouseId: "warehouse-2" },
+      { id: "other", supplierId: "other-id", warehouseId: "warehouse-2" },
+      { id: "missing", supplierId: null, warehouseId: "warehouse-2" },
+      { id: "other-warehouse", supplierId: "supplier-id", warehouseId: "warehouse-1" }
+    ];
+    expect(filterGoodsCheckDocuments(documents, "", "all", { supplierId: "supplier-id", warehouseId: "warehouse-2" })
+      .map(item => item.id)).toEqual(["canonical"]);
+    expect(filterGoodsCheckDocuments(documents, "", "all", { supplierId: "supplier-id", supplierCode: "P-01", warehouseId: "warehouse-2" })
+      .map(item => item.id)).toEqual(["canonical", "legacy"]);
+  });
+
   beforeEach(() => {
     apiRequestMock.mockReset();
   });
@@ -87,20 +101,19 @@ describe("GoodsCheckPanel", () => {
     expect(filterGoodsCheckItems(check, "missing").map(item => item.productId)).toEqual(["partial", "extra", "pending"]);
   });
 
-  it("keeps search, document summary and import action in a separated header", () => {
+  it("uses the shared document filters and import action on desktop", () => {
     const html = renderToStaticMarkup(
       <GoodsCheckPanel locale="es" t={(key) => key} />
     );
 
     expect(html).toContain("goods-check-documents-header");
-    expect(html).toContain("goods-check-search");
-    expect(html).toContain("goods-check-documents-summary");
-    expect(html).toContain("goods-check-document-count");
-    expect(html).toContain("goodsCheck.availableDocuments");
-    expect(html).toContain("goodsCheck.documents");
-    expect(html).toContain("goods-check-type-filter");
-    expect(html).toContain("goodsCheck.filter.deliveryNotes");
-    expect(html).toContain("goodsCheck.filter.invoices");
+    expect(html).toContain("erp-list-filter-panel");
+    expect(html).toContain("erp-list-filter-toggle");
+    expect(html).toContain("erp-list-filter-table");
+    expect(html).not.toContain("goods-check-documents-summary");
+    expect(html).not.toContain("goods-check-document-count");
+    expect(html).toContain("goodsCheck.filter.type");
+    expect(html).toContain("goodsCheck.filter.all");
     expect(html).not.toContain("sr-only");
   });
 

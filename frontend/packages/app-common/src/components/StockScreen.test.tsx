@@ -843,6 +843,24 @@ describe("StockScreen", () => {
     ]);
   });
 
+  it("sums selected warehouses without changing overall product stock", () => {
+    const rows = buildStockInventoryRows(
+      [{ id: "product-1", name: "Cafe" }, { id: "product-2", name: "Te" }],
+      [{ id: "a", name: "GENERAL" }, { id: "b", name: "RESERVA" }, { id: "c", name: "TERCERO" }],
+      [
+        { productId: "product-1", warehouseId: "a", quantity: 8 },
+        { productId: "product-1", warehouseId: "b", quantity: 5 },
+        { productId: "product-1", warehouseId: "c", quantity: 30 },
+        { productId: "product-2", warehouseId: "c", quantity: 1 },
+      ], {}, { mode: "all" }
+    );
+
+    expect(selectStockInventoryRows(rows, "TOTAL", ["a", "b"])).toEqual([
+      expect.objectContaining({ productId: "product-1", quantity: 13, totalQuantity: 43 }),
+      expect.objectContaining({ productId: "product-2", quantity: 0, totalQuantity: 1 })
+    ]);
+  });
+
   it("selects a requested warehouse with one row per product including zero", () => {
     const rows = buildStockInventoryRows(
       [

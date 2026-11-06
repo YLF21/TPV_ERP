@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Base64;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
@@ -43,12 +44,20 @@ public class CashActivityService {
     public PagedResult<CashActivityView> list(LocalDate from, LocalDate to, UUID terminalId, UUID userId,
             String action, String cashState, int limit, String cursor, String sortBy, String sortDirection,
             Authentication authentication) {
+        return listFiltered(from, to, single(terminalId), single(userId), single(action), single(cashState),
+                limit, cursor, sortBy, sortDirection, authentication);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<CashActivityView> listFiltered(LocalDate from, LocalDate to, List<UUID> terminalIds, List<UUID> userIds,
+            List<String> actions, List<String> cashStates, int limit, String cursor, String sortBy, String sortDirection,
+            Authentication authentication) {
         permissions.requireCashStatusPermission(authentication);
         if (limit < 1 || limit > 100) throw new IllegalArgumentException("El limite debe estar entre 1 y 100");
-        action = normalizedFilter(action);
-        cashState = normalizedFilter(cashState);
-        if (action != null && !ACTIONS.contains(action)) throw new IllegalArgumentException("Accion de caja no valida");
-        if (cashState != null && !Set.of("ABIERTA", "CERRADA").contains(cashState)) {
+        actions = normalizedFilters(actions);
+        cashStates = normalizedFilters(cashStates);
+        if (!ACTIONS.containsAll(actions)) throw new IllegalArgumentException("Accion de caja no valida");
+        if (!Set.of("ABIERTA", "CERRADA").containsAll(cashStates)) {
             throw new IllegalArgumentException("Estado de caja no valido");
         }
         var sort = sortBy == null || sortBy.isBlank() ? "date" : sortBy.trim();
@@ -62,12 +71,15 @@ public class CashActivityService {
         }
         var store = organization.currentStore();
         var storeId = store.getId();
-        if (terminalId != null && terminals.findByIdAndTiendaId(terminalId, storeId).isEmpty()) {
-            throw new IllegalArgumentException("Terminal no encontrada");
+        if (terminalIds != null) for (UUID terminalId : terminalIds) {
+            if (terminals.findByIdAndTiendaId(terminalId, storeId).isEmpty()) {
+                throw new IllegalArgumentException("Terminal no encontrada");
+            }
         }
-        if (userId != null && users.findByIdAndTiendaId(userId, storeId).isEmpty()
-                && !repository.userHasStoreActivity(storeId, userId)) {
-            throw new IllegalArgumentException("Usuario no encontrado");
+        if (userIds != null) for (UUID userId : userIds) {
+            if (users.findByIdAndTiendaId(userId, storeId).isEmpty() && !repository.userHasStoreActivity(storeId, userId)) {
+                throw new IllegalArgumentException("Usuario no encontrado");
+            }
         }
         var zone = ZoneId.of(store.getTimezone());
         var day = LocalDate.now(clock.withZone(zone));
@@ -76,10 +88,10 @@ public class CashActivityService {
         if (first.isAfter(last) || first.getYear() < 1 || last.getYear() > 9999) {
             throw new IllegalArgumentException("Rango de fechas de actividad de caja no valido");
         }
-        var context = UUID.nameUUIDFromBytes((storeId + "|" + first + "|" + last + "|" + terminalId + "|" + userId
-                + "|" + action + "|" + cashState + "|" + sort + "|" + direction).getBytes(StandardCharsets.UTF_8)).toString();
-        var rows = repository.find(storeId, first.atStartOfDay(zone).toInstant(), last.plusDays(1).atStartOfDay(zone).toInstant(),
-                terminalId, userId, action, cashState, sort, direction, decode(cursor, context, sort), limit + 1);
+        var context = UUID.nameUUIDFromBytes((storeId + "|" + first + "|" + last + "|" + terminalIds + "|" + userIds
+                + "|" + actions + "|" + cashStates + "|" + sort + "|" + direction).getBytes(StandardCharsets.UTF_8)).toString();
+        var rows = repository.findFiltered(storeId, first.atStartOfDay(zone).toInstant(), last.plusDays(1).atStartOfDay(zone).toInstant(),
+                terminalIds, userIds, actions, cashStates, sort, direction, decode(cursor, context, sort), limit + 1);
         var hasMore = rows.size() > limit;
         var page = hasMore ? rows.subList(0, limit) : rows;
         var items = page.stream().map(row -> includeAmounts ? row.item() : row.item().withoutAmounts()).toList();
@@ -95,6 +107,15 @@ public class CashActivityService {
         var earliest = repository.earliestDate(store.getId(), zone.getId());
         return new CashActivityFilterOptionsView(day, zone.getId(), earliest == null ? day : earliest,
                 repository.terminalOptions(store.getId()), repository.userOptions(store.getId()));
+    }
+
+    private static <T> List<T> single(T value) {
+        return value == null ? null : List.of(value);
+    }
+
+    private static List<String> normalizedFilters(List<String> values) {
+        return values == null ? List.of() : values.stream().map(CashActivityService::normalizedFilter)
+                .filter(java.util.Objects::nonNull).distinct().toList();
     }
 
     private static String normalizedFilter(String value) {

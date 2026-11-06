@@ -14,8 +14,12 @@ import "./CustomerReceivablesScreen.css";
 import { CustomerReceivablePaymentDialog, type CustomerReceivable } from "./CustomerReceivablePaymentDialog";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { TableSortButton } from "./TableSortButton";
+import { ErpListSelect } from "./ErpListSelect";
+import { listFilterChips } from "./listFilterValues";
 import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
 import { ReportDateRangeSummary } from "./ReportDateRangeFilter";
+import { ErpListFilterPanel } from "./ErpListFilterPanel";
+import { WarehouseSearchFrame } from "./WarehouseSearchFrame";
 import "./NativeDateFilterSummary.css";
 import { sortTableRows, useTableSortPreference } from "./tableSorting";
 import { useTableRowArrowFocus } from "./useTableRowArrowFocus";
@@ -102,9 +106,9 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
   const [historyRows, setHistoryRows] = useState<CustomerReceivablePaymentHistory[]>([]);
   const [account, setAccount] = useState<CustomerCreditAccount | null>(null);
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
-  const [search, setSearch] = useState(""); const [status, setStatus] = useState(""); const [documentType, setDocumentType] = useState("");
+  const [search, setSearch] = useState(""); const [status, setStatus] = useState<string[]>([]); const [documentType, setDocumentType] = useState<string[]>([]);
   const [overdue, setOverdue] = useState(false); const [dueFrom, setDueFrom] = useState(""); const [dueTo, setDueTo] = useState("");
-  const [historySearch, setHistorySearch] = useState(""); const [paymentMethodId, setPaymentMethodId] = useState("");
+  const [historySearch, setHistorySearch] = useState(""); const [paymentMethodId, setPaymentMethodId] = useState<string[]>([]);
   const [collectedFrom, setCollectedFrom] = useState(""); const [collectedTo, setCollectedTo] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const historySearchRef = useRef<HTMLInputElement>(null);
@@ -133,12 +137,16 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
     const query = new URLSearchParams();
+    const addChoices = (single: string, multiple: string, values: string[]) => {
+      if (values.length === 1) query.set(single, values[0]);
+      else for (const value of values) query.append(multiple, value);
+    };
     if (view === "OPEN") {
-      if (initialCustomerId) query.set("customerId", initialCustomerId); if (search.trim()) query.set("search", search.trim()); if (status) query.set("status", status);
-      if (documentType) query.set("documentType", documentType); if (overdue) query.set("overdue", "true"); if (dueFrom) query.set("dueFrom", dueFrom); if (dueTo) query.set("dueTo", dueTo);
+      if (initialCustomerId) query.set("customerId", initialCustomerId); if (search.trim()) query.set("search", search.trim()); addChoices("status", "statuses", status);
+      addChoices("documentType", "documentTypes", documentType); if (overdue) query.set("overdue", "true"); if (dueFrom) query.set("dueFrom", dueFrom); if (dueTo) query.set("dueTo", dueTo);
     } else {
       if (initialCustomerId) query.set("customerId", initialCustomerId); if (historySearch.trim()) query.set("search", historySearch.trim());
-      if (paymentMethodId) query.set("paymentMethodId", paymentMethodId); if (collectedFrom) query.set("collectedFrom", collectedFrom); if (collectedTo) query.set("collectedTo", collectedTo);
+      addChoices("paymentMethodId", "paymentMethodIds", paymentMethodId); if (collectedFrom) query.set("collectedFrom", collectedFrom); if (collectedTo) query.set("collectedTo", collectedTo);
     }
     setLoading(true); setError("");
     try {
@@ -289,22 +297,26 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
   const resultCount = view === "OPEN" ? rows.length : view === "HISTORY" ? historyRows.length : account?.entries.length ?? 0;
   const filterChips: ErpFilterChip[] = (view === "OPEN" ? [
     { key: "search", label: t("receivables.search"), value: search.trim(), onRemove: () => setSearch("") },
-    { key: "status", label: t("receivables.status"), value: status ? t(statusKey(status as CustomerReceivable["status"])) : "", onRemove: () => setStatus("") },
-    { key: "documentType", label: t("receivables.documentType"), value: documentType ? t(documentType === "ALBARAN_VENTA" ? "receivables.type.deliveryNote" : "receivables.type.invoice") : "", onRemove: () => setDocumentType("") },
+    ...listFilterChips("status", t("receivables.status"), status, setStatus, value => t(statusKey(value as CustomerReceivable["status"]))),
+    ...listFilterChips("documentType", t("receivables.documentType"), documentType, setDocumentType,
+      value => t(value === "ALBARAN_VENTA" ? "receivables.type.deliveryNote" : "receivables.type.invoice")),
     { key: "overdue", label: t("receivables.overdueOnly"), value: overdue ? t("common.yes") : "", onRemove: () => setOverdue(false) },
     { key: "dueFrom", label: t("receivables.dueFrom"), value: dueFrom, onRemove: () => setDueFrom("") },
     { key: "dueTo", label: t("receivables.dueTo"), value: dueTo, onRemove: () => setDueTo("") }
   ] : [
     { key: "search", label: t("receivables.history.search"), value: historySearch.trim(), onRemove: () => setHistorySearch("") },
-    { key: "paymentMethodId", label: t("receivables.history.method"), value: paymentMethodId ? methods.find((method) => method.id === paymentMethodId)?.name ?? methods.find((method) => method.id === paymentMethodId)?.nombre ?? paymentMethodId : "", onRemove: () => setPaymentMethodId("") },
+    ...listFilterChips("paymentMethodId", t("receivables.history.method"), paymentMethodId, setPaymentMethodId, value => {
+      const method = methods.find(item => item.id === value);
+      return method?.name ?? method?.nombre ?? value;
+    }),
     { key: "collectedFrom", label: t("receivables.history.collectedFrom"), value: collectedFrom, onRemove: () => setCollectedFrom("") },
     { key: "collectedTo", label: t("receivables.history.collectedTo"), value: collectedTo, onRemove: () => setCollectedTo("") }
   ]).filter((chip) => chip.value !== "");
   function clearFilters() {
     if (view === "OPEN") {
-      setSearch(""); setStatus(""); setDocumentType(""); setOverdue(false); setDueFrom(""); setDueTo("");
+      setSearch(""); setStatus([]); setDocumentType([]); setOverdue(false); setDueFrom(""); setDueTo("");
     } else {
-      setHistorySearch(""); setPaymentMethodId(""); setCollectedFrom(""); setCollectedTo("");
+      setHistorySearch(""); setPaymentMethodId([]); setCollectedFrom(""); setCollectedTo("");
     }
   }
 
@@ -334,34 +346,25 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
       </nav>
       <div className="customer-receivables-dialog-body">
       {view === "OPEN" ? <>
-        <div className="customer-receivables-filters">
-          <label>{t("receivables.search")}<input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} /></label>
-          <label>{t("receivables.status")}<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">{t("receivables.all")}</option><option value="PENDIENTE">{t("receivables.status.pending")}</option><option value="PARCIAL">{t("receivables.status.partial")}</option><option value="PAGADO">{t("receivables.status.paid")}</option></select></label>
-          <label>{t("receivables.documentType")}<select value={documentType} onChange={(event) => setDocumentType(event.target.value)}><option value="">{t("receivables.all")}</option><option value="ALBARAN_VENTA">{t("receivables.type.deliveryNote")}</option><option value="FACTURA_VENTA">{t("receivables.type.invoice")}</option></select></label>
+        <ErpListFilterPanel translate={t} search={<label><span>{t("receivables.search")}</span><WarehouseSearchFrame><input className="erp-search-input" ref={searchRef} value={search} placeholder={t("receivables.search")} onChange={(event) => setSearch(event.target.value)} /></WarehouseSearchFrame></label>} filters={<>
+          <label><span>{t("receivables.status")}</span><ErpListSelect aria-label={t("receivables.status")} values={status} onChange={setStatus} options={[{ value: "", label: t("receivables.all") }, ...["PENDIENTE", "PARCIAL", "PAGADO"].map((value, index) => ({ value, label: t(["receivables.status.pending", "receivables.status.partial", "receivables.status.paid"][index]) }))]} /></label>
+          <label><span>{t("receivables.documentType")}</span><ErpListSelect aria-label={t("receivables.documentType")} values={documentType} onChange={setDocumentType} options={[{ value: "", label: t("receivables.all") }, { value: "ALBARAN_VENTA", label: t("receivables.type.deliveryNote") }, { value: "FACTURA_VENTA", label: t("receivables.type.invoice") }]} /></label>
           <label className="receivables-checkbox"><input aria-label={t("receivables.overdueOnly")} type="checkbox" checked={overdue} onChange={(event) => setOverdue(event.target.checked)} />{t("receivables.overdueOnly")}</label>
-          <label>{t("receivables.dueFrom")}<input type="date" value={dueFrom} onChange={(event) => setDueFrom(event.target.value)} /></label>
-          <label>{t("receivables.dueTo")}<input type="date" value={dueTo} onChange={(event) => setDueTo(event.target.value)} /></label>
-          <ReportDateRangeSummary collapseSingleDay={false} showWeekday={false} locale={locale} value={{ from: dueFrom, to: dueTo, label: "" }} />
-        </div>
-      </> : view === "HISTORY" ? <div className="customer-receivables-filters receivables-history-filters">
-        <label>{t("receivables.history.search")}<input ref={historySearchRef} value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} /></label>
-        <label>{t("receivables.history.method")}<select value={paymentMethodId} onChange={(event) => setPaymentMethodId(event.target.value)}><option value="">{t("receivables.all")}</option>{methods.map((method) => <option key={method.id} value={method.id}>{method.name ?? method.nombre ?? method.id}</option>)}</select></label>
-        <label>{t("receivables.history.collectedFrom")}<input type="date" value={collectedFrom} onChange={(event) => setCollectedFrom(event.target.value)} /></label>
-        <label>{t("receivables.history.collectedTo")}<input type="date" value={collectedTo} onChange={(event) => setCollectedTo(event.target.value)} /></label>
-        <ReportDateRangeSummary collapseSingleDay={false} showWeekday={false} locale={locale} value={{ from: collectedFrom, to: collectedTo, label: "" }} />
-      </div> : null}
+        </>} />
+      </> : view === "HISTORY" ? <ErpListFilterPanel translate={t} search={<label><span>{t("receivables.history.search")}</span><WarehouseSearchFrame><input className="erp-search-input" ref={historySearchRef} value={historySearch} placeholder={t("receivables.history.search")} onChange={(event) => setHistorySearch(event.target.value)} /></WarehouseSearchFrame></label>}
+        filters={<label><span>{t("receivables.history.method")}</span><ErpListSelect aria-label={t("receivables.history.method")} values={paymentMethodId} onChange={setPaymentMethodId} options={[{ value: "", label: t("receivables.all") }, ...methods.map((method) => ({ value: method.id, label: method.name ?? method.nombre ?? method.id }))]} /></label>} /> : null}
       {tableTheme === "erp-blue-classic" && view !== "ACCOUNT" && <ErpFilterChips locale={locale} chips={filterChips}
         focusRef={view === "OPEN" ? searchRef : historySearchRef} onClear={clearFilters} />}
       {error && <div className="receivables-error"><p role="alert">{error}</p><button type="button" onClick={() => void load()}>{t("receivables.action.retry")}</button></div>}
       {retryPrint && <div className="receivables-error"><p role="alert">{t("receivables.print.pending")}</p><button type="button" disabled={printing} onClick={() => void retryFailedPrint()}>{printing ? t("receivables.history.printing") : t("payment.result.retryPrint")}</button></div>}
-      {view === "OPEN" ? <div ref={tableRef} className="customer-receivables-table" role="table" aria-label={t("receivables.title")}>
+      {view === "OPEN" ? <div ref={tableRef} className="customer-receivables-table erp-list-filter-table" role="table" aria-label={t("receivables.title")}>
         <div role="row" className="receivable-row header">{columns.map((value) => { const label = t(`receivables.column.${value}`); return <span role="columnheader" aria-sort={openSorting.sort?.column === value ? (openSorting.sort.direction === "asc" ? "ascending" : "descending") : undefined} key={value}>{value === "actions" ? label : <TableSortButton label={`${t("party.sortBy")} ${label}`} direction={openSorting.sort?.column === value ? openSorting.sort.direction : null} onSort={() => openSorting.toggleSort(value)}>{label}</TableSortButton>}</span>; })}</div>
         {loading && <p>{t("common.loading")}</p>}
         {!loading && sortedRows.map((row) => <div role="row" className={`receivable-row${row.overdue ? " overdue" : ""}`} key={row.documentId} tabIndex={0} onKeyDown={handleRowArrow}>
           <strong role="cell">{row.documentNumber}</strong><span role="cell">{row.customerName}</span><span role="cell">{row.issueDate}</span><span role="cell">{row.dueDate || "-"}</span><span role="cell">{money(row.total, locale)}</span><span role="cell">{money(row.paidTotal, locale)}</span><span role="cell">{money(row.pendingTotal, locale)}</span><span role="cell">{t(statusKey(effectiveReceivableStatus(row)))}</span>
           <span role="cell"><button type="button" aria-label={`${t("receivables.action.collect")} ${row.documentNumber}`} disabled={printing || !canPay || effectiveReceivableStatus(row) === "PAGADO"} onClick={() => setSelected(row)}>{t("receivables.action.collect")}</button></span>
         </div>)}
-      </div> : view === "HISTORY" ? <div ref={tableRef} className="customer-receivables-table" role="table" aria-label={t("receivables.history.title")}>
+      </div> : view === "HISTORY" ? <div ref={tableRef} className="customer-receivables-table erp-list-filter-table" role="table" aria-label={t("receivables.history.title")}>
         <div role="row" className="receivable-history-row header">{historyColumns.map((value) => { const label = t(`receivables.column.${value}`); return <span role="columnheader" aria-sort={historySorting.sort?.column === value ? (historySorting.sort.direction === "asc" ? "ascending" : "descending") : undefined} key={value}>{value === "actions" ? label : <TableSortButton label={`${t("party.sortBy")} ${label}`} direction={historySorting.sort?.column === value ? historySorting.sort.direction : null} onSort={() => historySorting.toggleSort(value)}>{label}</TableSortButton>}</span>; })}</div>
         {loading && <p>{t("common.loading")}</p>}
         {!loading && historyRows.length === 0 && <p className="receivables-empty">{t("receivables.history.empty")}</p>}
@@ -388,6 +391,17 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
           </div>
         </>}
       </div>}
+      {view !== "ACCOUNT" && <footer className="report-date-range-filter sales-activity-filter-dock receivables-date-footer">
+        {view === "OPEN" ? <>
+          <label><span>{t("receivables.dueFrom")}</span><input type="date" value={dueFrom} onChange={(event) => setDueFrom(event.target.value)} /></label>
+          <label><span>{t("receivables.dueTo")}</span><input type="date" value={dueTo} onChange={(event) => setDueTo(event.target.value)} /></label>
+          <ReportDateRangeSummary collapseSingleDay={false} showWeekday={false} locale={locale} value={{ from: dueFrom, to: dueTo, label: "" }} />
+        </> : <>
+          <label><span>{t("receivables.history.collectedFrom")}</span><input type="date" value={collectedFrom} onChange={(event) => setCollectedFrom(event.target.value)} /></label>
+          <label><span>{t("receivables.history.collectedTo")}</span><input type="date" value={collectedTo} onChange={(event) => setCollectedTo(event.target.value)} /></label>
+          <ReportDateRangeSummary collapseSingleDay={false} showWeekday={false} locale={locale} value={{ from: collectedFrom, to: collectedTo, label: "" }} />
+        </>}
+      </footer>}
       </div>
       <footer className="customer-receivables-dialog-footer erp-dialog-actions-row">
         <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" disabled={printing} onClick={close}>{t("common.close")}</DialogDismissButton>

@@ -5,6 +5,9 @@ import { TableSortButton } from "./TableSortButton";
 import type { TableSort } from "./tableSorting";
 import type { SaleCustomer } from "./SaleScreen";
 import { ensureTableRowVisible } from "./ensureTableRowVisible";
+import { ErpListFilterPanel } from "./ErpListFilterPanel";
+import { WarehouseSearchFrame } from "./WarehouseSearchFrame";
+import "./SaleCustomerList.css";
 
 export type SaleCustomerSortColumn = "code" | "name" | "document" | "member" | "discount" | "debt" | "overdue";
 
@@ -61,13 +64,11 @@ export function SaleCustomerList({
   }, [selectedCustomerId, customers, loading, error]);
 
   return <>
-    <div className="sale-customer-toolbar">
-      <label>
-        <span>{t("sale.customer.search")}</span>
-        <input ref={inputRef} aria-label={t("sale.customer.search")} value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={t("sale.customer.placeholder")} />
-      </label>
-    </div>
-    <div ref={tableRef} className="sale-customer-table" role="table" aria-label={t("sale.customer.title")}>
+    <ErpListFilterPanel className="sale-customer-list-filter" translate={t} filters={null} search={<label>
+      <span>{t("sale.customer.search")}</span>
+      <WarehouseSearchFrame><input className="erp-search-input" ref={inputRef} aria-label={t("sale.customer.search")} value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={t("sale.customer.placeholder")} /></WarehouseSearchFrame>
+    </label>} />
+    <div ref={tableRef} className="sale-customer-table erp-list-filter-table" role="table" aria-label={t("sale.customer.title")}>
       <div className="sale-customer-table-header header" role="row">
         {(["code", "name", "document", "member", "discount", "debt", "overdue"] as const).map((column) => (
           <span

@@ -1,13 +1,16 @@
+import { ErpListSelect } from "./ErpListSelect";
+import { listFilterChips } from "./listFilterValues";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { CalendarBlank, CaretDown } from "@phosphor-icons/react";
+import { CalendarBlank, CaretDown, FilePdf, FileXls } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import { apiBaseUrl } from "../api/runtime";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { AppKind, LocaleCode } from "../types";
-import { ErpSelect } from "./ErpSelect";
+import { ErpListFilterPanel } from "./ErpListFilterPanel";
 import { ReportDateRangeSummary } from "./ReportDateRangeFilter";
 import "./NativeDateFilterSummary.css";
+import "./StockSalesHistoryPanel.listFilters.css";
 import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { enterNavigationIntent, focusRelativeEnterTarget } from "./keyboardNavigation";
@@ -129,8 +132,8 @@ export function StockSalesHistoryPanel({
   const [dateTo, setDateTo] = useState(initialRange.to);
   const [appliedFrom, setAppliedFrom] = useState(initialRange.from);
   const [appliedTo, setAppliedTo] = useState(initialRange.to);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [storeFilter, setStoreFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [storeFilter, setStoreFilter] = useState<string[]>([]);
   const [view, setView] = useState<SaasSalesHistoryView>("detail");
   const [stores, setStores] = useState<SaasSalesHistoryStore[]>([]);
   const statuses = ["CONFIRMADO", "ANULADO", "PENDIENTE", "PARCIAL", "PAGADO"];
@@ -145,6 +148,7 @@ export function StockSalesHistoryPanel({
   const [exportError, setExportError] = useState("");
   const historyToolbarRef = useRef<HTMLDivElement | null>(null);
   const applyButtonRef = useRef<HTMLButtonElement | null>(null);
+  const detailButtonRef = useRef<HTMLButtonElement | null>(null);
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   useOutsidePointerDown(exportMenuOpen, exportMenuRef, () => setExportMenuOpen(false));
@@ -169,8 +173,8 @@ export function StockSalesHistoryPanel({
     defaultSort: { column: "netQuantity", direction: "desc" }, persistent: Boolean(username),
   });
   const query = {
-    from: appliedFrom, to: appliedTo, status: statusFilter,
-    storeIds: storeFilter ? [storeFilter] : [],
+    from: appliedFrom, to: appliedTo, status: statusFilter.join(","),
+    storeIds: storeFilter,
     sortBy: tableSort.sort?.column ?? "occurredAt",
     sortDirection: tableSort.sort?.direction ?? "desc" as const,
   };
@@ -282,14 +286,24 @@ export function StockSalesHistoryPanel({
     setRetry((value) => value + 1);
   }
 
+  function updateHistoryDate(field: "from" | "to", value: string) {
+    const nextFrom = field === "from" ? value : dateFrom;
+    const nextTo = field === "to" ? value : dateTo;
+    setDateFrom(nextFrom);
+    setDateTo(nextTo);
+    if (app === "pda" || Boolean(nextFrom) !== Boolean(nextTo)) return;
+    setAppliedFrom(nextFrom && nextTo ? (nextFrom <= nextTo ? nextFrom : nextTo) : "");
+    setAppliedTo(nextFrom && nextTo ? (nextFrom <= nextTo ? nextTo : nextFrom) : "");
+  }
+
   function removeFilter(key: "period" | "status" | "store") {
     if (key === "period") {
       setDateFrom("");
       setDateTo("");
       setAppliedFrom("");
       setAppliedTo("");
-    } else if (key === "status") setStatusFilter("");
-    else setStoreFilter("");
+    } else if (key === "status") setStatusFilter([]);
+    else setStoreFilter([]);
     setPage({ query: "", cursor: null });
   }
 
@@ -298,14 +312,13 @@ export function StockSalesHistoryPanel({
     setDateTo("");
     setAppliedFrom("");
     setAppliedTo("");
-    setStatusFilter("");
-    setStoreFilter("");
+    setStatusFilter([]);
+    setStoreFilter([]);
     setPage({ query: "", cursor: null });
   }
 
   const dateLabel = (value: string) => new Intl.DateTimeFormat(localeTag(locale), { dateStyle: "short" })
     .format(new Date(`${value}T00:00:00`));
-  const selectedStore = stores.find((store) => store.id === storeFilter);
   const filterChips: ErpFilterChip[] = [
     ...(appliedFrom || appliedTo ? [{
       key: "period", label: t("salesReport.filter.dateRange"),
@@ -314,11 +327,11 @@ export function StockSalesHistoryPanel({
         : `${t(appliedFrom ? "salesReport.filter.dateFrom" : "salesReport.filter.dateTo")} ${dateLabel(appliedFrom || appliedTo)}`,
       onRemove: () => removeFilter("period"),
     }] : []),
-    ...(statusFilter ? [{ key: "status", label: t("salesReport.filter.status"), value: statusFilter,
-      onRemove: () => removeFilter("status") }] : []),
-    ...(storeFilter ? [{ key: "store", label: t("stock.history.store"),
-      value: selectedStore ? `${selectedStore.code} · ${selectedStore.name}` : storeFilter,
-      onRemove: () => removeFilter("store") }] : []),
+    ...listFilterChips("status", t("salesReport.filter.status"), statusFilter, setStatusFilter),
+    ...listFilterChips("store", t("stock.history.store"), storeFilter, setStoreFilter, id => {
+      const store = stores.find(item => item.id === id);
+      return store ? store.code + " \u00b7 " + store.name : id;
+    }),
   ];
 
   function exportFileName(extension: "xlsx" | "pdf") {
@@ -338,7 +351,7 @@ export function StockSalesHistoryPanel({
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${requestToken}` },
         body: JSON.stringify({
-          ...query, from: appliedFrom || null, to: appliedTo || null, status: statusFilter || null, view, locale,
+          ...query, from: appliedFrom || null, to: appliedTo || null, status: statusFilter.length ? statusFilter.join(",") : null, view, locale,
           comparisonSortBy: comparisonSort.sort?.column ?? "netQuantity",
           comparisonSortDirection: comparisonSort.sort?.direction ?? "desc",
           columns: view === "detail"
@@ -380,8 +393,9 @@ export function StockSalesHistoryPanel({
   }
 
   function openStore(storeId: string) {
-    applyButtonRef.current?.focus();
-    setStoreFilter(storeId);
+    if (app === "pda") applyButtonRef.current?.focus();
+    else detailButtonRef.current?.focus();
+    setStoreFilter([storeId]);
     setView("detail");
     setPage({ query: "", cursor: null });
   }
@@ -393,32 +407,37 @@ export function StockSalesHistoryPanel({
     });
     if (!intent || !(event.target as HTMLElement).matches("input")) return;
     event.preventDefault();
-    focusRelativeEnterTarget(historyToolbarRef.current, event.target as HTMLElement, intent,
+    focusRelativeEnterTarget(event.currentTarget, event.target as HTMLElement, intent,
       "input:not(:disabled), .erp-select__trigger:not(:disabled), button:not(:disabled)");
   }
 
+  const statusSelect = <label><span>{t("salesReport.filter.status")}</span><ErpListSelect single={app === "pda"} className="erp-select--compact"
+    aria-label={t("salesReport.filter.status")} values={statusFilter}
+    options={[{ value: "", label: t("salesReport.filter.all") }, ...statuses.map((status) => ({ value: status, label: status }))]}
+    onChange={setStatusFilter} onCommit={app === "pda" ? () => applyButtonRef.current?.focus() : undefined} /></label>;
+  const storeSelect = <label><span>{t("stock.history.store")}</span><ErpListSelect single={app === "pda"} className="erp-select--compact"
+    aria-label={t("stock.history.store")} values={storeFilter}
+    options={[{ value: "", label: t("stock.history.saas.allStores") }, ...stores.map((store) => ({ value: store.id, label: `${store.code} · ${store.name}` }))]}
+    onChange={setStoreFilter} onCommit={app === "pda" ? () => applyButtonRef.current?.focus() : undefined} /></label>;
+  const dateControls = <>
+    <label><span>{t("salesReport.filter.dateFrom")}</span><span className="stock-history-date-input">
+      <input type="date" value={dateFrom} onChange={(event) => updateHistoryDate("from", event.target.value)} />
+      <CalendarBlank aria-hidden="true" size={18} />
+    </span></label>
+    <label><span>{t("salesReport.filter.dateTo")}</span><span className="stock-history-date-input">
+      <input type="date" value={dateTo} onChange={(event) => updateHistoryDate("to", event.target.value)} />
+      <CalendarBlank aria-hidden="true" size={18} />
+    </span></label>
+  </>;
+  const dateSummary = <ReportDateRangeSummary collapseSingleDay={app === "gestion"} showWeekday={app === "gestion"}
+    locale={locale} value={{ from: appliedFrom, to: appliedTo, label: "" }} />;
+
   return (
     <section className="stock-sales-history-panel stock-product-sales-history-panel" aria-label={t("stock.history.title")}>
-      <div className={`stock-history-toolbar${app === "gestion" ? " gestion-toolbar-layout" : ""}`} ref={historyToolbarRef} onKeyDown={handleHistoryFilterEnter}>
-        <label><span>{t("salesReport.filter.dateFrom")}</span><span className="stock-history-date-input">
-          <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
-          <CalendarBlank aria-hidden="true" size={18} />
-        </span></label>
-        <label><span>{t("salesReport.filter.dateTo")}</span><span className="stock-history-date-input">
-          <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-          <CalendarBlank aria-hidden="true" size={18} />
-        </span></label>
-        <label><span>{t("salesReport.filter.status")}</span><ErpSelect className="erp-select--compact"
-          aria-label={t("salesReport.filter.status")} value={statusFilter}
-          options={[{ value: "", label: t("salesReport.filter.all") }, ...statuses.map((status) => ({ value: status, label: status }))]}
-          onChange={setStatusFilter} onCommit={() => applyButtonRef.current?.focus()} /></label>
-        <label><span>{t("stock.history.store")}</span><ErpSelect className="erp-select--compact"
-          aria-label={t("stock.history.store")} value={storeFilter}
-          options={[{ value: "", label: t("stock.history.saas.allStores") }, ...stores.map((store) => ({ value: store.id, label: `${store.code} · ${store.name}` }))]}
-          onChange={setStoreFilter} onCommit={() => applyButtonRef.current?.focus()} /></label>
+      {app === "pda" ? <div className="stock-history-toolbar" ref={historyToolbarRef} onKeyDown={handleHistoryFilterEnter}>
+        {dateControls}{statusSelect}{storeSelect}
         <button ref={applyButtonRef} type="button" onClick={applyFilters}>{t("salesReport.filter.apply")}</button>
-        {app === "gestion" && <ReportDateRangeSummary locale={locale} value={{ from: appliedFrom, to: appliedTo, label: "" }} />}
-        <div className={`stock-history-export${app === "gestion" ? " gestion-toolbar-end" : ""}`} ref={exportMenuRef}>
+        <div className="stock-history-export" ref={exportMenuRef}>
           <button type="button" aria-haspopup="menu" aria-expanded={exportMenuOpen}
             disabled={exportBusy || busy || !data || displayedCount === 0} onClick={() => setExportMenuOpen((open) => !open)}>
             {exportBusy ? t("stock.history.exporting") : t("stock.history.export")}<CaretDown aria-hidden="true" size={14} />
@@ -428,14 +447,20 @@ export function StockSalesHistoryPanel({
             <button type="button" role="menuitem" onClick={() => void exportReport("pdf")}>{t("stock.history.exportPdf")}</button>
           </div>}
         </div>
-        {app === "venta" && <ReportDateRangeSummary collapseSingleDay={false} showWeekday={false} locale={locale} value={{ from: appliedFrom, to: appliedTo, label: "" }} />}
-      </div>
+      </div> : <ErpListFilterPanel className="stock-history-list-filter" search={null} translate={t}
+        filters={<>{statusSelect}{storeSelect}</>}
+        actions={<>
+          <button type="button" disabled={exportBusy || busy || !data || displayedCount === 0}
+            onClick={() => void exportReport("xlsx")}><FileXls size={16} aria-hidden="true" />{t("stock.history.exportExcel")}</button>
+          <button type="button" disabled={exportBusy || busy || !data || displayedCount === 0}
+            onClick={() => void exportReport("pdf")}><FilePdf size={16} aria-hidden="true" />{t("stock.history.exportPdf")}</button>
+        </>} />}
       {app !== "pda" && <ErpFilterChips chips={filterChips} onClear={clearFilters}
-        focusRef={applyButtonRef} locale={locale} />}
+        locale={locale} />}
       <div className="stock-history-context">
         {showProductHeading && <strong>{productName}</strong>}
         <div className="stock-history-views" role="group" aria-label={t("stock.history.saas.view")}>
-          <button type="button" aria-pressed={view === "detail"} onClick={() => setView("detail")}>{t("stock.history.saas.detail")}</button>
+          <button ref={detailButtonRef} type="button" aria-pressed={view === "detail"} onClick={() => setView("detail")}>{t("stock.history.saas.detail")}</button>
           <button type="button" aria-pressed={view === "comparison"} onClick={() => setView("comparison")}>{t("stock.history.saas.comparison")}</button>
         </div>
       </div>
@@ -447,7 +472,7 @@ export function StockSalesHistoryPanel({
         {documentNotice && <p className="stock-operation-status" aria-live="polite">{documentNotice}</p>}
         {exportError && <p className="stock-operation-status error" role="alert">{t(exportError)}</p>}
       </div>
-      <div className="stock-history-table-scroll" ref={tableScrollRef} aria-busy={busy} tabIndex={0}
+      <div className={`stock-history-table-scroll${app !== "pda" ? " erp-list-filter-table" : ""}`} ref={tableScrollRef} aria-busy={busy} tabIndex={0}
         onScroll={(event) => {
           const body = event.currentTarget;
           if (body.clientHeight > 0 && body.scrollHeight - body.scrollTop - body.clientHeight < 160) loadMore();
@@ -515,6 +540,10 @@ export function StockSalesHistoryPanel({
           <span>{t("stock.history.saas.netAmount")}</span><strong>{formatHistoryAmount(total.netAmount, total.currency, locale)}</strong>
         </div>) : <span>{t("stock.history.saas.noTotals")}</span> : <span>{t("stock.history.saas.netAmount")}: —</span>}
       </div>
+      {app !== "pda" && <div className="stock-history-date-footer" onKeyDown={handleHistoryFilterEnter}>
+        {dateControls}
+        {dateSummary}
+      </div>}
     </section>
   );
 }

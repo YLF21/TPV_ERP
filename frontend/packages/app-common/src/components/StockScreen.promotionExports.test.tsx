@@ -96,14 +96,13 @@ describe("StockScreen promotion Excel exports", () => {
     renderScreen(locale);
     fireEvent.click(await screen.findByRole("button", { name: /Promoción caducada/ }));
     await waitFor(() => expect(screen.getByRole("button", { name: new RegExp(t("stock.exportExcel.selectedPromotion")) })).toHaveProperty("disabled", false));
-    fireEvent.click(screen.getByRole("button", { name: t("stock.filter.inventoryTitle") }));
-    const dialog = screen.getByRole("dialog", { name: t("stock.filter.inventoryTitle") });
+    const panel = document.querySelector<HTMLElement>(".stock-standard-filters")!;
+    fireEvent.click(within(panel).getByRole("button", { name: t("salesReport.filter") }));
     for (const [label, option] of [[t("stock.column.type"), t("product.type.unit")], [t("stock.column.status"), t("stock.status.low")]] as const) {
-      const field = within(dialog).getByText(label, { exact: true }).closest(".filter-field")! as HTMLElement;
-      fireEvent.click(within(field).getByRole("button"));
-      fireEvent.click(within(field).getByRole("button", { name: option }));
+      fireEvent.click(within(panel).getByRole("button", { name: label }));
+      fireEvent.click(within(panel).getByRole("option", { name: option }));
     }
-    fireEvent.click(within(dialog).getByRole("button", { name: t("salesReport.filter.apply") }));
+    expect(within(panel).queryByRole("button", { name: t("salesReport.filter.apply") })).toBeNull();
     fireEvent.change(screen.getByRole("searchbox", { name: t("stock.search.article") }), { target: { value: "Café" } });
     const detail = screen.getByRole("region", { name: "Promoción caducada" });
     await within(detail).findByText("Café antiguo");

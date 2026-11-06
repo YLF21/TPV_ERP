@@ -1,5 +1,8 @@
+import { ErpListSelect } from "./ErpListSelect";
+import { listFilterChips } from "./listFilterValues";
 import "./ErpClassicWindow.css";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { Eraser, FileXls } from "@phosphor-icons/react";
 import { apiProblemCode, apiRequest, classifyApiFailure } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { AppKind, LocaleCode, Permission, UserSession } from "../types";
@@ -14,6 +17,8 @@ import { customerDocumentAmount } from "./customerDocumentAmount";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
 import { ReportDateRangeSummary } from "./ReportDateRangeFilter";
+import { ErpListFilterPanel } from "./ErpListFilterPanel";
+import { WarehouseSearchFrame } from "./WarehouseSearchFrame";
 import { useTableArrowRepeat } from "./useTableArrowRepeat";
 import { useTableInitialFocus } from "./useTableInitialFocus";
 import { ensureTableRowVisible } from "./ensureTableRowVisible";
@@ -59,6 +64,7 @@ export function canReadCustomerDocuments(permissions: Permission[], tab: Tab): b
 
 export function CustomerDocumentsDialog({ customer, session, locale, app = "venta", canEdit, active = true, onEdit, onClose }: Props) {
   const t = createTranslator(locale);
+  const filterFormId = useId();
   const [tab, setTab] = useState<Tab>(() => tabs.find((item) => canReadCustomerDocuments(session.permissions, item.key))?.key ?? "tickets");
   const [cursor, setCursor] = useState<string | null>(null);
   const [filters, setFilters] = useState(emptyFilters);
@@ -95,7 +101,8 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
   const gridStyle = { gridTemplateColumns: layout.map((column, index) => index === layout.length - 1
     ? `minmax(${column.width}px, 1fr)` : `${column.width}px`).join(" ") };
   const hasFilters = Object.values(filters).some(Boolean);
-  const filtersDirty = Object.keys(filters).some((key) => filters[key as keyof typeof filters] !== draftFilters[key as keyof typeof filters]);
+  const filtersDirty = Object.keys(filters).some((key) => filters[key as keyof typeof filters] !==
+    (app !== "pda" && key === "search" ? draftFilters.search.trim() : draftFilters[key as keyof typeof filters]));
   const rows = allowed ? page?.items ?? [] : [];
   const rowHeight = app === "gestion" ? 36 : 44;
   const start = Math.max(0, Math.floor(scrollTop / rowHeight) - 5);
@@ -145,6 +152,18 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
     setFilterError(false); setDraftFilters(next); setFilters(next); resetRows(); setRetry((value) => value + 1);
   }
 
+  function changeDesktopFilter(key: keyof typeof emptyFilters, value: string) {
+    const nextDraft = { ...draftFilters, [key]: value };
+    setDraftFilters(nextDraft);
+    const invalidDates = Boolean(nextDraft.dateFrom && nextDraft.dateTo && nextDraft.dateFrom > nextDraft.dateTo);
+    setFilterError(invalidDates);
+    if (invalidDates && (key === "dateFrom" || key === "dateTo")) return;
+    const next = { ...nextDraft, search: nextDraft.search.trim(),
+      ...(invalidDates ? { dateFrom: filters.dateFrom, dateTo: filters.dateTo } : {}) };
+    if (Object.keys(next).every((field) => next[field as keyof typeof next] === filters[field as keyof typeof filters])) return;
+    setFilters(next); resetRows();
+  }
+
   function removeFilter(key: keyof typeof emptyFilters) {
     setFilters((current) => ({ ...current, [key]: "" }));
     setDraftFilters((current) => ({ ...current, [key]: "" }));
@@ -153,12 +172,14 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
 
   const filterChips = [
     { key: "search", label: t("party.searchLabel"), value: filters.search },
-    { key: "status", label: t("salesReport.filter.status"), value: filters.status ? t(`salesReport.activity.documentStatus.${filters.status}`) : "" },
     { key: "dateFrom", label: t("salesReport.filter.dateFrom"), value: filters.dateFrom },
     { key: "dateTo", label: t("salesReport.filter.dateTo"), value: filters.dateTo }
   ].filter((chip) => chip.value !== "").map((chip) => ({
     ...chip, onRemove: () => removeFilter(chip.key as keyof typeof emptyFilters)
   }));
+  filterChips.push(...listFilterChips("status", t("salesReport.filter.status"), filters.status.split(",").filter(Boolean),
+    values => changeDesktopFilter("status", values.join(",")),
+    value => t("salesReport.activity.documentStatus." + value)));
 
   function loadMore() {
     if (loading || errorKey || !page?.hasMore || !page.nextCursor || cursor === page.nextCursor) return;
@@ -308,7 +329,11 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
         token: session.accessToken, responseType: "blob", signal: controller.signal,
         body: {
           customerId: customer.id, reportKey: tab,
-          filters: Object.fromEntries(Object.entries(filters).filter(([, value]) => value)),
+          filters: {
+            ...Object.fromEntries(Object.entries(filters).filter(([field, value]) => field !== "status" && value)),
+            ...(filters.status.includes(",") ? { statuses: filters.status.split(",") }
+              : filters.status ? { status: filters.status } : {}),
+          },
           sortBy: sort.column, sortDirection: sort.direction,
           ...(hasFilters ? {} : { documentKeys: rows.map((row) => ({ storeId: row.storeId, documentId: row.documentId })) }),
           columns: layout.map((column) => ({ key: column.key, label: label(column.key) })),
@@ -376,7 +401,22 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
         </div>
         <button type="button" disabled={!canEdit} onClick={onEdit}>{t("customerDocuments.edit")}</button>
       </div>
-      <form className="customer-documents-filters" onSubmit={(event) => { event.preventDefault(); applyFilters(); }}>
+      {app !== "pda" ? <form id={filterFormId} className="customer-documents-filter-form" onSubmit={(event) => event.preventDefault()}>
+        <ErpListFilterPanel translate={t} search={<label><span>{t("party.searchLabel")}</span>
+          <WarehouseSearchFrame><input ref={searchRef} className="erp-search-input" type="search" maxLength={120} placeholder={t("customerDocuments.search")}
+            value={draftFilters.search} onChange={(event) => changeDesktopFilter("search", event.target.value)} /></WarehouseSearchFrame>
+        </label>} filters={<label><span>{t("salesReport.filter.status")}</span>
+          <ErpListSelect aria-label={t("salesReport.filter.status")}
+            values={draftFilters.status.split(",").filter(Boolean)} placeholder={t("filters.none")}
+            options={statuses.map(value => ({ value, label: t("salesReport.activity.documentStatus." + value) }))}
+            onChange={values => changeDesktopFilter("status", values.join(","))} />
+        </label>} actions={<>
+          <button type="button" onClick={() => applyFilters(true)}><Eraser size={16} aria-hidden="true" />{t("party.filter.clear")}</button>
+          <button type="button" disabled={exportBusy || loading || filtersDirty || !allowed || !rows.length || Boolean(errorKey)}
+            title={t(hasFilters ? "customerDocuments.exportFiltered" : "customerDocuments.exportLoaded")}
+            onClick={() => void exportExcel()}><FileXls size={16} aria-hidden="true" />{t(exportBusy ? "stock.history.exporting" : "stock.history.exportExcel")}</button>
+        </>} />
+      </form> : <form className="customer-documents-filters" onSubmit={(event) => { event.preventDefault(); applyFilters(); }}>
         <label className="customer-documents-search"><span>{t("party.searchLabel")}</span>
           <input ref={searchRef} type="search" maxLength={120} placeholder={t("customerDocuments.search")}
             value={draftFilters.search} onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))} />
@@ -392,11 +432,10 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
           onChange={(event) => setDraftFilters((current) => ({ ...current, dateTo: event.target.value }))} /></label>
         <button type="submit" className="erp-dialog-action-confirm" disabled={!allowed}>{t("salesReport.filter.apply")}</button>
         {(app === "pda" || !hasFilters) && <button type="button" onClick={() => applyFilters(true)}>{t("party.filter.clear")}</button>}
-        {(app === "venta" || app === "gestion") && <ReportDateRangeSummary collapseSingleDay={app === "gestion"} showWeekday={app === "gestion"} locale={locale} value={{ from: filters.dateFrom, to: filters.dateTo, label: "" }} />}
-      </form>
+      </form>}
       {app !== "pda" && <ErpFilterChips locale={locale} chips={filterChips} focusRef={searchRef} onClear={() => applyFilters(true)} />}
       {filterError && <p className="customer-documents-notice" role="alert">{t("customerDocuments.invalidDates")}</p>}
-      {filtersDirty && <p className="customer-documents-notice" role="status">{t("customerDocuments.applyPending")}</p>}
+      {app === "pda" && filtersDirty && <p className="customer-documents-notice" role="status">{t("customerDocuments.applyPending")}</p>}
       {exportErrorKey && <p className="customer-documents-notice" role="alert">{t(exportErrorKey)}</p>}
       {errorKey && <div className="customer-documents-notice" role="alert"><span>{t(errorKey)}</span> <button type="button" onClick={() => {
         // A discarded dataset cannot be resumed from its former tail cursor.
@@ -405,7 +444,7 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
       }}>{t("party.retry")}</button></div>}
       <p className="customer-documents-scope">{t("customerDocuments.scope")}</p>
       <div id="customer-documents-panel" className="customer-documents-panel" role="tabpanel" aria-labelledby={`customer-documents-tab-${tab}`} aria-busy={loading}>
-        <div className="customer-documents-table-scroll">
+        <div className={`customer-documents-table-scroll${app !== "pda" ? " erp-list-filter-table" : ""}`}>
           <div role="table" className="customer-documents-table" aria-rowcount={page?.hasMore ? -1 : rows.length + 1} aria-label={t(`customerDocuments.${tab}`)} style={{ minWidth: layout.reduce((width, column) => width + column.width, 20) }}>
             <div role="row" className="customer-documents-row customer-documents-table-header" style={gridStyle}>
               {layout.map((column) => <TableLayoutHeaderCell key={`${tab}-${column.key}`} as="span" column={column} showColumnMenu
@@ -446,6 +485,13 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
           </div>
         </div>
       </div>
+      {app !== "pda" && <footer className="report-date-range-filter sales-activity-filter-dock customer-documents-date-footer">
+        <label><span>{t("salesReport.filter.dateFrom")}</span><input type="date" form={filterFormId} value={draftFilters.dateFrom}
+          onChange={(event) => changeDesktopFilter("dateFrom", event.target.value)} /></label>
+        <label><span>{t("salesReport.filter.dateTo")}</span><input type="date" form={filterFormId} value={draftFilters.dateTo}
+          onChange={(event) => changeDesktopFilter("dateTo", event.target.value)} /></label>
+        <ReportDateRangeSummary collapseSingleDay={app === "gestion"} showWeekday={app === "gestion"} locale={locale} value={{ from: filters.dateFrom, to: filters.dateTo, label: "" }} />
+      </footer>}
       <footer className="customer-documents-footer erp-dialog-actions-row">
         <DialogDismissButton type="button" className="erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>{t("customerDocuments.close")}</DialogDismissButton>
         <span role="status">{t("customerDocuments.loaded").replace("{count}", String(page?.items.length ?? 0))}
@@ -453,9 +499,9 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
         <div className="erp-dialog-actions-group">
           {tab === "invoices" && <button type="button" disabled={!allowed}
             onClick={() => setModel347CustomerId(customer.id)}>{t("customerModel347.button")}</button>}
-          <button type="button" disabled={exportBusy || loading || filtersDirty || !allowed || !rows.length || Boolean(errorKey)}
+          {app === "pda" && <button type="button" disabled={exportBusy || loading || filtersDirty || !allowed || !rows.length || Boolean(errorKey)}
             title={t(hasFilters ? "customerDocuments.exportFiltered" : "customerDocuments.exportLoaded")}
-            onClick={() => void exportExcel()}>{t(exportBusy ? "stock.history.exporting" : "stock.history.exportExcel")}</button>
+            onClick={() => void exportExcel()}>{t(exportBusy ? "stock.history.exporting" : "stock.history.exportExcel")}</button>}
         </div>
       </footer>
     </section>

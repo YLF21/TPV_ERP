@@ -10,6 +10,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -35,8 +36,8 @@ public class PdaOperationalObservabilityController {
             @RequestParam(defaultValue = "30") @Min(5) @Max(1440) int inactiveMinutes,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size,
-            @RequestParam(required = false) UUID terminalId) {
-        return service.dashboard(windowHours, inactiveMinutes, page, size, terminalId);
+            @RequestParam(required = false) List<UUID> terminalId) {
+        return service.dashboardFiltered(windowHours, inactiveMinutes, page, size, terminalId);
     }
 
     @PostMapping("/events")

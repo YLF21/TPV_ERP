@@ -1,0 +1,34 @@
+.stock-product-sales-history-panel > .stock-history-list-filter .erp-list-filter-search:empty { display: none; }
+html body .stock-product-sales-history-panel > .stock-history-list-filter {
+  flex: 0 0 auto;
+  min-height: 52px;
+}
+html body .stock-product-sales-history-panel > .stock-history-list-filter .erp-list-filter-actions { margin-left: auto; }
+html body .stock-product-sales-history-panel > .stock-history-list-filter .erp-list-filter-fields label { width: 180px; }
+html body .stock-product-sales-history-panel > .stock-history-table-scroll.erp-list-filter-table { border-radius: 6px !important; }
+html body .stock-product-sales-history-panel > .stock-history-date-footer {
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border: 1px solid #aebfd0;
+  border-radius: 6px;
+  background: #fff;
+}
+.stock-history-date-footer > label { display: grid; gap: 5px; font-size: 12px; font-weight: 700; color: #516175; }
+.stock-history-date-footer .stock-history-date-input input { box-sizing: border-box; height: 34px; }
+html body .stock-history-date-footer > button {
+  box-sizing: border-box;
+  height: 34px;
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 1px solid #68798b;
+  border-radius: 3px;
+  background: #eef1f4;
+  color: #12385f;
+  font-size: 11px;
+  font-weight: 700;
+}

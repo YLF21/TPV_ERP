@@ -6192,3 +6192,23 @@ button.gestion-voucher-row.selected { box-shadow: inset 4px 0 0 #1d5f92; backgro
   flex-shrink: 0;
   padding: 8px 18px 0;
 }
+/* Control alert list adopts the shared filter panel; dates stay below its table. */
+.gestion-control-timeline.gestion-control-timeline {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-areas: "heading" "types" "period" "timeline" "dates";
+}
+.gestion-control-timeline .gestion-control-list-stage {
+  grid-area: timeline; display: flex; flex-direction: column; gap: 4px; min-height: 0;
+}
+.gestion-control-timeline .gestion-control-list-stage > .gestion-control-grid {
+  flex: 1 1 0; min-height: 0;
+}
+.gestion-control-timeline .gestion-control-date-toolbar {
+  grid-area: dates; display: flex; flex-wrap: wrap; align-items: end; gap: 12px;
+  padding: 8px 12px; border-radius: 6px; background: #fff;
+}
+.gestion-control-timeline .gestion-control-date-toolbar > :is(select, label, .erp-select) { flex: 0 0 auto; min-width: 160px; }
+.gestion-control-timeline .gestion-control-date-toolbar :is(input, select, button) { min-height: 34px; height: 34px; }
+.gestion-control-timeline .gestion-control-date-toolbar > .report-date-range-summary { margin-left: auto; }
+.report-screen .gestion-voucher-heading.gestion-voucher-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

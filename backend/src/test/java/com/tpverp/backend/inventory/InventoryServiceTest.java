@@ -3,6 +3,7 @@ package com.tpverp.backend.inventory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -88,7 +89,7 @@ class InventoryServiceTest {
         var secondId = UUID.randomUUID();
         when(first.getMovementId()).thenReturn(firstId);
         when(second.getMovementId()).thenReturn(secondId);
-        when(history.page(any(), any(), any(), any(), any(), any()))
+        when(history.pageFiltered(any(), eq(true), any(), any(), any(), any(), any()))
                 .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(first, second)));
         var author = org.mockito.Mockito.mock(StockAdjustmentHistoryRepository.AdjustmentAuthor.class);
         when(author.getMovementId()).thenReturn(firstId);
@@ -110,11 +111,11 @@ class InventoryServiceTest {
         when(organization.currentStore()).thenReturn(store);
         var from = Instant.parse("2026-09-01T00:00:00Z");
         var to = Instant.parse("2026-09-24T00:00:00Z");
-        when(history.page(storeId, null, "%caf%", from, to,
+        when(history.pageFiltered(storeId, true, List.of(new UUID(0, 0)), "%caf%", from, to,
                 org.springframework.data.domain.PageRequest.of(0, 50)))
                 .thenReturn(org.springframework.data.domain.Page.empty());
         service.adjustmentHistory(50, 0, null, " CAF ", from, to);
-        verify(history).page(storeId, null, "%caf%", from, to,
+        verify(history).pageFiltered(storeId, true, List.of(new UUID(0, 0)), "%caf%", from, to,
                 org.springframework.data.domain.PageRequest.of(0, 50));
     }
 

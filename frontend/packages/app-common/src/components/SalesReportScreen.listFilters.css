@@ -1,0 +1,123 @@
+/* Report toolbar skin; customer documents opt into the inline filter panel. */
+html body .report-screen--desktop .report-data-toolbar.report-list-filter-toolbar {
+  box-sizing: border-box;
+  display: flex !important;
+  align-items: flex-end !important;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 52px;
+  padding: 8px 12px !important;
+  border: 1px solid #aebfd0 !important;
+  border-radius: 6px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+.report-list-filter-toolbar .report-list-filter-start,
+.report-list-filter-toolbar .report-list-filter-end {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.report-list-filter-toolbar .report-list-filter-start { flex: 1 1 360px; }
+.report-list-filter-toolbar .report-list-filter-end { margin-left: auto; gap: 6px; }
+html body .report-screen--desktop .report-data-toolbar.report-list-filter-toolbar .report-search {
+  box-sizing: border-box;
+  flex: 1 1 280px;
+  width: min(100%, 280px) !important;
+  min-width: min(260px, 100%) !important;
+  max-width: 360px !important;
+  height: 34px;
+  border: 1px solid #aebfd0 !important;
+  border-radius: 4px !important;
+  background: #fff;
+  box-shadow: none !important;
+}
+html body .report-screen--desktop .report-data-toolbar.report-list-filter-toolbar .report-search:focus-within {
+  outline: 2px solid #0065fe;
+  outline-offset: 1px;
+}
+html body .report-list-filter-toolbar .report-search > input {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 30px !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+.report-list-filter-toolbar .report-search > img { width: 18px; height: 18px; }
+.report-list-filter-toolbar .report-search input::placeholder { font-size: 11px; font-weight: 400; }
+html body .report-list-filter-toolbar .report-list-filter-start > button,
+html body .report-list-filter-toolbar .report-more-actions > button,
+html body .report-list-filter-toolbar .report-output-actions > button {
+  box-sizing: border-box;
+  height: 34px !important;
+  min-height: 34px !important;
+  border: 1px solid #68798b !important;
+  border-radius: 3px !important;
+  background: #eef1f4 !important;
+  color: #12385f !important;
+  font-size: 11px !important;
+  box-shadow: none !important;
+}
+html body .report-list-filter-toolbar .report-output-cluster {
+  width: auto;
+  min-width: 0;
+  display: block;
+  align-self: auto;
+  margin: 0;
+}
+html body .report-list-filter-toolbar .report-output-actions { width: auto; }
+html body .report-list-filter-toolbar .report-output-actions > button { flex: 0 0 auto; }
+.report-list-filter-toolbar .report-output-actions > button > kbd { border-left-color: #aebfd0; color: inherit; }
+html body .report-list-filter-toolbar .report-list-filter-start > button:hover:not(:disabled),
+html body .report-list-filter-toolbar .report-more-actions > button:hover:not(:disabled),
+html body .report-list-filter-toolbar .report-output-actions > button:hover:not(:disabled) { background: #e0e8f0 !important; }
+html body .report-list-filter-toolbar .report-output-actions > button:disabled { opacity: .5; }
+
+/* Other report filter windows retain their presentation. */
+html body .report-screen--desktop .erp-filter-dialog > .filter-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 180px)); justify-content: start;
+  gap: 12px; padding: 10px; border: 1px solid #c0d1e3; border-radius: 6px; background: #f4f7fb;
+}
+.report-screen--desktop .erp-filter-dialog .filter-field { min-width: 0; font-size: 12px; background: transparent !important; }
+.report-screen--desktop .erp-filter-dialog .filter-field > span { background: transparent !important; }
+.report-screen--desktop .erp-filter-dialog .filter-wide { grid-column: auto; }
+.report-screen--desktop .erp-filter-dialog .filter-field:has(.date-range-control) { grid-column: 1 / -1; }
+html body .report-screen--desktop .erp-filter-dialog .erp-select { width: 100%; min-width: 0; height: 34px; border: 0 !important; }
+html body .report-screen--desktop .erp-filter-dialog .erp-select__trigger { width: 100%; min-height: 34px; height: 34px; border-radius: 4px !important; box-shadow: none !important; }
+.report-screen--desktop .erp-filter-dialog .erp-select__arrow { width: 42px; min-height: 0; height: 100%; margin: 0; border-radius: 0 3px 3px 0; }
+html body .report-screen--desktop .erp-filter-dialog .erp-select__popover { border-radius: 6px !important; }
+html body .report-screen--desktop .erp-filter-dialog .erp-select__option { border-radius: 4px !important; }
+@layer gestion-accents {
+  .report-screen--desktop .erp-filter-dialog .erp-select__trigger { height: 34px !important; min-height: 34px !important; }
+  .report-screen--desktop .erp-filter-dialog .erp-select__option[aria-selected="true"]:not(:hover):not(:disabled) { background: #f4f7fa !important; color: #172e4c !important; }
+  .report-screen--desktop .erp-filter-dialog .erp-select__option:hover:not(:disabled) { background: #0065fe !important; color: #fff !important; }
+}
+
+/* Customer document lists use the shared inline panel, with dates in the footer. */
+html body .report-document-filter-panel .erp-list-filter-search > .report-search {
+  box-sizing: border-box; display: flex; align-items: center; gap: 8px;
+  width: 100% !important; min-width: 0 !important; max-width: 360px !important;
+  height: 34px; margin: 0; padding: 0 8px; border: 1px solid #aebfd0 !important;
+  border-radius: 4px !important; background: #fff; box-shadow: none !important;
+}
+.report-document-filter-panel .report-search:focus-within { outline: 2px solid #0065fe; outline-offset: 1px; }
+.report-document-filter-panel .erp-list-filter-fields > .filter-field {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; min-width: 0;
+  margin: 0; padding: 0; border: 0; background: transparent; font-size: 12px; color: #516175;
+}
+.report-document-filter-panel .filter-field > span { background: transparent !important; }
+html body .report-document-filter-panel .report-inline-filter-clear {
+  align-self: end; justify-self: start; height: 34px; min-height: 34px; padding: 5px 8px;
+  border: 1px solid #68798b; border-radius: 3px !important; background: #eef1f4; color: #12385f;
+}
+.report-document-filter-panel .report-output-actions > button > span { flex-direction: row-reverse; }
+html body .report-document-filter-panel .report-output-actions { display: flex; gap: 6px; }
+@layer gestion-accents {
+  .report-document-filter-panel :is(.report-more-actions > button, .report-output-actions > button, .report-inline-filter-clear) {
+    background: #eef1f4 !important; color: #12385f !important; border-color: #68798b !important;
+  }
+  .report-document-filter-panel .report-output-actions > button :is(span, kbd) { color: inherit !important; background: transparent !important; }
+}

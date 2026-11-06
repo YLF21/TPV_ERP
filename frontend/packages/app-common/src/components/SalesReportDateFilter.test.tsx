@@ -70,7 +70,7 @@ describe("report quick date integration", () => {
     expect(summary.querySelectorAll(".report-date-range-weekday")).toHaveLength(2);
   });
 
-  it("keeps APP VENTA date edits as a draft until Aplicar", async () => {
+  it("automatically applies a valid custom date range from the APP VENTA footer", async () => {
     const request = fixture();
     const { container } = mount(request, "tickets", "venta", "es");
     const initialQuery = `/document-reports/tickets?limit=500&dateFrom=${currentDate}&dateTo=${currentDate}`;
@@ -78,13 +78,11 @@ describe("report quick date integration", () => {
     const summary = container.querySelector(".report-date-range-summary")!;
     expect([...summary.querySelectorAll("time")].map((time) => time.dateTime)).toEqual([currentDate, currentDate]);
 
-    request.mockClear();
+    const footer = container.querySelector(".report-date-range-filter");
+    expect(footer).toContainElement(screen.getByLabelText("Desde"));
     fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-08-15" } });
     fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-08-16" } });
-    expect(request).not.toHaveBeenCalled();
-    expect([...summary.querySelectorAll("time")].map((time) => time.dateTime)).toEqual([currentDate, currentDate]);
-
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    expect(screen.queryByRole("button", { name: "Aplicar" })).not.toBeInTheDocument();
     await waitFor(() => expect(request).toHaveBeenCalledWith(
       "/document-reports/tickets?limit=500&dateFrom=2026-08-15&dateTo=2026-08-16", { token: "token" }
     ));
@@ -104,7 +102,8 @@ describe("report quick date integration", () => {
     await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("Excel exportado correctamente")).toBeInTheDocument();
     expect(JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)).toMatchObject({ reportKey: "salesReport.tickets", filters: { dateFrom: "2025-10-01", dateTo: "2025-12-31" } });
-    expect(request.mock.calls.every((call) => call.length === 2 && Object.keys(call[1]).join() === "token")).toBe(true);
+    expect(request.mock.calls.every(([, options]) => options.token === "token"
+      && (options.method === undefined || options.method === "GET") && options.body === undefined)).toBe(true);
   });
 
   it.each([

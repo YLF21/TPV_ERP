@@ -90,9 +90,11 @@ describe("Stock's shared SaaS product history", () => {
     expect(within(dialog).queryByText("Tueste natural")).toBeNull();
     expect(within(dialog).queryByText("8430000000001")).toBeNull();
     expect(within(dialog).queryByText("Stock total")).toBeNull();
-    expect(within(dialog).getByRole("button", { name: "Aplicar filtro" })).toBeTruthy();
+    expect(within(dialog).queryByRole("button", { name: "Aplicar filtro" })).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Filtrar" })).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "Comparación por tienda" })).toBeTruthy();
-    expect(within(dialog).getByRole("button", { name: "Exportar" })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Exportar a Excel" })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Exportar a PDF" })).toBeTruthy();
 
     fireEvent.keyDown(dialog, { key: "F5" });
     expect(informationTab.getAttribute("aria-selected")).toBe("true");
@@ -127,12 +129,17 @@ describe("Stock's shared SaaS product history", () => {
     expect(within(dialog).queryByText("Solo datos recibidos en SaaS")).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: "Comparación por tienda" }));
     expect(within(dialog).getByRole("columnheader", { name: /Cantidad total/ })).toBeTruthy();
+    const filterToggle = within(dialog).getByRole("button", { name: "Filtrar" });
+    fireEvent.click(filterToggle);
     const store = within(dialog).getByRole("button", { name: "Tienda" });
     fireEvent.click(store);
-    fireEvent.keyDown(screen.getByRole("option", { name: "Todas las tiendas" }), { key: "Escape" });
+    fireEvent.keyDown(store, { key: "Escape" });
     expect(screen.getByRole("dialog", { name: "Información del producto" })).toBeTruthy();
     expect(document.activeElement).toBe(store);
     fireEvent.keyDown(store, { key: "Escape" });
+    expect(filterToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByRole("dialog", { name: "Información del producto" })).toBeTruthy();
+    fireEvent.keyDown(dialog, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Información del producto" })).toBeNull());
     expect(vi.mocked(apiRequest).mock.calls.filter(([path]) => path.includes("/sales-history"))
       .every(([path]) => path.includes("/sales-history/saas?"))).toBe(true);

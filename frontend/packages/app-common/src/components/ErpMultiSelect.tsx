@@ -11,19 +11,21 @@ export type ErpMultiSelectProps = {
   placeholder: string;
   /** Enables searching the available options. */
   searchPlaceholder?: string;
+  emptyLabel?: string;
   /** Allows an exact value absent from the options, with an explicit option label. */
   customValueLabel?: (value: string) => string;
   disabled?: boolean;
   id?: string;
   className?: string;
+  maxPopoverWidth?: number | "trigger";
   title?: string;
   "aria-label"?: string;
   "aria-labelledby"?: string;
 };
 
 export function ErpMultiSelect({
-  values, options, onChange, placeholder, searchPlaceholder, customValueLabel, disabled = false,
-  id, className, title, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledBy,
+  values, options, onChange, placeholder, searchPlaceholder, customValueLabel, disabled = false, emptyLabel = "—",
+  id, className, maxPopoverWidth = 360, title, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledBy,
 }: ErpMultiSelectProps) {
   const generatedId = useId();
   const listboxId = `${id ?? generatedId}-listbox`;
@@ -40,7 +42,7 @@ export function ErpMultiSelect({
   const availableOptions = useMemo(() => {
     const seen = new Set<string>();
     return options.filter((option) => {
-      if (seen.has(option.value)) return false;
+      if (!option.value || seen.has(option.value)) return false;
       seen.add(option.value);
       return true;
     });
@@ -76,7 +78,7 @@ export function ErpMultiSelect({
   function toggleOption(index: number) {
     const option = visibleOptions[index];
     if (!option || option.disabled) return;
-    onChange(option.value === "" ? [] : selectedValues.includes(option.value)
+    onChange(selectedValues.includes(option.value)
       ? selectedValues.filter((value) => value !== option.value)
       : [...selectedValues, option.value]);
   }
@@ -93,9 +95,10 @@ export function ErpMultiSelect({
       const trigger = triggerRef.current;
       const popover = popoverRef.current;
       if (!trigger || !popover) return;
-      const layout = erpSelectPopoverLayout(trigger.getBoundingClientRect(), popover.getBoundingClientRect(), {
+      const triggerBounds = trigger.getBoundingClientRect();
+      const layout = erpSelectPopoverLayout(triggerBounds, popover.getBoundingClientRect(), {
         width: window.innerWidth, height: window.innerHeight,
-      });
+      }, maxPopoverWidth === "trigger" ? triggerBounds.width : maxPopoverWidth);
       popover.style.top = `${layout.top}px`;
       popover.style.left = `${layout.left}px`;
       popover.style.minWidth = `${layout.minWidth}px`;
@@ -109,7 +112,7 @@ export function ErpMultiSelect({
       window.removeEventListener("resize", positionPopover);
       window.removeEventListener("scroll", positionPopover, true);
     };
-  }, [open, visibleOptions.length, searchPlaceholder]);
+  }, [open, visibleOptions.length, searchPlaceholder, maxPopoverWidth]);
 
   useOutsidePointerDown(open, rootRef, () => closeMenu());
   useEffect(() => { if (disabled) closeMenu(); }, [disabled]);
@@ -180,17 +183,17 @@ export function ErpMultiSelect({
         <div id={listboxId} role="listbox" aria-multiselectable="true" aria-label={accessibleLabel} aria-labelledby={ariaLabelledBy}
           className="erp-multi-select__options">
           {visibleOptions.map((option, index) => {
-            const selected = option.value === "" ? selectedValues.length === 0 : selectedValues.includes(option.value);
+            const selected = selectedValues.includes(option.value);
             return <button type="button" className="erp-multi-select__option" key={option.value}
               role="option" aria-selected={selected} aria-disabled={option.disabled || undefined} disabled={option.disabled}
               tabIndex={index === activeIndex ? 0 : -1} ref={(element) => { optionRefs.current[index] = element; }}
               onFocus={() => { setActiveIndex(index); setFocusTarget("option"); }}
               onClick={() => toggleOption(index)} onKeyDown={(event) => handleOptionKeyDown(event, index)}>
-              <span className="erp-multi-select__check" aria-hidden="true">{selected ? "✓" : ""}</span>
               <span>{option.label}</span>
             </button>;
           })}
         </div>
+        {visibleOptions.length === 0 && <div className="erp-multi-select__empty" role="status">{emptyLabel}</div>}
       </div>}
     </div>
   );

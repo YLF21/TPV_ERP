@@ -100,34 +100,40 @@ public class PdaOperationalObservabilityService {
 
     @Transactional(readOnly = true)
     public Dashboard dashboard(int windowHours, int inactiveMinutes, int page, int size, UUID terminalId) {
+        return dashboardFiltered(windowHours, inactiveMinutes, page, size, terminalId == null ? List.of() : List.of(terminalId));
+    }
+
+    @Transactional(readOnly = true)
+    public Dashboard dashboardFiltered(int windowHours, int inactiveMinutes, int page, int size, List<UUID> terminalIds) {
+        var selectedTerminals = terminalIds == null ? List.<UUID>of() : terminalIds;
         if (windowHours < 1 || windowHours > 720) throw new IllegalArgumentException("windowHours debe estar entre 1 y 720");
         if (inactiveMinutes < 5 || inactiveMinutes > 1440) throw new IllegalArgumentException("inactiveMinutes debe estar entre 5 y 1440");
         if (page < 0 || size < 1 || size > 100) throw new IllegalArgumentException("Paginacion no valida");
         UUID storeId = organization.currentStore().getId();
-        if (terminalId != null) terminal(storeId, terminalId);
+        selectedTerminals.forEach(id -> terminal(storeId, id));
         Instant now = Instant.now(clock);
         Instant from = now.minus(Duration.ofHours(windowHours));
-        Page<PdaOperationalEvent> eventPage = terminalId == null
+        Page<PdaOperationalEvent> eventPage = selectedTerminals.isEmpty()
                 ? events.findByStoreIdAndOccurredAtGreaterThanEqualOrderByOccurredAtDescIdDesc(storeId, from, PageRequest.of(page, size))
-                : events.findByStoreIdAndTerminalIdAndOccurredAtGreaterThanEqualOrderByOccurredAtDescIdDesc(storeId, terminalId, from, PageRequest.of(page, size));
+                : events.findByStoreIdAndTerminalIdInAndOccurredAtGreaterThanEqualOrderByOccurredAtDescIdDesc(storeId, selectedTerminals, from, PageRequest.of(page, size));
         List<Terminal> allTerminals = terminals.findAllByTiendaIdOrderByNombre(storeId).stream()
                 .filter(value -> value.getTipo() == TerminalType.PDA).toList();
         Map<UUID, String> names = allTerminals.stream().collect(Collectors.toMap(Terminal::getId, Terminal::getNombre));
-        List<EventView> sync = top(storeId, terminalId, SYNC_TYPES, from).stream().map(e -> view(e, names)).toList();
-        List<EventView> blocked = top(storeId, terminalId, BLOCKED_TYPES, from).stream().map(e -> view(e, names)).toList();
+        List<EventView> sync = top(storeId, selectedTerminals, SYNC_TYPES, from).stream().map(e -> view(e, names)).toList();
+        List<EventView> blocked = top(storeId, selectedTerminals, BLOCKED_TYPES, from).stream().map(e -> view(e, names)).toList();
         Instant inactiveBefore = now.minus(Duration.ofMinutes(inactiveMinutes));
         List<InactiveTerminal> inactive = allTerminals.stream()
                 .filter(Terminal::isActiva).filter(Terminal::isAprobada)
-                .filter(value -> terminalId == null || terminalId.equals(value.getId()))
+                .filter(value -> selectedTerminals.isEmpty() || selectedTerminals.contains(value.getId()))
                 .filter(value -> value.getLastSeenAt() == null || value.getLastSeenAt().isBefore(inactiveBefore))
                 .map(value -> new InactiveTerminal(value.getId(), value.getNombre(), value.getLastSeenAt(),
                         value.getLastSeenAt() == null ? null : value.getLastSeenAt().plus(Duration.ofMinutes(inactiveMinutes))))
                 .toList();
-        var latency = terminalId == null ? events.latency(storeId, from)
-                : events.latencyForTerminal(storeId, terminalId, from);
-        long failures = count(storeId, terminalId, PdaOperationalEventType.SYNC_FAILURE, from);
-        long conflicts = count(storeId, terminalId, PdaOperationalEventType.SYNC_CONFLICT, from);
-        long blockedCount = count(storeId, terminalId, PdaOperationalEventType.TASK_BLOCKED, from);
+        var latency = selectedTerminals.isEmpty() ? events.latency(storeId, from)
+                : events.latencyForTerminals(storeId, selectedTerminals, from);
+        long failures = count(storeId, selectedTerminals, PdaOperationalEventType.SYNC_FAILURE, from);
+        long conflicts = count(storeId, selectedTerminals, PdaOperationalEventType.SYNC_CONFLICT, from);
+        long blockedCount = count(storeId, selectedTerminals, PdaOperationalEventType.TASK_BLOCKED, from);
         Performance performance = new Performance(latency.getSampleCount(), latency.getAverageLatencyMs(),
                 latency.getP95LatencyMs(), latency.getMaxLatencyMs());
         Summary summary = new Summary(failures, conflicts, blockedCount, inactive.size(),
@@ -137,16 +143,16 @@ public class PdaOperationalObservabilityService {
                 eventPage.getTotalElements(), eventPage.getTotalPages());
     }
 
-    private List<PdaOperationalEvent> top(UUID storeId, UUID terminalId, EnumSet<PdaOperationalEventType> types, Instant from) {
+    private List<PdaOperationalEvent> top(UUID storeId, List<UUID> selectedTerminals, EnumSet<PdaOperationalEventType> types, Instant from) {
         var limit = PageRequest.of(0, 50);
-        return terminalId == null
+        return selectedTerminals.isEmpty()
                 ? events.findByStoreIdAndTipoInAndOccurredAtGreaterThanEqualOrderByOccurredAtDescIdDesc(storeId, types, from, limit)
-                : events.findByStoreIdAndTerminalIdAndTipoInAndOccurredAtGreaterThanEqualOrderByOccurredAtDescIdDesc(storeId, terminalId, types, from, limit);
+                : events.findByStoreIdAndTerminalIdInAndTipoInAndOccurredAtGreaterThanEqualOrderByOccurredAtDescIdDesc(storeId, selectedTerminals, types, from, limit);
     }
 
-    private long count(UUID storeId, UUID terminalId, PdaOperationalEventType type, Instant from) {
-        return terminalId == null ? events.countByStoreIdAndTipoAndOccurredAtGreaterThanEqual(storeId, type, from)
-                : events.countByStoreIdAndTerminalIdAndTipoAndOccurredAtGreaterThanEqual(storeId, terminalId, type, from);
+    private long count(UUID storeId, List<UUID> selectedTerminals, PdaOperationalEventType type, Instant from) {
+        return selectedTerminals.isEmpty() ? events.countByStoreIdAndTipoAndOccurredAtGreaterThanEqual(storeId, type, from)
+                : events.countByStoreIdAndTerminalIdInAndTipoAndOccurredAtGreaterThanEqual(storeId, selectedTerminals, type, from);
     }
 
     private Terminal terminal(UUID storeId, UUID terminalId) {

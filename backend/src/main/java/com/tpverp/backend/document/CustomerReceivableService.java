@@ -87,7 +87,13 @@ public class CustomerReceivableService {
         var search = normalizedSearch == null
                 ? null : normalizedSearch.toLowerCase(Locale.ROOT);
         var storeId = organization.currentStore().getId();
-        var source = effective.status() == DocumentStatus.PAGADO
+        var statuses = effective.statuses() == null
+                ? effective.status() == null ? List.<DocumentStatus>of() : List.of(effective.status())
+                : effective.statuses();
+        var types = effective.documentTypes() == null
+                ? effective.documentType() == null ? List.<CommercialDocumentType>of() : List.of(effective.documentType())
+                : effective.documentTypes();
+        var source = statuses.contains(DocumentStatus.PAGADO)
                 ? documents.findCustomerReceivablesIncludingPaid(storeId)
                 : documents.findCustomerReceivables(storeId);
         return source.stream()
@@ -95,11 +101,10 @@ public class CustomerReceivableService {
                 .map(document -> views.receivableView(document, businessDate))
                 .filter(view -> effective.customerId() == null
                         || effective.customerId().equals(view.customerId()))
-                .filter(view -> effective.status() == null || effective.status() == view.status())
+                .filter(view -> statuses.isEmpty() || statuses.contains(view.status()))
                 .filter(view -> effective.overdue() == null
                         || effective.overdue() == view.overdue())
-                .filter(view -> effective.documentType() == null
-                        || effective.documentType() == view.documentType())
+                .filter(view -> types.isEmpty() || types.contains(view.documentType()))
                 .filter(view -> effective.dueFrom() == null || (view.dueDate() != null
                         && !view.dueDate().isBefore(effective.dueFrom())))
                 .filter(view -> effective.dueTo() == null || (view.dueDate() != null
@@ -137,6 +142,8 @@ public class CustomerReceivableService {
         return payments.findCustomerReceivablePaymentHistory(
                         store.getId(), from, to, filterPaymentMethod, paymentMethodId,
                         filterCustomer, customerId).stream()
+                .filter(payment -> effective.paymentMethodIds() == null || effective.paymentMethodIds().isEmpty()
+                        || effective.paymentMethodIds().contains(payment.getMetodoPago().getId()))
                 .map(views::receivablePaymentHistory)
                 .filter(view -> search == null || contains(view.documentNumber(), search)
                         || contains(view.customerName(), search))

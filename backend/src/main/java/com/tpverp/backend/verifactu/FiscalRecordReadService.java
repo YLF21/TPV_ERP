@@ -113,6 +113,15 @@ public class FiscalRecordReadService {
             FiscalMode fiscalMode,
             int size,
             String encodedCursor) {
+        return recordsCursorFiltered(dateFrom, dateTo, operation, documentType, documentNumber, numberMatch,
+                fiscalMode, size, encodedCursor, FiscalListChoices.EMPTY);
+    }
+
+    @Transactional(readOnly = true)
+    public FiscalRecordReadCursorPage recordsCursorFiltered(LocalDate dateFrom, LocalDate dateTo,
+            FiscalRecordOperation operation, FiscalDocumentType documentType, String documentNumber,
+            FiscalRecordNumberMatch numberMatch, FiscalMode fiscalMode, int size, String encodedCursor,
+            FiscalListChoices choices) {
         validateCursorSize(size);
         validateRange(dateFrom, dateTo);
         var normalizedNumber = normalizeDocumentNumber(documentNumber);
@@ -121,6 +130,7 @@ public class FiscalRecordReadService {
         var fingerprint = FiscalRecordReadCursorCodec.fingerprint(
                 scope.companyId(), scope.storeId(), scope.installationId(), dateFrom, dateTo,
                 operation, documentType, normalizedNumber, normalizedMatch, fiscalMode);
+        if (choices.hasValues()) fingerprint = FiscalRecordReadCursorCodec.fingerprint(fingerprint, choices);
         FiscalRecordReadCursor cursor = encodedCursor == null || encodedCursor.isBlank()
                 ? null : FiscalRecordReadCursorCodec.decode(encodedCursor);
         if (cursor != null && !java.util.Objects.equals(cursor.filterFingerprint(), fingerprint)) {
@@ -129,7 +139,11 @@ public class FiscalRecordReadService {
         var snapshotSequence = cursor == null
                 ? reads.maxSequence(scope.companyId(), scope.storeId(), scope.installationId())
                 : cursor.snapshotSequence();
-        var rows = reads.findCursorRows(scope.companyId(), scope.storeId(), scope.installationId(),
+        var rows = choices.hasValues()
+                ? reads.findCursorRowsFiltered(scope.companyId(), scope.storeId(), scope.installationId(),
+                        dateFrom, dateTo, operation, documentType, normalizedNumber, normalizedMatch, fiscalMode,
+                        snapshotSequence, cursor, size + 1, choices)
+                : reads.findCursorRows(scope.companyId(), scope.storeId(), scope.installationId(),
                 dateFrom, dateTo, operation, documentType, normalizedNumber, normalizedMatch,
                 fiscalMode, snapshotSequence, cursor, size + 1);
         var hasExtra = rows.size() > size;

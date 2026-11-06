@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SaleProduct } from "./SaleScreen";
 import {
@@ -33,6 +33,37 @@ afterEach(() => {
 });
 
 describe("SaleProductInformationDialog", () => {
+  it("places replenishment at the footer right and isolates F9, Insert and Escape from the parent", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (String(url).includes("/products/product-1") && !String(url).includes("/suppliers")) {
+        return jsonResponse({ ...product, packageQuantity: 12 });
+      }
+      if (String(url).includes("/warehouses")) return jsonResponse([{ id: "warehouse-1", name: "GENERAL", active: true, defaultWarehouse: true }]);
+      return jsonResponse([]);
+    }));
+    const onAdd = vi.fn(), onClose = vi.fn();
+    render(<SaleProductInformationDialog product={product} locale="es" token="token" interfaceMode="KEYBOARD"
+      canManageProducts={false} onAdd={onAdd} onClose={onClose} />);
+    const request = await screen.findByRole("button", {name:/Solicitar reposición.*F9/});
+    const parent = screen.getByRole("dialog", {name:product.name ?? ""});
+    expect(request.closest("footer")?.lastElementChild?.contains(request)).toBe(true);
+    expect(parent.querySelector(".sale-product-information-content .replenishment-request")).toBeNull();
+    fireEvent.keyDown(parent, {key:"F9"});
+    const child = await screen.findByRole("dialog", {name:"Solicitar reposición"});
+    expect(child.parentElement).toBe(document.body);
+    expect(within(child).getByLabelText(/Unidades/)).toHaveValue(12);
+    fireEvent.keyDown(child, {key:"Insert"});
+    expect(onAdd).not.toHaveBeenCalled();
+    fireEvent.keyDown(child, {key:"Escape"});
+    await waitFor(() => expect(screen.queryByRole("dialog", {name:"Solicitar reposición"})).toBeNull());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(parent).toHaveAttribute("open");
+    expect(request).toHaveFocus();
+    fireEvent.keyDown(parent, {key:"F9"});
+    fireEvent(screen.getByRole("dialog", {name:"Solicitar reposición"}),new Event("cancel",{bubbles:true,cancelable:true}));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("builds the existing product-information row with stock and active promotions", () => {
     const row = buildSaleProductInformationRow(
       {

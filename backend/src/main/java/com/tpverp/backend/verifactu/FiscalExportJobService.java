@@ -176,7 +176,7 @@ public class FiscalExportJobService {
                 previous.getPeriodEnd(), previous.getRecordIds(), previous.getDateFrom(),
                 previous.getDateTo(), previous.getDocumentNumber(), previous.getDocumentNumberPrefix(),
                 previous.getOperation(), previous.getDocumentType(), previous.getFiscalMode(),
-                previous.getScope());
+                previous.getScope(), previous.getChoices());
         var retried = create(request, requestedBy);
         if (previous.getRequiredSubmissionId() != null) {
             var job = jobs.findById(retried.id()).orElseThrow();
@@ -759,6 +759,7 @@ public class FiscalExportJobService {
                 """);
         if (job.getPeriodStart() != null) sql.append(" and record.generado_en >= :periodStart\n");
         if (job.getPeriodEnd() != null) sql.append(" and record.generado_en <= :periodEnd\n");
+        job.getChoices().appendRecordPredicates(sql);
         return sql.append(" order by record.secuencia asc, record.id asc limit :limit\n").toString();
     }
 
@@ -873,6 +874,7 @@ public class FiscalExportJobService {
         if (job.getOperation() != null) parameters.addValue("operation", job.getOperation().name());
         if (job.getDocumentType() != null) parameters.addValue("documentType", job.getDocumentType().name());
         if (job.getFiscalMode() != null) parameters.addValue("fiscalMode", job.getFiscalMode().name());
+        job.getChoices().bindRecordParameters(parameters);
         return parameters;
     }
 
@@ -957,7 +959,7 @@ public class FiscalExportJobService {
                 List.copyOf(request.safeRecordIds()),
                 request.dateFrom(), request.dateTo(), bounded(request.documentNumber()),
                 bounded(request.documentNumberPrefix()), request.operation(), request.documentType(),
-                request.fiscalMode(), request.scope());
+                request.fiscalMode(), request.scope(), request.choices());
     }
 
     private static String bounded(String value) {
@@ -983,7 +985,7 @@ public class FiscalExportJobService {
                 && (!request.safeRecordIds().isEmpty() || request.dateFrom() != null || request.dateTo() != null
                 || request.documentNumber() != null || request.documentNumberPrefix() != null
                 || request.operation() != null || request.documentType() != null
-                || request.fiscalMode() != null)) {
+                || request.fiscalMode() != null || request.choices().hasValues())) {
             throw new IllegalArgumentException("Los filtros de registros solo admiten exportaciones BILLING");
         }
         if (!request.hasValidPeriod() || !request.hasValidIssueDates() || !request.hasSingleNumberFilter()) {
@@ -1022,6 +1024,9 @@ public class FiscalExportJobService {
                 + ", \"operation\": " + jsonString(job.getOperation())
                 + ", \"documentType\": " + jsonString(job.getDocumentType())
                 + ", \"fiscalMode\": " + jsonString(job.getFiscalMode())
+                + ", \"operations\": " + jsonArray(job.getChoices().operations())
+                + ", \"documentTypes\": " + jsonArray(job.getChoices().documentTypes())
+                + ", \"fiscalModes\": " + jsonArray(job.getChoices().fiscalModes())
                 + ", \"recordIds\": " + jsonArray(job.getRecordIds()) + "},\n"
                 + "  \"recordCount\": " + progress.processed + ",\n"
                 + "  \"firstRecord\": " + progress.firstRecordJson(job.getKind()) + ",\n"
@@ -1033,7 +1038,7 @@ public class FiscalExportJobService {
                 + "}";
     }
 
-    private static String jsonArray(List<UUID> values) {
+    private static String jsonArray(List<?> values) {
         return values.stream().map(FiscalExportJobService::jsonString)
                 .collect(java.util.stream.Collectors.joining(",", "[", "]"));
     }

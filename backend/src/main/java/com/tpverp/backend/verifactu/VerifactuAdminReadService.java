@@ -105,6 +105,20 @@ public class VerifactuAdminReadService {
     }
 
     @Transactional(readOnly = true)
+    public VerifactuAdminSubmissionPage submissionsFiltered(LocalDate dateFrom, LocalDate dateTo, FiscalListChoices choices,
+            String documentNumber, int page, int size, String sortBy, String sortDirection) {
+        validatePage(page, size);
+        validateRange(dateFrom, dateTo);
+        validateSort(sortBy, sortDirection);
+        var store = organization.currentStore();
+        var zone = ZoneId.of(store.getTimezone());
+        var scope = scope(store);
+        return reads.findSubmissionsFiltered(scope.companyId(), scope.storeId(), scope.installationId(),
+                startOfDay(dateFrom, zone), startOfNextDay(dateTo, zone), choices,
+                normalizeDocumentNumber(documentNumber), page, size, sortBy, sortDirection);
+    }
+
+    @Transactional(readOnly = true)
     public VerifactuAdminSubmissionPage submissions(
             LocalDate dateFrom,
             LocalDate dateTo,

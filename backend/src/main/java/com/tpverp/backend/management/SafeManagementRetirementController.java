@@ -7,8 +7,10 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -49,8 +51,9 @@ public class SafeManagementRetirementController {
             @RequestParam(required = false) Boolean active,
             @RequestParam(defaultValue = "name") @Size(max = 32) String sort,
             @RequestParam(defaultValue = "asc") @Size(max = 4) String direction,
-            @RequestParam java.util.Map<String, String> filters) {
-        return retirement.page(EntityType.CUSTOMER, size, cursor, search, active, sort, direction, filters);
+            @RequestParam MultiValueMap<String, String> filters) {
+        return retirement.page(EntityType.CUSTOMER, size, cursor, search, active, sort, direction,
+                filters.toSingleValueMap(), addressChoices(filters));
     }
 
     @GetMapping("/suppliers/management/page")
@@ -61,8 +64,26 @@ public class SafeManagementRetirementController {
             @RequestParam(required = false) Boolean active,
             @RequestParam(defaultValue = "name") @Size(max = 16) String sort,
             @RequestParam(defaultValue = "asc") @Size(max = 4) String direction,
-            @RequestParam java.util.Map<String, String> filters) {
-        return retirement.page(EntityType.SUPPLIER, size, cursor, search, active, sort, direction, filters);
+            @RequestParam MultiValueMap<String, String> filters) {
+        return retirement.page(EntityType.SUPPLIER, size, cursor, search, active, sort, direction,
+                filters.toSingleValueMap(), addressChoices(filters));
+    }
+
+    @GetMapping("/customers/management/address-options")
+    public List<SafeManagementRetirementService.DirectoryAddressOption> customerAddressOptions() {
+        return retirement.addressOptions(EntityType.CUSTOMER);
+    }
+
+    @GetMapping("/suppliers/management/address-options")
+    public List<SafeManagementRetirementService.DirectoryAddressOption> supplierAddressOptions() {
+        return retirement.addressOptions(EntityType.SUPPLIER);
+    }
+
+    private static SafeManagementRetirementService.DirectoryAddressChoices addressChoices(
+            MultiValueMap<String, String> filters) {
+        return new SafeManagementRetirementService.DirectoryAddressChoices(
+                filters.getOrDefault("field.locationChoice", List.of()),
+                filters.getOrDefault("field.countryChoice", List.of()));
     }
 
     @GetMapping("/sales-representatives/management/page")

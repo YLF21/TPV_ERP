@@ -11,6 +11,13 @@ const row = { documentId: "doc-1", documentType: "FACTURA_VENTA", documentNumber
 
 afterEach(cleanup);
 
+function chooseFilter(label: string, option: string) {
+  const toggle = screen.getByRole("button", { name: "Filtrar" });
+  if (toggle.getAttribute("aria-expanded") === "false") fireEvent.click(toggle);
+  fireEvent.click(screen.getByRole("button", { name: label }));
+  fireEvent.click(screen.getByRole("option", { name: option }));
+}
+
 it("keeps print retry after two failures and clears only after success", async () => {
   const retry = vi.fn().mockResolvedValueOnce({ status: "FAILED" })
     .mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ status: "PRINTED" });
@@ -94,10 +101,11 @@ describe("CustomerReceivablesScreen", () => {
     const request = vi.fn().mockResolvedValue([]);
     render(<CustomerReceivablesScreen locale="es" session={session} terminalContext={{ storeName: "Tienda", terminalCode: "01" }} request={request as any} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
     await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
-    expect(screen.getByLabelText("Estado")).toHaveTextContent("Pagado");
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
+    expect(screen.getByLabelText("Estado")).toHaveTextContent("Todos");
     fireEvent.change(screen.getByLabelText("Buscar deuda"), { target: { value: "Ana" } });
-    fireEvent.change(screen.getByLabelText("Estado"), { target: { value: "PAGADO" } });
-    fireEvent.change(screen.getByLabelText("Tipo de documento"), { target: { value: "FACTURA_VENTA" } });
+    chooseFilter("Estado", "Pagado");
+    chooseFilter("Tipo de documento", "Factura");
     fireEvent.click(screen.getByLabelText("Solo vencidos"));
     fireEvent.change(screen.getByLabelText("Vencimiento desde"), { target: { value: "2026-07-01" } });
     fireEvent.change(screen.getByLabelText("Vencimiento hasta"), { target: { value: "2026-07-31" } });
@@ -128,7 +136,7 @@ describe("CustomerReceivablesScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Histórico de cobros" }));
     expect(await screen.findByText("TR-1")).toBeVisible();
     fireEvent.change(screen.getByLabelText("Buscar cliente o documento"), { target: { value: "Cliente Uno" } });
-    fireEvent.change(screen.getByLabelText("Forma de pago"), { target: { value: "transfer" } });
+    chooseFilter("Forma de pago", "TRANSFERENCIA");
     fireEvent.change(screen.getByLabelText("Cobrado desde"), { target: { value: "2026-07-01" } });
     fireEvent.change(screen.getByLabelText("Cobrado hasta"), { target: { value: "2026-07-20" } });
     await waitFor(() => {
@@ -178,8 +186,8 @@ describe("CustomerReceivablesScreen", () => {
       terminalContext={{ storeName: "Tienda", terminalCode: "01" }} request={request as any} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
     await waitFor(() => expect(request).toHaveBeenCalledOnce());
     fireEvent.change(screen.getByLabelText("Buscar deuda"), { target: { value: "Ana" } });
-    fireEvent.change(screen.getByLabelText("Estado"), { target: { value: "PARCIAL" } });
-    fireEvent.change(screen.getByLabelText("Tipo de documento"), { target: { value: "FACTURA_VENTA" } });
+    chooseFilter("Estado", "Parcial");
+    chooseFilter("Tipo de documento", "Factura");
     fireEvent.click(screen.getByLabelText("Solo vencidos"));
     fireEvent.change(screen.getByLabelText("Vencimiento desde"), { target: { value: "2026-07-01" } });
     fireEvent.change(screen.getByLabelText("Vencimiento hasta"), { target: { value: "2026-07-31" } });
@@ -187,7 +195,7 @@ describe("CustomerReceivablesScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Estado" }));
     await waitFor(() => expect(request).toHaveBeenLastCalledWith("/customer-receivables?customerId=customer-1&search=Ana&documentType=FACTURA_VENTA&overdue=true&dueFrom=2026-07-01&dueTo=2026-07-31", { token: "token" }));
     expect(screen.getByLabelText("Buscar deuda")).toHaveValue("Ana");
-    expect(screen.getByLabelText("Estado")).toHaveValue("");
+    expect(screen.getByLabelText("Estado")).toHaveTextContent("Todos");
     fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Buscar deuda" }));
     await waitFor(() => expect(request).toHaveBeenLastCalledWith("/customer-receivables?customerId=customer-1&documentType=FACTURA_VENTA&overdue=true&dueFrom=2026-07-01&dueTo=2026-07-31", { token: "token" }));
     fireEvent.click(screen.getByRole("button", { name: "Limpiar todos" }));
@@ -203,9 +211,9 @@ describe("CustomerReceivablesScreen", () => {
     await waitFor(() => expect(request).toHaveBeenCalledOnce());
     fireEvent.change(screen.getByLabelText("Buscar deuda"), { target: { value: "Pendiente" } });
     fireEvent.click(screen.getByRole("button", { name: "Histórico de cobros" }));
-    await screen.findByRole("option", { name: "Transferencia" });
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/payment-methods", expect.anything()));
     fireEvent.change(screen.getByLabelText("Buscar cliente o documento"), { target: { value: "Ana" } });
-    fireEvent.change(screen.getByLabelText("Forma de pago"), { target: { value: "transfer" } });
+    chooseFilter("Forma de pago", "Transferencia");
     fireEvent.change(screen.getByLabelText("Cobrado desde"), { target: { value: "2026-07-01" } });
     fireEvent.change(screen.getByLabelText("Cobrado hasta"), { target: { value: "2026-07-31" } });
     expect(screen.getByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("Forma de pago: Transferencia");

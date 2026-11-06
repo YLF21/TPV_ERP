@@ -1,3 +1,4 @@
+import { listFilterValues, type ListFilterValue } from "../../../packages/app-common/src/components/listFilterValues";
 import { apiRequest } from "@tpverp/app-common";
 
 export type FiscalRecordMode = "PRE_SIF" | "NO_VERIFACTU" | "VERIFACTU" | string;
@@ -23,9 +24,9 @@ export type FiscalRecordCursorFilters = {
   dateTo: string;
   number: string;
   numberMatch?: "EXACT" | "PREFIX";
-  operation: "" | FiscalRecordOperation;
-  documentType: "" | FiscalRecordDocumentType;
-  fiscalMode: "" | FiscalRecordMode;
+  operation: ListFilterValue;
+  documentType: ListFilterValue;
+  fiscalMode: ListFilterValue;
   size: number;
   cursor?: string | null;
 };
@@ -130,9 +131,11 @@ function recordFilterParams(filters: FiscalRecordCursorFilters | FiscalRecordFil
   if (filters.dateTo) params.set("dateTo", filters.dateTo);
   if (filters.number.trim()) params.set("number", filters.number.trim());
   if (filters.number.trim()) params.set("numberMatch", filters.numberMatch ?? "PREFIX");
-  if (filters.operation) params.set("operation", filters.operation);
-  if (filters.documentType) params.set("documentType", filters.documentType);
-  if (filters.fiscalMode) params.set("fiscalMode", filters.fiscalMode);
+  for (const [field, plural] of [["operation", "operations"], ["documentType", "documentTypes"], ["fiscalMode", "fiscalModes"]] as const) {
+    const values = listFilterValues(filters[field]);
+    if (values.length === 1) params.set(field, values[0]);
+    else values.forEach(value => params.append(plural, value));
+  }
   return params;
 }
 

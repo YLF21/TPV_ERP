@@ -67,7 +67,7 @@ export function ReportDateRangeSummary({ locale, value, collapseSingleDay = true
   </span>;
 }
 
-export function ReportDateRangeFilter({ locale, today, earliestDate, value, onChange, disabled = false, showSummary = true, collapseSingleDay = true, showWeekday = true, inlineCustomRange = true }: {
+export function ReportDateRangeFilter({ locale, today, earliestDate, value, onChange, disabled = false, showSummary = true, collapseSingleDay = true, showWeekday = true, inlineCustomRange = true, autoApply = inlineCustomRange }: {
   locale: LocaleCode;
   today: string;
   earliestDate: string;
@@ -78,6 +78,7 @@ export function ReportDateRangeFilter({ locale, today, earliestDate, value, onCh
   collapseSingleDay?: boolean;
   showWeekday?: boolean;
   inlineCustomRange?: boolean;
+  autoApply?: boolean;
 }) {
   const t = createSalesActivityTranslator(locale);
   const customId = useId();
@@ -149,6 +150,11 @@ export function ReportDateRangeFilter({ locale, today, earliestDate, value, onCh
 
   const validDraft = ready && isValidReportDate(draftFrom) && isValidReportDate(draftTo)
     && draftFrom <= draftTo && draftTo <= today;
+  function changeDraft(from: string, to: string) {
+    setDraftFrom(from);
+    setDraftTo(to);
+    if (autoApply && (from !== value.from || to !== value.to)) select(from, to, "CUSTOM");
+  }
   const selectedMonth = value.preset === "MONTH" ? value.from.slice(0, 7) : "";
   const selectedQuarter = value.preset === "QUARTER" && isValidReportDate(value.from)
     ? `${value.from.slice(0, 4)}-Q${Math.floor(localDate(value.from).getMonth() / 3) + 1}` : "";
@@ -156,7 +162,7 @@ export function ReportDateRangeFilter({ locale, today, earliestDate, value, onCh
   const customForm = (inlineCustomRange || customOpen) && <form id={customId}
     className={inlineCustomRange ? "report-date-custom-inline" : "report-date-custom sales-activity-custom-period"}
     aria-label={t("custom")} onSubmit={(event) => {
-      event.preventDefault(); if (validDraft) select(draftFrom, draftTo, "CUSTOM");
+      event.preventDefault(); if (!autoApply && validDraft) select(draftFrom, draftTo, "CUSTOM");
     }} onKeyDown={(event) => {
       if (event.key === "Escape") {
         event.stopPropagation();
@@ -164,9 +170,9 @@ export function ReportDateRangeFilter({ locale, today, earliestDate, value, onCh
         else setCustomOpen(false);
       }
     }}>
-    <label><span>{t("from")}</span><input type="date" disabled={!ready} max={today} value={draftFrom} onChange={(event) => setDraftFrom(event.target.value)} /></label>
-    <label><span>{t("to")}</span><input type="date" disabled={!ready} max={today} value={draftTo} onChange={(event) => setDraftTo(event.target.value)} /></label>
-    <button type="submit" disabled={!validDraft}>{t(inlineCustomRange ? "applyInline" : "apply")}</button>
+    <label><span>{t("from")}</span><input type="date" disabled={!ready} max={today} value={draftFrom} onChange={(event) => changeDraft(event.target.value, draftTo)} /></label>
+    <label><span>{t("to")}</span><input type="date" disabled={!ready} max={today} value={draftTo} onChange={(event) => changeDraft(draftFrom, event.target.value)} /></label>
+    {!autoApply && <button type="submit" disabled={!validDraft}>{t(inlineCustomRange ? "applyInline" : "apply")}</button>}
   </form>;
 
   return <footer className="report-date-range-filter sales-activity-filter-dock" aria-label={t("currentPeriod")}>

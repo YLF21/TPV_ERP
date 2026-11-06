@@ -3,6 +3,7 @@ package com.tpverp.backend.inventory;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.*;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -28,5 +29,11 @@ public class WarehouseTransferListExportController {
     }
 
     public record Filters(WarehouseTransferDocument.Status status, UUID sourceWarehouseId, UUID targetWarehouseId,
-                          Instant from, Instant before, @Size(max = 120) String search, @Size(max = 16) String locale) {}
+                          Instant from, Instant before, @Size(max = 120) String search, @Size(max = 16) String locale,
+                          List<WarehouseTransferDocument.Status> statuses, List<UUID> sourceWarehouseIds, List<UUID> targetWarehouseIds) {
+        public Filters(WarehouseTransferDocument.Status status, UUID sourceWarehouseId, UUID targetWarehouseId,
+                Instant from, Instant before, String search, String locale) {
+            this(status, sourceWarehouseId, targetWarehouseId, from, before, search, locale, null, null, null);
+        }
+    }
 }

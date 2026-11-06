@@ -29,6 +29,9 @@ function pageQueries() {
   return vi.mocked(apiRequest).mock.calls.map(([path]) => path).filter(path => path.startsWith("/stock/page"))
     .map(path => new URL(path, "http://test").searchParams);
 }
+function stockPanel() {
+  return document.querySelector<HTMLElement>(".stock-inventory-controls > .stock-standard-filters")!;
+}
 
 beforeEach(() => {
   localStorage.clear();
@@ -49,12 +52,11 @@ afterEach(() => {
 });
 
 async function applyInventoryType() {
-  fireEvent.click(screen.getByRole("button", { name: "Filtrar stock" }));
-  const dialog = screen.getByRole("dialog", { name: "Filtrar stock" });
-  const field = within(dialog).getByText("Tipo", { exact: true }).closest(".filter-field")!;
-  fireEvent.click(within(field as HTMLElement).getByRole("button"));
-  fireEvent.click(within(field as HTMLElement).getByRole("button", { name: "Unidad" }));
-  fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar filtro" }));
+  const panel = stockPanel();
+  fireEvent.click(within(panel).getByRole("button", { name: "Filtrar" }));
+  fireEvent.click(within(panel).getByRole("button", { name: "Tipo" }));
+  fireEvent.click(within(panel).getByRole("option", { name: "Unidad" }));
+  expect(within(panel).queryByRole("button", { name: "Aplicar filtro" })).toBeNull();
   await waitFor(() => expect(pageQueries().at(-1)?.get("type")).toBe("UNIT"));
 }
 
@@ -98,35 +100,32 @@ describe("Stock applied filter chips", () => {
     render(<StockScreen {...props} app={app} />);
     await waitFor(() => expect(pageQueries().at(-1)?.get("warehouseId")).toBe(warehouseId));
 
+    const panel = stockPanel();
+    fireEvent.click(within(panel).getByRole("button", { name: "Filtrar" }));
     const openWarehouseFilter = () => {
-      fireEvent.click(screen.getByRole("button", { name: "Filtrar stock" }));
-      const dialog = screen.getByRole("dialog", { name: "Filtrar stock" });
-      const field = within(dialog).getByText("Almacén", { exact: true }).closest(".filter-field")! as HTMLElement;
-      const trigger = within(field).getByRole("button");
-      fireEvent.click(trigger);
-      return { dialog, field, trigger };
+      const trigger = within(panel).getByRole("button", { name: "Almacén" });
+      if (trigger.getAttribute("aria-expanded") === "false") fireEvent.click(trigger);
+      return { trigger };
     };
 
     let filter = openWarehouseFilter();
     expect(filter.trigger.textContent).toContain("GENERAL");
-    const options = within(filter.field.querySelector(".filter-popover")! as HTMLElement).getAllByRole("button");
+    const options = within(panel).getAllByRole("option", { hidden: true }).filter(option => ["TODO", "GENERAL"].includes(option.textContent ?? ""));
     expect(options.map(option => option.textContent)).toEqual(["TODO", "GENERAL"]);
-    expect(options[1].classList.contains("selected")).toBe(true);
+    expect(options[1].getAttribute("aria-selected")).toBe("false");
     fireEvent.click(options[0]);
-    fireEvent.click(within(filter.dialog).getByRole("button", { name: "Aplicar filtro" }));
     await waitFor(() => expect(pageQueries().at(-1)?.has("warehouseId")).toBe(false));
     expect(screen.getByRole("group", { name: "Filtros aplicados" }).textContent).toContain("Almacén: TODO");
 
     filter = openWarehouseFilter();
     expect(filter.trigger.textContent).toContain("TODO");
-    fireEvent.click(within(filter.field).getByRole("button", { name: "GENERAL" }));
-    fireEvent.click(within(filter.dialog).getByRole("button", { name: "Aplicar filtro" }));
+    fireEvent.click(within(panel).getByRole("option", { name: "GENERAL" }));
     await waitFor(() => expect(pageQueries().at(-1)?.get("warehouseId")).toBe(warehouseId));
 
     fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Almacén" }));
     filter = openWarehouseFilter();
     expect(filter.trigger.textContent).toContain("GENERAL");
-    expect(within(filter.field).queryByRole("button", { name: "Almacén local" })).toBeNull();
+    expect(within(panel).queryByRole("option", { name: "Almacén local" })).toBeNull();
   });
 
   it.each(["stock.current", "stock.offers", "stock.memberPrice", "stock.noDiscount", "stock.promotions"] as const)(
@@ -150,11 +149,9 @@ describe("Stock applied filter chips", () => {
       expect(afterRemove.get("warehouseId")).toBe(warehouseId);
       expect(screen.queryByRole("button", { name: "Quitar filtro Tipo" })).toBeNull();
 
-      fireEvent.click(screen.getByRole("button", { name: "Filtrar stock" }));
-      const dialog = screen.getByRole("dialog", { name: "Filtrar stock" });
-      const field = within(dialog).getByText("Tipo", { exact: true }).closest(".filter-field")!;
-      expect(within(field as HTMLElement).getByRole("button").textContent).toContain("Todas");
-      fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }));
+      const panel = stockPanel();
+      expect(within(panel).getByRole("button", { name: "Tipo" }).textContent).toContain("Todas");
+      fireEvent.click(within(panel).getByRole("button", { name: "Filtrar" }));
       fireEvent.click(screen.getByRole("button", { name: "Limpiar todos" }));
       await waitFor(() => expect(pageQueries().at(-1)?.get("search")).toBeNull());
       expect((search as HTMLInputElement).value).toBe("");
@@ -180,10 +177,9 @@ describe("Stock applied filter chips", () => {
     const month = within(dateFilter).getByRole("combobox", { name: "Mes" });
     await waitFor(() => expect(within(month).getByRole("option", { name: "octubre de 2026" })).toBeTruthy());
     fireEvent.change(month, { target: { value: "2026-10" } });
-    fireEvent.click(screen.getByRole("button", { name: "Filtrar top ventas" }));
-    const dialog = screen.getByRole("dialog", { name: "Filtrar top ventas" });
-    fireEvent.change(within(dialog).getByRole("textbox", { name: "Proveedor" }), { target: { value: "Uno" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar filtro" }));
+    const panel = stockPanel();
+    fireEvent.click(within(panel).getByRole("button", { name: "Filtrar" }));
+    fireEvent.change(within(panel).getByRole("textbox", { name: "Proveedor" }), { target: { value: "Uno" } });
     fireEvent.change(screen.getByRole("searchbox", { name: "Buscar top ventas" }), { target: { value: "Café" } });
     expect(screen.queryByText("Agua", { selector: "strong.product-name-text" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Buscar" }));
@@ -206,8 +202,7 @@ describe("Stock applied filter chips", () => {
     await waitFor(() => expect(within(dateFilter).getByLabelText("Desde")).toHaveProperty("disabled", false));
     fireEvent.change(within(dateFilter).getByLabelText("Desde"), { target: { value: "2026-09-03" } });
     fireEvent.change(within(dateFilter).getByLabelText("Hasta"), { target: { value: "2026-09-17" } });
-    expect(within(dateFilter).getByRole("button", { name: "Aplicar" })).toHaveProperty("disabled", false);
-    fireEvent.click(within(dateFilter).getByRole("button", { name: "Aplicar" }));
+    expect(within(dateFilter).queryByRole("button", { name: "Aplicar" })).toBeNull();
     const latestTopSalesQuery = () => new URL(vi.mocked(apiRequest).mock.calls
       .map(([path]) => path).filter(path => path.startsWith("/stock/top-sales")).at(-1)!, "http://test").searchParams;
     await waitFor(() => {
@@ -215,13 +210,12 @@ describe("Stock applied filter chips", () => {
       expect(latestTopSalesQuery().get("dateTo")).toBe("2026-09-17");
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Filtrar top ventas" }));
-    let dialog = screen.getByRole("dialog", { name: "Filtrar top ventas" });
-    expect(within(dialog).queryByText("Período", { exact: true })).toBeNull();
-    expect(within(dialog).queryByRole("textbox", { name: "Fecha" })).toBeNull();
-    expect(within(dialog).queryByRole("button", { name: "Mes" })).toBeNull();
-    fireEvent.change(within(dialog).getByRole("textbox", { name: "Proveedor" }), { target: { value: "Uno" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar filtro" }));
+    const panel = stockPanel();
+    fireEvent.click(within(panel).getByRole("button", { name: "Filtrar" }));
+    expect(within(panel).queryByText("Período", { exact: true })).toBeNull();
+    expect(within(panel).queryByRole("textbox", { name: "Fecha" })).toBeNull();
+    expect(within(panel).queryByRole("button", { name: "Mes" })).toBeNull();
+    fireEvent.change(within(panel).getByRole("textbox", { name: "Proveedor" }), { target: { value: "Uno" } });
     expect(screen.getByRole("button", { name: "Quitar filtro Proveedor" })).toBeTruthy();
     expect(latestTopSalesQuery().get("dateFrom")).toBe("2026-09-03");
     expect(latestTopSalesQuery().get("dateTo")).toBe("2026-09-17");
@@ -233,12 +227,9 @@ describe("Stock applied filter chips", () => {
     expect(within(dateFilter).getByLabelText("Desde")).toHaveProperty("value", "2026-09-03");
     expect(within(dateFilter).getByLabelText("Hasta")).toHaveProperty("value", "2026-09-17");
 
-    fireEvent.click(screen.getByRole("button", { name: "Filtrar top ventas" }));
-    dialog = screen.getByRole("dialog", { name: "Filtrar top ventas" });
-    expect(within(dialog).queryByText("Período", { exact: true })).toBeNull();
-    expect(within(dialog).queryByRole("textbox", { name: "Fecha" })).toBeNull();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Limpiar" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar filtro" }));
+    expect(within(panel).queryByText("Período", { exact: true })).toBeNull();
+    expect(within(panel).queryByRole("textbox", { name: "Fecha" })).toBeNull();
+    fireEvent.click(within(panel).getByRole("button", { name: "Limpiar" }));
     expect(latestTopSalesQuery().get("dateFrom")).toBe("2026-09-03");
     expect(latestTopSalesQuery().get("dateTo")).toBe("2026-09-17");
   });
@@ -260,7 +251,8 @@ describe("Stock applied filter chips", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Filtrar/ }));
     const dialog = screen.getByRole("dialog", { name: "Filtrar edición masiva" });
     fireEvent.change(within(dialog).getByRole("spinbutton", { name: "Precio mínimo" }), { target: { value: "4" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar" }));
+    expect(within(dialog).queryByRole("button", { name: "Aplicar" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }));
     fireEvent.change(screen.getByRole("searchbox", { name: "Buscar en la lista" }), { target: { value: "Café" } });
     fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Buscar" }));
     expect(container.querySelector('[data-bulk-row-id="row-1"]')).toBeNull();
@@ -280,7 +272,7 @@ describe("Stock applied filter chips", () => {
     fireEvent.click(await screen.findByRole("option", { name: "Bebidas" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Subfamilia" }));
     fireEvent.click(screen.getByRole("option", { name: "Café" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }));
     fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Familia" }));
     expect(screen.getByRole("group", { name: "Filtros aplicados" }).textContent).toContain("Subfamilia: Café");
     expect(container.querySelector('[data-bulk-row-id="row-0"]')).not.toBeNull();
@@ -295,7 +287,7 @@ describe("Stock applied filter chips", () => {
     expect(screen.getByRole("option", { name: "Bebidas / Agua" })).toBeTruthy();
     fireEvent.click(screen.getByRole("option", { name: "Bebidas / Café" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }));
-    fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Subfamilia" }));
+    expect(screen.queryByRole("button", { name: "Quitar filtro Subfamilia" })).toBeNull();
     expect(container.querySelector('[data-bulk-row-id="row-1"]')).not.toBeNull();
   });
 

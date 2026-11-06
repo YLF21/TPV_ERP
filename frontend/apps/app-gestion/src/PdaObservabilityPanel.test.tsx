@@ -44,9 +44,11 @@ describe("PdaObservabilityPanel", () => {
     render(<PdaObservabilityPanel token="token" terminals={[{ id: "pda/1", name: "PDA uno", type: "PDA", approved: true, active: true }]} t={t} />);
     await screen.findByText("SYNC_REJECTED");
 
-    const selects = screen.getAllByRole("combobox");
-    fireEvent.change(selects[0], { target: { value: "168" } });
-    fireEvent.change(selects[1], { target: { value: "pda/1" } });
+    fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
+    fireEvent.click(screen.getByRole("button", { name: "gestion.pdaObservability.window" }));
+    fireEvent.click(screen.getByRole("option", { name: "gestion.pdaObservability.window.168" }));
+    fireEvent.click(screen.getByRole("button", { name: "gestion.pdaObservability.terminal" }));
+    fireEvent.click(screen.getByRole("option", { name: "PDA uno" }));
     await waitFor(() => expect(vi.mocked(apiRequest).mock.calls.some(([route]) => route === "/pda-observability?windowHours=168&page=0&size=50&terminalId=pda%2F1")).toBe(true));
   });
 
@@ -58,8 +60,11 @@ describe("PdaObservabilityPanel", () => {
       { id: "sale-1", name: "Caja", type: "TERMINAL_VENTA", approved: true, active: true },
     ]} t={t} />);
     await screen.findByText("SYNC_REJECTED");
-    const terminalOptions = within(screen.getAllByRole("combobox")[1]).getAllByRole("option").map(option => option.textContent);
-    expect(terminalOptions).toEqual(expect.arrayContaining(["gestion.pdaObservability.allTerminals", "PDA uno", "PDA tienda"]));
+    fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
+    fireEvent.click(screen.getByRole("button", { name: "gestion.pdaObservability.terminal" }));
+    const terminalOptions = screen.getAllByRole("option").map(option => option.textContent);
+    expect(terminalOptions).toEqual(expect.arrayContaining(["PDA uno", "PDA tienda"]));
+    expect(terminalOptions).not.toContain("gestion.pdaObservability.allTerminals");
     expect(terminalOptions).not.toContain("Servidor");
     expect(terminalOptions).not.toContain("Caja");
   });
@@ -68,7 +73,9 @@ describe("PdaObservabilityPanel", () => {
     vi.mocked(apiRequest).mockResolvedValueOnce(data).mockRejectedValueOnce(new Error("offline"));
     render(<PdaObservabilityPanel token="token" terminals={[]} t={t} />);
     await screen.findByText("SYNC_REJECTED");
-    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "168" } });
+    fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
+    fireEvent.click(screen.getByRole("button", { name: "gestion.pdaObservability.window" }));
+    fireEvent.click(screen.getByRole("option", { name: "gestion.pdaObservability.window.168" }));
     await screen.findByRole("alert");
     expect(screen.queryByText("SYNC_REJECTED")).toBeNull();
     expect(screen.queryByText("210 ms")).toBeNull();

@@ -23,6 +23,7 @@ import {
 } from "@tpverp/app-common";
 import "../../../packages/app-common/src/styles/ShortcutButtons.css";
 import "../../../packages/app-common/src/styles/DesktopWindowCorners.css";
+import "../../../packages/app-common/src/styles/DesktopFieldControls.css";
 import "../../../packages/app-common/src/styles/tpv.css";
 import "./gestion.css";
 import "./GestionWarehouseScreens.css";
@@ -131,6 +132,7 @@ const WarehouseOperationsScreen = lazy(() =>
 );
 
 const StockCountScreen = lazy(() => import("./StockCountScreen").then(({ StockCountScreen }) => ({ default: StockCountScreen })));
+const ReplenishmentScreen = lazy(() => import("../../../packages/app-common/src/components/ReplenishmentScreen").then(({ ReplenishmentScreen }) => ({ default: ReplenishmentScreen })));
 
 const WarehouseTransferScreen = lazy(() =>
   import("./WarehouseTransferScreen").then(({ WarehouseTransferScreen }) => ({
@@ -194,6 +196,7 @@ type StockSelection = {
   settingsMode?: "configuration";
   warehouseSection?: WarehouseSection;
   warehouseManagement?: boolean;
+  replenishment?: boolean;
   createWarehouseDocument?: boolean;
   warehouseOperation?: import("./WarehouseOperationsScreen").WarehouseOperationMode;
 };
@@ -475,6 +478,11 @@ function GestionScreen({
     })),
   ];
   const warehouseChildren: GestionNavigationItem[] = [
+    ...((session.permissions.includes("ADMIN") || session.permissions.includes("GESTION_ALMACEN") || session.permissions.includes("STOCK_READ")) ? [{
+      key: "stock.warehouse.replenishment",
+      label: t("replenishment.title"),
+      onOpen: () => onOpenStock({ key: "stock.warehouse.replenishment", replenishment: true })
+    }] : []),
     ...(userCanManageWarehouses(session) ? [{
       key: "stock.warehouse.management",
       label: t("warehouse.management.navigation"),
@@ -809,7 +817,9 @@ function GestionScreen({
       />
     );
   } else if (effectiveModule === "stock" && stockContentItems.some((item) => item.key === stockSelection.key)) {
-    content = stockSelection.warehouseOperation === "transfer" ? (
+    content = stockSelection.replenishment ? (
+      <ReplenishmentScreen app="gestion" username={session.username} token={session.accessToken || ""} locale={locale} />
+    ) : stockSelection.warehouseOperation === "transfer" ? (
       <WarehouseTransferScreen key={stockSelection.key} session={session} t={t}
         locale={locale} terminalContext={terminalContext}
         createOnMount={stockSelection.createWarehouseDocument} />

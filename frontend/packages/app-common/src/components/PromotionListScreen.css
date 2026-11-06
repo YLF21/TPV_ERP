@@ -84,6 +84,11 @@
 .promotion-status-filter > svg { position: absolute; top: 9px; right: 9px; pointer-events: none; color: #516a88; }
 .promotion-list-filters .erp-select > .erp-select__trigger { grid-template-columns: minmax(0, 1fr) !important; padding-right: 25px !important; min-height: 30px !important; border: 1px solid #c4d0df !important; border-radius: 2px !important; background: #fafcfe !important; }
 .promotion-list-filters .erp-select .erp-select__arrow { display: none !important; }
+html body .promotion-screen .promotion-standard-filters { margin: 8px; width: calc(100% - 16px); }
+html body .promotion-screen .promotion-standard-filters .erp-list-filter-search > label { width: 100%; }
+html body .promotion-screen .promotion-standard-filters .erp-select .erp-select__arrow { display: flex !important; }
+html body .promotion-screen .promotion-standard-filters .erp-select__trigger { height: 34px !important; min-height: 34px !important; border-radius: 4px !important; background: #fff !important; }
+html body .promotion-screen .promotion-list-panel > .erp-filter-chips { flex: 0 0 auto; }
 .promotion-list-scroll { flex: 1; min-height: 0; overflow: auto; }
 .promotion-list-group { margin: 0; }
 .promotion-list-group.expired { border-top: 1px solid #e0e7ef; }

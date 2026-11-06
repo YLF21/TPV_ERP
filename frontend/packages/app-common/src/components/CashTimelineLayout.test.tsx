@@ -120,6 +120,7 @@ describe("Cash timeline column layout", () => {
     expect(secondRow.querySelector('td[data-column-key="quantity"]')).toHaveTextContent(/-10,00/);
     expect(secondRow.querySelector('td[data-column-key="balance"]')).toHaveTextContent("—");
 
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
     fireEvent.click(screen.getByRole("button", { name: "Filtrar usuario" }));
     fireEvent.click(screen.getByRole("option", { name: "Ana" }));
     fireEvent.click(screen.getByRole("button", { name: "Filtrar acción" }));

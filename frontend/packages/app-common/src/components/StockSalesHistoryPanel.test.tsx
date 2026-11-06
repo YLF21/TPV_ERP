@@ -33,8 +33,10 @@ const response = (overrides: Partial<SaasSalesHistoryResponse> = {}): SaasSalesH
   comparison: [], nextCursor: null, hasMore: false, incompleteDocuments: 0, ...overrides,
 });
 function panel(extra: Partial<ComponentProps<typeof StockSalesHistoryPanel>> = {}) {
-  return render(<StockSalesHistoryPanel productId="product-1" productCode="CAFE-1" productName="Cafe molido"
+  const view = render(<StockSalesHistoryPanel productId="product-1" productCode="CAFE-1" productName="Cafe molido"
     locale="es" token="token" onClose={vi.fn()} {...extra} />);
+  if (extra.app !== "pda") fireEvent.click(screen.getByRole("button", { name: /^(Filtrar|Filter|筛选)$/ }));
+  return view;
 }
 function lastHistoryQuery() {
   const path = historyRequests().at(-1)![0];
@@ -148,7 +150,7 @@ describe("StockSalesHistoryPanel", () => {
     const dates = container.querySelectorAll<HTMLInputElement>('input[type="date"]');
     fireEvent.change(dates[0], { target: { value: "2026-07-31" } });
     fireEvent.change(dates[1], { target: { value: "2026-07-01" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar filtro" }));
+    expect(screen.queryByRole("button", { name: "Aplicar filtro" })).toBeNull();
     await waitFor(() => expect(lastHistoryQuery().get("from")).toBe("2026-07-01"));
     expect(lastHistoryQuery().get("to")).toBe("2026-07-31");
     fireEvent.click(container.querySelector('th[data-column-key="quantity"] .table-layout-sort-button')!);
@@ -158,7 +160,7 @@ describe("StockSalesHistoryPanel", () => {
     await waitFor(() => expect(lastHistoryQuery().get("sortDirection")).toBe("desc"));
   });
 
-  it("removes status and store criteria independently while keeping the applied period and date draft", async () => {
+  it("removes status and store criteria independently while keeping the applied period", async () => {
     const { container } = panel();
     await screen.findByText("TICKET T-0001");
     fireEvent.click(screen.getByRole("button", { name: "Estado" }));
@@ -166,13 +168,14 @@ describe("StockSalesHistoryPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tienda" }));
     fireEvent.click(screen.getByRole("option", { name: "S02 · Norte" }));
     await waitFor(() => expect(lastHistoryQuery().get("storeIds")).toBe("store-2"));
-    const appliedFrom = lastHistoryQuery().get("from");
-    const appliedTo = lastHistoryQuery().get("to");
     const chips = screen.getByRole("group", { name: "Filtros aplicados" });
     const periodText = chips.querySelector('[title^="Período:"]')!.textContent;
     const dates = container.querySelectorAll<HTMLInputElement>('input[type="date"]');
     fireEvent.change(dates[0], { target: { value: "2026-01-02" } });
-    expect(chips.querySelector('[title^="Período:"]')!.textContent).toBe(periodText);
+    await waitFor(() => expect(lastHistoryQuery().get("from")).toBe("2026-01-02"));
+    expect(chips.querySelector('[title^="Período:"]')!.textContent).not.toBe(periodText);
+    const appliedFrom = lastHistoryQuery().get("from");
+    const appliedTo = lastHistoryQuery().get("to");
 
     fireEvent.click(within(chips).getByRole("button", { name: "Quitar filtro Estado" }));
     await waitFor(() => expect(lastHistoryQuery().has("status")).toBe(false));
@@ -223,15 +226,14 @@ describe("StockSalesHistoryPanel", () => {
     await act(async () => oldPage.resolve(response({ items: [{ ...item, documentNumber: "OBSOLETE" }] })));
     expect(screen.queryByText("TICKET OBSOLETE")).toBeNull();
     await screen.findByText("TICKET T-0001");
-    fireEvent.click(screen.getByRole("button", { name: "Exportar" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Exportar a Excel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Exportar a Excel" }));
     await waitFor(() => expect(saveFile).toHaveBeenCalledOnce());
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
       from: null, to: null, status: "PAGADO", storeIds: ["store-2"], view: "detail",
     });
   });
 
-  it("clears every history criterion and allows applying empty dates without restoring a hidden filter", async () => {
+  it("clears every history criterion without restoring a hidden filter", async () => {
     const { container } = panel();
     await screen.findByText("TICKET T-0001");
     fireEvent.click(screen.getByRole("button", { name: "Estado" }));
@@ -246,9 +248,7 @@ describe("StockSalesHistoryPanel", () => {
     expect(screen.queryByRole("group", { name: "Filtros aplicados" })).toBeNull();
     expect(Array.from(container.querySelectorAll<HTMLInputElement>('input[type="date"]'), (input) => input.value)).toEqual(["", ""]);
     expect(screen.getByRole("button", { name: "Comparación por tienda" }).getAttribute("aria-pressed")).toBe("true");
-    const count = historyRequests().length;
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar filtro" }));
-    await waitFor(() => expect(historyRequests()).toHaveLength(count + 1));
+    expect(screen.queryByRole("button", { name: "Aplicar filtro" })).toBeNull();
     expect(lastHistoryQuery().has("from")).toBe(false);
     expect(lastHistoryQuery().has("to")).toBe(false);
   });
@@ -262,9 +262,7 @@ describe("StockSalesHistoryPanel", () => {
     expect(lastHistoryQuery().has("to")).toBe(false);
     expect(Array.from(container.querySelectorAll<HTMLInputElement>('input[type="date"]'), input => input.value)).toEqual(["", ""]);
     await screen.findByText("TICKET T-0001");
-    const count = historyRequests().length;
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar filtro" }));
-    await waitFor(() => expect(historyRequests()).toHaveLength(count + 1));
+    expect(screen.queryByRole("button", { name: "Aplicar filtro" })).toBeNull();
     expect(lastHistoryQuery().has("from")).toBe(false);
   });
 
@@ -379,7 +377,7 @@ describe("StockSalesHistoryPanel", () => {
     expect(container.querySelector("tbody tr:first-child")?.textContent).toContain("Principal");
     expect(apiRequestMock.mock.calls).toHaveLength(requestCount);
     fireEvent.click(screen.getByRole("button", { name: "S02 · Norte" }));
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Aplicar filtro" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Detalle" }));
     await waitFor(() => expect(lastHistoryQuery().get("storeIds")).toBe("store-2"));
     expect(screen.getByRole("button", { name: "Detalle" }).getAttribute("aria-pressed")).toBe("true");
     await screen.findByText("TICKET T-0001");
@@ -437,12 +435,13 @@ describe("StockSalesHistoryPanel", () => {
     await screen.findByText("TICKET T-0001");
     const store = screen.getByRole("button", { name: "Tienda" });
     fireEvent.click(store);
-    fireEvent.keyDown(screen.getByRole("option", { name: "Todas las tiendas" }), { key: "Escape" });
+    fireEvent.keyDown(store, { key: "Escape" });
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(document.activeElement).toBe(store);
     expect(onClose).not.toHaveBeenCalled();
     fireEvent.keyDown(store, { key: "Escape" });
-    expect(onClose).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Filtrar" }).getAttribute("aria-expanded")).toBe("false");
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("contains full names and retains precise negative decimal strings", async () => {
@@ -467,8 +466,7 @@ describe("StockSalesHistoryPanel", () => {
     scrollHistory(container);
     await screen.findByText("TICKET SECOND");
     expect(screen.getByText("TICKET T-0001")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Exportar" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: extension === "xlsx" ? "Exportar a Excel" : "Exportar a PDF" }));
+    fireEvent.click(screen.getByRole("button", { name: extension === "xlsx" ? "Exportar a Excel" : "Exportar a PDF" }));
     await waitFor(() => expect(saveFile).toHaveBeenCalledOnce());
     expect(fetchMock.mock.calls[0][0]).toContain(`/sales-history/saas/${extension === "xlsx" ? "export" : "render"}`);
     const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
@@ -486,8 +484,7 @@ describe("StockSalesHistoryPanel", () => {
     panel();
     await screen.findByText("TICKET T-0001");
     fireEvent.click(screen.getByRole("button", { name: "Comparación por tienda" }));
-    fireEvent.click(screen.getByRole("button", { name: "Exportar" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Exportar a Excel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Exportar a Excel" }));
     await waitFor(() => expect(saveFile).toHaveBeenCalledOnce());
     const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(payload.view).toBe("comparison");

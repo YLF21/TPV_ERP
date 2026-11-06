@@ -1,0 +1,22 @@
+.sale-customer-selection-dialog .sale-customer-list-filter {
+  margin: 8px 12px 4px;
+  width: calc(100% - 24px);
+}
+.sale-customer-list-filter .erp-list-filter-search > label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: #516175;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.sale-customer-selection-dialog .sale-customer-list-filter .gestion-warehouse-search-frame > input.erp-search-input {
+  font-size: 12px;
+  font-weight: 400;
+}
+.sale-customer-selection-dialog .sale-customer-table.erp-list-filter-table {
+  margin: 0 12px 8px;
+  width: calc(100% - 24px);
+}

@@ -143,6 +143,14 @@ public class DocumentReportService {
                 includeSalesDocuments, SALES_DELIVERY_NOTES));
     }
 
+    @Transactional(readOnly = true)
+    public List<CustomerDocumentReportQueryRepository.CustomerOption> customerOptions(
+            boolean invoices, LocalDate dateFrom, LocalDate dateTo, boolean includeSalesDocuments) {
+        if (!includeSalesDocuments) return List.of();
+        return customerReports.customerOptions(organization.currentStore().getId(),
+                invoices ? SALES_INVOICES : SALES_DELIVERY_NOTES, dateFrom, dateTo);
+    }
+
     private List<DocumentReportView> all(Collection<CommercialDocumentType> types) {
         var result = new ArrayList<DocumentReportView>();
         String cursor = null;

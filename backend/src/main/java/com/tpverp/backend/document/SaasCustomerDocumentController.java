@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.net.URI;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
@@ -34,7 +35,7 @@ public class SaasCustomerDocumentController {
             + "or (#reportKey == 'invoices' and hasAuthority('INVOICES_READ')) "
             + "or (#reportKey == 'delivery-notes' and hasAuthority('DELIVERY_NOTES_READ'))")
     public ResponseEntity<Page> page(@PathVariable UUID customerId, @PathVariable String reportKey,
-            @RequestParam(required = false) String search, @RequestParam(required = false) DocumentStatus status,
+            @RequestParam(required = false) String search, @RequestParam(required = false) List<DocumentStatus> status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String sortBy, @RequestParam(required = false) String sortDirection,
@@ -42,7 +43,8 @@ public class SaasCustomerDocumentController {
             @RequestParam(required = false) @Size(max = 2048) String cursor,
             Authentication authentication) {
         return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store").body(service.page(customerId, reportKey,
-                new Filters(search, status, dateFrom, dateTo), sortBy, sortDirection, size, cursor, authentication));
+                new Filters(search, status != null && status.size() == 1 ? status.getFirst() : null,
+                        dateFrom, dateTo, status != null && status.size() > 1 ? status : null), sortBy, sortDirection, size, cursor, authentication));
     }
     @PostMapping(value = "/export.xlsx", produces = XLSX)
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','VENTA') "

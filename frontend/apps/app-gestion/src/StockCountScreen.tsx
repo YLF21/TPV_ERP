@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FilePdf, FileXls, Plus, Trash } from "@phosphor-icons/react";
 import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
 import { apiRequest } from "../../../packages/app-common/src/api/client";
-import { ErpSelect } from "../../../packages/app-common/src/components/ErpSelect";
+import { ErpListSelect } from "../../../packages/app-common/src/components/ErpListSelect";
+import { listFilterChips, matchesListFilter } from "../../../packages/app-common/src/components/listFilterValues";
+import { ErpListFilterPanel } from "../../../packages/app-common/src/components/ErpListFilterPanel";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { ErpConfirmDialog } from "../../../packages/app-common/src/components/ErpConfirmDialog";
 import { WarehouseSearchFrame } from "../../../packages/app-common/src/components/WarehouseSearchFrame";
@@ -20,7 +22,7 @@ export function StockCountScreen({ session, locale = "es", t }: { session: UserS
   const token = session.accessToken ?? ""; const c = countText(locale);
   const allowed = session.permissions.some((permission) => ["ADMIN", "GESTION_ALMACEN", "STOCK_ADJUST"].includes(permission));
   const [rows, setRows] = useState<StockCountSummary[]>([]); const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
-  const [search, setSearch] = useState(""); const [warehouse, setWarehouse] = useState(""); const [status, setStatus] = useState("");
+  const [search, setSearch] = useState(""); const [warehouse, setWarehouse] = useState<string[]>([]); const [status, setStatus] = useState<string[]>([]);
   const [from, setFrom] = useState(""); const [to, setTo] = useState(""); const [limit, setLimit] = useState(50);
   const [quickRange, setQuickRange] = useState<ReportDateRange>({ from: "", to: "", label: "" });
   const { dateOptions, dateOptionsFailed, retryDateOptions } = useReportDateOptions("stockCounts", token, allowed);
@@ -42,7 +44,7 @@ export function StockCountScreen({ session, locale = "es", t }: { session: UserS
   useEffect(() => { setLimit(50); setSelected(""); }, [search, warehouse, status, from, to]);
   const filtered = rows.filter((row) => {
     const date = row.documentDate ?? row.createdAt.slice(0, 10);
-    return (!warehouse || row.warehouseId === warehouse) && (!status || row.status === status)
+    return matchesListFilter(warehouse, row.warehouseId) && matchesListFilter(status, row.status)
       && (!from || date >= from) && (!to || date <= to)
       && (!search.trim() || `${row.number} ${row.notes ?? ""}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   });
@@ -73,42 +75,40 @@ export function StockCountScreen({ session, locale = "es", t }: { session: UserS
       <div className="gestion-warehouse-title-actions gestion-warehouse-actions"><button className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.create} disabled={busy || loading || !warehouses.some((item) => item.active !== false)} onClick={() => setEditor({ document: null })}><span><Plus size={16} aria-hidden="true" />{c("create")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.create}</kbd></button></div>
     </header>
     {error && <p role="alert" className="inventory-error">{error}</p>}
-    <div className="inventory-filters gestion-warehouse-toolbar gestion-toolbar-layout">
-      <label>{t("warehouse.management.search")}<WarehouseSearchFrame><input className="erp-search-input" type="search" value={search} placeholder={c("search")} onChange={(event) => setSearch(event.target.value)} /></WarehouseSearchFrame></label>
-      <label>{c("warehouse")}<ErpSelect aria-label={c("warehouse")} value={warehouse} options={[{ value: "", label: c("all") }, ...warehouses.map((item) => ({ value: item.id, label: item.name }))]} onChange={setWarehouse} /></label>
-      <label className="gestion-warehouse-status-filter" data-filter-active={Boolean(status)}>{c("status")}<ErpSelect aria-label={c("status")} value={status} options={[{ value: "", label: c("all") }, ...["DRAFT", "CONFIRMED", "CANCELLED"].map((value) => ({ value, label: t(`warehouse.count.status.${value}`) }))]} onChange={setStatus} /></label>
-      <div className="inventory-list-actions gestion-warehouse-actions gestion-warehouse-list-actions gestion-toolbar-end">
+    <ErpListFilterPanel translate={t} search={<label>{t("warehouse.management.search")}<WarehouseSearchFrame><input className="erp-search-input" type="search" value={search} placeholder={c("search")} onChange={(event) => setSearch(event.target.value)} /></WarehouseSearchFrame></label>} filters={<>
+      <label>{c("warehouse")}<ErpListSelect aria-label={c("warehouse")} values={warehouse} options={[{ value: "", label: c("all") }, ...warehouses.map((item) => ({ value: item.id, label: item.name }))]} onChange={setWarehouse} /></label>
+      <label className="gestion-warehouse-status-filter" data-filter-active={status.length > 0}>{c("status")}<ErpListSelect aria-label={c("status")} values={status} options={[{ value: "", label: c("all") }, ...["DRAFT", "CONFIRMED", "CANCELLED"].map((value) => ({ value, label: t(`warehouse.count.status.${value}`) }))]} onChange={setStatus} /></label>
+    </>} actions={<>
         <button disabled={busy || loading || selection?.status !== "DRAFT"} onClick={() => {
           if (selection?.status !== "DRAFT") return;
           setCancelError(""); setCancelDocumentId(selection.id);
         }}><span><Trash size={16} aria-hidden="true" />{c("cancelDocument")}</span></button>
         <button className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.excel} disabled={busy || !selection} onClick={() => void run(() => exportFile("xlsx"))}><span><FileXls size={16} aria-hidden="true" />{t("warehouse.count.exportExcel")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.excel}</kbd></button>
         <button className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.pdf} disabled={busy || !selection} onClick={() => void run(() => exportFile("pdf"))}><span><FilePdf size={16} aria-hidden="true" />{t("warehouse.count.exportPdf")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.pdf}</kbd></button>
-      </div>
-    </div>
+      </>} />
     <ErpFilterChips translate={t} chips={[
       { key: "search", label: t("warehouse.management.search"), value: search, onRemove: () => setSearch("") },
-      { key: "warehouse", label: c("warehouse"), value: warehouse ? warehouseName(warehouse) : "", onRemove: () => setWarehouse("") },
-      { key: "status", label: c("status"), value: status ? t(`warehouse.count.status.${status}`) : "", onRemove: () => setStatus("") },
+      ...listFilterChips("warehouse", c("warehouse"), warehouse, setWarehouse, warehouseName),
+      ...listFilterChips("status", c("status"), status, setStatus, value => t("warehouse.count.status." + value)),
       { key: "from", label: t("warehouse.report.from"), value: from, onRemove: () => setFrom("") },
       { key: "to", label: t("warehouse.report.to"), value: to, onRemove: () => setTo("") }
-    ].filter((chip) => chip.value)} onClear={() => { setSearch(""); setWarehouse(""); setStatus(""); setFrom(""); setTo(""); }} />
+    ].filter((chip) => chip.value)} onClear={() => { setSearch(""); setWarehouse([]); setStatus([]); setFrom(""); setTo(""); }} />
     {loading && <p role="status">{t("common.loading")}</p>}
-    <div className="inventory-list-scroll" onScroll={(event) => { const node = event.currentTarget; if (node.scrollHeight - node.scrollTop - node.clientHeight < 200) setLimit((value) => value + 50); }}>
+    <div className="inventory-list-scroll erp-list-filter-table" onScroll={(event) => { const node = event.currentTarget; if (node.scrollHeight - node.scrollTop - node.clientHeight < 200) setLimit((value) => value + 50); }}>
       <StockCountTable rows={filtered} limit={limit} locale={locale}
         sortValue={(row, key) => key === "warehouse" ? warehouseName(row.warehouseId) : key === "status" ? t(`warehouse.count.status.${row.status}`) : key === "articles" ? row.lineCount : key === "date" ? row.documentDate ?? row.createdAt : key === "user" ? row.createdByName : key === "notes" ? row.notes : row.number} columns={columns} session={session} tableKey="warehouse.inventory.documents" empty={c("empty")} selected={selected} onSelect={modalOpen ? undefined : setSelected} onOpen={modalOpen ? undefined : open}
         cell={(row, key) => key === "warehouse" ? warehouseName(row.warehouseId) : key === "status" ? t(`warehouse.count.status.${row.status}`) : key === "articles" ? row.lineCount
           : key === "date" ? new Date(`${row.documentDate ?? row.createdAt.slice(0, 10)}T12:00:00`).toLocaleDateString(locale)
           : key === "user" ? row.createdByName ?? "—" : key === "notes" ? row.notes || "—" : row.number} />
     </div>
+    <ReportDateRangeFilter locale={locale} today={dateOptions?.currentDate ?? ""} earliestDate={dateOptions?.earliestDate ?? ""}
+      value={{ from, to, label: "", preset: quickRange.from === from && quickRange.to === to ? quickRange.preset : undefined }}
+      onChange={(range) => { setQuickRange(range); setFrom(range.from); setTo(range.to); }} />
     {editor && <StockCountDocumentWindow initial={editor.document} warehouses={warehouses} session={session} locale={locale} t={t} onSaved={() => void refresh()} onClose={() => { setEditor(null); void refresh(); }} />}
     {cancelDocumentId && <ErpConfirmDialog title={c("cancelDocument")} message={c("cancelText")}
       cancelLabel={c("cancel")} confirmLabel={c("cancelAction")} busy={busy} errorMessage={cancelError}
       onCancel={() => { if (!cancelBusy.current) setCancelDocumentId(null); }}
       onConfirm={() => void cancelDocument()} />}
     {dateOptionsFailed && <div className="report-date-options-error" role="alert"><span>{t("salesReport.loadError")}</span><button type="button" onClick={retryDateOptions}>{t("salesReport.retry")}</button></div>}
-    <ReportDateRangeFilter locale={locale} today={dateOptions?.currentDate ?? ""} earliestDate={dateOptions?.earliestDate ?? ""}
-      value={{ from, to, label: "", preset: quickRange.from === from && quickRange.to === to ? quickRange.preset : undefined }}
-      onChange={(range) => { setQuickRange(range); setFrom(range.from); setTo(range.to); }} />
   </section>;
 }

@@ -38,7 +38,7 @@ class CashOpeningAlertServiceTest {
     @Test
     void paginationPreservesSubMillisecondTimestampAndStoreTimezone() {
         var row=alert(Instant.parse("2026-07-31T09:00:00.123456Z"));
-        when(repository.find(any(),any(),any(),any(),any(),any(),any(),anyInt())).thenReturn(List.of(row,row));
+        when(repository.findFiltered(any(),any(),any(),any(),any(),any(),any(),anyInt())).thenReturn(List.of(row,row));
         when(repository.pendingCount(storeId)).thenReturn(8L);
         var page=service.list(LocalDate.parse("2026-07-31"),LocalDate.parse("2026-07-31"),null,null,"PENDING",1,null,auth);
         assertThat(page.items()).hasSize(1);
@@ -46,10 +46,10 @@ class CashOpeningAlertServiceTest {
         assertThat(page.pendingCount()).isEqualTo(8);
         service.list(null,null,null,null,null,1,page.nextCursor(),auth);
         var cursor=ArgumentCaptor.forClass(CashOpeningAlertRepository.Cursor.class);
-        verify(repository).find(eq(storeId),isNull(),isNull(),isNull(),isNull(),isNull(),cursor.capture(),eq(2));
+        verify(repository).findFiltered(eq(storeId),isNull(),isNull(),isNull(),isNull(),isNull(),cursor.capture(),eq(2));
         assertThat(cursor.getValue().at()).isEqualTo(row.openedAt());
-        verify(repository).find(eq(storeId),eq(Instant.parse("2026-07-30T23:00:00Z")),
-                eq(Instant.parse("2026-07-31T23:00:00Z")),isNull(),isNull(),eq("PENDING"),isNull(),eq(2));
+        verify(repository).findFiltered(eq(storeId),eq(Instant.parse("2026-07-30T23:00:00Z")),
+                eq(Instant.parse("2026-07-31T23:00:00Z")),isNull(),isNull(),eq(List.of("PENDING")),isNull(),eq(2));
     }
 
     @Test
@@ -75,7 +75,7 @@ class CashOpeningAlertServiceTest {
     @Test
     void cashReaderSeesEvidenceMetadataWhileOnlyAccountingAndAdminSeeAmounts() {
         var row = alert(clock.instant());
-        when(repository.find(any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(List.of(row));
+        when(repository.findFiltered(any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(List.of(row));
         var service = new CashOpeningAlertService(repository, organization,
                 new CashPermissionService(null, null, organization), clock);
         var reader = new UsernamePasswordAuthenticationToken("reader", "token", List.of(

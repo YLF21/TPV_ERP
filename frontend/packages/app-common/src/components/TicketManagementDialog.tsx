@@ -1,3 +1,5 @@
+import { ErpListSelect } from "./ErpListSelect";
+import { matchesListFilter } from "./listFilterValues";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -70,7 +72,7 @@ export function TicketManagementDialog({ token, locale, terminalContext, permiss
   const canInvoiceTicket = isAdmin || permissions.some((permission) => permission === "GESTION_VENTAS" || permission === "VENTA");
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
@@ -97,7 +99,7 @@ export function TicketManagementDialog({ token, locale, terminalContext, permiss
     return tickets.filter((ticket) => {
       const matchesQuery = !value || [ticket.numero, ticket.customerName, ticket.fecha, ticket.estado]
         .some((field) => String(field ?? "").toLocaleLowerCase().includes(value));
-      const matchesStatus = !statusFilter || ticket.estado === statusFilter;
+      const matchesStatus = matchesListFilter(statusFilter, ticket.estado);
       const matchesDateFrom = !dateFrom || ticket.fecha >= dateFrom;
       const matchesDateTo = !dateTo || ticket.fecha <= dateTo;
       return matchesQuery && matchesStatus && matchesDateFrom && matchesDateTo;
@@ -376,10 +378,9 @@ export function TicketManagementDialog({ token, locale, terminalContext, permiss
           </label>
           <label className="ticket-management-filter">
             <span>{t("ticketManagement.filter.status")}</span>
-            <select aria-label={t("ticketManagement.filter.status")} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="">{t("ticketManagement.filter.allStatuses")}</option>
-              {statuses.map((status) => <option value={status} key={status}>{t(`ticketManagement.status.${status}`)}</option>)}
-            </select>
+            <ErpListSelect aria-label={t("ticketManagement.filter.status")}
+              placeholder={t("filters.none")} values={statusFilter} onChange={setStatusFilter}
+              options={statuses.map(value => ({ value, label: t("ticketManagement.status." + value) }))} />
           </label>
           <label className="ticket-management-filter">
             <span>{t("ticketManagement.filter.dateFrom")}</span>

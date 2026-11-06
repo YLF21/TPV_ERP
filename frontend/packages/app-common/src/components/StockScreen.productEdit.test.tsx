@@ -228,10 +228,17 @@ it("keeps Información on F5 when creation is unavailable in management product 
   expect(within(information).getByRole("tab", {name:"Información F5"}).getAttribute("aria-selected")).toBe("true");
   expect(screen.queryByRole("dialog", {name:"Añadir producto"})).toBeNull();
 });
-it("opens retirement review with F9 from product information", async () => {
+it("reserves F9 for replenishment in product information without opening retirement", async () => {
   mockProductEditing();
   const information = await openProduct("gestion", true);
+  const request = within(information).getByRole("button", {name:/Solicitar reposición.*F9/});
+  expect(request.closest("footer")).toBeTruthy();
+  expect(information.querySelector(".stock-detail-footer .erp-dialog-actions-group")).toBeNull();
+  expect(information.querySelector("button.safe-retirement-open")?.getAttribute("aria-keyshortcuts")).toBeNull();
   fireEvent.keyDown(information, {key:"F9"});
-  await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/products/management/product-1/retirement-impact",expect.anything()));
-  expect(vi.mocked(apiRequest).mock.calls.some(([path]) => path.endsWith("/retire"))).toBe(false);
+  const dialog = await screen.findByRole("dialog", {name:"Solicitar reposición"});
+  expect(vi.mocked(apiRequest).mock.calls.some(([path]) => path.includes("retirement-impact") || path.endsWith("/retire"))).toBe(false);
+  fireEvent.keyDown(dialog, {key:"Escape"});
+  await waitFor(() => expect(screen.queryByRole("dialog", {name:"Solicitar reposición"})).toBeNull());
+  expect(screen.getByRole("dialog", {name:"Información del producto"})).toBe(information);
 });

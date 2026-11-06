@@ -59,9 +59,9 @@ public interface ControlAlertRepository
             join alert.event event
             where alert.storeId = :storeId
               and event.occurredAt >= :from and event.occurredAt < :to
-              and (:status is null or alert.status = :status)
-              and (:priority is null or alert.priority = :priority)
-              and (:assigneeId is null or alert.assigneeId = :assigneeId)
+              and (:filterStatuses = false or alert.status in :statuses)
+              and (:filterPriorities = false or alert.priority in :priorities)
+              and (:filterAssignees = false or alert.assigneeId in :assigneeIds)
               and (:overdue = false or (alert.status in ('NEW', 'REVIEWED')
                    and alert.dueAt is not null and alert.dueAt < :now))
               and (:search is null or lower(event.ruleName) like :search
@@ -69,11 +69,22 @@ public interface ControlAlertRepository
                    or lower(event.documentNumber) like :search)
             group by event.ruleId, alert.status
             """)
-    List<RuleStatusCount> countByRuleAndStatusFiltered(
+    List<RuleStatusCount> countByRuleAndStatusWithChoices(
             @Param("storeId") UUID storeId, @Param("from") Instant from, @Param("to") Instant to,
-            @Param("status") ControlAlertStatus status, @Param("priority") ControlAlertPriority priority,
-            @Param("assigneeId") UUID assigneeId, @Param("overdue") boolean overdue,
+            @Param("filterStatuses") boolean filterStatuses, @Param("statuses") List<ControlAlertStatus> statuses,
+            @Param("filterPriorities") boolean filterPriorities, @Param("priorities") List<ControlAlertPriority> priorities,
+            @Param("filterAssignees") boolean filterAssignees, @Param("assigneeIds") List<UUID> assigneeIds,
+            @Param("overdue") boolean overdue,
             @Param("now") Instant now, @Param("search") String search);
+
+    default List<RuleStatusCount> countByRuleAndStatusFiltered(UUID storeId, Instant from, Instant to,
+            ControlAlertStatus status, ControlAlertPriority priority, UUID assigneeId, boolean overdue,
+            Instant now, String search) {
+        return countByRuleAndStatusWithChoices(storeId, from, to, status != null,
+                List.of(status == null ? ControlAlertStatus.NEW : status), priority != null,
+                List.of(priority == null ? ControlAlertPriority.values()[0] : priority), assigneeId != null,
+                List.of(assigneeId == null ? new UUID(0, 0) : assigneeId), overdue, now, search);
+    }
 
     @Query("""
             select alert.status as status, count(alert) as total

@@ -4,7 +4,9 @@ import { AdjustmentProductSearch } from "./AdjustmentProductSearch";
 import { StockAdjustmentHistoryTable } from "./StockAdjustmentHistoryTable";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
-import { ErpSelect } from "../../../packages/app-common/src/components/ErpSelect";
+import { ErpListFilterPanel } from "../../../packages/app-common/src/components/ErpListFilterPanel";
+import { ErpListSelect } from "../../../packages/app-common/src/components/ErpListSelect";
+import { listFilterChips } from "../../../packages/app-common/src/components/listFilterValues";
 import { ErpFilterChips } from "../../../packages/app-common/src/components/ErpFilterChips";
 import { useWarehouseListShortcuts, WAREHOUSE_LIST_SHORTCUTS } from "../../../packages/app-common/src/components/useWarehouseListShortcuts";
 import { ReportDateRangeFilter, type ReportDateRange } from "../../../packages/app-common/src/components/ReportDateRangeFilter";
@@ -91,7 +93,7 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
   const [reason, setReason] = useState("");
   const [adjustmentFormOpen, setAdjustmentFormOpen] = useState(false);
   const [adjustmentSearch, setAdjustmentSearch] = useState("");
-  const [adjustmentWarehouseFilter, setAdjustmentWarehouseFilter] = useState("");
+  const [adjustmentWarehouseFilter, setAdjustmentWarehouseFilter] = useState<string[]>([]);
   const [adjustmentFrom, setAdjustmentFrom] = useState("");
   const [adjustmentTo, setAdjustmentTo] = useState("");
   const [adjustmentRange, setAdjustmentRange] = useState<ReportDateRange>({ from: "", to: "", label: "" });
@@ -210,7 +212,7 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
     }
     try {
       const page = await loadStockAdjustmentHistory(token, {
-        page: requestedPage, warehouseId: adjustmentWarehouseFilter || undefined,
+        page: requestedPage, warehouseId: adjustmentWarehouseFilter,
         search: adjustmentSearch.trim() || undefined,
         from: adjustmentFrom ? new Date(`${adjustmentFrom}T00:00:00`).toISOString() : undefined,
         to: adjustmentTo ? new Date(new Date(`${adjustmentTo}T00:00:00`).setDate(new Date(`${adjustmentTo}T00:00:00`).getDate() + 1)).toISOString() : undefined
@@ -538,7 +540,7 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
         {!loading && mode === "adjustment" && <button type="button" className="primary gestion-warehouse-command" aria-keyshortcuts={WAREHOUSE_LIST_SHORTCUTS.create} disabled={saving} onClick={() => {
           setProductId(""); setProductQuery(""); setAdjustmentFormOpen(true);
         }}><span><Plus size={16} aria-hidden="true" />{t("warehouse.adjustment.perform")}</span><kbd aria-hidden="true">{WAREHOUSE_LIST_SHORTCUTS.create}</kbd></button>}
-        <button type="button" onClick={() => { void loadResources(); if (mode === "adjustment") void refreshAdjustments(); }} disabled={loading || saving}>
+        <button type="button" className="erp-list-filter-refresh" onClick={() => { void loadResources(); if (mode === "adjustment") void refreshAdjustments(); }} disabled={loading || saving}>
           <ArrowClockwise size={16} aria-hidden="true" />{t("warehouse.operations.refresh")}
         </button>
         </div>
@@ -561,29 +563,27 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
 
       {!loading && mode === "adjustment" && (
         <div className="gestion-warehouse-adjustments">
-          <div className="gestion-warehouse-adjustments-toolbar gestion-warehouse-toolbar">
-            <label className="adjustment-search">{t("warehouse.management.search")}
+          <ErpListFilterPanel translate={t} search={<label className="adjustment-search">{t("warehouse.management.search")}
               <WarehouseSearchFrame><input className="erp-search-input" type="search" placeholder={t("warehouse.adjustment.productSearch")} value={adjustmentSearch} onChange={(event) => {
                 setAdjustmentSearch(event.target.value);
-              }} /></WarehouseSearchFrame></label>
+              }} /></WarehouseSearchFrame></label>} filters={<>
             <label>{t("warehouse.operations.warehouse")}
-              <ErpSelect aria-label={t("warehouse.operations.warehouse")} value={adjustmentWarehouseFilter}
+              <ErpListSelect aria-label={t("warehouse.operations.warehouse")} values={adjustmentWarehouseFilter}
                 options={[{ value: "", label: t("warehouse.count.all") }, ...warehouses.map((item) => ({ value: item.id, label: item.name }))]}
                 onChange={setAdjustmentWarehouseFilter} />
             </label>
-          </div>
+          </>} />
           <ErpFilterChips translate={t} chips={[
             ...(adjustmentFrom ? [{ key: "from", label: t("warehouse.report.from"), value: adjustmentFrom,
               onRemove: () => setAdjustmentFrom("") }] : []),
             ...(adjustmentTo ? [{ key: "to", label: t("warehouse.report.to"), value: adjustmentTo,
               onRemove: () => setAdjustmentTo("") }] : []),
-            ...(adjustmentWarehouseFilter ? [{ key: "warehouse", label: t("warehouse.operations.warehouse"),
-              value: warehouses.find((item) => item.id === adjustmentWarehouseFilter)?.name ?? adjustmentWarehouseFilter,
-              onRemove: () => setAdjustmentWarehouseFilter("") }] : []),
+            ...listFilterChips("warehouse", t("warehouse.operations.warehouse"), adjustmentWarehouseFilter, setAdjustmentWarehouseFilter,
+              id => warehouses.find(item => item.id === id)?.name ?? id),
             ...(adjustmentSearch.trim() ? [{ key: "search", label: t("warehouse.management.search"),
               value: adjustmentSearch.trim(), onRemove: () => setAdjustmentSearch("") }] : [])
-          ]} onClear={() => { setAdjustmentFrom(""); setAdjustmentTo(""); setAdjustmentWarehouseFilter(""); setAdjustmentSearch(""); }} />
-          <div ref={adjustmentScrollRef} className="gestion-warehouse-adjustments-table erp-classic-tables warehouse-classic-table"
+          ]} onClear={() => { setAdjustmentFrom(""); setAdjustmentTo(""); setAdjustmentWarehouseFilter([]); setAdjustmentSearch(""); }} />
+          <div ref={adjustmentScrollRef} className="gestion-warehouse-adjustments-table erp-list-filter-table erp-classic-tables warehouse-classic-table"
             aria-busy={adjustmentLoading} onScroll={(event) => {
               const table = event.currentTarget;
               if (!adjustmentFormOpen && table.scrollHeight - table.scrollTop - table.clientHeight <= 240) {
@@ -592,12 +592,12 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
             }}>
             <StockAdjustmentHistoryTable rows={adjustmentRows} session={session} t={t} loading={adjustmentLoading} />
           </div>
-          {dateOptionsFailed && <div className="report-date-options-error" role="alert">
-            <span>{t("salesReport.loadError")}</span><button type="button" onClick={retryDateOptions}>{t("salesReport.retry")}</button>
-          </div>}
           <ReportDateRangeFilter locale={locale} today={dateOptions?.currentDate ?? ""} earliestDate={dateOptions?.earliestDate ?? ""}
             value={{ from: adjustmentFrom, to: adjustmentTo, label: "", preset: adjustmentRange.from === adjustmentFrom && adjustmentRange.to === adjustmentTo ? adjustmentRange.preset : undefined }}
             onChange={(range) => { setAdjustmentRange(range); setAdjustmentFrom(range.from); setAdjustmentTo(range.to); }} />
+          {dateOptionsFailed && <div className="report-date-options-error" role="alert">
+            <span>{t("salesReport.loadError")}</span><button type="button" onClick={retryDateOptions}>{t("salesReport.retry")}</button>
+          </div>}
           {adjustmentFormOpen && <div className="gestion-modal-backdrop"><section className="gestion-security-dialog gestion-warehouse-adjustment-dialog"
             role="dialog" aria-modal="true" aria-labelledby="warehouse-adjustment-title">
             <header><h2 id="warehouse-adjustment-title">{t("warehouse.adjustment.perform")}</h2>

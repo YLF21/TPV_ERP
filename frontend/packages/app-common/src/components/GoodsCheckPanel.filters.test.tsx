@@ -12,10 +12,10 @@ vi.mock("../api/client", () => ({ apiRequest: vi.fn() }));
 
 const t = createTranslator("es");
 const documents: PurchaseDocument[] = [
-  { id: "invoice-north", documentType: "FACTURA_ENTRADA", status: "CONFIRMADA", number: "FE-1", date: "2026-09-21", supplierId: "north" },
-  { id: "invoice-south", documentType: "FACTURA_ENTRADA", status: "CONFIRMADA", number: "FE-2", date: "2026-09-20", supplierId: "south" },
-  { id: "delivery-north", documentType: "ALBARAN_ENTRADA", status: "CONFIRMADA", number: "AE-1", date: "2026-09-22", supplierId: "north" },
-  { id: "delivery-south", documentType: "ALBARAN_ENTRADA", status: "CONFIRMADA", number: "AE-2", date: "2026-09-19", supplierId: "south" },
+  { id: "invoice-north", documentType: "FACTURA_ENTRADA", status: "CONFIRMADA", number: "FE-1", date: "2026-09-21", supplierId: "north", warehouseId: "general" },
+  { id: "invoice-south", documentType: "FACTURA_ENTRADA", status: "CONFIRMADA", number: "FE-2", date: "2026-09-20", supplierId: "south", warehouseId: "reserve" },
+  { id: "delivery-north", documentType: "ALBARAN_ENTRADA", status: "CONFIRMADA", number: "AE-1", date: "2026-09-22", supplierId: "north", warehouseId: "reserve" },
+  { id: "delivery-south", documentType: "ALBARAN_ENTRADA", status: "CONFIRMADA", number: "AE-2", date: "2026-09-19", supplierId: "south", warehouseId: "general" },
 ];
 const items: GoodsCheckItem[] = [
   { productId: "balanced", code: "A", name: "Equilibrado", expectedQuantity: 1, registeredQuantity: 1, missingQuantity: 0, extraQuantity: 0 },
@@ -25,6 +25,7 @@ const items: GoodsCheckItem[] = [
 
 function show(app: AppKind = "venta") {
   return render(<GoodsCheckPanel app={app} locale="es" token="test-token" t={t}
+    warehouses={[{ id: "general", name: "General" }, { id: "reserve", name: "Reserva" }]}
     suppliers={[{ id: "north", legalName: "Proveedor Norte" }, { id: "south", legalName: "Proveedor Sur" }]} />);
 }
 
@@ -49,6 +50,25 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("Goods check ERP table filters", () => {
+  it.each(["venta", "gestion"] as const)("combines supplier and warehouse and clears individual chips without importing in %s", async app => {
+    const { container } = show(app);
+    await waitFor(() => expect(documentRows(container)).toHaveLength(4));
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Proveedor" }));
+    fireEvent.click(screen.getByRole("option", { name: "Proveedor Norte" }));
+    expect(documentRows(container)).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Almacén" }));
+    fireEvent.click(screen.getByRole("option", { name: "Reserva" }));
+    expect(documentRows(container)).toHaveLength(1);
+    expect(documentRows(container)[0]).toHaveTextContent("AE-1");
+    fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Proveedor" }));
+    expect(documentRows(container)).toHaveLength(2);
+    expect(screen.getByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("Almacén: Reserva");
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar todos" }));
+    expect(documentRows(container)).toHaveLength(4);
+    expect(vi.mocked(apiRequest).mock.calls.some(([, options]) => options?.method && options.method !== "GET")).toBe(false);
+  });
+
   it.each(["venta", "gestion"] as const)("focuses the first document and moves with arrows without importing in %s", async app => {
     const { container } = show(app);
     await waitFor(() => expect(documentRows(container)).toHaveLength(4));
@@ -68,11 +88,15 @@ describe("Goods check ERP table filters", () => {
   it.each(["venta", "gestion"] as const)("removes search separately and preserves sort/selection in %s", async app => {
     const { container } = show(app);
     await waitFor(() => expect(documentRows(container)).toHaveLength(4));
-    expect(container.querySelector(".goods-check-document-list")).toHaveClass("erp-classic-tables", "warehouse-classic-table");
+    expect(container.querySelector(".goods-check-document-list")).toHaveClass("erp-classic-tables", "warehouse-classic-table", "erp-list-filter-table");
     expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
     const search = screen.getByRole("searchbox", { name: "Buscar" });
     fireEvent.change(search, { target: { value: "Norte" } });
-    fireEvent.click(screen.getByRole("button", { name: "Facturas" }));
+    const filterToggle = screen.getByRole("button", { name: "Filtrar" });
+    expect(filterToggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(filterToggle);
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar por tipo de documento" }));
+    fireEvent.click(screen.getByRole("option", { name: "Facturas" }));
     expect(documentRows(container)).toHaveLength(1);
     const selectedDocument = documentRows(container)[0];
     expect(selectedDocument).toHaveTextContent("FE-1");
@@ -88,11 +112,11 @@ describe("Goods check ERP table filters", () => {
     fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Buscar" }));
     expect(search).toHaveValue("");
     expect(documentRows(container)).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "Facturas" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Filtrar por tipo de documento" })).toHaveTextContent("Facturas");
     expect(chips).toHaveTextContent("Tipo: Facturas");
     fireEvent.click(screen.getByRole("button", { name: "Limpiar todos" }));
     expect(documentRows(container)).toHaveLength(4);
-    expect(screen.getByRole("button", { name: "Todos" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Filtrar por tipo de documento" })).toHaveTextContent("Todos");
     expect(sort).toHaveAttribute("data-sort-direction", "asc");
     expect(selectedDocument).toHaveClass("selected");
     expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
@@ -105,7 +129,9 @@ describe("Goods check ERP table filters", () => {
     await waitFor(() => expect(documentRows(container)).toHaveLength(4));
     const search = screen.getByRole("searchbox", { name: "Buscar" });
     fireEvent.change(search, { target: { value: "Norte" } });
-    fireEvent.click(screen.getByRole("button", { name: "Albaranes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar por tipo de documento" }));
+    fireEvent.click(screen.getByRole("option", { name: "Albaranes" }));
     expect(documentRows(container)).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Tipo" }));
     expect(documentRows(container)).toHaveLength(2);

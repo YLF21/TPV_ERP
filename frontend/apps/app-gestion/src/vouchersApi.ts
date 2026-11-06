@@ -38,6 +38,7 @@ export type VoucherPage = {
 export type VoucherFilters = {
   query: string;
   status: "" | VoucherStatus;
+  statuses?: VoucherStatus[];
   from: string;
   to: string;
 };
@@ -55,7 +56,7 @@ export function loadVouchers(
 ) {
   const query = new URLSearchParams({ page: String(page), size: "50" });
   if (filters.query.trim()) query.set("query", filters.query.trim());
-  if (filters.status) query.set("status", filters.status);
+  for (const status of filters.statuses ?? (filters.status ? [filters.status] : [])) query.append("status", status);
   if (filters.from) query.set("from", filters.from);
   if (filters.to) query.set("to", filters.to);
   return apiRequest<VoucherPage>(`/vouchers/management?${query.toString()}`, { token });

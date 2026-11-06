@@ -46,13 +46,15 @@ describe("ErpMultiSelect", () => {
     expect(screen.getByRole("listbox")).toBeInTheDocument();
   });
 
-  it("clears every value using Todos without storing the sentinel", () => {
+  it("shows only actual choices and clears them by clicking each selected option", () => {
     const change = vi.fn();
     render(<Harness initial={["cash", "card"]} onChange={change} />);
     openMenu();
-    fireEvent.click(screen.getByRole("option", { name: "Todos" }));
+    expect(screen.queryByRole("option", { name: "Todos" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "Efectivo" }));
+    fireEvent.click(screen.getByRole("option", { name: "Tarjeta" }));
     expect(change).toHaveBeenLastCalledWith([]);
-    expect(screen.getByRole("option", { name: "Todos" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("button", { name: "Método de pago" })).toHaveTextContent("Todos");
   });
 
@@ -81,7 +83,7 @@ describe("ErpMultiSelect", () => {
     fireEvent.keyDown(document.activeElement!, { key: "End" });
     expect(screen.getByRole("option", { name: "Transferencia" })).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: "Home" });
-    expect(screen.getByRole("option", { name: "Todos" })).toHaveFocus();
+    expect(screen.getByRole("option", { name: "Efectivo" })).toHaveFocus();
   });
 
   it("closes on Escape, restores the trigger focus and does not close an ancestor dialog", () => {

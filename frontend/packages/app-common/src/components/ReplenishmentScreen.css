@@ -1,0 +1,72 @@
+.replenishment-screen { box-sizing: border-box; display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; height: 100%; min-width: 0; width: 100%; background: #fff; color: var(--erp-table-text, #172e4c); }
+.replenishment-screen > :not(.replenishment-results) { flex-shrink: 0; }
+.replenishment-host { display: flex !important; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
+.replenishment-host > .replenishment-screen { flex: 1 1 0; min-height: 0; }
+.replenishment-screen > .replenishment-module-title { display: flex; align-items: center; box-sizing: border-box; height: 42px; padding: 0 2px 8px; margin: 0; border-bottom: 1px solid #aeb9c8; }
+.replenishment-module-title h1 { margin: 0; font-family: inherit; font-size: 23px; font-weight: 950; line-height: 1; }
+.replenishment-screen > .replenishment-titlebar { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 0 !important; padding: 6px 14px 7px !important; border-bottom: 1px solid #aeb9c8 !important; }
+.replenishment-screen > .replenishment-titlebar h2 { margin: 0; font-family: inherit; font-size: 22px !important; font-weight: 900; line-height: 1.1 !important; }
+.replenishment-titlebar span { display: none; }
+/* Match the document heading even without a create button setting its height. */
+.replenishment-screen.gestion-warehouse-screen[data-document-heading] { font-size: var(--gestion-font-body, 13px); }
+.replenishment-screen.gestion-warehouse-screen[data-document-heading] > .replenishment-titlebar { box-sizing: border-box; min-height: 48px !important; }
+.replenishment-screen .replenishment-toolbar { display: flex !important; flex: 0 0 auto !important; flex-wrap: wrap !important; align-items: end !important; align-content: start; gap: 8px !important; width: 100%; height: auto !important; max-height: none !important; padding: 8px 12px !important; min-height: 0; }
+.replenishment-toolbar > label { display: grid; gap: 4px; flex: 1 1 135px; min-width: 130px; max-width: 225px; font-size: 12px; }
+.replenishment-toolbar .gestion-warehouse-search-frame { display: flex; align-items: center; gap: 8px; box-sizing: border-box; height: 34px; min-height: 34px; padding: 0 8px; border: 1px solid #aebfd0; border-radius: 4px; }
+.replenishment-toolbar .gestion-warehouse-search-frame > img { display: block; flex: 0 0 18px; width: 18px; height: 18px; object-fit: contain; }
+.replenishment-screen .replenishment-toolbar .gestion-warehouse-search-frame > input.erp-search-input { box-sizing: border-box; flex: 1; min-width: 0; width: 100%; height: 30px !important; min-height: 0 !important; padding: 0 !important; border: 0 !important; background: transparent !important; outline: none !important; box-shadow: none !important; }
+.replenishment-toolbar input.erp-search-input::placeholder { color: #526780; font-size: 11px; font-weight: 400; opacity: 1; }
+.replenishment-toolbar .erp-select, .replenishment-toolbar .erp-select__trigger { width: 100%; min-height: 32px; }
+.replenishment-toolbar .erp-select__popover { z-index: 8; }
+.replenishment-screen .replenishment-actions { display: flex !important; flex: 0 0 auto !important; width: auto; align-items: center; gap: 6px; flex-wrap: nowrap; justify-content: flex-start; margin: 0 0 0 auto; }
+.replenishment-screen .replenishment-output-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; margin-left: 0; }
+:is(.replenishment-actions, .replenishment-output-actions) > button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 32px; padding: 5px 9px; border: 1px solid #aac0d7; border-radius: 4px; background: #fff; color: #12385f; white-space: nowrap; font-size: 12px; font-weight: 700; }
+.replenishment-actions > button.primary:not(:disabled) { border-color: #0065fe; background: #0065fe; color: #fff; }
+.replenishment-actions > button:hover:not(:disabled), .replenishment-actions > button:focus-visible { border-color: #0065fe; outline-color: #0065fe; }
+:is(.replenishment-actions, .replenishment-output-actions) > button:disabled { opacity: .5; cursor: not-allowed; }
+:is(.replenishment-actions, .replenishment-output-actions) > button > span { display: inline-flex; align-items: center; gap: 5px; }
+:is(.replenishment-actions, .replenishment-output-actions) > button > kbd { margin-left: 4px; }
+.replenishment-selected-count { margin-right: 4px; font-size: 12px; white-space: nowrap; }
+.replenishment-results { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; margin-top: -4px; }
+.replenishment-results > :not(.replenishment-table-wrap) { flex-shrink: 0; }
+.replenishment-screen.gestion-warehouse-screen[data-document-heading] > .replenishment-results { margin-top: -8px; }
+.replenishment-context { box-sizing: border-box; display: flex; align-items: center; padding: 2px 12px; min-height: 20px; font-size: 12px; line-height: 16px; }
+.replenishment-results > .erp-filter-applied { padding: 0 12px 4px; }
+.replenishment-results > .stock-operation-status { margin: 4px 12px; }
+.replenishment-table-wrap { box-sizing: border-box; flex: 1 1 0; min-height: 220px; height: auto !important; max-height: none !important; overflow: auto; background: #fff; }
+html body .replenishment-screen .replenishment-results > .replenishment-table-wrap.warehouse-classic-table { border: 1px solid var(--erp-table-border, #aebfd2) !important; border-radius: 6px !important; box-shadow: none !important; }
+.replenishment-table-wrap .report-table { table-layout: fixed; width: 100%; white-space: nowrap; }
+html body .replenishment-screen .replenishment-table-wrap > table.report-table { border: 0 !important; box-shadow: none !important; }
+html body .replenishment-screen .replenishment-table-wrap .report-table .replenishment-select-cell { padding: 0 !important; text-align: center !important; vertical-align: middle !important; }
+.replenishment-screen .replenishment-table-wrap .replenishment-select-cell > input[type="checkbox"] { display: block; margin: 0 auto !important; }
+html body .replenishment-screen .replenishment-table-wrap input[type="checkbox"] { box-sizing: border-box; width: 14px !important; min-width: 14px !important; max-width: 14px; height: 14px !important; min-height: 14px !important; max-height: 14px; margin: 0 !important; padding: 0 !important; vertical-align: middle; }
+.replenishment-table-wrap :is(th, td) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.replenishment-table-wrap thead th { position: sticky; top: 0; z-index: 2; }
+.replenishment-table-wrap tbody > tr { cursor: pointer; }
+.replenishment-table-wrap tbody > tr[aria-disabled="true"] { cursor: default; }
+.replenishment-table-wrap tbody tr:focus-within { outline: 2px solid var(--erp-table-focus); outline-offset: -2px; }
+.replenishment-empty { margin: 14px; font-size: 13px; }
+.replenishment-dialog-backdrop { position: fixed; inset: 0; z-index: 1000; background: #0008; display: grid; place-items: center; }
+.replenishment-dialog-backdrop form { display: grid; gap: 12px; min-width: 300px; padding: 18px; color: #172b45; background: #fff; box-shadow: 0 12px 32px #0004; }
+.replenishment-dialog-backdrop h3 { margin: 0; }
+.replenishment-dialog-backdrop label { display: grid; gap: 4px; font-size: 13px; }
+.replenishment-dialog-backdrop input { min-height: 32px; }
+.replenishment-dialog-backdrop form > div { display: flex; justify-content: flex-end; gap: 8px; }
+/* Match the framed, expandable filter toolbar used by the directories. */
+.replenishment-screen .replenishment-toolbar { box-sizing: border-box; margin: 8px 12px; width: calc(100% - 24px); border: 1px solid #aebfd0; border-radius: 4px; padding: 10px 12px !important; }
+.replenishment-screen.gestion-warehouse-screen[data-document-heading] > .replenishment-toolbar { margin: 0; width: 100%; }
+.replenishment-toolbar > .replenishment-search-field { flex: 1 1 280px; min-width: 260px; max-width: 360px; }
+.replenishment-screen .replenishment-filter-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 180px)); justify-content: start; flex: 1 0 100%; order: 3; gap: 12px; padding: 10px; box-sizing: border-box; border: 1px solid #c0d1e3; border-radius: 6px; background: #f4f7fb; }
+.replenishment-screen .replenishment-filter-fields[hidden] { display: none; }
+.replenishment-filter-fields > label { display: grid; min-width: 0; gap: 5px; font-size: 12px; }
+.replenishment-screen .replenishment-filter-fields > label > span:first-child { background: transparent !important; }
+@layer gestion-accents {
+  .replenishment-screen .replenishment-filter-fields .erp-select__popover > .erp-select__option[aria-selected="true"]:not(:hover):not(:disabled) { background: var(--tpv-v3-surface-alt, #f4f7fa) !important; color: var(--erp-table-text, #172e4c) !important; border-color: var(--erp-table-border, #aebfd2) !important; }
+  .replenishment-screen .replenishment-filter-fields .erp-select__popover > .erp-select__option:hover:not(:disabled) { background: #0065fe !important; color: #fff !important; }
+}
+html body .replenishment-screen :is(.replenishment-actions > button, .replenishment-output-actions > button, .replenishment-filter-button, .replenishment-refresh) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; min-height: 34px; padding: 5px 12px; border: 1px solid #68798b !important; border-radius: 3px !important; background: #eef1f4 !important; color: #12385f !important; font: inherit; font-size: 12px; font-weight: 700; box-shadow: none !important; }
+html body .replenishment-screen .replenishment-filter-button { min-width: 90px; }
+html body .replenishment-screen .replenishment-toolbar :is(.replenishment-actions > button, .replenishment-output-actions > button, .replenishment-filter-button, .replenishment-refresh) { flex: 0 0 auto; min-width: 0; height: 34px; padding: 5px 8px; font-size: 11px !important; white-space: nowrap; }
+.replenishment-screen .replenishment-titlebar .replenishment-refresh { flex: 0 0 auto; height: 34px; padding: 5px 8px; font-size: 11px !important; }
+html body .replenishment-screen :is(.replenishment-actions > button, .replenishment-output-actions > button, .replenishment-filter-button, .replenishment-refresh):hover:not(:disabled) { background: #e0e8f0 !important; border-color: #12385f !important; }
+:is(.replenishment-actions, .replenishment-output-actions) > button > kbd { border-left: 1px solid #aebfd0; align-self: stretch; display: inline-flex; align-items: center; padding-left: 10px; }

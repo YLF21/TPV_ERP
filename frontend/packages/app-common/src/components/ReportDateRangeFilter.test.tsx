@@ -63,34 +63,28 @@ describe("shared report date range filter", () => {
       expect(change).toHaveBeenLastCalledWith(expect.objectContaining({ from, to: "2026-09-11" }));
     });
 
-  it("keeps inline dates as a draft until Apply and synchronizes presets and Escape", () => {
+  it("applies valid inline dates automatically and keeps invalid edits local until corrected", () => {
     const { change, container } = mount();
-    expect(screen.queryByRole("button", { name: "Periodo personalizado" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Aplicar" })).not.toBeInTheDocument();
     const from = screen.getByLabelText("Desde");
     const to = screen.getByLabelText("Hasta");
-    expect(from).toHaveValue("2026-09-11");
-    expect(to).toHaveValue("2026-09-11");
     fireEvent.change(from, { target: { value: "2026-08-01" } });
+    expect(change).toHaveBeenLastCalledWith({ from: "2026-08-01", to: "2026-09-11", label: "", preset: "CUSTOM" });
     fireEvent.change(to, { target: { value: "2026-07-31" } });
-    expect(screen.getByRole("button", { name: "Aplicar" })).toBeDisabled();
     fireEvent.change(to, { target: { value: "2026-09-12" } });
-    expect(screen.getByRole("button", { name: "Aplicar" })).toBeDisabled();
+    expect(change).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".report-date-range-summary time")).toHaveAttribute("dateTime", "2026-08-01");
     fireEvent.change(to, { target: { value: "2026-08-31" } });
-    expect(change).not.toHaveBeenCalled();
-    expect(container.querySelector(".report-date-range-summary time")).toHaveAttribute("dateTime", "2026-09-11");
-    fireEvent.submit(from.closest("form")!);
     expect(change).toHaveBeenLastCalledWith({ from: "2026-08-01", to: "2026-08-31", label: "", preset: "CUSTOM" });
-    expect(screen.getByLabelText("Desde")).toHaveValue("2026-08-01");
-    fireEvent.change(from, { target: { value: "2026-08-02" } });
+    fireEvent.submit(from.closest("form")!);
+    expect(change).toHaveBeenCalledTimes(2);
+    fireEvent.change(from, { target: { value: "2026-09-01" } });
     fireEvent.keyDown(from, { key: "Escape" });
     expect(from).toHaveValue("2026-08-01");
-    expect(change).toHaveBeenCalledTimes(1);
+    expect(change).toHaveBeenCalledTimes(2);
     fireEvent.click(screen.getByRole("button", { name: "Hoy" }));
     expect(from).toHaveValue("2026-09-11");
     expect(to).toHaveValue("2026-09-11");
-    fireEvent.change(from, { target: { value: "2026-08-01" } });
-    fireEvent.click(screen.getByRole("button", { name: "Hoy" }));
-    expect(from).toHaveValue("2026-09-11");
   });
 
   it("preserves the legacy custom period popover with validation, submit and Escape", () => {
@@ -129,7 +123,7 @@ describe("shared report date range filter", () => {
       mount("2026-09-11", "2024-02-10", locale);
       expect(screen.getByRole("button", { name: todayLabel })).toBeEnabled();
       expect(screen.getByRole("combobox", { name: monthLabel })).toBeEnabled();
-      expect(screen.getByRole("button", { name: applyLabel })).toBeEnabled();
+      expect(screen.queryByRole("button", { name: applyLabel })).not.toBeInTheDocument();
       expect(reportDateRangeLabel({ from: "2026-09-11", to: "2026-09-11", label: "", preset: "TODAY" }, locale)).toBe(todayLabel);
     });
 });

@@ -4,6 +4,10 @@ import { ArrowClockwise, CalendarBlank, CaretDown, ChartBar, Circle, MagnifyingG
 import type { PromotionView } from "./PromotionForm";
 import { formatPromotionDateRange, promotionConditionSentences, promotionTypeLabel } from "./promotionPresentation";
 import { ErpSelect } from "./ErpSelect";
+import { ErpListSelect } from "./ErpListSelect";
+import { matchesListFilter } from "./listFilterValues";
+import { ErpListFilterPanel } from "./ErpListFilterPanel";
+import { WarehouseSearchFrame } from "./WarehouseSearchFrame";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
@@ -186,7 +190,7 @@ export function StockPromotionGroups({
     persistent: Boolean(username)
   });
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const groups = useMemo(
     () => buildStockPromotionGroups(promotions, productRows, loading || Boolean(statusMessage) || !hideEmptyGroups),
     [promotions, productRows, loading, statusMessage, hideEmptyGroups]
@@ -195,8 +199,7 @@ export function StockPromotionGroups({
     const search = query.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase(locale).trim();
     const matches = groups.filter(({ promotion }) => {
       const isExpired = isStockPromotionExpired(promotion);
-      if (statusFilter === "EXPIRED" ? !isExpired
-        : statusFilter !== "ALL" && (isExpired || promotion.status !== statusFilter)) return false;
+      if (!matchesListFilter(statusFilter, isExpired ? "EXPIRED" : promotion.status)) return false;
       if (!search) return true;
       return [promotion.name, t("promotion.status." + promotion.status),
         t("promotion.type." + promotion.type)]
@@ -270,7 +273,7 @@ export function StockPromotionGroups({
   useEffect(() => {
     if (!selectionRequest) return;
     setQuery("");
-    setStatusFilter("ALL");
+    setStatusFilter([]);
     setActivePromotionId(selectionRequest.id);
   }, [selectionRequest]);
 
@@ -298,27 +301,37 @@ export function StockPromotionGroups({
   return (
     <section className={rootClassName} aria-label={t(stockPromotionGroupsMessageKeys.tableLabel)}>
       <section className="stock-promotion-list-panel" aria-label={t(stockPromotionGroupsMessageKeys.tableLabel)}>
-        <div className={`stock-promotion-list-filters${app === "gestion" ? " gestion-filter-toolbar" : ""}`}>
-          <label className={`stock-promotion-search${app === "gestion" ? " report-search" : ""}`}>
+        {app !== "pda" ? <ErpListFilterPanel translate={t} className="stock-promotion-standard-filters"
+          search={<label><WarehouseSearchFrame><input className="erp-search-input" type="search" aria-label={t("promotion.list.search")}
+            placeholder={t("promotion.list.search")} value={query} onChange={event => setQuery(event.target.value)} /></WarehouseSearchFrame></label>}
+          filters={<label><span>{t("promotion.column.status")}</span><ErpListSelect values={statusFilter} aria-label={t("promotion.column.status")}
+            maxPopoverWidth="trigger"
+            options={[
+              { value: "", label: t("promotion.filter.all") },
+              ...(["ACTIVE", "DRAFT", "INACTIVE"] as const).map(value => ({ value, label: t("promotion.status." + value) })),
+              { value: "EXPIRED", label: t("promotion.list.expired") }
+            ]} onChange={setStatusFilter} /></label>}
+        /> : <div className="stock-promotion-list-filters">
+          <label className="stock-promotion-search">
             <input type="search" aria-label={t("promotion.list.search")}
               placeholder={t("promotion.list.search")} value={query}
               onChange={(event) => setQuery(event.target.value)} />
             <MagnifyingGlass size={16} aria-hidden="true" />
           </label>
           <div className="stock-promotion-status-filter"
-            data-filter-active={app === "gestion" && statusFilter !== "ALL" ? "true" : undefined}>
-            <ErpSelect value={statusFilter} aria-label={t("promotion.column.status")}
+            data-filter-active={undefined}>
+            <ErpSelect value={statusFilter[0] ?? "ALL"} aria-label={t("promotion.column.status")}
               options={[
                 { value: "ALL", label: t("promotion.filter.all") },
                 ...(["ACTIVE", "DRAFT", "INACTIVE"] as const)
                   .map((value) => ({ value, label: t("promotion.status." + value) })),
                 { value: "EXPIRED", label: t("promotion.list.expired") }
               ]}
-              onChange={setStatusFilter}
+              onChange={value => setStatusFilter(value === "ALL" ? [] : [value])}
             />
             <CaretDown size={13} aria-hidden="true" />
           </div>
-        </div>
+        </div>}
         {filteredGroups.length === 0 ? (
           <p className="stock-promotion-empty" role={statusMessage ? "alert" : "status"}>
             {statusMessage || (loading ? t("common.loading") : t("promotion.list.empty"))}

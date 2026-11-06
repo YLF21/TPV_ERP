@@ -380,6 +380,16 @@ public class InventoryService {
             String sortBy,
             String sortDirection,
             boolean includePurchaseFields) {
+        return stockPageFiltered(requestedLimit, cursor, search, view, productType, priceUseMode, familyId, taxId,
+                offerActive, stockStatus, supplierId, warehouseId, sortBy, sortDirection, includePurchaseFields,
+                StockListFilterChoices.EMPTY);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<StockPageItem> stockPageFiltered(Integer requestedLimit, String cursor, String search,
+            String view, String productType, String priceUseMode, UUID familyId, UUID taxId, Boolean offerActive,
+            String stockStatus, UUID supplierId, UUID warehouseId, String sortBy, String sortDirection,
+            boolean includePurchaseFields, StockListFilterChoices choices) {
         UUID storeId = currentStore().getId();
         var limit = normalizedLimit(requestedLimit);
         var filters = StockPageFilters.from(
@@ -388,7 +398,13 @@ public class InventoryService {
         var normalizedSortBy = normalizedStockSort(sortBy, includePurchaseFields);
         var normalizedDirection = normalizedSortDirection(sortDirection);
         var parsedCursor = parseSortCursor(cursor, normalizedSortBy, normalizedDirection);
-        var orderedIds = filters.stockStatus() == null && filters.supplierId() == null
+        var orderedIds = !choices.isEmpty()
+                ? stockPageOrderRepository.findProductIdsWithChoices(
+                        storeId, filters.search(), filters.productType(), filters.priceUseMode(), filters.discountType(),
+                        filters.offersOnly(), filters.familyId(), filters.taxId(), filters.offerActive(),
+                        filters.stockStatus(), filters.supplierId(), warehouseId, normalizedSortBy, normalizedDirection,
+                        parsedCursor.productId(), limit + 1, choices)
+                : filters.stockStatus() == null && filters.supplierId() == null
                 ? stockPageOrderRepository.findProductIds(
                         storeId, filters.search(), filters.productType(), filters.priceUseMode(),
                         filters.discountType(), filters.offersOnly(), filters.familyId(), filters.taxId(),
@@ -456,14 +472,24 @@ public class InventoryService {
     public PagedResult<StockAdjustmentHistory> adjustmentHistory(
             Integer requestedLimit, Integer requestedPage, UUID warehouseId, String search,
             java.time.Instant from, java.time.Instant to) {
+        return adjustmentHistoryFiltered(requestedLimit, requestedPage, warehouseId == null ? List.of() : List.of(warehouseId),
+                search, from, to);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<StockAdjustmentHistory> adjustmentHistoryFiltered(
+            Integer requestedLimit, Integer requestedPage, List<UUID> warehouseIds, String search,
+            java.time.Instant from, java.time.Instant to) {
         if (adjustmentHistory == null) throw new IllegalStateException("Historial de ajustes no disponible");
         var storeId = currentStore().getId();
-        if (warehouseId != null) warehouse(warehouseId, storeId);
+        var selected = warehouseIds == null ? List.<UUID>of() : warehouseIds;
+        selected.forEach(id -> warehouse(id, storeId));
         int limit = requestedLimit == null ? 50 : Math.max(1, Math.min(requestedLimit, 100));
         int page = requestedPage == null ? 0 : Math.max(0, requestedPage);
         var query = search == null || search.isBlank() ? null
                 : "%" + search.trim().toLowerCase(java.util.Locale.ROOT) + "%";
-        var result = adjustmentHistory.page(storeId, warehouseId, query,
+        var result = adjustmentHistory.pageFiltered(storeId, selected.isEmpty(),
+                selected.isEmpty() ? List.of(new UUID(0, 0)) : selected, query,
                 from == null ? java.time.Instant.EPOCH : from,
                 to == null ? java.time.Instant.parse("9999-12-31T00:00:00Z") : to,
                 org.springframework.data.domain.PageRequest.of(page, limit));

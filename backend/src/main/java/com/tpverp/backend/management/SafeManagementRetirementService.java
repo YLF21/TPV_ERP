@@ -16,6 +16,7 @@ import jakarta.persistence.TypedQuery;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -39,6 +40,15 @@ public class SafeManagementRetirementService {
 
     private static final int MAX_PAGE_SIZE = 100;
     private static final int MAX_CURSOR_LENGTH = 2048;
+    private static final String CONTACT_CITY = "ca->'address'->>'city'";
+    private static final String CONTACT_PROVINCE = "ca->'address'->>'province'";
+    private static final String CONTACT_COUNTRY = "ca->'address'->>'country'";
+
+    public record DirectoryAddressOption(String location, String country) {}
+
+    public record DirectoryAddressChoices(List<String> locations, List<String> countries) {
+        private static final DirectoryAddressChoices EMPTY = new DirectoryAddressChoices(List.of(), List.of());
+    }
 
     private final EntityManager entityManager;
     private final JdbcTemplate jdbc;
@@ -68,6 +78,13 @@ public class SafeManagementRetirementService {
     @Transactional(readOnly = true)
     public ManagementPage<ManagementItem> page(EntityType type, int size, String cursor, String search,
             Boolean activeFilter, String sort, String direction, Map<String, String> filters) {
+        return page(type, size, cursor, search, activeFilter, sort, direction, filters, DirectoryAddressChoices.EMPTY);
+    }
+
+    @Transactional(readOnly = true)
+    public ManagementPage<ManagementItem> page(EntityType type, int size, String cursor, String search,
+            Boolean activeFilter, String sort, String direction, Map<String, String> filters,
+            DirectoryAddressChoices choices) {
         int requestedSize = validateSize(size);
         if (search != null && search.length() > 120) {
             throw new IllegalArgumentException("El texto de busqueda no puede superar 120 caracteres");
@@ -139,6 +156,7 @@ public class SafeManagementRetirementService {
             args.add(activeFilter);
         }
         appendPartyFilters(sql, args, type, filters);
+        appendAddressChoices(sql, args, type, choices);
         String idExpression = idExpression(type);
         String comparison = pageOrder.descending() ? " < " : " > ";
         if (anchor != null) {
@@ -535,6 +553,61 @@ public class SafeManagementRetirementService {
                 """;
     }
 
+    @Transactional(readOnly = true)
+    public List<DirectoryAddressOption> addressOptions(EntityType type) {
+        UUID companyId = organization.currentCompany().getId();
+        boolean customer = type == EntityType.CUSTOMER;
+        String alias = switch (type) {
+            case CUSTOMER -> "c";
+            case SUPPLIER -> "s";
+            default -> throw new IllegalArgumentException("Directorio no valido");
+        };
+        String location = locationExpression(alias + ".poblacion", alias + ".provincia");
+        String query = "select distinct location, country from (select " + location + " as location, "
+                + alias + ".pais as country from " + (customer ? "cliente c" : "proveedor s")
+                + " where " + alias + ".empresa_id = ?";
+        if (customer) {
+            query += " union all select " + locationExpression(CONTACT_CITY, CONTACT_PROVINCE) + ", "
+                    + CONTACT_COUNTRY + " from cliente c cross join lateral jsonb_array_elements(c.addresses_json) ca"
+                    + " where c.empresa_id = ?";
+        }
+        query += ") address where location <> '' or nullif(btrim(country), '') is not null";
+        return jdbc.query(query, (rs, rowNum) -> new DirectoryAddressOption(rs.getString("location"),
+                rs.getString("country")), customer ? new Object[]{companyId, companyId} : new Object[]{companyId});
+    }
+
+    private static String locationExpression(String city, String province) {
+        return "concat_ws(', ', nullif(btrim(" + city + "), ''), nullif(btrim(" + province + "), ''))";
+    }
+
+    private static void appendAddressChoices(StringBuilder sql, List<Object> args, EntityType type,
+            DirectoryAddressChoices choices) {
+        if (type != EntityType.CUSTOMER && type != EntityType.SUPPLIER) return;
+        boolean customer = type == EntityType.CUSTOMER;
+        String alias = customer ? "c" : "s";
+        appendAddressChoice(sql, args, choices.locations(), locationExpression(alias + ".poblacion", alias + ".provincia"),
+                customer ? locationExpression(CONTACT_CITY, CONTACT_PROVINCE) : null);
+        appendAddressChoice(sql, args, choices.countries(), alias + ".pais", customer ? CONTACT_COUNTRY : null);
+    }
+
+    private static void appendAddressChoice(StringBuilder sql, List<Object> args, List<String> choices,
+            String primary, String secondary) {
+        if (choices.isEmpty()) return;
+        if (choices.size() > 500 || choices.stream().anyMatch(value -> value.isBlank() || value.length() > 512)) {
+            throw new IllegalArgumentException("Filtro de direccion no valido");
+        }
+        List<String> selected = choices.stream().map(value -> value.strip().toLowerCase(Locale.ROOT)).distinct().toList();
+        String placeholders = String.join(", ", Collections.nCopies(selected.size(), "?"));
+        sql.append(" and (lower(btrim(").append(primary).append(")) in (").append(placeholders).append(")");
+        args.addAll(selected);
+        if (secondary != null) {
+            sql.append(" or exists (select 1 from jsonb_array_elements(c.addresses_json) ca where lower(btrim(")
+                    .append(secondary).append(")) in (").append(placeholders).append("))");
+            args.addAll(selected);
+        }
+        sql.append(")");
+    }
+
     private static void appendPartyFilters(StringBuilder sql, List<Object> args,
             EntityType type, Map<String, String> filters) {
         if (type != EntityType.CUSTOMER && type != EntityType.SUPPLIER) return;
@@ -573,20 +646,28 @@ public class SafeManagementRetirementService {
         for (String key : List.of("creditEnabled", "creditBlocked", "isMember", "commercialConsent")) {
             String value = filters.get("field." + key);
             if (value == null || value.isBlank()) continue;
-            if (!value.equals("true") && !value.equals("false")) throw new IllegalArgumentException("Filtro no valido");
+            var selected = java.util.Arrays.stream(value.split(",", -1)).distinct().toList();
+            if (!List.of("true", "false").containsAll(selected)) throw new IllegalArgumentException("Filtro no valido");
             String expression = switch (key) {
                 case "creditEnabled" -> "c.credit_enabled";
                 case "creditBlocked" -> "c.credit_blocked";
                 case "commercialConsent" -> "c.commercial_consent";
                 default -> "exists(select 1 from miembro m where m.cliente_id = c.id and m.active = true)";
             };
-            sql.append(" and (").append(expression).append(") = ?");
-            args.add(Boolean.valueOf(value));
+            if (selected.size() == 2) {
+                sql.append(" and (").append(expression).append(") is not null");
+            } else {
+                sql.append(" and (").append(expression).append(") = ?");
+                args.add(Boolean.valueOf(selected.getFirst()));
+            }
         }
         String debt = filters.get("field.debt");
         if (debt != null && !debt.isBlank()) {
-            if (!debt.equals("with") && !debt.equals("without")) throw new IllegalArgumentException("Filtro de deuda no valido");
-            sql.append(" and ").append(customerDebtExpression()).append(debt.equals("with") ? " > 0" : " <= 0");
+            var selected = java.util.Arrays.stream(debt.split(",", -1)).distinct().toList();
+            if (!List.of("with", "without").containsAll(selected)) throw new IllegalArgumentException("Filtro de deuda no valido");
+            if (selected.size() == 1) {
+                sql.append(" and ").append(customerDebtExpression()).append(selected.getFirst().equals("with") ? " > 0" : " <= 0");
+            }
         }
     }
 

@@ -143,7 +143,10 @@ public class ProductSalesHistoryRepository {
         if (!stores.isEmpty()) { where.append(" and d.store_id in (:stores)"); params.addValue("stores", stores); }
         if (filter.from() != null) { where.append(" and d.business_date >= :from"); params.addValue("from", java.sql.Date.valueOf(filter.from())); }
         if (filter.to() != null) { where.append(" and d.business_date <= :to"); params.addValue("to", java.sql.Date.valueOf(filter.to())); }
-        if (filter.status() != null) { where.append(" and d.document_status=:status"); params.addValue("status", filter.status()); }
+        if (filter.status() != null) {
+            where.append(" and d.document_status in (:statuses)");
+            params.addValue("statuses", java.util.Arrays.asList(filter.status().split(",")));
+        }
         return new Sql(where.toString(), params);
     }
     private static Item item(ResultSet row) throws SQLException {

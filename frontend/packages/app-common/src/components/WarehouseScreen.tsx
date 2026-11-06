@@ -13,6 +13,7 @@ import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { GoodsCheckPanel } from "./GoodsCheckPanel";
+import { ReplenishmentScreen } from "./ReplenishmentScreen";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import { ModuleNavBackButton } from "./ModuleNavBackButton";
@@ -41,7 +42,8 @@ const warehouseNavigation: Array<{
   { section: "purchaseDeliveryNotes", labelKey: "warehouseScreen.purchaseDeliveryNotes", icon: ClipboardText },
   { section: "purchaseInvoices", labelKey: "warehouseScreen.purchaseInvoices", icon: Receipt },
   { section: "output", labelKey: "stock.nav.outputWarehouse", icon: UploadSimple },
-  { section: "goodsCheck", labelKey: "warehouseScreen.goodsCheck", icon: ListChecks }
+  { section: "goodsCheck", labelKey: "warehouseScreen.goodsCheck", icon: ListChecks },
+  { section: "replenishment", labelKey: "replenishment.title", icon: ListChecks }
 ];
 
 type WarehouseScreenProps = {
@@ -86,10 +88,9 @@ export function WarehouseScreen({
   const [suppliers, setSuppliers] = useState<WarehouseSupplierOption[]>([]);
   const [status, setStatus] = useState("");
   const canManage = userCanManageWarehouse(session);
-  const defaultWarehouseId = useMemo(() => (
-    warehouses.find((warehouse) => warehouse.defaultWarehouse)?.id
-      ?? warehouses.find((warehouse) => warehouse.active !== false)?.id
-  ), [warehouses]);
+  const canReadReplenishment = canManage || session.permissions.includes("STOCK_READ");
+  const activeWarehouses = useMemo(() => warehouses.filter(warehouse => warehouse.active !== false), [warehouses]);
+  const defaultWarehouseId = activeWarehouses.find(warehouse => warehouse.defaultWarehouse)?.id ?? activeWarehouses[0]?.id;
 
   useEffect(() => {
     setSection(initialSection);
@@ -110,7 +111,7 @@ export function WarehouseScreen({
         ...product,
         reference: product.reference ?? product.barcode2 ?? undefined
       })));
-      setWarehouses(loadedWarehouses.filter((warehouse) => warehouse.active !== false));
+      setWarehouses(loadedWarehouses);
       setCustomers(loadedCustomers);
       setSuppliers(loadedSuppliers);
       setStatus("");
@@ -122,7 +123,7 @@ export function WarehouseScreen({
     };
   }, [canManage, locale, session.accessToken]);
 
-  const titleKey = section === "input"
+  const titleKey = section === "replenishment" ? "replenishment.title" : section === "input"
     ? "stock.nav.inputWarehouse"
     : section === "purchaseDeliveryNotes"
       ? "warehouseScreen.purchaseDeliveryNotes"
@@ -131,7 +132,7 @@ export function WarehouseScreen({
         : section === "output"
           ? "stock.nav.outputWarehouse"
           : "warehouseScreen.goodsCheck";
-  const subtitleKey = section === "input"
+  const subtitleKey = section === "replenishment" ? "replenishment.subtitle" : section === "input"
     ? "warehouseOperations.inputSubtitle"
     : section === "purchaseDeliveryNotes"
       ? "warehouseScreen.purchaseDeliveryNotesSubtitle"
@@ -178,7 +179,7 @@ export function WarehouseScreen({
 
         {!embedded && <aside className="stock-nav">
           <strong>{t("home.warehouse")}</strong>
-          {warehouseNavigation.map(({ section: destination, labelKey, icon: NavigationIcon }) => {
+          {warehouseNavigation.filter(item => item.section === "replenishment" ? canReadReplenishment : canManage).map(({ section: destination, labelKey, icon: NavigationIcon }) => {
             const selected = section === destination;
             return (
               <ModuleNavItem
@@ -193,14 +194,16 @@ export function WarehouseScreen({
           <ModuleNavBackButton label={t("common.back")} onBack={onBack} />
         </aside>}
 
-        <section className="stock-list work-panel" aria-label={t(titleKey)}>
-          {(app !== "gestion" || !canManage || section === "goodsCheck") && <header className="work-panel-heading stock-panel-heading">
+        <section className={`stock-list work-panel${section === "replenishment" ? " replenishment-host" : ""}`} aria-label={t(titleKey)}>
+          {section !== "replenishment" && (app !== "gestion" || !canManage || section === "goodsCheck") && <header className="work-panel-heading stock-panel-heading">
             <div>
               <h2>{t(titleKey)}</h2>
               <span>{t(subtitleKey)}</span>
             </div>
           </header>}
-          {!canManage ? (
+          {section === "replenishment" && canReadReplenishment ? (
+            <ReplenishmentScreen app={app} username={session.username} token={session.accessToken || ""} locale={locale} showModuleHeading={false} />
+          ) : !canManage ? (
             <div className="stock-empty-state">{t("warehouseScreen.noAccess")}</div>
           ) : section === "goodsCheck" ? (
             <GoodsCheckPanel
@@ -208,7 +211,7 @@ export function WarehouseScreen({
               locale={locale}
               token={session.accessToken}
               t={t}
-              warehouses={warehouses}
+              warehouses={activeWarehouses}
               suppliers={suppliers}
             />
           ) : section === "purchaseDeliveryNotes" || section === "purchaseInvoices" ? (
@@ -222,7 +225,7 @@ export function WarehouseScreen({
               session={session}
               token={session.accessToken}
               products={products}
-              warehouses={warehouses}
+              warehouses={app === "pda" ? activeWarehouses : warehouses}
               customers={customers}
               suppliers={suppliers}
               t={t}
@@ -235,7 +238,7 @@ export function WarehouseScreen({
             />
           ) : (
             <WarehouseOperationsPanel
-              mode={section}
+              mode={section === "output" ? "output" : "input"}
               heading={app === "gestion" ? { title: t(titleKey), subtitle: t(subtitleKey) } : undefined}
               documentType={section === "input" ? "ENTRADA_ALMACEN" : undefined}
               app={app}
@@ -244,7 +247,7 @@ export function WarehouseScreen({
               session={session}
              token={session.accessToken}
               products={products}
-              warehouses={warehouses}
+              warehouses={app === "pda" ? activeWarehouses : warehouses}
               customers={customers}
               suppliers={suppliers}
               t={t}

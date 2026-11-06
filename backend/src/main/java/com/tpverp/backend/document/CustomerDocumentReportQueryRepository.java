@@ -26,6 +26,30 @@ public class CustomerDocumentReportQueryRepository {
         this.jdbc = jdbc;
     }
 
+    public List<CustomerOption> customerOptions(UUID storeId, Collection<CommercialDocumentType> types,
+            LocalDate from, LocalDate to) {
+        if (types.isEmpty()) return List.of();
+        var parameters = new MapSqlParameterSource("storeId", storeId)
+                .addValue("types", types.stream().map(Enum::name).toList())
+                .addValue("from", from).addValue("to", to);
+        return jdbc.query("""
+                select distinct coalesce(nullif(customer.client_id, ''), customer.nombre_fiscal) as value,
+                       customer.nombre_fiscal as name
+                from documento document
+                join cliente customer on customer.id = document.cliente_id
+                where document.tienda_id = :storeId and document.tipo in (:types)
+                  and (cast(:from as date) is null or document.fecha >= :from)
+                  and (cast(:to as date) is null or document.fecha <= :to)
+                order by value, name
+                """, parameters, (result, row) -> {
+                    var code = result.getString("value");
+                    var name = result.getString("name");
+                    return new CustomerOption(code, code.equals(name) ? name : code + " \u00b7 " + name);
+                });
+    }
+
+    public record CustomerOption(String value, String label) {}
+
     public Page findPage(UUID storeId, UUID customerId, Collection<CommercialDocumentType> types,
             CustomerDocumentReportFilter filter, String encodedCursor, int limit) {
         if (storeId == null || customerId == null || limit < 1 || limit > 500) {

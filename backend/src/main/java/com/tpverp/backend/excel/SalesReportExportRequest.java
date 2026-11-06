@@ -22,7 +22,7 @@ public record SalesReportExportRequest(
             String status,
             String warehouse,
             @Size(max = 200) List<@NotBlank @Size(max = 200) String> users,
-            @Size(max = 200) List<@NotBlank @Size(max = 200) String> customers,
+            @Size(max = 200) List<@NotBlank @Size(max = 255) String> customers,
             @Size(max = 200) List<@NotBlank @Size(max = 200) String> suppliers,
             @Size(max = 200) List<@NotBlank @Size(max = 200) String> payments,
             @Size(max = 200) List<@NotBlank @Size(max = 200) String> terminals,

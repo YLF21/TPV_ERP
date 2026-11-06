@@ -65,6 +65,10 @@
 }
 .stock-promotion-status-filter .erp-select__arrow { display: none !important; }
 .stock-promotion-status-filter > svg { position: absolute; top: 9px; right: 9px; color: #516a88; pointer-events: none; }
+html body .stock-promotion-list-panel .stock-promotion-standard-filters { margin: 8px; width: calc(100% - 16px); }
+html body .stock-promotion-list-panel .stock-promotion-standard-filters .erp-list-filter-search > label { width: 100%; }
+html body .stock-promotion-list-panel .stock-promotion-standard-filters .erp-select .erp-select__arrow { display: flex !important; }
+html body .stock-promotion-list-panel .stock-promotion-standard-filters .erp-select__trigger { height: 34px !important; min-height: 34px !important; border-radius: 4px !important; background: #fff !important; }
 
 .stock-promotion-list-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .stock-promotion-list-row {

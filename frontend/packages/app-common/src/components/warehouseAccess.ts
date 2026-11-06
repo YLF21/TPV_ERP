@@ -5,7 +5,8 @@ export type WarehouseSection =
   | "purchaseDeliveryNotes"
   | "purchaseInvoices"
   | "output"
-  | "goodsCheck";
+  | "goodsCheck"
+  | "replenishment";
 
 export const warehouseSections: WarehouseSection[] = [
   "input",

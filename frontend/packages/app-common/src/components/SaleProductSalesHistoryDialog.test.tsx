@@ -224,11 +224,16 @@ describe("SaleProductSalesHistoryDialog", () => {
     expect(screen.queryByText("Solo datos recibidos en SaaS")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Comparación por tienda" }));
     expect(screen.getByRole("columnheader", { name: /Cantidad total/ })).toBeTruthy();
+    const filterToggle = screen.getByRole("button", { name: "Filtrar" });
+    fireEvent.click(filterToggle);
     const store = screen.getByRole("button", { name: "Tienda" });
     fireEvent.click(store);
-    fireEvent.keyDown(screen.getByRole("option", { name: "Todas las tiendas" }), { key: "Escape" });
+    fireEvent.keyDown(store, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
     fireEvent.keyDown(store, { key: "Escape" });
+    expect(filterToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(filterToggle, { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
   });
 
@@ -236,6 +241,7 @@ describe("SaleProductSalesHistoryDialog", () => {
     render(<SaleProductSalesHistoryDialog products={[product]} initialProduct={product}
       locale="es" accessToken="access-token" onClose={vi.fn()} />);
     await screen.findByText("SIN DATOS");
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
     fireEvent.click(screen.getByRole("button", { name: "Tienda" }));
     fireEvent.click(screen.getByRole("option", { name: "S01 · Principal" }));
     await screen.findByText("SIN DATOS");

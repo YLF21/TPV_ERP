@@ -80,14 +80,22 @@ public class ControlAlertService {
             int size,
             String sortBy,
             String sortDirection) {
+        return listFiltered(single(status), single(type), ruleId, single(priority), single(assigneeId),
+                overdue, from, to, search, page, size, sortBy, sortDirection);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<AlertSummaryView> listFiltered(List<ControlAlertStatus> statuses, List<ControlAlertType> types,
+            UUID ruleId, List<ControlAlertPriority> priorities, List<UUID> assigneeIds, Boolean overdue,
+            Instant from, Instant to, String search, int page, int size, String sortBy, String sortDirection) {
         if (page < 0) throw new IllegalArgumentException("page no puede ser negativo");
         if (size < 1 || size > 100) throw new IllegalArgumentException("size debe estar entre 1 y 100");
         validateRange(from, to);
         var pageable = PageRequest.of(page, size, alertSort(sortBy, sortDirection));
         var normalizedSearch = normalizedSearch(search);
         var result = alerts.findAll(filter(
-                        organization.currentStore().getId(), status, type, ruleId, priority,
-                        assigneeId, overdue, clock.instant(), from, to, normalizedSearch), pageable);
+                        organization.currentStore().getId(), statuses, types, ruleId, priorities,
+                        assigneeIds, overdue, clock.instant(), from, to, normalizedSearch), pageable);
         var views = summaries(result.getContent());
         return result.map(alert -> views.get(alert.getId()));
     }
@@ -118,6 +126,12 @@ public class ControlAlertService {
     public List<RuleAlertCountView> countsByRule(
             Instant from, Instant to, ControlAlertStatus status,
             ControlAlertPriority priority, UUID assigneeId, Boolean overdue, String search) {
+        return countsByRuleFiltered(from, to, single(status), single(priority), single(assigneeId), overdue, search);
+    }
+
+    @Transactional(readOnly = true)
+    public List<RuleAlertCountView> countsByRuleFiltered(Instant from, Instant to, List<ControlAlertStatus> statuses,
+            List<ControlAlertPriority> priorities, List<UUID> assigneeIds, Boolean overdue, String search) {
         if (from == null || to == null) {
             throw new IllegalArgumentException("from y to son obligatorios para agrupar alertas");
         }
@@ -125,11 +139,14 @@ public class ControlAlertService {
         var storeId = organization.currentStore().getId();
         var counts = new java.util.HashMap<UUID, MutableRuleCounts>();
         var normalizedSearch = normalizedSearch(search);
-        var filtered = status != null || priority != null || assigneeId != null
+        var filtered = hasChoices(statuses) || hasChoices(priorities) || hasChoices(assigneeIds)
                 || Boolean.TRUE.equals(overdue) || normalizedSearch != null;
         var groupedCounts = filtered
-                ? alerts.countByRuleAndStatusFiltered(storeId, from, to, status, priority,
-                        assigneeId, Boolean.TRUE.equals(overdue), clock.instant(),
+                ? alerts.countByRuleAndStatusWithChoices(storeId, from, to,
+                        hasChoices(statuses), hasChoices(statuses) ? statuses : List.of(ControlAlertStatus.NEW),
+                        hasChoices(priorities), hasChoices(priorities) ? priorities : List.of(ControlAlertPriority.values()[0]),
+                        hasChoices(assigneeIds), hasChoices(assigneeIds) ? assigneeIds : List.of(new UUID(0, 0)),
+                        Boolean.TRUE.equals(overdue), clock.instant(),
                         normalizedSearch == null ? null
                                 : "%" + normalizedSearch.toLowerCase(java.util.Locale.ROOT) + "%")
                 : alerts.countByRuleAndStatus(storeId, from, to);
@@ -168,13 +185,21 @@ public class ControlAlertService {
         return new AlertDashboardSummaryView(newCount, reviewedCount, recent, closedCount, dismissedCount);
     }
 
+    private static <T> List<T> single(T value) {
+        return value == null ? List.of() : List.of(value);
+    }
+
+    private static boolean hasChoices(List<?> values) {
+        return values != null && !values.isEmpty();
+    }
+
     private static Specification<ControlAlert> filter(
             UUID storeId,
-            ControlAlertStatus status,
-            ControlAlertType type,
+            List<ControlAlertStatus> statuses,
+            List<ControlAlertType> types,
             UUID ruleId,
-            ControlAlertPriority priority,
-            UUID assigneeId,
+            List<ControlAlertPriority> priorities,
+            List<UUID> assigneeIds,
             Boolean overdue,
             Instant now,
             Instant from,
@@ -183,9 +208,9 @@ public class ControlAlertService {
         return (root, query, builder) -> {
             var predicates = new java.util.ArrayList<Predicate>();
             predicates.add(builder.equal(root.get("storeId"), storeId));
-            if (status != null) predicates.add(builder.equal(root.get("status"), status));
-            if (priority != null) predicates.add(builder.equal(root.get("priority"), priority));
-            if (assigneeId != null) predicates.add(builder.equal(root.get("assigneeId"), assigneeId));
+            if (hasChoices(statuses)) predicates.add(root.get("status").in(statuses));
+            if (hasChoices(priorities)) predicates.add(root.get("priority").in(priorities));
+            if (hasChoices(assigneeIds)) predicates.add(root.get("assigneeId").in(assigneeIds));
             if (Boolean.TRUE.equals(overdue)) {
                 predicates.add(root.get("status").in(ControlAlertStatus.NEW, ControlAlertStatus.REVIEWED));
                 predicates.add(builder.isNotNull(root.get("dueAt")));
@@ -194,7 +219,7 @@ public class ControlAlertService {
             var event = root.join("event");
             // Scope both sides so the event's store/date index can serve chronological pages.
             predicates.add(builder.equal(event.get("storeId"), storeId));
-            if (type != null) predicates.add(builder.equal(event.get("type"), type));
+            if (hasChoices(types)) predicates.add(event.get("type").in(types));
             if (ruleId != null) predicates.add(builder.equal(event.get("ruleId"), ruleId));
             if (from != null) predicates.add(builder.greaterThanOrEqualTo(event.get("occurredAt"), from));
             if (to != null) predicates.add(builder.lessThan(event.get("occurredAt"), to));

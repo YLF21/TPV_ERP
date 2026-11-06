@@ -27,6 +27,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -109,12 +110,12 @@ public class StockController {
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam String sortBy,
             @RequestParam(defaultValue = "asc") String sortDirection,
-            Authentication authentication) {
-        return service.stockPage(
+            @ModelAttribute StockListFilterChoices choices, Authentication authentication) {
+        return service.stockPageFiltered(
                 limit, cursor, search, view, type, discount, familyId, taxId, offerActive,
                 stockStatus, supplierId,
                 warehouseId, sortBy, sortDirection,
-                PermissionChecks.hasProductManagement(authentication));
+                PermissionChecks.hasProductManagement(authentication), choices);
     }
 
     @GetMapping("/top-sales")
@@ -124,7 +125,14 @@ public class StockController {
             @RequestParam(required = false) LocalDate date,
             @RequestParam(required = false) LocalDate dateFrom,
             @RequestParam(required = false) LocalDate dateTo,
-            @RequestParam(required = false) UUID warehouseId) {
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(required = false) List<UUID> warehouseIds) {
+        if (warehouseIds != null && !warehouseIds.isEmpty()) {
+            var selectedTo = dateTo != null ? dateTo : dateFrom != null ? dateFrom : date == null ? LocalDate.now() : date;
+            var selectedFrom = dateFrom != null ? dateFrom : dateTo != null ? dateTo
+                    : StockTopSalesPeriod.fromCode(period).startDate(selectedTo);
+            return topSalesService.topSalesFiltered(selectedFrom, selectedTo, warehouseId, warehouseIds);
+        }
         if (dateFrom != null || dateTo != null) {
             var selectedFrom = dateFrom == null ? dateTo : dateFrom;
             var selectedTo = dateTo == null ? selectedFrom : dateTo;
@@ -258,11 +266,11 @@ public class StockController {
     public PagedResult<StockAdjustmentHistory> adjustments(
             @RequestParam(required = false) Integer limit,
             @RequestParam(required = false) Integer page,
-            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(required = false) List<UUID> warehouseId,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) java.time.Instant from,
             @RequestParam(required = false) java.time.Instant to) {
-        return service.adjustmentHistory(limit, page, warehouseId, search, from, to);
+        return service.adjustmentHistoryFiltered(limit, page, warehouseId, search, from, to);
     }
 
     @PostMapping("/transfers")

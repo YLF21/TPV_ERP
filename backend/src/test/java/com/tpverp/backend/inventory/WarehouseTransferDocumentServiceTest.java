@@ -171,7 +171,7 @@ class WarehouseTransferDocumentServiceTest {
         var store = mock(Store.class);
         when(store.getId()).thenReturn(storeId);
         when(organization.currentStore()).thenReturn(store);
-        when(documents.pageFiltered(eq(storeId), isNull(), isNull(), isNull(), isNull(), isNull(),
+        when(documents.pageFilteredValues(eq(storeId), eq(List.of()), eq(List.of()), eq(List.of()), isNull(), isNull(),
                 isNull(), any(Pageable.class))).thenReturn(new PageImpl<>(List.of(document)));
         when(lines.totalsForTransfers(List.of(document.getId()))).thenReturn(List.of(
                 new WarehouseTransferLineTotals(document.getId(), 2, new BigDecimal("3.500"))));
@@ -201,8 +201,8 @@ class WarehouseTransferDocumentServiceTest {
         var store = mock(Store.class);
         when(store.getId()).thenReturn(storeId);
         when(organization.currentStore()).thenReturn(store);
-        when(documents.pageFiltered(eq(storeId), eq(WarehouseTransferDocument.Status.CONFIRMED),
-                eq(sourceId), eq(targetId), eq(from), eq(before), eq("%tra-2026%"), any(Pageable.class)))
+        when(documents.pageFilteredValues(eq(storeId), eq(List.of(WarehouseTransferDocument.Status.CONFIRMED)),
+                eq(List.of(sourceId)), eq(List.of(targetId)), eq(from), eq(before), eq("%tra-2026%"), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
         var service = new WarehouseTransferDocumentService(documents, mock(WarehouseTransferLineRepository.class),
                 mock(WarehouseRepository.class), mock(ProductRepository.class), mock(DocumentCounterRepository.class),
@@ -212,8 +212,8 @@ class WarehouseTransferDocumentServiceTest {
                 sourceId, targetId, from, before, " TRA-2026 ");
 
         assertThat(page.items()).isEmpty();
-        verify(documents).pageFiltered(eq(storeId), eq(WarehouseTransferDocument.Status.CONFIRMED),
-                eq(sourceId), eq(targetId), eq(from), eq(before), eq("%tra-2026%"),
+        verify(documents).pageFilteredValues(eq(storeId), eq(List.of(WarehouseTransferDocument.Status.CONFIRMED)),
+                eq(List.of(sourceId)), eq(List.of(targetId)), eq(from), eq(before), eq("%tra-2026%"),
                 argThat(request -> request.getPageNumber() == 2 && request.getPageSize() == 50));
     }
 

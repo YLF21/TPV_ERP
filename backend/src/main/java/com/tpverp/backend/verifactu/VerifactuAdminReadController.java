@@ -9,6 +9,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -50,7 +51,11 @@ public class VerifactuAdminReadController {
             @RequestParam(required = false) String documentNumber,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size,
-            @RequestParam(required = false) String sortDirection) {
+            @RequestParam(required = false) String sortDirection, @ModelAttribute FiscalListChoices choices) {
+        if (choices.hasValues()) {
+            return service.submissionsFiltered(dateFrom, dateTo, choices.withDefaults(status, documentType, operation),
+                    documentNumber, page, size, null, sortDirection);
+        }
         if (sortDirection != null) {
             return service.submissions(
                     dateFrom, dateTo, status, documentType, operation,
@@ -74,7 +79,11 @@ public class VerifactuAdminReadController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size,
             @RequestParam(required = false) String sortBy,
-            @RequestParam(required = false) String sortDirection) {
+            @RequestParam(required = false) String sortDirection, @ModelAttribute FiscalListChoices choices) {
+        if (choices.hasValues()) {
+            return service.submissionsFiltered(dateFrom, dateTo, choices.withDefaults(status, documentType, operation),
+                    documentNumber, page, size, sortBy, sortDirection);
+        }
         return service.submissions(
                 dateFrom, dateTo, status, documentType, operation,
                 documentNumber, page, size, sortBy, sortDirection);
@@ -91,7 +100,11 @@ public class VerifactuAdminReadController {
             @RequestParam(required = false) FiscalRecordOperation operation,
             @RequestParam(required = false) String documentNumber,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "25") int size) {
+            @RequestParam(defaultValue = "25") int size, @ModelAttribute FiscalListChoices choices) {
+        if (choices.hasValues()) {
+            return reviewService.defectiveRecordsFiltered(dateFrom, dateTo, choices.withDefaults(status, documentType, operation),
+                    documentNumber, page, size, null, null);
+        }
         return reviewService.defectiveRecords(
                 dateFrom, dateTo, status, documentType, operation,
                 documentNumber, page, size);
@@ -110,7 +123,11 @@ public class VerifactuAdminReadController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size,
             @RequestParam(required = false) String sortBy,
-            @RequestParam(required = false) String sortDirection) {
+            @RequestParam(required = false) String sortDirection, @ModelAttribute FiscalListChoices choices) {
+        if (choices.hasValues()) {
+            return reviewService.defectiveRecordsFiltered(dateFrom, dateTo, choices.withDefaults(status, documentType, operation),
+                    documentNumber, page, size, sortBy, sortDirection);
+        }
         return reviewService.defectiveRecords(
                 dateFrom, dateTo, status, documentType, operation,
                 documentNumber, page, size, sortBy, sortDirection);

@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
@@ -24,14 +25,20 @@ public class CashOpeningAlertService {
     @Transactional(readOnly=true)
     public CashOpeningAlertPage list(LocalDate from, LocalDate to, UUID terminalId, UUID userId,
             String status, int limit, String cursor, Authentication authentication) {
+        return listFiltered(from, to, single(terminalId), single(userId), single(status), limit, cursor, authentication);
+    }
+
+    @Transactional(readOnly=true)
+    public CashOpeningAlertPage listFiltered(LocalDate from, LocalDate to, List<UUID> terminalIds, List<UUID> userIds,
+            List<String> statuses, int limit, String cursor, Authentication authentication) {
         permissions.requireReportPermission(authentication);
         if (limit < 1 || limit > 100) throw new IllegalArgumentException("El limite debe estar entre 1 y 100");
         if (from != null && to != null && from.isAfter(to)) throw new IllegalArgumentException("Rango de fechas no valido");
-        if (status != null && !status.equals("PENDING") && !status.equals("REVIEWED")) throw new IllegalArgumentException("Estado de alerta no valido");
+        if (statuses != null && !List.of("PENDING", "REVIEWED").containsAll(statuses)) throw new IllegalArgumentException("Estado de alerta no valido");
         var store=organization.currentStore();
         var zone=ZoneId.of(store.getTimezone());
-        var rows=repository.find(store.getId(), from == null ? null : from.atStartOfDay(zone).toInstant(),
-                to == null ? null : to.plusDays(1).atStartOfDay(zone).toInstant(), terminalId,userId,status,decode(cursor),limit+1);
+        var rows=repository.findFiltered(store.getId(), from == null ? null : from.atStartOfDay(zone).toInstant(),
+                to == null ? null : to.plusDays(1).atStartOfDay(zone).toInstant(), terminalIds,userIds,statuses,decode(cursor),limit+1);
         var hasMore=rows.size()>limit;
         var items=hasMore ? rows.subList(0,limit) : rows;
         var next=hasMore ? items.getLast().openedAt()+"|"+items.getLast().id() : null;
@@ -54,6 +61,10 @@ public class CashOpeningAlertService {
         }
         return repository.findById(storeId,id).orElseThrow();
     }
+    private static <T> List<T> single(T value) {
+        return value == null ? null : List.of(value);
+    }
+
     private static CashOpeningAlertView withoutAmounts(CashOpeningAlertView alert) {
         return new CashOpeningAlertView(alert.id(), alert.sessionId(), alert.terminalId(), alert.terminalName(),
                 alert.userId(), alert.username(), alert.userName(), alert.openedAt(), null, null, null,

@@ -64,6 +64,7 @@ const messages: Record<string, string> = {
   "common.loading": "Cargando...",
   "salesReport.column.date": "Fecha",
   "salesReport.filter.all": "Todos",
+  "salesReport.filter": "Filtrar",
   "salesReport.filter.status": "Estado",
   "salesReport.search": "Buscar",
   "stock.column.warehouse": "Almacen",
@@ -124,6 +125,7 @@ describe("WarehouseOperationsPanel", () => {
     });
     const view = render(<WarehouseOperationsPanel mode={mode} app="gestion" documentType={documentType}
       token="token" products={products} warehouses={warehouses} customers={customers} suppliers={suppliers} t={t} />);
+    fireEvent.click(view.getByRole("button", { name: "Filtrar" }));
     await waitFor(() => expect((view.getByRole("button", { name: "Hoy" }) as HTMLButtonElement).disabled).toBe(false));
     expect(view.container.querySelector(".report-date-custom-inline")).not.toBeNull();
     expect(view.container.querySelectorAll("tbody tr[data-operation-id]")).toHaveLength(2);

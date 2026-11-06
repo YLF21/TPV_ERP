@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
 import type { UserSession } from "../types";
@@ -83,8 +83,9 @@ describe("StockScreen promotions", () => {
     search.focus();
     fireEvent.keyDown(search, { key: "F5" });
     expect(screen.queryByRole("dialog", { name: "Añadir producto" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Filtrar stock" }));
-    expect(screen.getByRole("dialog", { name: "Filtrar stock" })).toBeTruthy();
+    const panel = document.querySelector<HTMLElement>(".stock-standard-filters")!;
+    fireEvent.click(within(panel).getByRole("button", { name: "Filtrar" }));
+    expect(within(panel).getByRole("button", { name: "Tipo" })).toBeTruthy();
   });
 
   it("offers new promotion instead of product creation in APP GESTIÓN promotions", async () => {

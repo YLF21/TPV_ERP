@@ -30,7 +30,7 @@ function show(app: "venta" | "gestion" = "venta") {
 
 function openFilters() {
   fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
-  return screen.getByRole("dialog", { name: "Filtrar" });
+  return screen.queryByRole("dialog", { name: "Filtrar" }) ?? document.getElementById(screen.getByRole("button", { name: "Filtrar" }).getAttribute("aria-controls")!)!;
 }
 function selectValues(dialog: HTMLElement, field: string, values: string[]) {
   const trigger = within(dialog).getByRole("button", { name: field });
@@ -38,7 +38,7 @@ function selectValues(dialog: HTMLElement, field: string, values: string[]) {
   values.forEach(value => fireEvent.click(screen.getByRole("option", { name: value })));
   fireEvent.click(trigger);
 }
-function apply(dialog: HTMLElement) { fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar filtro" })); }
+function closeFilters(dialog: HTMLElement) { fireEvent.click(within(dialog).queryByRole("button", { name: "Cerrar" }) ?? screen.getByRole("button", { name: "Filtrar" })); }
 function documentRows(container: HTMLElement) { return container.querySelectorAll(".report-table tbody tr"); }
 function rowText(container: HTMLElement) { return [...documentRows(container)].map(row => row.textContent); }
 
@@ -53,7 +53,7 @@ describe("Desktop multi-value report filtering", () => {
     fireEvent.click(trigger);
     expect(within(screen.getByRole("listbox", { name: "Método de pago" })).getAllByRole("option")
       .map(option => option.textContent?.replace("✓", "").trim()))
-      .toEqual(["Todos", "Efectivo", "Tarjeta", "Transferencia"]);
+      .toEqual(["Efectivo", "Tarjeta", "Transferencia"]);
     fireEvent.click(screen.getByRole("option", { name: "Efectivo" }));
     fireEvent.click(screen.getByRole("option", { name: "Tarjeta" }));
     expect(trigger).toHaveAttribute("aria-expanded", "true");
@@ -61,7 +61,7 @@ describe("Desktop multi-value report filtering", () => {
     expect(screen.getByRole("option", { name: "Tarjeta" })).toHaveAttribute("aria-selected", "true");
     fireEvent.click(trigger);
     selectValues(dialog, "Usuario", ["ANA"]);
-    apply(dialog);
+    closeFilters(dialog);
     expect(documentRows(container)).toHaveLength(3);
     expect(rowText(container).filter(text => text?.includes("Tarjeta + Efectivo"))).toHaveLength(1);
     expect(screen.getByText(/^Total: 30,00/)).toBeInTheDocument();
@@ -75,23 +75,24 @@ describe("Desktop multi-value report filtering", () => {
     expect([...documentRows(container)].every(row => within(row as HTMLElement).getByText(/Tarjeta/))).toBe(true);
   });
 
-  it("accepts several exact customer codes, cancels draft edits, and clears only that selector with Todos", async () => {
+  it("accepts several exact customer codes, applies edits immediately, and clears only that selector by clicking its active options", async () => {
     const { container } = show();
     await waitFor(() => expect(documentRows(container)).toHaveLength(5));
     let dialog = openFilters();
     selectValues(dialog, "Cliente", ["C-1", "C-2"]);
     selectValues(dialog, "Método de pago", ["Efectivo"]);
-    apply(dialog);
+    closeFilters(dialog);
     expect(documentRows(container)).toHaveLength(2);
     expect(rowText(container).some(text => text?.includes("C-10"))).toBe(false);
     dialog = openFilters();
     selectValues(dialog, "Cliente", ["C-10"]);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }));
-    expect(documentRows(container)).toHaveLength(2);
-    expect(screen.getByRole("group", { name: "Filtros aplicados" })).not.toHaveTextContent("C-10");
+    fireEvent.click(within(dialog).queryByRole("button", { name: "Cerrar" }) ?? screen.getByRole("button", { name: "Filtrar" }));
+    expect(documentRows(container)).toHaveLength(3);
+    expect(screen.getByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("C-10");
     dialog = openFilters();
-    selectValues(dialog, "Cliente", ["Todos"]);
-    apply(dialog);
+    expect(within(dialog).queryByRole("textbox", { name: "Buscar" })).not.toBeInTheDocument();
+    selectValues(dialog, "Cliente", ["C-1", "C-2", "C-10"]);
+    closeFilters(dialog);
     expect(documentRows(container)).toHaveLength(3);
     const chips = screen.getByRole("group", { name: "Filtros aplicados" });
     expect(chips).not.toHaveTextContent("Cliente:");
@@ -110,7 +111,7 @@ describe("Desktop multi-value report filtering", () => {
       selectValues(dialog, "Método de pago", ["Efectivo", "Tarjeta"]);
       selectValues(dialog, "Cliente", ["C-1", "C-2"]);
       selectValues(dialog, "Usuario", ["ANA"]);
-      apply(dialog);
+      closeFilters(dialog);
       for (const [index, button] of ["Excel", "PDF"].entries()) {
         fireEvent.click(screen.getByRole("button", { name: button }));
         await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(index + 1));

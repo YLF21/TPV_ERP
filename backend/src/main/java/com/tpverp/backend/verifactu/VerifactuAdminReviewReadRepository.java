@@ -83,9 +83,16 @@ public class VerifactuAdminReviewReadRepository {
             int size,
             String sortBy,
             String sortDirection) {
+        return findDefectiveRecordsFiltered(companyId, storeId, installationId, updatedFrom, updatedToExclusive,
+                FiscalListChoices.EMPTY.withDefaults(status, documentType, operation), documentNumber, page, size, sortBy, sortDirection);
+    }
+
+    public VerifactuAdminDefectiveRecordPage findDefectiveRecordsFiltered(UUID companyId, UUID storeId, UUID installationId,
+            Instant updatedFrom, Instant updatedToExclusive, FiscalListChoices choices, String documentNumber,
+            int page, int size, String sortBy, String sortDirection) {
         var query = defectiveQuery(
                 companyId, storeId, installationId, updatedFrom, updatedToExclusive,
-                status, documentType, operation, documentNumber);
+                choices, documentNumber);
         long totalElements = valueOrZero(jdbc.queryForObject(
                 "select count(*) " + query.sql(), query.parameters(), Long.class));
         int totalPages = totalPages(totalElements, size);
@@ -246,9 +253,7 @@ public class VerifactuAdminReviewReadRepository {
             UUID installationId,
             Instant updatedFrom,
             Instant updatedToExclusive,
-            FiscalSubmissionStatus status,
-            FiscalDocumentType documentType,
-            FiscalRecordOperation operation,
+            FiscalListChoices choices,
             String documentNumber) {
         var sql = new StringBuilder(DEFECTIVE_FROM).append(installationFilter(installationId));
         var parameters = scope(companyId, storeId, installationId);
@@ -261,17 +266,17 @@ public class VerifactuAdminReviewReadRepository {
             filters.add("state.actualizado_en < :updatedToExclusive");
             parameters.addValue("updatedToExclusive", Timestamp.from(updatedToExclusive));
         }
-        if (status != null) {
-            filters.add("state.estado = :status");
-            parameters.addValue("status", status.name());
+        if (!choices.statuses().isEmpty()) {
+            filters.add("state.estado in (:statuses)");
+            parameters.addValue("statuses", choices.statuses().stream().map(Enum::name).toList());
         }
-        if (documentType != null) {
-            filters.add("record.tipo_documento_fiscal = :documentType");
-            parameters.addValue("documentType", documentType.name());
+        if (!choices.documentTypes().isEmpty()) {
+            filters.add("record.tipo_documento_fiscal in (:documentTypes)");
+            parameters.addValue("documentTypes", choices.documentTypes().stream().map(Enum::name).toList());
         }
-        if (operation != null) {
-            filters.add("record.operacion = :operation");
-            parameters.addValue("operation", operation.name());
+        if (!choices.operations().isEmpty()) {
+            filters.add("record.operacion in (:operations)");
+            parameters.addValue("operations", choices.operations().stream().map(Enum::name).toList());
         }
         if (documentNumber != null) {
             filters.add("lower(record.serie_numero) like :documentNumber escape '\\'");

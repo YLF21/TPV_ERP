@@ -87,7 +87,7 @@ describe("FiscalRecordsView", () => {
     await screen.findByText("Sin registros");
     fireEvent.click(screen.getByRole("button", { name: /^Filtros/ }));
     fireEvent.change(screen.getByRole("textbox", { name: /^Número/ }), { target: { value: "T-404" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cerrar" }));
     expect(await screen.findByText("Sin resultados para estos filtros")).toBeTruthy();
   });
 
@@ -97,8 +97,8 @@ describe("FiscalRecordsView", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Filtros/ }));
     fireEvent.change(screen.getByRole("textbox", { name: /^Número/ }), { target: { value: "T-" } });
     fireEvent.change(screen.getByLabelText("verifactu.records.dateFrom"), { target: { value: "2026-08-01" } });
-    expect(screen.queryByRole("group", { name: "filters.applied" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    expect(screen.getByRole("group", { name: "filters.applied" })).toBeTruthy();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cerrar" }));
     await waitFor(() => expect(api.loadFiscalRecordsCursor).toHaveBeenLastCalledWith(expect.objectContaining({ number: "T-", dateFrom: "2026-08-01", cursor: null }), undefined, expect.any(AbortSignal)));
     const nextPage = screen.getByRole("button", { name: "Siguiente" });
     await waitFor(() => expect(nextPage).toHaveProperty("disabled", false));
@@ -109,6 +109,22 @@ describe("FiscalRecordsView", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Filtros/ }));
     expect(screen.getByRole("textbox", { name: /^Número/ })).toHaveProperty("value", "");
     expect(screen.getByLabelText("verifactu.records.dateFrom")).toHaveProperty("value", "2026-08-01");
+  });
+
+  it("automatically applies valid dates and keeps invalid drafts local", async () => {
+    render(<FiscalRecordsView locale="es" revision={0} t={t} />);
+    await screen.findByText("T-1");
+    fireEvent.change(screen.getByLabelText("verifactu.records.dateFrom"), { target: { value: "2026-08-21" } });
+    await waitFor(() => expect(api.loadFiscalRecordsCursor).toHaveBeenLastCalledWith(expect.objectContaining({ dateFrom: "2026-08-21", dateTo: "", cursor: null }), undefined, expect.any(AbortSignal)));
+    vi.mocked(api.loadFiscalRecordsCursor).mockClear();
+    fireEvent.change(screen.getByLabelText("verifactu.records.dateTo"), { target: { value: "2026-08-01" } });
+    expect(screen.getByRole("alert")).toHaveTextContent("verifactu.records.invalidDateRange");
+    expect(screen.getByLabelText("verifactu.records.dateTo")).toHaveProperty("value", "2026-08-01");
+    expect(api.loadFiscalRecordsCursor).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("verifactu.records.dateTo"), { target: { value: "2026-08-31" } });
+    await waitFor(() => expect(api.loadFiscalRecordsCursor).toHaveBeenLastCalledWith(expect.objectContaining({ dateFrom: "2026-08-21", dateTo: "2026-08-31", cursor: null }), undefined, expect.any(AbortSignal)));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Aplicar" })).toBeNull();
   });
 
   it("cancela la petición de lista al desmontar", () => {
@@ -128,7 +144,7 @@ describe("FiscalRecordsView", () => {
     render(<FiscalRecordsView locale="es" revision={0} t={t} />);
     fireEvent.click(screen.getByRole("button", { name: /^Filtros/ }));
     fireEvent.change(screen.getByRole("textbox", { name: /^Número/ }), { target: { value: "T-2" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cerrar" }));
     await waitFor(() => expect(resolves).toHaveLength(2));
     resolves[0]({ items: [{ recordId: "old", installationId: "i", storeId: "s", sequence: 1, operation: "ALTA", documentType: "F1", number: "OLD", issueDate: "2026-08-26", generatedAt: "2026-08-26T10:00:00Z", fiscalMode: "NO_VERIFACTU", hash: "old" }], size: 25, nextCursor: null, previousCursor: null, hasNext: false, hasPrevious: false, snapshotSequence: 1 });
     resolves[1]({ items: [{ recordId: "new", installationId: "i", storeId: "s", sequence: 2, operation: "ALTA", documentType: "F1", number: "NEW", issueDate: "2026-08-26", generatedAt: "2026-08-26T10:01:00Z", fiscalMode: "NO_VERIFACTU", hash: "new" }], size: 25, nextCursor: null, previousCursor: null, hasNext: false, hasPrevious: false, snapshotSequence: 2 });
@@ -166,12 +182,12 @@ describe("FiscalRecordsView", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Filtros/ }));
     const filterDialog = screen.getByRole("dialog");
     expect(within(filterDialog).getByText("Busca por prefijo del número")).toBeTruthy();
-    expect(within(filterDialog).getByRole("button", { name: "Aplicar" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Aplicar" })).toBeNull();
     expect(within(filterDialog).getByRole("button", { name: "Limpiar" })).toBeTruthy();
     expect(within(filterDialog).getAllByRole("button", { name: "Cerrar" })).toHaveLength(1);
     const number = screen.getByRole("textbox", { name: /^Número/ });
     fireEvent.change(number, { target: { value: "T-1" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cerrar" }));
     await waitFor(() => expect(api.loadFiscalRecordsCursor).toHaveBeenLastCalledWith(expect.objectContaining({ number: "T-1", cursor: null }), "token", expect.anything()));
     fireEvent.click(screen.getByRole("button", { name: "Ver detalle" }));
     expect(await screen.findByRole("dialog")).toBeTruthy();
@@ -189,7 +205,7 @@ describe("FiscalRecordsView", () => {
     fireEvent.change(screen.getByRole("textbox", { name: /^Número/ }), { target: { value: "T-1" } });
     fireEvent.click(screen.getByRole("button", { name: /^Coincidencia/ }));
     fireEvent.click(screen.getByRole("option", { name: "Número exacto" }));
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cerrar" }));
     await waitFor(() => expect(api.loadFiscalRecordsCursor).toHaveBeenLastCalledWith(expect.objectContaining({ number: "T-1", numberMatch: "EXACT" }), "token", expect.anything()));
     fireEvent.click(screen.getByRole("button", { name: "Exportar" }));
     fireEvent.click(screen.getByRole("button", { name: /^Alcance:/ }));
@@ -213,6 +229,18 @@ describe("FiscalRecordsView", () => {
     expect(screen.getAllByRole("checkbox").filter((checkbox) => (checkbox as HTMLInputElement).checked)).toHaveLength(26);
     expect(screen.getAllByRole("row")).toHaveLength(26);
     expect(addFiscalRecordIdsWithinLimit(new Set<string>(), items.map((item) => item.recordId)).size).toBe(1000);
+  });
+
+  it("selecciona una sola vez al pulsar la fila o su casilla", async () => {
+    render(<FiscalRecordsView locale="es" revision={0} t={t} canManage />);
+    const row = (await screen.findByText("T-1")).closest("tr")!;
+    const checkbox = within(row).getByRole("checkbox", { name: "Seleccionar registro T-1" }) as HTMLInputElement;
+    fireEvent.click(within(row).getByText("T-1"));
+    expect(checkbox.checked).toBe(true);
+    fireEvent.click(checkbox);
+    expect(checkbox.checked).toBe(false);
+    fireEvent.click(within(row).getByRole("button", { name: "Ver detalle" }));
+    expect(checkbox.checked).toBe(false);
   });
 
   it("deshabilita la navegación del detalle mientras carga", async () => {
@@ -289,7 +317,7 @@ describe("FiscalRecordsView", () => {
     await screen.findByText("T-1");
     fireEvent.click(screen.getByRole("button", { name: /^Filtros/ }));
     fireEvent.change(screen.getByRole("textbox", { name: /^Número/ }), { target: { value: "T-1" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cerrar" }));
     await waitFor(() => expect(api.loadFiscalRecordsCursor).toHaveBeenLastCalledWith(expect.objectContaining({ number: "T-1", cursor: null }), undefined, expect.anything()));
     await choose("Filtrados", 3);
     await waitFor(() => expect(exportApi.createFiscalExportJob).toHaveBeenCalledWith(expect.objectContaining({ kind: "BILLING", scope: "FILTERED", documentNumberPrefix: "T-1" }), undefined, expect.anything()));

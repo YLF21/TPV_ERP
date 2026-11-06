@@ -233,6 +233,114 @@
   }
 }
 
+/* Desktop product lists adopt the shared filter panel without changing PDA controls. */
+html body .stock-screen .stock-standard-filters .erp-list-filter-search,
+html body .stock-screen .stock-standard-filters .erp-list-filter-search > label {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+html body .stock-screen .stock-standard-filters .erp-list-filter-search .gestion-warehouse-search-frame {
+  width: 100% !important;
+  max-width: 360px;
+}
+html body .stock-screen .stock-standard-filters .erp-list-filter-actions > :is(.stock-document-actions, .stock-promotion-export-actions) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+html body .stock-screen .stock-standard-filters :is(.erp-list-filter-actions > button,
+  .stock-document-actions > button, .stock-promotion-export-actions > button,
+  .stock-inline-filter-actions > button, .stock-inline-family-button) {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px !important;
+  height: 34px !important;
+  width: auto;
+  padding: 0 8px !important;
+  border: 1px solid #68798b !important;
+  border-radius: 3px !important;
+  background: #eef1f4 !important;
+  color: #12385f !important;
+  box-shadow: none !important;
+  font-size: 11px !important;
+  font-weight: 700;
+}
+html body .stock-screen .stock-standard-filters .erp-list-filter-fields .stock-inline-family-button {
+  width: 100%;
+  justify-content: space-between;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html body .stock-screen .stock-standard-filters .stock-inline-filter-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+html body .stock-screen .stock-standard-filters .erp-list-filter-fields {
+  overflow: visible;
+}
+html body .stock-screen .stock-standard-filters .erp-list-filter-actions > :is(.stock-document-actions, .stock-promotion-export-actions) > button:disabled {
+  opacity: .5;
+}
+
+html body .stock-screen .stock-bulk-standard-filters .erp-list-filter-search {
+  flex: 1 1 380px;
+  max-width: 460px;
+}
+html body .stock-screen .stock-bulk-standard-search {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+html body .stock-screen .stock-bulk-standard-search > label {
+  display: block;
+  flex: 1 1 260px;
+  min-width: min(260px, 100%);
+  max-width: 360px;
+}
+html body .stock-screen .stock-bulk-standard-filters :is(.stock-filter-button,
+  .erp-list-filter-actions > button,
+  .erp-list-filter-actions > :is(.bulk-edit-file, .bulk-edit-selected, .bulk-quick-edit) > button) {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 8px !important;
+  border: 1px solid #68798b !important;
+  border-radius: 3px !important;
+  background: #eef1f4 !important;
+  color: #12385f !important;
+  box-shadow: none !important;
+  font-size: 11px !important;
+  font-weight: 700;
+  white-space: nowrap;
+}
+html body .stock-screen .stock-bulk-standard-filters .stock-filter-button > img {
+  width: 18px;
+  height: 18px;
+}
+html body .stock-screen .stock-bulk-standard-filters :is(.bulk-edit-file, .bulk-edit-selected, .bulk-quick-edit) {
+  position: relative;
+}
+html body .stock-screen .stock-bulk-standard-filters .erp-list-filter-actions > :is(.bulk-edit-file, .bulk-edit-selected, .bulk-quick-edit) > button > svg {
+  flex: 0 0 16px;
+}
+
 @layer gestion-accents {
   @media screen {
     .stock-screen.stock-document-screen :is(.stock-toolbar, .stock-top-sales-toolbar),

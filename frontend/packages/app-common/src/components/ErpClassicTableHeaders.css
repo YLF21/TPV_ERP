@@ -249,7 +249,8 @@
   font-weight: 700;
 }
 
-@media (hover: none), (any-pointer: coarse) {
+/* A touch screen can coexist with a mouse on Windows. */
+@media (any-hover: none) {
   .erp-classic-tables :is(.table-layout-sort-indicator, .table-layout-column-menu-button) {
     opacity: 1 !important;
   }
@@ -272,7 +273,7 @@
 .stock-screen.erp-classic-tables .stock-row-head .table-layout-header-cell:not(:hover):not(:focus-within):not(:has(.table-layout-column-menu-button.is-open)) :is(.table-layout-sort-indicator,.table-layout-column-menu-button) { opacity:0 !important; }
 .stock-screen.erp-classic-tables .stock-row-head .table-layout-header-cell:is(:hover,:focus-within,:has(.table-layout-column-menu-button.is-open)) .table-layout-sort-button { padding-right:19px !important; }
 .stock-screen.erp-classic-tables .stock-row-head .table-layout-header-cell:has(.table-layout-header-actions):is(:hover,:focus-within,:has(.table-layout-column-menu-button.is-open)) .table-layout-sort-button { padding-right:46px !important; }
-@media (hover:none), (any-pointer:coarse) {
+@media (any-hover: none) {
   .stock-screen.erp-classic-tables .stock-row-head .table-layout-header-cell .table-layout-sort-button { padding-right:19px !important; }
   .stock-screen.erp-classic-tables .stock-row-head .table-layout-header-cell:has(.table-layout-header-actions) .table-layout-sort-button { padding-right:46px !important; }
   .stock-screen.erp-classic-tables .stock-row-head .table-layout-header-cell:not(:hover):not(:focus-within):not(:has(.table-layout-column-menu-button.is-open)) :is(.table-layout-sort-indicator,.table-layout-column-menu-button) { opacity:1 !important; }

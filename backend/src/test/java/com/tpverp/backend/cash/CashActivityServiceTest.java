@@ -39,15 +39,15 @@ class CashActivityServiceTest {
         when(organization.currentStore()).thenReturn(store);
         when(store.getId()).thenReturn(storeId);
         when(store.getTimezone()).thenReturn("Atlantic/Canary");
-        when(repository.find(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
+        when(repository.findFiltered(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
                 .thenReturn(List.of());
     }
 
     @Test
     void defaultsToStoreBusinessDayAndChronologicalOrderAndEmptyMetadataUsesToday() {
         list(null, null, null, null, null, null, 50, null, null, null, "CASH_READ");
-        verify(repository).find(storeId, Instant.parse("2026-07-31T23:00:00Z"), Instant.parse("2026-08-01T23:00:00Z"),
-                null, null, null, null, "date", "asc", null, 51);
+        verify(repository).findFiltered(storeId, Instant.parse("2026-07-31T23:00:00Z"), Instant.parse("2026-08-01T23:00:00Z"),
+                null, null, List.of(), List.of(), "date", "asc", null, 51);
         var options = service.filterOptions(auth("CASH_READ"));
         assertThat(options.businessDate()).isEqualTo(LocalDate.parse("2026-08-01"));
         assertThat(options.earliestDate()).isEqualTo(options.businessDate());
@@ -56,18 +56,18 @@ class CashActivityServiceTest {
     @Test
     void usesLocalCalendarBoundariesAcrossBothDaylightSavingTransitionsAndAcceptsLongRanges() {
         list("2026-03-29", "2026-03-29", null, null, null, null, 50, null, null, null, "CASH_READ");
-        verify(repository).find(storeId, Instant.parse("2026-03-29T00:00:00Z"), Instant.parse("2026-03-29T23:00:00Z"),
-                null, null, null, null, "date", "asc", null, 51);
+        verify(repository).findFiltered(storeId, Instant.parse("2026-03-29T00:00:00Z"), Instant.parse("2026-03-29T23:00:00Z"),
+                null, null, List.of(), List.of(), "date", "asc", null, 51);
         list("2026-10-25", "2026-10-25", null, null, null, null, 50, null, null, null, "CASH_READ");
-        verify(repository).find(storeId, Instant.parse("2026-10-24T23:00:00Z"), Instant.parse("2026-10-26T00:00:00Z"),
-                null, null, null, null, "date", "asc", null, 51);
+        verify(repository).findFiltered(storeId, Instant.parse("2026-10-24T23:00:00Z"), Instant.parse("2026-10-26T00:00:00Z"),
+                null, null, List.of(), List.of(), "date", "asc", null, 51);
         list("2020-01-01", "2026-10-25", null, null, null, null, 50, null, null, null, "CASH_READ");
     }
 
     @Test
     void financialPermissionsRedactBothAmountsAndPreventAmountOrderingOrCursorLeaks() {
         var row = row("2026-08-01T12:00:00.123456Z");
-        when(repository.find(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
+        when(repository.findFiltered(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
                 .thenReturn(List.of(row, row));
         var reader = list(null, null, null, null, null, null, 1, null, null, null, "CASH_READ");
         assertThat(reader.items()).singleElement().satisfies(item -> {
@@ -92,14 +92,14 @@ class CashActivityServiceTest {
     @Test
     void continuationPreservesMicrosecondsAndRejectsChangedFiltersOrSort() {
         var row = row("2026-08-01T12:00:00.123456Z");
-        when(repository.find(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
+        when(repository.findFiltered(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
                 .thenReturn(List.of(row, row));
         var first = list(null, null, null, null, null, null, 1, null, null, null, "GESTION_CUENTAS");
         assertThat(first.hasMore()).isTrue();
         clearInvocations(repository);
         list(null, null, null, null, null, null, 1, first.nextCursor(), null, null, "GESTION_CUENTAS");
         var cursor = ArgumentCaptor.forClass(CashActivityRepository.Cursor.class);
-        verify(repository).find(any(), any(), any(), any(), any(), any(), any(), any(), any(), cursor.capture(), eq(2));
+        verify(repository).findFiltered(any(), any(), any(), any(), any(), any(), any(), any(), any(), cursor.capture(), eq(2));
         assertThat(cursor.getValue().occurredAt()).isEqualTo(row.item().occurredAt());
         assertThat(cursor.getValue().value()).isEqualTo(row.item().occurredAt().toString());
         assertThatThrownBy(() -> list(null, null, null, null, "ENTRADA", null, 1, first.nextCursor(), null, null, "GESTION_CUENTAS"))
@@ -132,7 +132,7 @@ class CashActivityServiceTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> list(null, null, null, null, null, null, 50, null, null, "asc;drop table", "CASH_READ"))
                 .isInstanceOf(IllegalArgumentException.class);
-        verify(repository, never()).find(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt());
+        verify(repository, never()).findFiltered(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt());
     }
 
     @Test
@@ -140,7 +140,7 @@ class CashActivityServiceTest {
         var userId = UUID.randomUUID();
         when(repository.userHasStoreActivity(storeId, userId)).thenReturn(true);
         list(null, null, null, userId, null, null, 50, null, null, null, "CASH_READ");
-        verify(repository).find(eq(storeId), any(), any(), isNull(), eq(userId), isNull(), isNull(),
+        verify(repository).findFiltered(eq(storeId), any(), any(), isNull(), eq(List.of(userId)), eq(List.of()), eq(List.of()),
                 eq("date"), eq("asc"), isNull(), eq(51));
     }
 

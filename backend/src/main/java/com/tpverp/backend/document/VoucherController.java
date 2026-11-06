@@ -99,12 +99,12 @@ public class VoucherController {
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
     public VoucherManagementService.ManagementPage managementList(
             @RequestParam(required = false) String query,
-            @RequestParam(required = false) VoucherEffectiveStatus status,
+            @RequestParam(required = false) List<VoucherEffectiveStatus> status,
             @RequestParam(required = false) LocalDate from,
             @RequestParam(required = false) LocalDate to,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return management.list(query, status, from, to, page, size);
+        return management.listFiltered(query, status, from, to, page, size);
     }
 
     @GetMapping("/{code}/management")

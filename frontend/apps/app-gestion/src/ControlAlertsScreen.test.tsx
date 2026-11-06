@@ -282,7 +282,9 @@ describe("control alert timeline", () => {
     const strip = screen.getByRole("region", { name: "gestion.controlAlerts.periodTypes" });
     fireEvent.click(within(strip).getByRole("button", { name: /Ticket cancelled/ }));
     await waitFor(() => expect(api.loadControlAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ type: "TICKET_CANCELLED", page: 0 }), "manager-token", expect.any(AbortSignal)));
-    fireEvent.change(screen.getByRole("combobox", { name: "gestion.controlAlerts.filterStatus" }), { target: { value: "NEW" } });
+    fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
+    fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.filterStatus" }));
+    fireEvent.click(screen.getByRole("option", { name: "gestion.controlAlerts.status.NEW" }));
     await waitFor(() => expect(api.loadControlAlertGroups).toHaveBeenLastCalledWith(expect.any(String), expect.any(String), "manager-token", expect.any(AbortSignal), expect.objectContaining({ status: "NEW" })));
     fireEvent.click(screen.getByRole("button", { name: "filters.remove gestion.controlAlerts.filterType" }));
     await waitFor(() => expect(api.loadControlAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ type: "", status: "NEW", page: 0 }), "manager-token", expect.any(AbortSignal)));
@@ -307,10 +309,15 @@ describe("control alert timeline", () => {
     await loaded();
     const older = deferred<api.ControlAlertPage>();
     vi.mocked(api.loadControlAlerts).mockImplementationOnce(() => older.promise).mockResolvedValueOnce(page([{ ...initialAlert, id: "current", documentNumber: "CURRENT", status: "REVIEWED" }]));
-    const status = screen.getByRole("combobox", { name: "gestion.controlAlerts.filterStatus" });
-    fireEvent.change(status, { target: { value: "NEW" } });
+    fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
+    fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.filterStatus" }));
+    const chooseStatus = (value: "NEW" | "REVIEWED") =>
+      fireEvent.click(screen.getByRole("option", { name: `gestion.controlAlerts.status.${value}` }));
+    chooseStatus("NEW");
     await waitFor(() => expect(api.loadControlAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ status: "NEW" }), "manager-token", expect.any(AbortSignal)));
-    fireEvent.change(status, { target: { value: "REVIEWED" } });
+    chooseStatus("REVIEWED");
+    await waitFor(() => expect(api.loadControlAlerts).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: ["NEW", "REVIEWED"] }), "manager-token", expect.any(AbortSignal)));
     expect(await screen.findByText("CURRENT")).not.toBeNull();
     await act(async () => older.resolve(page([{ ...initialAlert, documentNumber: "STALE" }])));
     expect(screen.queryByText("STALE")).toBeNull();
@@ -333,11 +340,9 @@ describe("control alert timeline", () => {
     const to = screen.getByLabelText("gestion.controlAlerts.to");
     fireEvent.change(from, { target: { value: "2026-08-01" } });
     fireEvent.change(to, { target: { value: "2026-08-05" } });
-    fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.applyDates" }));
     await waitFor(() => expect(api.loadControlAlertGroups).toHaveBeenLastCalledWith("2026-07-31T23:00:00.000Z", "2026-08-05T23:00:00.000Z", "manager-token", expect.any(AbortSignal), expect.any(Object)));
     fireEvent.change(from, { target: { value: "2026-08-10" } });
     fireEvent.change(to, { target: { value: "2026-08-15" } });
-    fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.applyDates" }));
     await waitFor(() => expect(within(strip).getAllByText("7")).toHaveLength(2));
     await act(async () => older.resolve([{ ...group, total: 99 } ]));
     expect(within(strip).queryByText("99")).toBeNull();

@@ -34,6 +34,9 @@ describe("Report pagination after multi-value filters", () => {
     const endpoint = field === "customer" ? "/document-reports/tickets" : "/document-reports/warehouse-inputs";
     const request = vi.fn().mockImplementation((path: string) => {
       if (path.startsWith("/document-reports/date-options")) return Promise.resolve({ currentDate: today(), earliestDate: "2020-01-01" });
+      if (path.startsWith("/document-reports/customer-options/tickets")) {
+        return Promise.resolve(["R-2", "R-3", "R-200"].map(value => ({ value, label: value })));
+      }
       if (!path.startsWith(endpoint)) return Promise.resolve({ items: [], hasMore: false, nextCursor: null });
       const cursor = new URL(path, "http://report.test").searchParams.get("cursor");
       if (cursor && cursor !== "next-page") throw new Error("Must not download the entire report to find filter options");
@@ -57,21 +60,28 @@ describe("Report pagination after multi-value filters", () => {
         session={{ username: "remote-code-test", displayName: "ADMIN", accessToken: "token", permissions: ["ADMIN"] }}
         terminalContext={{ storeName: "Prueba", terminalCode: "01" }} request={request} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
       const rows = () => container.querySelectorAll(".report-table tbody tr");
-      const pageCalls = () => request.mock.calls.filter(([path]) => path.startsWith(endpoint));
+      const pageCalls = () => request.mock.calls.filter(([path]) => path.startsWith(endpoint) && !path.includes("/customer-options"));
       await waitFor(() => expect(rows()).toHaveLength(10));
       expect(pageCalls()).toHaveLength(1);
       fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
-      const dialog = screen.getByRole("dialog", { name: "Filtrar" });
+      const dialog = screen.queryByRole("dialog", { name: "Filtrar" }) ?? document.getElementById(screen.getByRole("button", { name: "Filtrar" }).getAttribute("aria-controls")!)!;
       const trigger = within(dialog).getByRole("button", { name: label });
       fireEvent.click(trigger);
-      const search = within(dialog).getByRole("textbox", { name: "Buscar" });
-      for (const code of ["R-2", "R-3"]) {
-        fireEvent.change(search, { target: { value: code } });
-        fireEvent.click(screen.getByRole("option", { name: `Código: ${code}` }));
+      if (field === "customer") {
+        expect(within(dialog).queryByRole("textbox", { name: "Buscar" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("option", { name: "Todos" })).not.toBeInTheDocument();
+        await screen.findByRole("option", { name: "R-2" });
+        for (const code of ["R-2", "R-3"]) fireEvent.click(screen.getByRole("option", { name: code }));
+      } else {
+        const search = within(dialog).getByRole("textbox", { name: "Buscar" });
+        for (const code of ["R-2", "R-3"]) {
+          fireEvent.change(search, { target: { value: code } });
+          fireEvent.click(screen.getByRole("option", { name: "Código: " + code }));
+        }
       }
       fireEvent.click(trigger);
-      expect(pageCalls()).toHaveLength(1);
-      fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar filtro" }));
+      expect(pageCalls()).toHaveLength(2);
+      fireEvent.click(within(dialog).queryByRole("button", { name: "Cerrar" }) ?? screen.getByRole("button", { name: "Filtrar" }));
       await waitFor(() => expect(pageCalls()).toHaveLength(2));
       await waitFor(() => expect(rows()).toHaveLength(10));
       expect(container.querySelector(".report-table tbody")).not.toHaveTextContent("R-200");
@@ -97,7 +107,7 @@ describe("Report pagination after multi-value filters", () => {
     }
   });
 
-  it.each([false, true])("continues loading when applying filters leaves too few rows (empty: %s)", async (empty) => {
+  it.each([false, true])("continues loading when filters leave too few rows (empty: %s)", async (empty) => {
     vi.spyOn(Element.prototype, "clientHeight", "get").mockImplementation(function (this: Element) {
       return this.classList.contains("report-table-scroll") ? 240 : 0;
     });
@@ -128,11 +138,11 @@ describe("Report pagination after multi-value filters", () => {
     expect(pageCalls()).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
-    const dialog = screen.getByRole("dialog", { name: "Filtrar" });
+    const dialog = screen.queryByRole("dialog", { name: "Filtrar" }) ?? document.getElementById(screen.getByRole("button", { name: "Filtrar" }).getAttribute("aria-controls")!)!;
     selectValue(dialog, "Método de pago", "Tarjeta");
     if (empty) selectValue(dialog, "Usuario", "LUIS");
-    expect(pageCalls()).toHaveLength(1);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar filtro" }));
+    expect(pageCalls()).toHaveLength(2);
+    fireEvent.click(within(dialog).queryByRole("button", { name: "Cerrar" }) ?? screen.getByRole("button", { name: "Filtrar" }));
 
     await waitFor(() => expect(pageCalls()).toHaveLength(2));
     expect(new URL(pageCalls()[1][0], "http://report.test").searchParams.get("cursor")).toBe("next-page");

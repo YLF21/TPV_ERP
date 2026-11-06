@@ -1,3 +1,4 @@
+import { appendListFilter, type ListFilterValue } from "../../../packages/app-common/src/components/listFilterValues";
 import { apiRequest } from "@tpverp/app-common";
 
 export type CashAlertStatus = "PENDING" | "REVIEWED";
@@ -30,9 +31,9 @@ export type CashAlert = {
 export type CashAlertFilters = {
   from: string;
   to: string;
-  terminalId: string;
-  userId: string;
-  status: CashAlertStatus | "";
+  terminalId: ListFilterValue;
+  userId: ListFilterValue;
+  status: ListFilterValue;
 };
 
 export type CashAlertPage = {
@@ -64,9 +65,9 @@ export async function loadCashAlerts(filters: CashAlertFilters, cursor: string |
   const query = new URLSearchParams({ limit: String(limit) });
   if (filters.from) query.set("from", filters.from);
   if (filters.to) query.set("to", filters.to);
-  if (filters.terminalId) query.set("terminalId", filters.terminalId);
-  if (filters.userId) query.set("userId", filters.userId);
-  if (filters.status) query.set("status", filters.status);
+  appendListFilter(query, "terminalId", filters.terminalId);
+  appendListFilter(query, "userId", filters.userId);
+  appendListFilter(query, "status", filters.status);
   if (cursor) query.set("cursor", cursor);
   return apiRequest<CashAlertPage>(`/cash/alerts?${query.toString()}`, { token });
 }
