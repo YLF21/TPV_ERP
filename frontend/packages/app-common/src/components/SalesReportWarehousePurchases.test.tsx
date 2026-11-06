@@ -93,8 +93,7 @@ describe("current warehouse purchase reports", () => {
     const trigger = within(dialog).getByRole("button", { name: "Almacén" });
     fireEvent.click(trigger);
     fireEvent.click(await screen.findByRole("option", { name: "GENERAL" }));
-    fireEvent.click(trigger);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Aplicar filtro" }));
+
     expect(screen.getByText(report === "inputInvoices" ? "FE-001" : "AE-001")).toBeVisible();
     expect(screen.queryByText("OTHER-001")).toBeNull();
     expect(request).not.toHaveBeenCalledWith("/warehouses", expect.anything());
@@ -120,7 +119,7 @@ describe("current warehouse purchase reports", () => {
       fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
       fireEvent.click(within(screen.getByRole("dialog", { name: "Filtrar" })).getByRole("button", { name: "Almacén" }));
       await waitFor(() => expect(within(screen.getByRole("listbox", { name: "Almacén" })).getAllByRole("option")
-        .map(option => option.textContent?.replace("✓", "").trim())).toEqual(["Todos", "ZETA", "GENERAL"]));
+        .map(option => option.textContent?.replace("✓", "").trim())).toEqual(["ZETA", "GENERAL"]));
     });
 
   it("opens real number and line discounts, without a fabricated tax or commercial detail call", async () => {

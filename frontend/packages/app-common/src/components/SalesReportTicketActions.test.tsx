@@ -212,6 +212,7 @@ describe("Ticket report document actions", () => {
           terminalContext={terminalContext} initialReport={initialReport}
           onBack={vi.fn()} onLocaleChange={vi.fn()} />);
         const container = document.createElement("div");
+        document.createDocumentFragment().append(container);
         container.innerHTML = html;
         expect(within(container).queryByRole("button", { name: label, hidden: true })).toBeNull();
         expect(within(container).queryByRole("dialog", { name: label, hidden: true })).toBeNull();

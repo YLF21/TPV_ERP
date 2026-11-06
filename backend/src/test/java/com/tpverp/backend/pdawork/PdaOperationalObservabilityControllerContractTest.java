@@ -17,7 +17,7 @@ class PdaOperationalObservabilityControllerContractTest {
         assertThat(PdaOperationalObservabilityController.class.getAnnotation(RequestMapping.class).value())
                 .containsExactly("/api/v1/pda-observability");
         var dashboard = PdaOperationalObservabilityController.class.getDeclaredMethod("dashboard",
-                int.class, int.class, int.class, int.class, java.util.UUID.class);
+                int.class, int.class, int.class, int.class, java.util.List.class);
         assertThat(dashboard.getAnnotation(GetMapping.class)).isNotNull();
         assertThat(dashboard.getAnnotation(PreAuthorize.class).value()).contains("ADMIN", "GESTION_ALMACEN");
         var record = java.util.Arrays.stream(PdaOperationalObservabilityController.class.getDeclaredMethods())

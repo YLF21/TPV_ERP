@@ -139,10 +139,10 @@ describe("WarehouseOperationsScreen", () => {
     fireEvent.click(screen.getByRole("option", { name: "GENERAL" }));
     fireEvent.click(screen.getByRole("button", { name: "Ayer" }));
     await waitFor(() => expect(api.loadStockAdjustmentHistory).toHaveBeenLastCalledWith("token", expect.objectContaining({
-      page: 0, warehouseId: "general", search: "CAF", from: new Date("2026-10-14T00:00:00").toISOString(), to: new Date("2026-10-15T00:00:00").toISOString()
+      page: 0, warehouseId: ["general"], search: "CAF", from: new Date("2026-10-14T00:00:00").toISOString(), to: new Date("2026-10-15T00:00:00").toISOString()
     })));
     fireEvent.click(screen.getByRole("button", { name: "filters.remove warehouse.report.from" }));
-    await waitFor(() => expect(api.loadStockAdjustmentHistory).toHaveBeenLastCalledWith("token", expect.objectContaining({ from: undefined, search: "CAF", warehouseId: "general" })));
+    await waitFor(() => expect(api.loadStockAdjustmentHistory).toHaveBeenLastCalledWith("token", expect.objectContaining({ from: undefined, search: "CAF", warehouseId: ["general"] })));
     expect(screen.getByRole("button", { name: "Ayer" })).toHaveAttribute("aria-pressed", "false");
     expect(api.createStockAdjustment).not.toHaveBeenCalled();
   });

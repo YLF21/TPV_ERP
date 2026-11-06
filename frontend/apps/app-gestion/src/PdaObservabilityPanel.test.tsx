@@ -63,7 +63,8 @@ describe("PdaObservabilityPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
     fireEvent.click(screen.getByRole("button", { name: "gestion.pdaObservability.terminal" }));
     const terminalOptions = screen.getAllByRole("option").map(option => option.textContent);
-    expect(terminalOptions).toEqual(expect.arrayContaining(["gestion.pdaObservability.allTerminals", "PDA uno", "PDA tienda"]));
+    expect(terminalOptions).toEqual(expect.arrayContaining(["PDA uno", "PDA tienda"]));
+    expect(terminalOptions).not.toContain("gestion.pdaObservability.allTerminals");
     expect(terminalOptions).not.toContain("Servidor");
     expect(terminalOptions).not.toContain("Caja");
   });

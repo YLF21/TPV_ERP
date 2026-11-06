@@ -77,6 +77,7 @@ describe("CashClosuresScreen activity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ayer" }));
     await waitFor(() => expect(activityApi.loadCashActivity).toHaveBeenLastCalledWith(
       expect.objectContaining({ from: "2026-07-30", to: "2026-07-30" }), null, "token", defaultActivitySort, expect.any(AbortSignal)));
+    fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
     fireEvent.click(screen.getByRole("button", { name: "Terminal" }));
     fireEvent.click(screen.getByRole("option", { name: "TPV 1" }));
     await waitFor(() => expect(activityApi.loadCashActivity).toHaveBeenLastCalledWith(
@@ -122,6 +123,7 @@ describe("CashClosuresScreen activity", () => {
       .mockResolvedValueOnce({ items: [row("second", "terminal-2")], nextCursor: null, hasMore: false });
     render(<CashClosuresScreen session={session(["GESTION_CUENTAS"])} t={t} />);
     await waitFor(() => expect(activityApi.loadCashActivity).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
     fireEvent.click(screen.getByRole("button", { name: "Terminal" }));
     fireEvent.click(screen.getByRole("option", { name: "TPV 1" }));
     expect(await screen.findByRole("row", { name: /000000123.*TPV 1/ })).not.toBeNull();

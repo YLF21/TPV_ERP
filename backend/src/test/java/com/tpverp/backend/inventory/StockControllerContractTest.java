@@ -41,7 +41,7 @@ class StockControllerContractTest {
     @Test
     void exposesTopSalesEndpoint() throws NoSuchMethodException {
         var method = StockController.class.getDeclaredMethod(
-                "topSales", String.class, LocalDate.class, LocalDate.class, LocalDate.class, UUID.class);
+                "topSales", String.class, LocalDate.class, LocalDate.class, LocalDate.class, UUID.class, java.util.List.class);
 
         assertThat(method.getAnnotation(GetMapping.class).value())
                 .containsExactly("/top-sales");
@@ -49,7 +49,7 @@ class StockControllerContractTest {
                 .contains("hasRole('ADMIN')");
         assertThat(Arrays.stream(method.getParameters())
                 .filter(parameter -> parameter.isAnnotationPresent(RequestParam.class)))
-                .hasSize(5);
+                .hasSize(6);
     }
 
     @Test
@@ -74,7 +74,7 @@ class StockControllerContractTest {
         var method = StockController.class.getDeclaredMethod(
                 "page", Integer.class, String.class, String.class, String.class, String.class, String.class,
                 UUID.class, UUID.class, Boolean.class, String.class, UUID.class, UUID.class, String.class, String.class,
-                Authentication.class);
+                StockListFilterChoices.class, Authentication.class);
 
         assertThat(method.getAnnotation(GetMapping.class).value())
                 .containsExactly("/page");

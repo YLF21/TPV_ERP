@@ -67,7 +67,7 @@ class DocumentControllerContractTest {
     void voucherManagementSeparatesSalesManagementFromAdminMutations()
             throws NoSuchMethodException {
         var list = VoucherController.class.getDeclaredMethod(
-                "managementList", String.class, VoucherEffectiveStatus.class,
+                "managementList", String.class, java.util.List.class,
                 java.time.LocalDate.class, java.time.LocalDate.class,
                 int.class, int.class);
         var reactivate = VoucherController.class.getDeclaredMethod(

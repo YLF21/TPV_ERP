@@ -125,7 +125,8 @@ class VerifactuControllerContractTest {
                 String.class,
                 int.class,
                 int.class,
-                String.class);
+                String.class,
+                FiscalListChoices.class);
         assertThat(submissions.getAnnotation(GetMapping.class).value())
                 .containsExactly("/submissions");
         var defectiveRecords = VerifactuAdminReadController.class.getDeclaredMethod(
@@ -137,7 +138,8 @@ class VerifactuControllerContractTest {
                 FiscalRecordOperation.class,
                 String.class,
                 int.class,
-                int.class);
+                int.class,
+                FiscalListChoices.class);
         assertThat(defectiveRecords.getAnnotation(GetMapping.class).value())
                 .containsExactly("/defective-records");
         var attempts = VerifactuAdminReadController.class.getDeclaredMethod(

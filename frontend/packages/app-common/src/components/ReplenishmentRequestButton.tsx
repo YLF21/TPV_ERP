@@ -32,7 +32,7 @@ export function ReplenishmentRequestButton({ productId, packageQuantity, warehou
   const [message, setMessage] = useState("");
 
   useEffect(() => { if (warehouseId && warehouseId !== "TOTAL") setSelectedWarehouse(warehouseId); }, [warehouseId]);
-  useEffect(() => { setQuantity(defaultQuantity); setReason(t("replenishment.reasonRestock")); setOpen(false); }, [productId]);
+  useLayoutEffect(() => { setQuantity(defaultQuantity); setReason(t("replenishment.reasonRestock")); setOpen(false); }, [productId]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -63,7 +63,7 @@ export function ReplenishmentRequestButton({ productId, packageQuantity, warehou
     return () => { active = false; };
   }, [open, token]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const handleShortcut = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "F9" || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
       if (open) { event.preventDefault(); event.stopImmediatePropagation(); return; }

@@ -66,11 +66,11 @@ describe("sales document period chips", () => {
     expect(screen.getByRole("button", { name: "Hoy" })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("does not show a draft period as an applied chip and clears the applied range", async () => {
+  it("applies a custom period automatically and clears the applied range", async () => {
     mount(); await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
     fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-07-01" } });
     fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-07-02" } });
-    expect(screen.queryByRole("group", { name: "Filtros aplicados" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("1/7/2026 — 2/7/2026");
     fireEvent.click(screen.getByRole("button", { name: "Ayer" }));
     expect(await screen.findByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("21/9/2026");
     fireEvent.click(screen.getByRole("button", { name: "Limpiar todos" }));
