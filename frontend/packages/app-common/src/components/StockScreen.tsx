@@ -41,7 +41,7 @@ import { roundUnitPrice } from "../money";
 import { apiBaseUrl } from "../api/runtime";
 import { ProductThumbnail as AuthenticatedProductThumbnail } from "./ProductThumbnail";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
-import { createTranslator } from "../i18n/LocalizedMessages";
+import { createTranslator, messages } from "../i18n/LocalizedMessages";
 import { ProductCreateDialog } from "./ProductCreateDialog";
 import { PartyDirectoryPanel } from "./PartyDirectoryPanel";
 import type { PartyDirectoryKind } from "./PartyDirectoryPanel";
@@ -104,8 +104,8 @@ import {
   syncStockBulkDraftImages
 } from "./StockBulkImagePanel";
 import type { StockBulkImagePanelHandle, StockBulkImageSnapshot } from "./StockBulkImagePanel";
-import { StockBulkPriceRulesDialog } from "./StockBulkPriceRulesDialog";
-import { applyStockBulkPriceRulePreview } from "./stockBulkPriceRules";
+import { StockBulkPriceActionsDialog } from "./StockBulkPriceActionsDialog";
+import { applyStockBulkPriceActionChanges, type StockBulkPriceField } from "./stockBulkPriceActions";
 import { STOCK_BULK_NEW_SHORTCUT, StockBulkWorkspaceList } from "./StockBulkWorkspaceList";
 import { StockPromotionGroups, type StockPromotionExportContext } from "./StockPromotionGroups";
 import { usePromotionManagement } from "./usePromotionManagement";
@@ -765,7 +765,7 @@ function ProductThumbnail({ product, token, className = "" }: {
   token: string;
   className?: string;
 }) {
-  if (!product) return null;
+  if (!product) return <span aria-hidden="true" />;
   return (
     <AuthenticatedProductThumbnail
       productId={product.productId}
@@ -2180,6 +2180,8 @@ export function StockScreen({
   allowSafeRetirement = false
 }: StockScreenProps) {
   const t = createTranslator(locale);
+  const tableColumnLabel = (key: string) =>
+    messages[locale][key.replace(/^stock\.column\./, "stock.table.column.")] ?? t(key);
   const [selectedView, setSelectedView] = useState<StockViewKey>(initialView);
   const [partyDirectory, setPartyDirectory] = useState<PartyDirectoryKind | null>(initialPartyDirectory);
   const documentStock = app !== "pda" && !partyDirectory && isStockDocumentView(selectedView);
@@ -2313,7 +2315,7 @@ export function StockScreen({
   const bulkSupplierFilterRequest = useRef(0);
   const [bulkFamilyDialogOpen, setBulkFamilyDialogOpen] = useState(false);
   const [bulkDecimalDialogOpen, setBulkDecimalDialogOpen] = useState(false);
-  const [bulkPriceRulesOpen, setBulkPriceRulesOpen] = useState(false);
+  const [bulkPriceActionsOpen, setBulkPriceActionsOpen] = useState(false);
   const [bulkEditorDialog, setBulkEditorDialog] = useState<BulkEditorDialog>(null);
   const [bulkSwapConfirmation, setBulkSwapConfirmation] = useState<{ scope: "selected" | "all"; rowIds: string[] } | null>(null);
   const [bulkEditorSearch, setBulkEditorSearch] = useState("");
@@ -3124,8 +3126,8 @@ export function StockScreen({
           setBulkQuickEditOpen(false);
         } else if (bulkQuickEditField) {
           setBulkQuickEditField(null);
-        } else if (bulkPriceRulesOpen) {
-          setBulkPriceRulesOpen(false);
+        } else if (bulkPriceActionsOpen) {
+          setBulkPriceActionsOpen(false);
         } else if (bulkDecimalDialogOpen) {
           setBulkDecimalDialogOpen(false);
         } else if (bulkFamilyDialogOpen) {
@@ -3179,7 +3181,7 @@ export function StockScreen({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeBulkDraft, app, bulkAfterSave, bulkBusy, bulkDecimalDialogOpen, bulkDialog, bulkDirty, bulkDraftName, bulkEditorDialog, bulkExcelImportOpen, bulkFamilyDialogOpen, bulkFilterOpen, bulkFinder, bulkImagesDirty, bulkImportOpen, bulkPriceRulesOpen, bulkPurchaseDocumentKind, bulkQuickEditField, bulkQuickEditOpen, bulkRows, bulkSupplierDialogMode, bulkSwapConfirmation, bulkWorkspaceView, selectedView, session.accessToken]);
+  }, [activeBulkDraft, app, bulkAfterSave, bulkBusy, bulkDecimalDialogOpen, bulkDialog, bulkDirty, bulkDraftName, bulkEditorDialog, bulkExcelImportOpen, bulkFamilyDialogOpen, bulkFilterOpen, bulkFinder, bulkImagesDirty, bulkImportOpen, bulkPriceActionsOpen, bulkPurchaseDocumentKind, bulkQuickEditField, bulkQuickEditOpen, bulkRows, bulkSupplierDialogMode, bulkSwapConfirmation, bulkWorkspaceView, selectedView, session.accessToken]);
 
   useEffect(() => {
     if (!bulkFileOpen && !bulkEditSelectedOpen && !bulkQuickEditOpen) {
@@ -4860,23 +4862,10 @@ export function StockScreen({
     }
   }
 
-  async function openBulkPriceRulesDialog() {
-    if (selectedStockBulkProductIds(bulkRows).length === 0) {
-      setBulkStatus(t("stock.bulkEdit.rules.noSelectedProducts"));
-      return;
-    }
-    setBulkPriceRulesOpen(true);
+  function openBulkPriceActionsDialog() {
+    setBulkPriceActionsOpen(true);
     setBulkFileOpen(false);
     setBulkImportOpen(false);
-    if (bulkSupplierOptions.length > 0 || !session.accessToken || bulkBusy) return;
-    setBulkBusy(true);
-    try {
-      await loadBulkSupplierCatalog();
-    } catch (error) {
-      setBulkStatus(error instanceof Error ? error.message : t("stock.bulkEdit.supplierLoadError"));
-    } finally {
-      setBulkBusy(false);
-    }
   }
 
   async function importBulkFamilies(familyIds: string[], subfamilyIds: string[]) {
@@ -5381,14 +5370,14 @@ export function StockScreen({
             className="stock-header-cell"
             column={column}
             key={column.key}
-            resizeLabel={`${t("stock.columns.resize")} ${t(selectedColumnDefinitionByKey.get(column.key)?.labelKey ?? column.key)}`}
+            resizeLabel={`${t("stock.columns.resize")} ${tableColumnLabel(selectedColumnDefinitionByKey.get(column.key)?.labelKey ?? column.key)}`}
             onReorder={reorderSelectedColumn}
             onMove={moveSelectedColumn}
             onResize={resizeSelectedColumn}
             onToggleVisibility={stockTableLayout.toggleColumnVisibility}
             columnVisibilityOptions={selectedColumnSettings.map((candidate) => ({
               key: candidate.key,
-              label: t(selectedColumnDefinitionByKey.get(candidate.key)?.labelKey ?? candidate.key),
+              label: tableColumnLabel(selectedColumnDefinitionByKey.get(candidate.key)?.labelKey ?? candidate.key),
               visible: candidate.visible,
               disabled: candidate.visible && visibleSelectedColumnSettings.length <= 1
             }))}
@@ -5397,14 +5386,14 @@ export function StockScreen({
               : inventoryHeader && inventorySort?.column === column.key
                 ? inventorySort.direction
                 : null}
-            sortLabel={t(selectedColumnDefinitionByKey.get(column.key)?.labelKey ?? column.key)}
+            sortLabel={tableColumnLabel(selectedColumnDefinitionByKey.get(column.key)?.labelKey ?? column.key)}
             onSort={selectedView === "stock.topSales"
               ? topSalesSorting.toggleSort
               : inventoryHeader && inventorySortableColumns.includes(column.key)
                 ? inventorySorting.toggleSort
                 : undefined}
           >
-            {t(selectedColumnDefinitionByKey.get(column.key)?.labelKey ?? column.key)}
+            {tableColumnLabel(selectedColumnDefinitionByKey.get(column.key)?.labelKey ?? column.key)}
           </TableLayoutHeaderCell>
         ))}
       </div>
@@ -6010,14 +5999,14 @@ export function StockScreen({
             className={pair ? "bulk-pair-header" : ""}
             column={column}
             key={column.key}
-            resizeLabel={`${t("stock.columns.resize")} ${t(definition.labelKey)}`}
+            resizeLabel={`${t("stock.columns.resize")} ${tableColumnLabel(definition.labelKey)}`}
             onReorder={bulkTableLayout.reorderColumns}
             onMove={bulkTableLayout.moveColumn}
             onResize={bulkTableLayout.resizeColumn}
             onToggleVisibility={bulkTableLayout.toggleColumnVisibility}
             columnVisibilityOptions={bulkTableLayout.layout.map((candidate) => ({
               key: candidate.key,
-              label: t(definitionsByKey.get(candidate.key)?.labelKey ?? candidate.key),
+              label: tableColumnLabel(definitionsByKey.get(candidate.key)?.labelKey ?? candidate.key),
               visible: candidate.visible,
               disabled: candidate.visible && visibleBulkColumns.length <= 1
             }))}
@@ -6292,11 +6281,11 @@ export function StockScreen({
   }
 
   function renderBulkEditHeader() {
-    const label = (labelKey: string, key = labelKey) => <span key={key}>{t(labelKey)}</span>;
+    const label = (labelKey: string, key = labelKey) => <span key={key}>{tableColumnLabel(labelKey)}</span>;
     const pair = (labelKey: string, key = labelKey) => (
       <div className="bulk-pair-header" key={key}>
         <div className="bulk-pair-header-content">
-          <strong title={t(labelKey)}>{t(labelKey)}</strong>
+          <strong title={tableColumnLabel(labelKey)}>{tableColumnLabel(labelKey)}</strong>
           <span className="bulk-pair-subheaders">
             <small>{t("stock.bulkEdit.before")}</small>
             <small>{t("stock.bulkEdit.after")}</small>
@@ -6496,7 +6485,7 @@ export function StockScreen({
         {priceTabs.includes(bulkEditTab) && (
           <>
             <button type="button" onClick={openBulkDecimalDialog}>{t("stock.bulkEdit.decimalAdjust")}{app !== "pda" && <Tag size={16} aria-hidden="true" />}</button>
-            <button type="button" onClick={() => void openBulkPriceRulesDialog()}>{t("stock.bulkEdit.priceRule")}{app !== "pda" && <Tag size={16} aria-hidden="true" />}</button>
+            <button type="button" onClick={openBulkPriceActionsDialog}>{t("stock.bulkEdit.priceActions")}{app !== "pda" && <Tag size={16} aria-hidden="true" />}</button>
           </>
         )}
       </>
@@ -7376,8 +7365,7 @@ export function StockScreen({
             <WindowCloseButton type="button" aria-label={t("common.close")} onClick={close} ><X size={18} weight="bold" aria-hidden="true" /></WindowCloseButton>
           </header>
           <p className="bulk-confirm-copy">{t("stock.bulkEdit.closeConfirm")}</p>
-          <footer className="filter-actions bulk-close-actions erp-dialog-actions-row">
-            <button type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={close}>{t("common.cancel")}</button>
+          <footer className="filter-actions erp-dialog-actions-row">
             <button type="button" className="secondary erp-dialog-action-cancel" onClick={resetBulkWorkspace}>{t("stock.bulkEdit.discard")}</button>
             <button autoFocus type="button" className="erp-dialog-action-confirm" disabled={bulkBusy} onClick={() => void saveBulkDraft("close")}>{t("stock.bulkEdit.saveAndClose")}</button>
           </footer>
@@ -7436,10 +7424,9 @@ export function StockScreen({
   }
 
   function renderBulkEditScreen() {
-    const selectedPriceRuleProductIds = new Set(selectedStockBulkProductIds(bulkRows));
-    const selectedPriceRuleProducts = uniqueProductRows(bulkRows.flatMap((row) => (
-      row.product && selectedPriceRuleProductIds.has(row.product.productId) ? [row.product] : []
-    )));
+    const priceFields = { salePrice: "SALE_PRICE", memberPrice: "MEMBER_PRICE", wholesalePrice: "WHOLESALE_PRICE", offerPrice: "OFFER_PRICE" } as const;
+    const priceField = currentBulkDecimalField();
+    const defaultPriceActionField: StockBulkPriceField = priceField ? priceFields[priceField] : "SALE_PRICE";
     const tabs: Array<{ key: StockBulkEditTab; label: string }> = [
       { key: "main", label: "stock.bulkEdit.main" },
       { key: "info", label: "stock.bulkEdit.info" },
@@ -7587,23 +7574,18 @@ export function StockScreen({
           onClose={() => setBulkDecimalDialogOpen(false)}
           onApply={applyBulkDecimalEnding}
         />
-        <StockBulkPriceRulesDialog
-          open={bulkPriceRulesOpen}
-          app={app}
+        {bulkPriceActionsOpen && <StockBulkPriceActionsDialog
           locale={locale}
           token={session.accessToken ?? ""}
-          currentUsername={session.username}
-          isAdmin={session.permissions.includes("ADMIN")}
-          products={selectedPriceRuleProducts}
-          families={bulkCatalogFamilyTree}
-          suppliers={bulkSupplierOptions.map((supplier) => ({ value: supplier.id, label: supplier.tradeName || supplier.legalName }))}
-          warehouses={warehouseCatalog.map((warehouse) => ({ value: warehouse.id, label: warehouse.name ?? warehouse.id }))}
-          onClose={() => setBulkPriceRulesOpen(false)}
-          onApplied={(preview) => {
-            commitBulkRows((current) => applyStockBulkPriceRulePreview(current, preview));
-            setBulkStatus(t("stock.bulkEdit.rules.applied"));
+          productIds={selectedStockBulkProductIds(bulkRows)}
+          defaultField={defaultPriceActionField}
+          onClose={() => setBulkPriceActionsOpen(false)}
+          onApplied={(changes) => {
+            commitBulkRows((current) => applyStockBulkPriceActionChanges(current, changes));
+            setBulkPriceActionsOpen(false);
+            setBulkStatus(t("stock.bulkEdit.priceActions.applied"));
           }}
-        />
+        />}
       </div>
     );
   }

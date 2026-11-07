@@ -167,6 +167,70 @@ async function applyChanges() {
 }
 
 describe("Stock bulk editing save and apply", () => {
+  it.each(["venta", "gestion"] as const)("applies price actions only to the selected draft product in %s", async (app) => {
+    const otherProduct = { ...initialProduct, productId: "product-2", code: "CABLE-1", name: "Cable de catálogo" };
+    const { applyAttempts } = mockBulkEditing([], { content: [
+      { ...rowFor(initialProduct), selected: false },
+      { ...rowFor(otherProduct), id: "row-2", selected: false }
+    ] });
+    const workspaceRequest = vi.mocked(apiRequest).getMockImplementation()!;
+    vi.mocked(apiRequest).mockImplementation(async (path, options) => {
+      if (path === "/product-price-rules/preview-actions") {
+        return { products: [{
+          productId: initialProduct.productId, changes: [{ field: "SALE_PRICE", after: 13.25 }]
+        }] };
+      }
+      return workspaceRequest(path, options);
+    });
+    const { container } = await openWorkspace(app);
+    fireEvent.click(screen.getByRole("button", { name: "Precio venta" }));
+
+    const trigger = screen.getByRole("button", { name: "Aplicar acciones de precio" });
+    fireEvent.click(trigger);
+    const dialog = () => within(screen.getByRole("dialog", { name: "Aplicar acciones de precio" }));
+    expect(dialog().getByRole("status").textContent).toContain("Selecciona al menos un producto");
+    expect((dialog().getByRole("button", { name: "Aplicar" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(apiRequest).not.toHaveBeenCalledWith("/product-price-rules/preview-actions", expect.anything());
+    fireEvent.click(dialog().getByRole("button", { name: "Cerrar" }));
+
+    const selectedRow = within(container.querySelector<HTMLElement>('[data-bulk-row-id="row-1"]')!);
+    fireEvent.click(selectedRow.getByRole("checkbox"));
+    fireEvent.click(trigger);
+    fireEvent.change(dialog().getByRole("spinbutton", { name: "Precio fijo" }), { target: { value: "13.25" } });
+    fireEvent.click(dialog().getByRole("button", { name: "Aplicar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Aplicar acciones de precio" })).toBeNull());
+    expect(apiRequest).toHaveBeenCalledWith("/product-price-rules/preview-actions", expect.objectContaining({
+      method: "POST", body: { productIds: [initialProduct.productId], actions: [
+        { type: "FIXED_PRICE", field: "SALE_PRICE", value: "13.25" }
+      ] }
+    }));
+    expect((selectedRow.getByRole("textbox", { name: "Precio venta" }) as HTMLInputElement).value).toBe("13.25");
+    const otherRow = within(container.querySelector<HTMLElement>('[data-bulk-row-id="row-2"]')!);
+    expect((otherRow.getByRole("textbox", { name: "Precio venta" }) as HTMLInputElement).value).toBe("4.50");
+    expect(applyAttempts).toHaveLength(0);
+  });
+
+  it.each(["venta", "gestion"] as const)("aligns empty cells with the bulk headers in %s", async (app) => {
+    mockBulkEditing([]);
+    const { container } = await openWorkspace(app);
+
+    function expectAlignedEntry() {
+      const header = container.querySelector(".bulk-edit-head")!;
+      const codeEntry = screen.getByRole("textbox", { name: "Código" });
+      const row = codeEntry.closest(".bulk-edit-row")!;
+      const codeIndex = Array.from(header.children).findIndex(cell => cell.getAttribute("data-column-key") === "code");
+      expect(row.children).toHaveLength(header.children.length);
+      expect(row.children[codeIndex]?.contains(codeEntry)).toBe(true);
+      return codeIndex;
+    }
+
+    const originalCodeIndex = expectAlignedEntry();
+    fireEvent.keyDown(container.querySelector('.bulk-edit-head [data-column-key="code"]')!, { key: "ArrowRight", ctrlKey: true });
+    expect(expectAlignedEntry()).toBe(originalCodeIndex + 1);
+    fireEvent.click(screen.getByRole("button", { name: "Imagen" }));
+    expectAlignedEntry();
+  });
+
   it("shows a saved below-cost price as a warning while leaving empty optional prices unmarked", async () => {
     const product = { ...initialProduct, purchasePrice: "7.96", memberPrice: "5", wholesalePrice: "", offerPrice: "" };
     mockBulkEditing([], { content: [rowFor(product)] });

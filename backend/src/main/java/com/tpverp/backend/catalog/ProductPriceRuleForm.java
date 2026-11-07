@@ -278,24 +278,33 @@ public final class ProductPriceRuleForm {
             throw new IllegalArgumentException(
                     path + " requiere " + requiredSelectorName(form.scope()));
         }
-        validateActions(path, form);
+        for (int index = 0; index < form.actions().size(); index++) {
+            Action action = form.actions().get(index);
+            if (!actionAllowed(form.scope(), action)) {
+                throw new IllegalArgumentException(
+                        path + ".actions[" + index + "] " + actionName(action)
+                                + " no se admite para " + form.scope());
+            }
+        }
+        validateActions(path + ".actions", form.actions());
     }
 
-    private static void validateActions(String path, Definition form) {
+    static List<Action> validateSelectedActions(List<Action> actions) {
+        List<Action> values = immutableValues(actions, "actions", MAX_ITEMS_PER_FORM);
+        validateActions("actions", values);
+        return values;
+    }
+
+    private static void validateActions(String path, List<Action> actions) {
         EnumSet<PriceField> basePriceFields = EnumSet.noneOf(PriceField.class);
         EnumSet<PriceField> decimalFields = EnumSet.noneOf(PriceField.class);
         OfferAction offer = null;
         int offerActionIndex = -1;
         boolean hasPriceUseMode = false;
 
-        for (int actionIndex = 0; actionIndex < form.actions().size(); actionIndex++) {
-            Action action = form.actions().get(actionIndex);
-            String actionPath = path + ".actions[" + actionIndex + "]";
-            if (!actionAllowed(form.scope(), action)) {
-                throw new IllegalArgumentException(
-                        actionPath + " " + actionName(action)
-                                + " no se admite para " + form.scope());
-            }
+        for (int actionIndex = 0; actionIndex < actions.size(); actionIndex++) {
+            Action action = actions.get(actionIndex);
+            String actionPath = path + "[" + actionIndex + "]";
             switch (action) {
                 case FixedPriceAction fixed -> requireSingleBasePrice(
                         basePriceFields, fixed.field(), actionPath);
@@ -328,7 +337,7 @@ public final class ProductPriceRuleForm {
         if (offer == null) {
             return;
         }
-        String offerPath = path + ".actions[" + offerActionIndex + "]";
+        String offerPath = path + "[" + offerActionIndex + "]";
         boolean changesOfferPrice = basePriceFields.contains(PriceField.OFFER_PRICE);
         boolean adjustsOfferPrice = decimalFields.contains(PriceField.OFFER_PRICE);
         if (!offer.active() && offer.discountPercent() != null) {

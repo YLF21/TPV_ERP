@@ -7410,10 +7410,6 @@ textarea {
   line-height: 1.5;
 }
 
-.bulk-close-actions {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
 .stock-top-sales-search {
   border-color: #d7e0ea;
 }
@@ -9044,8 +9040,7 @@ textarea {
 
 .stock-bulk-filter-grid input,
 .stock-bulk-filter-grid select,
-.stock-bulk-rule-editor input,
-.stock-bulk-rule-editor select,
+.stock-bulk-price-actions-dialog .stock-bulk-rule-line input:not([type="checkbox"]),
 .stock-bulk-image-row select {
   width: 100%;
   min-height: 40px;
@@ -9058,8 +9053,7 @@ textarea {
   padding: 0 9px;
 }
 
-.stock-bulk-dialog-error,
-.stock-bulk-rule-error {
+.stock-bulk-dialog-error {
   margin: 0;
   border-left: 3px solid #c93b3b;
   background: #fff1f1;
@@ -9208,9 +9202,7 @@ textarea {
 }
 
 .stock-bulk-image-actions button,
-.stock-bulk-image-row button,
-.stock-bulk-rule-editor button,
-.stock-bulk-rules-list button {
+.stock-bulk-image-row button {
   min-height: 36px;
   border: 1px solid #d7e0ea;
   border-radius: 6px;
@@ -9221,9 +9213,7 @@ textarea {
   padding: 0 10px;
 }
 
-.stock-bulk-image-actions button:last-child,
-.stock-bulk-rule-commands button:not(.secondary),
-.stock-bulk-rule-confirm button:last-child {
+.stock-bulk-image-actions button:last-child {
   border-color: #244e86;
   background: #244e86;
   color: #ffffff;
@@ -9311,125 +9301,28 @@ textarea {
   white-space: nowrap;
 }
 
-.stock-bulk-price-rules-dialog {
-  width: min(1440px, calc(100vw - 38px));
-  height: min(900px, calc(100vh - 38px));
-  max-width: none;
-  grid-template-rows: auto minmax(0, 1fr);
-}
+.stock-screen .bulk-compact-dialog.stock-bulk-price-actions-dialog { width: 720px; }
 
-.stock-bulk-rules-layout {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
-  border: 1px solid #d7e0ea;
-  overflow: hidden;
-}
-
-.stock-bulk-rules-list {
-  min-height: 0;
-  display: grid;
-  align-content: start;
-  gap: 4px;
-  border-right: 1px solid #d7e0ea;
-  background: #f7faff;
-  padding: 10px;
-  overflow: auto;
-}
-
-.stock-bulk-rules-list > button {
-  display: grid;
-  gap: 3px;
-  text-align: left;
-  padding: 8px 10px;
-}
-
-.stock-bulk-rules-list > button.selected {
-  border-color: #244e86;
-  background: #eaf2fb;
-}
-
-.stock-bulk-rules-list .stock-bulk-rule-new {
-  background: #244e86;
-  color: #ffffff;
-  text-align: center;
-}
-
-.stock-bulk-rule-editor {
-  min-height: 0;
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  overflow: auto;
-  padding: 12px 16px 18px;
-}
-
-.stock-bulk-rule-topline {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto;
-  gap: 12px;
-  align-items: end;
-}
-
-.stock-bulk-rule-topline > label {
-  display: grid;
-  gap: 5px;
-  color: #52647d;
-  font-size: 12px;
-  font-weight: 850;
-}
-
-.stock-bulk-rule-commands {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-
-.stock-bulk-rule-error,
-.stock-bulk-rule-confirm {
-  display: flex;
-  gap: 8px;
+.stock-bulk-price-action-button {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-}
-
-.stock-bulk-rule-confirm {
-  border-left: 3px solid #c56b18;
-  background: #fff7e8;
-  padding: 9px 12px;
-}
-
-.stock-bulk-rule-form {
-  display: grid;
-  gap: 8px;
-  border-top: 2px solid #244e86;
-  border-bottom: 1px solid #d7e0ea;
-  padding: 10px 0 14px;
-}
-
-.stock-bulk-rule-form.conflict {
-  border: 2px solid #c93b3b;
-  background: #fff1f1;
-  padding: 9px 8px 13px;
-}
-
-.stock-bulk-rule-form > header,
-.stock-bulk-rule-section-title,
-.stock-bulk-rule-preview > header {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.stock-bulk-rule-form > header label {
-  display: flex;
-  gap: 7px;
-  align-items: center;
-  margin-left: auto;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid #68798b;
+  border-radius: 3px;
+  background: #eef1f4;
+  color: #12385f;
+  font: inherit;
+  font-weight: 700;
 }
 
 .stock-bulk-rule-section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   min-height: 38px;
   border-bottom: 1px solid #d7e0ea;
   background: #f7faff;
@@ -9440,20 +9333,9 @@ textarea {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
   gap: 7px;
-  align-items: center;
+  align-items: end;
   border-bottom: 1px solid #e6ecf3;
   padding: 7px 4px;
-}
-
-.stock-bulk-rule-line select[multiple] {
-  min-height: 74px;
-  padding: 4px;
-}
-
-.stock-bulk-rule-family-picker {
-  min-height: 40px;
-  justify-content: flex-start;
-  text-align: left;
 }
 
 .stock-bulk-rule-checkbox {
@@ -9463,85 +9345,9 @@ textarea {
   align-items: center;
 }
 
-.stock-bulk-rule-empty-line {
-  margin: 0;
-  color: #66758d;
-  font-size: 12px;
-  padding: 8px;
-}
-
-.stock-bulk-rule-add-form {
-  justify-self: start;
-}
-
-.stock-bulk-rule-preview {
-  display: grid;
-  gap: 8px;
-  border-top: 2px solid #2f9f5b;
-  padding-top: 10px;
-}
-
-.stock-bulk-rule-preview-table {
-  max-height: 320px;
-  border: 1px solid #d7e0ea;
-  overflow: auto;
-}
-
-.stock-bulk-rule-preview-row {
-  min-width: 800px;
-  min-height: 38px;
-  display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr 1fr 90px;
-  align-items: center;
-  border-bottom: 1px solid #e6ecf3;
-}
-
-.stock-bulk-rule-preview-row > span {
-  min-width: 0;
-  overflow: hidden;
-  padding: 7px 9px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stock-bulk-rule-preview-row.head {
-  min-height: 54px;
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: #244e86;
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-
-.stock-bulk-rule-preview-values-header {
-  grid-column: span 2;
-  height: 100%;
-  border-inline: 1px solid rgba(255, 255, 255, 0.28);
-}
-
-.stock-bulk-rule-preview-row:not(.head) > span:nth-child(3) {
-  align-self: stretch;
-  display: flex;
-  align-items: center;
-  border-right: 1px solid #e6ecf3;
-  background: #f7faff;
-  color: #66758d;
-}
-
 @media (max-width: 900px) {
   .stock-bulk-filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .stock-bulk-rules-layout {
-    grid-template-columns: 190px minmax(0, 1fr);
-  }
-
-  .stock-bulk-rule-topline {
-    grid-template-columns: 1fr;
   }
 }
 
@@ -15977,6 +15783,7 @@ textarea:focus,
 
 .stock-screen .work-shell.bulk-editor-work-shell {
   grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
 }
 
 /*
@@ -17458,7 +17265,6 @@ textarea:focus,
 .stock-settings-field > span:first-child,
 .stock-bulk-filter-field > span:first-child,
 .stock-bulk-decimal-field > span:first-child,
-.stock-bulk-rule-line > span:first-child,
 .warehouse-document-field > span:first-child,
 .warehouse-document-line-entry label > span:first-child,
 .promotion-form-grid label > span:first-child {

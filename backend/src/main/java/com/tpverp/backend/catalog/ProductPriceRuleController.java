@@ -72,6 +72,12 @@ public class ProductPriceRuleController {
         return service.preview(id, request.ruleVersion(), request.productIds());
     }
 
+    @PostMapping("/preview-actions")
+    public ProductPriceRuleService.PriceActionsPreview previewActions(
+            @Valid @RequestBody ProductPriceRuleService.PriceActionsRequest request) {
+        return service.previewActions(request);
+    }
+
     @ExceptionHandler(ProductPriceRuleConflictException.class)
     public ResponseEntity<ProblemDetail> conflict(ProductPriceRuleConflictException exception) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(

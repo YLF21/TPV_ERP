@@ -1,6 +1,5 @@
 import "./GestionAccentColors.css";
-import { lazy, StrictMode, Suspense, useCallback, useEffect, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { useMemo } from "react";
 import {
   AppFrame,
@@ -1012,11 +1011,3 @@ export function App() {
     </Suspense>}
   </>;
 }
-
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <Suspense fallback={null}>
-      <App />
-    </Suspense>
-  </StrictMode>
-);

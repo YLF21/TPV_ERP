@@ -337,6 +337,16 @@ html body .stock-screen .stock-bulk-standard-filters .stock-filter-button > img 
 html body .stock-screen .stock-bulk-standard-filters :is(.bulk-edit-file, .bulk-edit-selected, .bulk-quick-edit) {
   position: relative;
 }
+.stock-bulk-standard-filters .bulk-file-menu {
+  right: 0;
+  left: auto;
+}
+@media (min-width: 761px) {
+  .stock-bulk-standard-filters .bulk-import-menu {
+    right: calc(100% + 8px);
+    left: auto;
+  }
+}
 html body .stock-screen .stock-bulk-standard-filters .erp-list-filter-actions > :is(.bulk-edit-file, .bulk-edit-selected, .bulk-quick-edit) > button > svg {
   flex: 0 0 16px;
 }

@@ -2,6 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("react-dom/client", () => ({ createRoot: vi.fn(() => ({ render: vi.fn() })) }));
@@ -28,6 +29,15 @@ afterEach(() => {
 });
 
 describe("APP GESTIÓN startup connection recovery", () => {
+  it("does not mount another root when the app module is re-evaluated", async () => {
+    vi.mocked(createRoot).mockClear();
+
+    vi.resetModules();
+    await import("./main");
+
+    expect(createRoot).not.toHaveBeenCalled();
+  });
+
   it("keeps the language while moving between connection and installation setup without reloading identity", async () => {
     const load = vi.fn().mockResolvedValue({ ok: true, identity: null, newInstallation: true });
     window.tpvDesktop = {

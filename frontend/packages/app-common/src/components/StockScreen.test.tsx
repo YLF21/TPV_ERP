@@ -1375,6 +1375,22 @@ describe("StockScreen", () => {
     ]);
   });
 
+  describe.each(["venta", "gestion"] as const)("%s product table", (app) => {
+    it.each([
+      ["es", ["C/ Paquete", "P. compra", "P. venta", "P. miembro", "P. mayor", "P. oferta"]],
+      ["en", ["U/Package", "Purchase P.", "Sale P.", "Member P.", "Wholesale P.", "Offer P."]],
+      ["zh", ["每包数量", "采购价", "售价", "会员价", "批发价", "特价"]]
+    ] as const)("renders the localized column labels in %s", (locale, labels) => {
+      const html = renderToStaticMarkup(
+        <StockScreen app={app} locale={locale} session={session} terminalContext={terminalContext}
+          onBack={vi.fn()} onLocaleChange={vi.fn()} embedded={app === "gestion"} />
+      );
+      for (const label of labels) {
+        expect(html).toContain(`>${label}</`);
+      }
+    });
+  });
+
   it("renders the stock workspace with shared frame controls", () => {
     const html = renderToStaticMarkup(
       <StockScreen
