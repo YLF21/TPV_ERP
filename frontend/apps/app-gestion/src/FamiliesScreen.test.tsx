@@ -145,7 +145,7 @@ describe("FamiliesScreen", () => {
     const expectEmptyTable = () => {
       const headers = within(table).getAllByRole("columnheader");
       expect(headers).toHaveLength(5);
-      ["Imagen", "Código", "Nombre", "Precio venta"].forEach((label, index) => {
+      ["Imagen", "Código", "Nombre", "P. venta"].forEach((label, index) => {
         expect(headers[index + 1]).toHaveTextContent(label);
       });
       const body = table.querySelector("tbody")!;
@@ -300,7 +300,7 @@ describe("FamiliesScreen", () => {
       name: "Ordenar por Nombre",
     });
     const priceSort = within(table).getByRole("button", {
-      name: "Ordenar por Precio venta",
+      name: "Ordenar por P. venta",
     });
     expect(codeSort).toHaveAttribute("data-sort-direction", "none");
     expect(codeSort.closest("th")).toHaveAttribute("aria-sort", "none");
@@ -368,7 +368,7 @@ describe("FamiliesScreen", () => {
 
     fireEvent.click(
       within(screen.getByRole("table")).getByRole("button", {
-        name: "Ordenar por Precio venta",
+        name: "Ordenar por P. venta",
       }),
     );
     await screen.findByText("Precio ascendente");
@@ -377,7 +377,7 @@ describe("FamiliesScreen", () => {
     });
     const activePriceSort = within(screen.getByRole("table")).getByRole(
       "button",
-      { name: "Ordenar por Precio venta" },
+      { name: "Ordenar por P. venta" },
     );
     expect(activePriceSort).toHaveAttribute("data-sort-direction", "asc");
     expect(activePriceSort.closest("th")).toHaveAttribute(

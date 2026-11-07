@@ -119,6 +119,31 @@ class ProductPriceRuleServiceTest {
     }
 
     @Test
+    void previewsActionsForTheSelectedStoreProductsWithoutSavingAProductOrRule() {
+        Product product = product();
+        when(products.findAllByStoreIdAndIdIn(storeId, java.util.Set.of(product.getId()))).thenReturn(List.of(product));
+        var actions = List.<ProductPriceRuleForm.Action>of(
+                new ProductPriceRuleForm.FixedPriceAction(
+                        ProductPriceRuleForm.PriceField.SALE_PRICE, new BigDecimal("12.00")),
+                new ProductPriceRuleForm.DecimalEndingAction(ProductPriceRuleForm.PriceField.SALE_PRICE, 95),
+                new ProductPriceRuleForm.PriceUseModeAction(PriceUseMode.NORMAL));
+
+        var preview = service.previewActions(new ProductPriceRuleService.PriceActionsRequest(List.of(product.getId()), actions));
+
+        assertThat(preview.matchedProducts()).isEqualTo(1);
+        assertThat(preview.products()).singleElement().satisfies(change -> {
+            assertThat(change.productId()).isEqualTo(product.getId());
+            assertThat(change.changes()).anySatisfy(field -> {
+                assertThat(field.field()).isEqualTo(ProductPriceRulePreview.Field.SALE_PRICE);
+                assertThat(field.after()).isEqualTo(new BigDecimal("12.95"));
+            });
+        });
+        verify(catalog).validateProductUpdate(org.mockito.ArgumentMatchers.eq(product.getId()), any());
+        verify(catalog, never()).updateProducts(any());
+        org.mockito.Mockito.verifyNoInteractions(repository);
+    }
+
+    @Test
     void offerPriceActionsSelectOfferModeAndApplyDecimalAfterTheBasePrice() {
         Product product = product();
         ProductPriceRuleForm.Definition form = new ProductPriceRuleForm.Definition(

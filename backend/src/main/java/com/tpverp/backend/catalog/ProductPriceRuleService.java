@@ -1,5 +1,6 @@
 package com.tpverp.backend.catalog;
 
+import com.tpverp.backend.catalog.ProductPriceRuleForm.Action;
 import com.tpverp.backend.inventory.StockLevel;
 import com.tpverp.backend.inventory.StockLevelRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -147,20 +148,34 @@ public class ProductPriceRuleService {
         UUID companyId = organization.currentCompany().getId();
         ProductPriceRule rule = find(id, companyId);
         requireVersion(rule, ruleVersion);
-        return evaluate(rule, productIds).preview();
+        List<ActionSet> actionSets = ProductPriceRuleForm.validateAndCopy(rule.getForms()).stream()
+                .map(form -> new ActionSet(form.conditions(), form.actions()))
+                .toList();
+        Evaluation result = evaluate(actionSets, productIds);
+        return new ProductPriceRulePreview(rule.getId(), rule.getVersion(), result.matchedProducts(), result.products());
     }
 
-    private Evaluation evaluate(ProductPriceRule rule, List<UUID> requestedProductIds) {
+    @Transactional(readOnly = true)
+    public PriceActionsPreview previewActions(PriceActionsRequest request) {
+        List<ProductPriceRuleForm.Action> actions = ProductPriceRuleForm.validateSelectedActions(request.actions());
+        PriceUseMode automaticMode = automaticOfferMode(actions);
+        if (automaticMode != null && actions.stream().anyMatch(action ->
+                action instanceof ProductPriceRuleForm.PriceUseModeAction mode && mode.value() != automaticMode)) {
+            throw new IllegalArgumentException("El modo de precio seleccionado es incompatible con las acciones de oferta");
+        }
+        Evaluation result = evaluate(List.of(new ActionSet(List.of(), actions)), request.productIds());
+        return new PriceActionsPreview(result.matchedProducts(), result.products());
+    }
+
+    private Evaluation evaluate(List<ActionSet> actionSets, List<UUID> requestedProductIds) {
         UUID storeId = organization.currentStore().getId();
-        List<ProductPriceRuleForm.Definition> forms =
-                ProductPriceRuleForm.validateAndCopy(rule.getForms());
         List<Product> productList = selectedProducts(storeId, requestedProductIds);
-        EvaluationContext context = context(forms, storeId, productList);
+        EvaluationContext context = context(actionSets, storeId, productList);
         List<ProductPriceRulePreview.ProductChange> changedProducts = new ArrayList<>();
         int matchedProducts = 0;
 
         for (Product product : productList) {
-            ProductEvaluation productEvaluation = evaluateProduct(forms, product, context);
+            ProductEvaluation productEvaluation = evaluateProduct(actionSets, product, context);
             if (productEvaluation.matched()) {
                 matchedProducts++;
             }
@@ -170,8 +185,7 @@ public class ProductPriceRuleService {
                         product.getId(), product.getName(), productEvaluation.changes()));
             }
         }
-        return new Evaluation(new ProductPriceRulePreview(
-                rule.getId(), rule.getVersion(), matchedProducts, List.copyOf(changedProducts)));
+        return new Evaluation(matchedProducts, List.copyOf(changedProducts));
     }
 
     private List<Product> selectedProducts(UUID storeId, List<UUID> requestedProductIds) {
@@ -190,7 +204,7 @@ public class ProductPriceRuleService {
     }
 
     private ProductEvaluation evaluateProduct(
-            List<ProductPriceRuleForm.Definition> forms,
+            List<ActionSet> actionSets,
             Product product,
             EvaluationContext context) {
         ProductState original = ProductState.from(product);
@@ -198,14 +212,14 @@ public class ProductPriceRuleService {
                 new EnumMap<>(ProductPriceRulePreview.Field.class);
         boolean matched = false;
 
-        for (int index = 0; index < forms.size(); index++) {
-            ProductPriceRuleForm.Definition form = forms.get(index);
-            if (!matches(form, product, context)) {
+        for (int index = 0; index < actionSets.size(); index++) {
+            ActionSet actionSet = actionSets.get(index);
+            if (!matches(actionSet, product, context)) {
                 continue;
             }
             matched = true;
             EnumMap<ProductPriceRulePreview.Field, Object> formAssignments =
-                    applyActions(form, original.copy(), product);
+                    applyActions(actionSet.actions(), original.copy(), product);
             mergeAssignments(assignments, formAssignments, index, product);
         }
 
@@ -241,13 +255,13 @@ public class ProductPriceRuleService {
     }
 
     private static EnumMap<ProductPriceRulePreview.Field, Object> applyActions(
-            ProductPriceRuleForm.Definition form,
+            List<ProductPriceRuleForm.Action> actions,
             ProductState state,
             Product product) {
         EnumMap<ProductPriceRulePreview.Field, Object> values =
                 new EnumMap<>(ProductPriceRulePreview.Field.class);
-        applyAutomaticOfferMode(form.actions(), state, values);
-        List<ProductPriceRuleForm.Action> orderedActions = form.actions().stream()
+        applyAutomaticOfferMode(actions, state, values);
+        List<ProductPriceRuleForm.Action> orderedActions = actions.stream()
                 .sorted(Comparator.comparingInt(ProductPriceRuleService::actionPhase))
                 .toList();
         for (ProductPriceRuleForm.Action action : orderedActions) {
@@ -446,10 +460,10 @@ public class ProductPriceRuleService {
     }
 
     private static boolean matches(
-            ProductPriceRuleForm.Definition form,
+            ActionSet actionSet,
             Product product,
             EvaluationContext context) {
-        return form.conditions().stream().allMatch(condition -> switch (condition) {
+        return actionSet.conditions().stream().allMatch(condition -> switch (condition) {
             case ProductPriceRuleForm.NumericCondition numeric ->
                     matchesNumeric(numeric, product, context);
             case ProductPriceRuleForm.ReferenceCondition reference ->
@@ -497,15 +511,15 @@ public class ProductPriceRuleService {
     }
 
     private EvaluationContext context(
-            List<ProductPriceRuleForm.Definition> forms,
+            List<ActionSet> actionSets,
             UUID storeId,
             List<Product> productList) {
-        boolean needsSuppliers = forms.stream()
-                .flatMap(form -> form.conditions().stream())
+        boolean needsSuppliers = actionSets.stream()
+                .flatMap(actionSet -> actionSet.conditions().stream())
                 .anyMatch(condition -> condition instanceof ProductPriceRuleForm.ReferenceCondition reference
                         && reference.field() == ProductPriceRuleForm.ReferenceField.SUPPLIER);
-        List<ProductPriceRuleForm.NumericCondition> stockConditions = forms.stream()
-                .flatMap(form -> form.conditions().stream())
+        List<ProductPriceRuleForm.NumericCondition> stockConditions = actionSets.stream()
+                .flatMap(actionSet -> actionSet.conditions().stream())
                 .filter(ProductPriceRuleForm.NumericCondition.class::isInstance)
                 .map(ProductPriceRuleForm.NumericCondition.class::cast)
                 .filter(condition -> condition.field() == ProductPriceRuleForm.NumericField.LOCAL_STOCK
@@ -677,10 +691,21 @@ public class ProductPriceRuleService {
             @NotEmpty @Size(max = 5_000) List<@NotNull UUID> productIds) {
     }
 
+    public record PriceActionsRequest(
+            @NotEmpty @Size(max = 5_000) List<@NotNull UUID> productIds,
+            @NotEmpty List<@NotNull @Valid Action> actions) {
+    }
+
+    public record PriceActionsPreview(int matchedProducts, List<ProductPriceRulePreview.ProductChange> products) {
+    }
+
+    private record ActionSet(List<ProductPriceRuleForm.Condition> conditions, List<ProductPriceRuleForm.Action> actions) {
+    }
+
     private record Assignment(Object value, Set<Integer> formIndexes) {
     }
 
-    private record Evaluation(ProductPriceRulePreview preview) {
+    private record Evaluation(int matchedProducts, List<ProductPriceRulePreview.ProductChange> products) {
     }
 
     private record ProductEvaluation(

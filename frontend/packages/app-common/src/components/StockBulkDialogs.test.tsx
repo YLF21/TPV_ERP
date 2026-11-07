@@ -3,8 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { StockBulkDecimalDialog, normalizeStockBulkDecimalInput } from "./StockBulkDecimalDialog";
 import { StockBulkFamilyDialog, stockBulkFamilySelectionCount } from "./StockBulkFamilyDialog";
 import { StockBulkFilterDialog, validateStockBulkFilter } from "./StockBulkFilterDialog";
-import { priceRuleConflictFormIndexes, StockBulkPriceRulesDialog } from "./StockBulkPriceRulesDialog";
-import { ApiError } from "../api/client";
+import { StockBulkPriceActionsDialog } from "./StockBulkPriceActionsDialog";
 import { emptyStockBulkFilterCriteria } from "./stockBulkAdvanced";
 
 const families = [{ id: "family-1", name: "Bebidas", subfamilies: [{ id: "sub-1", name: "Agua" }] }];
@@ -68,37 +67,17 @@ describe("stock bulk dialogs", () => {
     expect(html).toContain("00 y 99");
   });
 
-  it("renders the formal two-panel price rule editor", () => {
+  it("renders price actions in the compact bulk editor dialog", () => {
     const html = renderToStaticMarkup(
-      <StockBulkPriceRulesDialog
-        open
-        locale="es"
-        token="token"
-        currentUsername="admin"
-        isAdmin
-        products={[]}
-        families={families}
-        suppliers={[]}
-        warehouses={[]}
-        onApplied={vi.fn()}
-        onClose={vi.fn()}
-      />
+      <StockBulkPriceActionsDialog locale="es" token="token" productIds={["product-1"]}
+        defaultField="SALE_PRICE" onApplied={vi.fn()} onClose={vi.fn()} />
     );
-    expect(html).toContain("stock-bulk-rules-list");
-    expect(html).toContain("stock-bulk-rule-editor");
-    expect(html).toContain("Reglas de precio");
-    expect(html).toContain("Limpiar");
+    expect(html).toContain("bulk-compact-dialog");
+    expect(html).toContain("Aplicar acciones de precio");
+    expect(html).toContain("Añadir acción");
     expect(html).toContain("Precio fijo");
-    expect(html).toContain('class="erp-select');
     expect(html).toContain('aria-haspopup="listbox"');
-    expect(html).not.toContain("<select");
-  });
-
-  it("identifies the forms returned by a backend price conflict", () => {
-    expect(priceRuleConflictFormIndexes(new ApiError("Conflicto", 409, {
-      code: "PRODUCT_PRICE_RULE_CONFLICT",
-      formIndexes: [0, 2]
-    }))).toEqual([0, 2]);
-    expect(priceRuleConflictFormIndexes(new Error("otro"))).toEqual([]);
+    expect(html).not.toContain("Condiciones");
+    expect(html).not.toContain("Ámbito");
   });
 });

@@ -61,6 +61,27 @@ class ProductPriceRuleControllerContractTest {
     }
 
     @Test
+    void actionPreviewRequiresProductManagementAndSelectedProducts() throws Exception {
+        String path = "/api/v1/product-price-rules/preview-actions";
+        String actions = """
+                "actions":[{"type":"FIXED_PRICE","field":"SALE_PRICE","value":20}]
+                """;
+        var manager = user("manager").authorities(() -> GESTION_PRODUCTO);
+
+        mvc.perform(post(path).with(manager).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productIds\":[], " + actions + "}"))
+                .andExpect(status().isBadRequest());
+        String request = "{\"productIds\":[\"" + UUID.randomUUID() + "\"], " + actions + "}";
+        mvc.perform(post(path).with(user("unauthorized")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(path).with(manager).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isOk());
+        org.mockito.Mockito.verify(service).previewActions(any());
+    }
+
+    @Test
     void updateRequiresVersion() throws Exception {
         UUID id = UUID.randomUUID();
         mvc.perform(put("/api/v1/product-price-rules/{id}", id)
