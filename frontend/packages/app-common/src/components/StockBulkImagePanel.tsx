@@ -10,6 +10,7 @@ import {
 import type { DragEvent, InputHTMLAttributes, KeyboardEvent } from "react";
 import type { LocaleCode } from "../types";
 import { apiBaseUrl } from "../api/runtime";
+import { ApiError } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { StockInventoryRow } from "./StockScreen";
 import { matchStockBulkImageFiles } from "./stockBulkAdvanced";
@@ -83,6 +84,21 @@ export type StockBulkDraftImageSyncView = {
   version: number;
   images: StockBulkDraftImageView[];
 };
+
+const MAX_DRAFT_IMAGES = 500;
+const MAX_DRAFT_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_DRAFT_IMAGES_TOTAL_BYTES = 100 * 1024 * 1024;
+// Match the maximum dimensions of the image stored by the product backend.
+const PRODUCT_IMAGE_MAX_SIDE = 1600;
+
+export class StockBulkImageSyncError extends Error {
+  constructor(
+    readonly reason: "tooMany" | "prepareError" | "totalTooLarge" | "requestTooLarge" | "saveConnectionError",
+    readonly fileName = ""
+  ) {
+    super(reason);
+  }
+}
 
 export type StockBulkImagePanelHandle = {
   openFolder: () => void;
@@ -261,13 +277,48 @@ export function stockBulkImagePendingAssignments(
 
 async function stockBulkImageHttpError(response: Response) {
   let message = response.statusText || "bulk_image_request_error";
+  let problem: Record<string, unknown> | undefined;
   try {
-    const problem = await response.json() as { detail?: string; code?: string };
-    message = problem.detail || problem.code || message;
+    const body = await response.json();
+    if (body && typeof body === "object") {
+      problem = body;
+      message = String(problem?.detail || problem?.code || message);
+    }
   } catch {
     // Keep the HTTP status text when the backend does not return a problem body.
   }
-  return new Error(message);
+  return new ApiError(message, response.status, problem);
+}
+
+async function prepareStockBulkDraftImage(file: File): Promise<File> {
+  if (file.size <= MAX_DRAFT_IMAGE_BYTES) return file;
+
+  let image: ImageBitmap | undefined;
+  try {
+    image = await createImageBitmap(file);
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("image_canvas_unavailable");
+    const jpeg = file.type.toLowerCase() === "image/jpeg";
+    const type = jpeg ? "image/jpeg" : "image/webp";
+    for (const maxSide of [PRODUCT_IMAGE_MAX_SIDE, 1200]) {
+      const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      context.imageSmoothingQuality = "high";
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const encoded = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, 0.92));
+      if (encoded?.type === type && encoded.size > 0 && encoded.size <= MAX_DRAFT_IMAGE_BYTES) {
+        const name = jpeg ? file.name : `${file.name.replace(/\.[^.]+$/, "")}.webp`;
+        return new File([encoded], name, { type, lastModified: file.lastModified });
+      }
+    }
+  } catch {
+    throw new StockBulkImageSyncError("prepareError", file.name);
+  } finally {
+    image?.close();
+  }
+  throw new StockBulkImageSyncError("prepareError", file.name);
 }
 
 export async function syncStockBulkDraftImages(
@@ -278,6 +329,8 @@ export async function syncStockBulkDraftImages(
   request: typeof fetch = fetch,
   apiRoot = apiBaseUrl
 ) {
+  if (snapshot.rows.length > MAX_DRAFT_IMAGES) throw new StockBulkImageSyncError("tooMany");
+
   const files: File[] = [];
   const fileIndexes = new Map<string, number>();
   const manifest = {
@@ -299,17 +352,30 @@ export async function syncStockBulkDraftImages(
       return item;
     })
   };
+  // Prepare each distinct source once. The draft limit still counts every assignment.
+  const preparedFiles: File[] = [];
+  for (const file of files) preparedFiles.push(await prepareStockBulkDraftImage(file));
+  const draftFiles = snapshot.rows.map((row, index) => {
+    const fileIndex = manifest.images[index].fileIndex;
+    return fileIndex === undefined ? row.file : preparedFiles[fileIndex];
+  });
+  const totalBytes = draftFiles.reduce((sum, file) => sum + file.size, 0);
+  if (totalBytes > MAX_DRAFT_IMAGES_TOTAL_BYTES) throw new StockBulkImageSyncError("totalTooLarge");
+
   const body = new FormData();
   body.append("manifest", new Blob([JSON.stringify(manifest)], { type: "application/json" }), "manifest.json");
-  files.forEach((file) => body.append("files", file, file.name));
-  const response = await request(
-    `${apiRoot}/product-bulk-edits/${encodeURIComponent(draftId)}/images`,
-    {
+  preparedFiles.forEach((file) => body.append("files", file, file.name));
+  let response: Response;
+  try {
+    response = await request(`${apiRoot}/product-bulk-edits/${encodeURIComponent(draftId)}/images`, {
       method: "PUT",
       headers: { Authorization: `Bearer ${token}` },
       body
-    }
-  );
+    });
+  } catch {
+    throw new StockBulkImageSyncError("saveConnectionError");
+  }
+  if (response.status === 413) throw new StockBulkImageSyncError("requestTooLarge");
   if (!response.ok) throw await stockBulkImageHttpError(response);
   const result = await response.json() as StockBulkDraftImageSyncView;
   const images = [...result.images].sort((left, right) => left.position - right.position);
@@ -320,6 +386,9 @@ export async function syncStockBulkDraftImages(
     version: result.version,
     snapshot: createStockBulkImageSnapshot(snapshot.rows.map((row, index) => ({
       ...row,
+      file: draftFiles[index],
+      fileName: images[index].fileName,
+      fileType: images[index].contentType,
       persistedId: images[index].id,
       productId: images[index].productId ?? "",
       status: images[index].productId ? "matched" : "pending",

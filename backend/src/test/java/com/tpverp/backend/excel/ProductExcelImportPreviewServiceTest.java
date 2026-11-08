@@ -1572,6 +1572,148 @@ class ProductExcelImportPreviewServiceTest {
         }
     }
 
+    @Test
+    void finalPurchasePriceProducesPercentageForNewProductsAndReviewWithoutChangingRawCells() {
+        when(reader.read(any())).thenReturn(read(List.of(c("Código"), c("Compra"), c("Final")),
+                List.of(c("NEW"), c("300"), c("200")),
+                List.of(c("NEW2"), c("2.345,67"), c("1.234,56")),
+                List.of(c("NEW3"), c("3"), c("2.001")),
+                List.of(c("NEW4"), c("10.99"), new ProductExcelImportReadService.CellView(
+                        "7.54", "B5*0.8*0.95^3", "7.538041", false, true))));
+        var result = service.preview(null, finalPriceRequest(Map.of(), false));
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.rows()).extracting(row -> row.excelData().get("purchaseDiscountPercent"))
+                .containsExactly("33.33333", "47.36856", "33.3", "31.41");
+        assertThat(result.sourceRows()).extracting(row -> row.excelData().get("purchaseDiscountPercent"))
+                .containsExactly("33.33333", "47.36856", "33.3", "31.41");
+        assertThat(service.readRaw(null, finalPriceRequest(Map.of(), false)).rows().get(1).get(2).value()).isEqualTo("200");
+    }
+
+    @Test
+    void stockPurchaseDiscountAcceptsFiveDecimalsAndComposesTextDiscountsBeforeRounding() {
+        when(reader.read(any())).thenReturn(read(List.of(c("Código"), c("Descuento")),
+                List.of(c("N1"), c("20+5+5+5")),
+                List.of(c("N2"), c("12,55555 % + 2.5%")),
+                List.of(c("N3"), c("24,87531")),
+                List.of(c("N4"), c("20+105")),
+                List.of(c("N5"), c("20++5"))));
+        var options = new ProductExcelImportPreviewService.PreviewOptions(Map.of(), Map.of(), false,
+                "STOCK", storeId, companyId, false, false);
+        var request = new ProductExcelImportPreviewService.PreviewRequest(Map.of("code", "A", "purchaseDiscountPercent", "B"),
+                List.of(), options, storeId, companyId, null, 2, null, Map.of("purchaseDiscountPercent", true));
+        var result = service.preview(null, request);
+        assertThat(result.rows().subList(0, 3)).extracting(row -> row.excelData().get("purchaseDiscountPercent"))
+                .containsExactly("31.41", "14.74166", "24.87531");
+        assertThat(result.sourceRows().subList(0, 2)).extracting(row -> row.excelData().get("purchaseDiscountPercent"))
+                .containsExactly("31.41", "14.74166");
+        assertThat(result.rows().subList(3, 5)).allSatisfy(row -> {
+            assertThat(row.errors()).extracting(ProductExcelImportPreviewService.ImportError::code).contains("NUMBER_INVALID");
+            assertThat(row.excelData()).doesNotContainKey("purchaseDiscountPercent");
+        });
+    }
+
+    @Test
+    void finalPurchasePriceUsesApplicableOriginalBaseAndPreservesUpdateSelections() {
+        Product product = existingProduct("A1");
+        when(product.getPurchasePrice()).thenReturn(new BigDecimal("100"));
+        when(reader.read(any())).thenReturn(read(List.of(c("Código"), c("Compra"), c("Final")),
+                List.of(c("A1"), c("200"), c("80"))));
+        var selected = service.preview(null, finalPriceRequest(Map.of("purchasePrice", true, "purchaseDiscountPercent", true), false));
+        assertThat(selected.rows().getFirst().excelData()).containsEntry("purchaseDiscountPercent", "60");
+        var stored = service.preview(null, finalPriceRequest(Map.of("purchaseDiscountPercent", true), false));
+        assertThat(stored.rows().getFirst().excelData()).containsEntry("purchaseDiscountPercent", "20");
+        assertThat(stored.rows().getFirst().changes()).containsOnlyKeys("purchaseDiscountPercent");
+        var ignored = service.preview(null, finalPriceRequest(Map.of("purchasePrice", true), false));
+        assertThat(ignored.errors()).isEmpty();
+        assertThat(ignored.rows().getFirst().excelData()).doesNotContainKey("purchaseDiscountPercent");
+    }
+
+    @Test
+    void finalPurchasePriceUsesStoredBaseForBlankAndSkippedZeroPurchasePrice() {
+        Product product = existingProduct("A1");
+        when(product.getPurchasePrice()).thenReturn(new BigDecimal("100"));
+        for (String base : List.of("", "0")) {
+            when(reader.read(any())).thenReturn(read(List.of(c("Código"), c("Compra"), c("Final")),
+                    List.of(c("A1"), c(base), c("80"))));
+            var result = service.preview(null, finalPriceRequest(Map.of("purchasePrice", true, "purchaseDiscountPercent", true), true));
+            assertThat(result.errors()).isEmpty();
+            assertThat(result.rows().getFirst().excelData()).containsEntry("purchaseDiscountPercent", "20");
+            assertThat(result.rows().getFirst().changes()).containsOnlyKeys("purchaseDiscountPercent");
+        }
+    }
+
+    @Test
+    void finalPurchasePriceRejectsMissingZeroBaseAndOutOfBoundsAmounts() {
+        when(reader.read(any())).thenReturn(read(List.of(c("Código"), c("Compra"), c("Final")),
+                List.of(c("N1"), c(""), c("8")), List.of(c("N2"), c("0"), c("8")),
+                List.of(c("N3"), c("10"), c("11")), List.of(c("N4"), c("10"), c("-1"))));
+        var result = service.preview(null, finalPriceRequest(Map.of(), false));
+        assertThat(result.rows().stream().flatMap(row -> row.errors().stream())
+                .filter(error -> "purchaseDiscountPercent".equals(error.attribute())))
+                .extracting(ProductExcelImportPreviewService.ImportError::code)
+                .containsExactly("PURCHASE_DISCOUNT_BASE_REQUIRED", "PURCHASE_DISCOUNT_BASE_REQUIRED", "PURCHASE_FINAL_PRICE_INVALID", "NUMBER_INVALID");
+        assertThat(result.rows()).allSatisfy(row -> {
+            assertThat(row.classification()).isEqualTo("ERROR");
+            assertThat(row.excelData()).doesNotContainKey("purchaseDiscountPercent");
+            assertThat(row.errors().getFirst().attribute()).isEqualTo("purchaseDiscountPercent");
+            assertThat(row.errors().getFirst().column()).isEqualTo(3);
+        });
+        assertThat(result.rows().get(2).errors().getFirst().receivedValue()).isEqualTo("11");
+    }
+
+    @Test
+    void finalPurchasePriceAcceptsZeroFullPriceAndBlankAndRejectsPercentProvenance() {
+        when(reader.read(any())).thenReturn(read(List.of(c("Código"), c("Compra"), c("Final")),
+                List.of(c("N1"), c("10"), c("0")), List.of(c("N2"), c("10"), c("10")),
+                List.of(c("N3"), c(""), c("")), List.of(c("N4"), c("10"), c("10%")),
+                List.of(c("N5"), c("10"), new ProductExcelImportReadService.CellView("10%", null, "10", true, true))));
+        var result = service.preview(null, finalPriceRequest(Map.of(), false));
+        assertThat(result.rows().get(0).excelData()).containsEntry("purchaseDiscountPercent", "100");
+        assertThat(result.rows().get(1).excelData()).containsEntry("purchaseDiscountPercent", "0");
+        assertThat(result.rows().get(2).errors()).noneMatch(error -> "purchaseDiscountPercent".equals(error.attribute()));
+        assertThat(result.rows().stream().flatMap(row -> row.errors().stream())
+                .filter(error -> "purchaseDiscountPercent".equals(error.attribute())))
+                .extracting(ProductExcelImportPreviewService.ImportError::code)
+                .containsExactly("PERCENTAGE_FORMAT_NOT_ALLOWED", "PERCENTAGE_FORMAT_NOT_ALLOWED");
+    }
+
+    @Test
+    void finalPurchasePriceModeContractDefaultsToPercentAndRejectsWarehouseOrUnknownModes() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        assertThat(mapper.readValue("{}", ProductExcelImportPreviewService.PreviewOptions.class).purchaseDiscountMode()).isEqualTo("PERCENT");
+        when(reader.read(any())).thenReturn(read(List.of(c("Código")), List.of(c("N1"))));
+        for (String mode : List.of("FINAL_PRICE", "OTHER")) {
+            var options = new ProductExcelImportPreviewService.PreviewOptions(Map.of(), Map.of(), false,
+                    "WAREHOUSE_INPUT", storeId, companyId, false, false, null, mode);
+            var result = service.preview(null, new ProductExcelImportPreviewService.PreviewRequest(Map.of("code", "A"), List.of(),
+                    options, storeId, companyId, null, 2, null, Map.of()));
+            assertThat(result.errors()).extracting(ProductExcelImportPreviewService.ImportError::code)
+                    .containsExactly("PURCHASE_DISCOUNT_MODE_INVALID");
+        }
+    }
+
+    @Test
+    void finalPurchasePriceUsesCachedRawNumberAndPreservesFormulaErrors() {
+        when(reader.read(any())).thenReturn(read(List.of(c("Código"), c("Compra"), c("Final")),
+                List.of(c("N1"), c("100"), new ProductExcelImportReadService.CellView(
+                        "75.12", "B2*0.7512345", "75.12345", false, true)),
+                List.of(c("N2"), c("100"), new ProductExcelImportReadService.CellView("#VALUE!", "B3*X3", null, false, false, "FORMULA_RESULT_ERROR"))));
+        var result = service.preview(null, finalPriceRequest(Map.of(), false));
+        assertThat(result.rows().get(0).excelData()).containsEntry("purchaseDiscountPercent", "24.87655");
+        assertThat(result.rows().get(1).errors()).anySatisfy(error -> {
+            assertThat(error.code()).isEqualTo("FORMULA_RESULT_ERROR");
+            assertThat(error.receivedValue()).isEqualTo("#VALUE!");
+        });
+        assertThat(result.rows().get(1).excelData()).doesNotContainKey("purchaseDiscountPercent");
+    }
+
+    private ProductExcelImportPreviewService.PreviewRequest finalPriceRequest(Map<String, Boolean> updates, boolean skipZero) {
+        return new ProductExcelImportPreviewService.PreviewRequest(
+                Map.of("code", "A", "purchasePrice", "B", "purchaseDiscountPercent", "C"), List.of(),
+                new ProductExcelImportPreviewService.PreviewOptions(Map.of(), Map.of(), false, "STOCK", storeId, companyId,
+                        skipZero, false, null, "FINAL_PRICE"), storeId, companyId, null, 2, null, updates);
+    }
+
     private Product existingProduct(String code) {
         UUID id = UUID.randomUUID();
         Product product = mock(Product.class);

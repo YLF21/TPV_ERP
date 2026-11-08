@@ -13,6 +13,7 @@ export type StockBulkEditRowData = {
   draft: Partial<StockInventoryRow>;
   suppliers?: StockBulkSupplierInfo[];
   pendingSupplier?: StockBulkSupplierInfo;
+  pendingSuppliers?: StockBulkSupplierInfo[];
   principalSupplierChanged?: boolean;
   pendingPrincipalSupplierId?: string | null;
 };
@@ -282,7 +283,7 @@ type StockBulkNamedReference = {
 
 export function stockBulkRowsChanged(rows: StockBulkEditRowData[]) {
   return rows.some((row) => (!row.product && (row.query.trim() || Object.keys(row.draft).length > 0))
-    || row.pendingSupplier || row.principalSupplierChanged || (row.product && Object.keys(row.draft).some((key) => {
+    || row.pendingSupplier || row.pendingSuppliers?.length || row.principalSupplierChanged || (row.product && Object.keys(row.draft).some((key) => {
     const field = key as keyof StockInventoryRow;
     return text(row.draft[field]) !== text(row.product?.[field]);
   })));
@@ -305,6 +306,22 @@ export function validateStockBulkRows(rows: StockBulkEditRowData[]): StockBulkVa
   const add = (rowId: string, field: StockBulkValidationField, code: StockBulkValidationError["code"]) => {
     if (!errors.some((error) => error.rowId === rowId && error.field === field && error.code === code)) {
       errors.push({ rowId, field, code });
+    }
+  };
+
+  const validateStockLimits = (row: StockBulkEditRowData) => {
+    const limits = (["stockMin", "stockMax"] as const).map((field) => {
+      const raw = nullableText(row.draft[field] ?? row.product?.[field]);
+      const limit = parsedNumber(raw);
+      if (raw !== null && (limit === null || limit < 0)) {
+        add(row.id, field, "invalidNumber");
+        return null;
+      }
+      return limit;
+    });
+    const [min, max] = limits;
+    if (min !== null && max !== null && max < min) {
+      add(row.id, "stockMax", "invalidNumber");
     }
   };
 
@@ -371,6 +388,7 @@ export function validateStockBulkRows(rows: StockBulkEditRowData[]): StockBulkVa
     if (offerUntil !== null && (!isIsoDate(offerUntil) || offerFrom === null || offerUntil < offerFrom)) {
       add(row.id, "offerUntil", "invalidDate");
     }
+    validateStockLimits(row);
   });
 
   // MISSING Excel rows are real bulk-edit rows. They are validated here so
@@ -421,6 +439,7 @@ export function validateStockBulkRows(rows: StockBulkEditRowData[]): StockBulkVa
       if (offerUntil !== null && (!isIsoDate(offerUntil) || offerFrom === null || offerUntil < offerFrom)) {
         add(row.id, "offerUntil", "invalidDate");
       }
+      validateStockLimits(row);
     });
 
   return errors;
@@ -430,14 +449,14 @@ export function buildStockBulkSupplierAssignments(
   rows: StockBulkEditRowData[]
 ): StockBulkSupplierAssignment[] {
   const assignments = new Map<string, Set<string>>();
-  rows.forEach((row) => {
-    if (!row.product || !row.pendingSupplier) {
-      return;
+  for (const row of rows) {
+    if (!row.product) continue;
+    for (const supplier of stockBulkPendingSuppliers(row)) {
+      const productIds = assignments.get(supplier.id) ?? new Set<string>();
+      productIds.add(row.product.productId);
+      assignments.set(supplier.id, productIds);
     }
-    const productIds = assignments.get(row.pendingSupplier.id) ?? new Set<string>();
-    productIds.add(row.product.productId);
-    assignments.set(row.pendingSupplier.id, productIds);
-  });
+  }
   return Array.from(assignments, ([supplierId, productIds]) => ({
     supplierId,
     productIds: Array.from(productIds)
@@ -457,6 +476,29 @@ export function buildStockBulkSupplierPrincipalAssignments(
   ));
 }
 
+export function stockBulkPendingSuppliers(row: StockBulkEditRowData) {
+  const suppliers = row.pendingSuppliers ?? [];
+  return row.pendingSupplier ? [row.pendingSupplier, ...suppliers] : suppliers;
+}
+
+export function stageStockBulkSupplier(
+  rows: StockBulkEditRowData[],
+  rowIds: Set<string>,
+  supplier: StockBulkSupplierInfo
+): StockBulkEditRowData[] {
+  return rows.map((row) => {
+    if (!row.product || !rowIds.has(row.id) || row.suppliers?.some((linked) => linked.id === supplier.id)
+        || row.pendingSuppliers?.some((pending) => pending.id === supplier.id)) {
+      return row;
+    }
+    return {
+      ...row,
+      pendingSupplier: row.pendingSupplier?.id === supplier.id ? undefined : row.pendingSupplier,
+      pendingSuppliers: [...(row.pendingSuppliers ?? []), supplier]
+    };
+  });
+}
+
 export function stageStockBulkPrincipalSupplier(
   rows: StockBulkEditRowData[],
   rowIds: Iterable<string>,
@@ -467,12 +509,18 @@ export function stageStockBulkPrincipalSupplier(
     if (!row.product || !targetIds.has(row.id)) {
       return row;
     }
-    const alreadyLinked = !supplier
-      || row.pendingSupplier?.id === supplier.id
+    // Older drafts could also store an explicit link in the single pending slot.
+    const explicitLegacyLink = row.pendingSupplier && (!row.principalSupplierChanged
+      || row.pendingSupplier.id !== row.pendingPrincipalSupplierId) ? row.pendingSupplier : undefined;
+    const pendingSuppliers = explicitLegacyLink
+      ? [...(row.pendingSuppliers ?? []), explicitLegacyLink]
+      : row.pendingSuppliers;
+    const alreadyLinked = !supplier || pendingSuppliers?.some((pending) => pending.id === supplier.id)
       || row.suppliers?.some((linked) => linked.id === supplier.id);
     return {
       ...row,
-      pendingSupplier: supplier && !alreadyLinked ? { ...supplier } : row.pendingSupplier,
+      pendingSupplier: supplier && !alreadyLinked ? supplier : undefined,
+      pendingSuppliers,
       principalSupplierChanged: true,
       pendingPrincipalSupplierId: supplier?.id ?? null
     };
@@ -483,18 +531,13 @@ export function finalizeStockBulkSupplierAssignments(
   rows: StockBulkEditRowData[]
 ): StockBulkEditRowData[] {
   return rows.map((row) => {
-    if (!row.pendingSupplier && !row.principalSupplierChanged) {
+    const pendingSuppliers = stockBulkPendingSuppliers(row);
+    if (pendingSuppliers.length === 0 && !row.principalSupplierChanged) {
       return row;
     }
-    const suppliers = [...(row.suppliers ?? [])];
-    if (row.pendingSupplier) {
-      const existing = suppliers.findIndex((supplier) => supplier.id === row.pendingSupplier?.id);
-      if (existing >= 0) {
-        suppliers[existing] = row.pendingSupplier;
-      } else {
-        suppliers.push(row.pendingSupplier);
-      }
-    }
+    const linkedSuppliers = row.suppliers ?? [];
+    const suppliers = [...linkedSuppliers, ...pendingSuppliers.filter((supplier) =>
+      !linkedSuppliers.some((linked) => linked.id === supplier.id))];
     const finalizedSuppliers = row.principalSupplierChanged
       ? suppliers.map((supplier) => ({
           ...supplier,
@@ -504,6 +547,7 @@ export function finalizeStockBulkSupplierAssignments(
       : suppliers;
     const {
       pendingSupplier: _pendingSupplier,
+      pendingSuppliers: _pendingSuppliers,
       principalSupplierChanged: _principalSupplierChanged,
       pendingPrincipalSupplierId: _pendingPrincipalSupplierId,
       ...finalized
@@ -514,19 +558,19 @@ export function finalizeStockBulkSupplierAssignments(
 
 export function stockBulkDisplayedSupplier(row: StockBulkEditRowData) {
   const suppliers = row.suppliers ?? [];
+  const pendingSuppliers = stockBulkPendingSuppliers(row);
   if (row.principalSupplierChanged) {
     if (!row.pendingPrincipalSupplierId) {
       return suppliers.find((supplier) => supplier.lastSupplier)
-        ?? row.pendingSupplier
+        ?? pendingSuppliers.at(-1)
         ?? suppliers.at(-1);
     }
-    return row.pendingSupplier?.id === row.pendingPrincipalSupplierId
-      ? row.pendingSupplier
-      : suppliers.find((supplier) => supplier.id === row.pendingPrincipalSupplierId);
+    return suppliers.find((supplier) => supplier.id === row.pendingPrincipalSupplierId)
+      ?? pendingSuppliers.find((supplier) => supplier.id === row.pendingPrincipalSupplierId);
   }
   return suppliers.find((supplier) => supplier.principal)
     ?? suppliers.find((supplier) => supplier.lastSupplier)
-    ?? row.pendingSupplier
+    ?? pendingSuppliers.at(-1)
     ?? suppliers.at(-1);
 }
 

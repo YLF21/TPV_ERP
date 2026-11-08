@@ -78,3 +78,36 @@ html body .erp-list-filter-host > header { border: 0 !important; background: tra
 @layer erp-desktop-window-corners {
   .erp-list-filter-table.erp-classic-tables table thead tr:first-child :is(th:first-child, th:last-child) { border-radius: 0 !important; }
 }
+
+/* Product bulk editing keeps the same compact, inline list filters. */
+.stock-bulk-standard-filters .stock-bulk-inline-filter,
+.stock-bulk-standard-filters .stock-bulk-inline-content,
+.stock-bulk-standard-filters .stock-bulk-filter-grid { display: contents; }
+.stock-bulk-standard-filters .stock-bulk-filter-field,
+.stock-bulk-standard-filters .stock-bulk-filter-grid > label {
+  display: grid; align-content: start; gap: 5px; min-width: 0; margin: 0;
+  color: #516175; font-size: 12px; font-weight: 700;
+}
+.stock-bulk-standard-filters .stock-bulk-filter-field > span:first-child,
+.stock-bulk-standard-filters .stock-bulk-filter-grid > label > span:first-child {
+  min-height: 0 !important; padding: 0 !important; border: 0 !important;
+  background: transparent !important; color: #516175 !important; font-weight: 700 !important;
+}
+.stock-bulk-standard-filters .stock-bulk-filter-field .erp-select,
+.stock-bulk-standard-filters .stock-bulk-filter-field .erp-select__trigger,
+.stock-bulk-standard-filters .stock-bulk-filter-grid input {
+  box-sizing: border-box; width: 100%; min-width: 0; height: 34px !important;
+  min-height: 34px !important; border-radius: 4px !important;
+}
+.stock-bulk-standard-filters .stock-bulk-offer-date { order: 2; }
+.stock-bulk-standard-filters .stock-bulk-offer-from { grid-column: 1; }
+.stock-bulk-standard-filters .stock-bulk-minimum-price { grid-column: 1; }
+.stock-bulk-standard-filters .stock-bulk-dialog-error { grid-column: 1 / -1; order: 3; margin: 0; }
+.stock-bulk-standard-filters .stock-bulk-inline-clear { order: 2; align-self: end; }
+.stock-bulk-standard-filters .stock-bulk-inline-clear button,
+.stock-bulk-standard-filters > .bulk-edit-file > button {
+  box-sizing: border-box; min-height: 34px !important; height: 34px !important;
+  padding: 5px 8px; border: 1px solid #68798b !important; border-radius: 3px !important;
+  background: #eef1f4 !important; color: #12385f !important;
+  font: inherit; font-size: 11px !important; font-weight: 700;
+}

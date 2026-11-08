@@ -29,6 +29,7 @@ type StockBulkFilterDialogProps = {
   taxes: StockBulkFilterOption[];
   allowIndependentSubfamily?: boolean;
   autoApply?: boolean;
+  inline?: boolean;
   onApply: (value: StockBulkFilterCriteria) => void;
   onClose: () => void;
 };
@@ -65,16 +66,23 @@ export function StockBulkFilterDialog({
   taxes,
   allowIndependentSubfamily = false,
   autoApply = false,
+  inline = false,
   onApply,
   onClose
 }: StockBulkFilterDialogProps) {
   const t = useMemo(() => createTranslator(locale), [locale]);
   const [draft, setDraft] = useState<StockBulkFilterCriteria>(value);
+  const [minimumPriceText, setMinimumPriceText] = useState(String(value.minimumPrice ?? ""));
+  const [maximumPriceText, setMaximumPriceText] = useState(String(value.maximumPrice ?? ""));
+  const lastAppliedRef = useRef<StockBulkFilterCriteria | null>(null);
   const dialogRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (open) setDraft({ ...value });
-  }, [open]);
+    if (!open || value === lastAppliedRef.current) return;
+    setDraft({ ...value });
+    setMinimumPriceText(String(value.minimumPrice ?? ""));
+    setMaximumPriceText(String(value.maximumPrice ?? ""));
+  }, [open, value]);
 
   if (!open) return null;
 
@@ -90,7 +98,21 @@ export function StockBulkFilterDialog({
   const update = (patch: Partial<StockBulkFilterCriteria>) => {
     const next = { ...draft, ...patch };
     setDraft(next);
-    if (autoApply && !validateStockBulkFilter(next)) onApply(next);
+    if (autoApply && !validateStockBulkFilter(next)) {
+      lastAppliedRef.current = next;
+      onApply(next);
+    }
+  };
+  const updatePrice = (field: "minimumPrice" | "maximumPrice", text: string) => {
+    if (field === "minimumPrice") setMinimumPriceText(text);
+    else setMaximumPriceText(text);
+    if (text.trim() && nullableNumber(text) === null) return;
+    update({ [field]: nullableNumber(text) });
+  };
+  const clear = () => {
+    setMinimumPriceText("");
+    setMaximumPriceText("");
+    update({ ...emptyStockBulkFilterCriteria });
   };
   const selectOptions = (key: StockBulkOptionKey, values: string[]) => {
     let next = changeStockBulkOptions(draft, key, values);
@@ -127,23 +149,35 @@ export function StockBulkFilterDialog({
     if (!moved && intent === "next" && !error && !autoApply) onApply({ ...draft });
   };
 
+  const dateFields = <>
+    <label className={inline ? "stock-bulk-offer-date stock-bulk-offer-from" : undefined}>
+      <span>{t("stock.bulkEdit.filter.offerFrom")}</span>
+      <input type="date" value={draft.offerFrom ?? ""} onChange={(event) => update({ offerFrom: optionValue(event.target.value) })} />
+    </label>
+    <label className={inline ? "stock-bulk-offer-date" : undefined}>
+      <span>{t("stock.bulkEdit.filter.offerUntil")}</span>
+      <input type="date" value={draft.offerUntil ?? ""} onChange={(event) => update({ offerUntil: optionValue(event.target.value) })} />
+    </label>
+  </>;
+
   return (
-    <div className="filter-overlay" role="presentation">
+    <div className={inline ? "stock-bulk-inline-filter" : "filter-overlay"} role="presentation">
       <section
         ref={dialogRef}
-        aria-labelledby="stock-bulk-filter-title"
-        aria-modal="true"
-        className="filter-dialog bulk-compact-dialog stock-bulk-filter-dialog"
-        role="dialog"
+        aria-labelledby={inline ? undefined : "stock-bulk-filter-title"}
+        aria-label={inline ? t("stock.bulkEdit.filter.title") : undefined}
+        aria-modal={inline ? undefined : true}
+        className={inline ? "stock-bulk-inline-content" : "filter-dialog bulk-compact-dialog stock-bulk-filter-dialog"}
+        role={inline ? "region" : "dialog"}
         onKeyDown={handleEnter}
       >
-        <header className="filter-header">
+        {!inline && <header className="filter-header">
           <div>
             <h2 id="stock-bulk-filter-title">{t("stock.bulkEdit.filter.title")}</h2>
             <p>{t("stock.bulkEdit.filter.activeCount").replace("{count}", String(activeCount))}</p>
           </div>
           <WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose} ><X size={18} weight="bold" aria-hidden="true" /></WindowCloseButton>
-        </header>
+        </header>}
 
         <div className="stock-bulk-filter-grid">
           <div className="stock-bulk-filter-field">
@@ -245,28 +279,22 @@ export function StockBulkFilterDialog({
               onNavigatePrevious={() => moveFromActiveControl("previous")}
             />
           </div>
-          <label>
-            <span>{t("stock.bulkEdit.filter.offerFrom")}</span>
-            <input type="date" value={draft.offerFrom ?? ""} onChange={(event) => update({ offerFrom: optionValue(event.target.value) })} />
-          </label>
-          <label>
-            <span>{t("stock.bulkEdit.filter.offerUntil")}</span>
-            <input type="date" value={draft.offerUntil ?? ""} onChange={(event) => update({ offerUntil: optionValue(event.target.value) })} />
-          </label>
-          <label>
+          {!inline && dateFields}
+          <label className={inline ? "stock-bulk-minimum-price" : undefined}>
             <span>{t("stock.bulkEdit.filter.minimumPrice")}</span>
-            <input min="0" step="0.01" type="number" value={draft.minimumPrice ?? ""} onChange={(event) => update({ minimumPrice: nullableNumber(event.target.value) })} />
+            <input min="0" step="0.01" type="number" value={minimumPriceText} onChange={(event) => updatePrice("minimumPrice", event.target.value)} />
           </label>
           <label>
             <span>{t("stock.bulkEdit.filter.maximumPrice")}</span>
-            <input min="0" step="0.01" type="number" value={draft.maximumPrice ?? ""} onChange={(event) => update({ maximumPrice: nullableNumber(event.target.value) })} />
+            <input min="0" step="0.01" type="number" value={maximumPriceText} onChange={(event) => updatePrice("maximumPrice", event.target.value)} />
           </label>
+          {inline && dateFields}
         </div>
 
         {error && <p className="stock-bulk-dialog-error" role="alert">{t(error)}</p>}
-        <footer className="filter-actions erp-dialog-actions-row">
-          <DialogDismissButton type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>{t(autoApply ? "common.close" : "common.cancel")}</DialogDismissButton>
-          <button type="button" onClick={() => update({ ...emptyStockBulkFilterCriteria })}>
+        <footer className={inline ? "stock-bulk-inline-clear" : "filter-actions erp-dialog-actions-row"}>
+          {!inline && <DialogDismissButton type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={onClose}>{t(autoApply ? "common.close" : "common.cancel")}</DialogDismissButton>}
+          <button type="button" onClick={clear}>
             {t("stock.bulkEdit.filter.clear")}
           </button>
           {!autoApply && <button type="button" className="erp-dialog-action-confirm" disabled={Boolean(error)} onClick={() => onApply({ ...draft })}>

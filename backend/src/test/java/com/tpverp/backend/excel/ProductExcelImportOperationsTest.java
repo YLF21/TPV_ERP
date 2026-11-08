@@ -68,6 +68,35 @@ class ProductExcelImportOperationsTest {
                 2, 1, 1, List.of(), List.of(), hash);
     }
 
+    @Test
+    void preservesFinalPriceModeThroughScopedPreviewAndWritesOnlyCanonicalPercentage() {
+        var data = values("A1", "Current", "100");
+        data.put("id", id.toString());
+        var excel = new LinkedHashMap<String, Object>(data);
+        excel.put("purchaseDiscountPercent", "24.87531");
+        var row = new ProductExcelImportPreviewService.PreviewRow(2, List.of(2), "EXISTING", excel, data, 1L,
+                Map.of("purchaseDiscountPercent", Map.of("before", "0", "after", "24.87531")), List.of(), false);
+        doReturn(new ProductExcelImportPreviewService.PreviewResult(
+                "test.xlsx", hash, "Sheet", List.of(row), 1, 1, 0, List.of(), List.of(), hash))
+                .when(preview).preview(any(), any());
+        var config = new ProductExcelImportPreviewService.PreviewRequest(
+                Map.of("code", "A", "purchaseDiscountPercent", "B"), List.of(),
+                new ProductExcelImportPreviewService.PreviewOptions(Map.of(), Map.of(), true, "STOCK", null, null,
+                        false, false, null, "FINAL_PRICE"), null, null, hash, 2, null, Map.of("purchaseDiscountPercent", true));
+        var command = new ProductExcelImportApplyService.ApplyRequest(config, Map.of(), false, true,
+                null, null, null, false, ProductExcelImportApplyService.Operation.UPDATE_SELECTED_FIELDS, hash);
+        var result = service.apply(new MockMultipartFile("file", "test.xlsx", null, new byte[]{1}), command);
+        assertThat(result.errors()).isEmpty();
+        assertThat(captured).singleElement().satisfies(item -> {
+            assertThat(item.request().purchaseDiscountPercent()).isEqualByComparingTo("24.87531");
+            assertThat(item.request().purchasePrice()).isEqualByComparingTo("100");
+        });
+        var requests = org.mockito.ArgumentCaptor.forClass(ProductExcelImportPreviewService.PreviewRequest.class);
+        verify(preview, times(2)).preview(any(), requests.capture());
+        assertThat(requests.getAllValues()).allSatisfy(request ->
+                assertThat(request.options().purchaseDiscountMode()).isEqualTo("FINAL_PRICE"));
+    }
+
     @ParameterizedTest @EnumSource(ProductExcelImportApplyService.Operation.class)
     void scopesEachButtonAndNeverCreatesMissingDuringDestinationPreparation(ProductExcelImportApplyService.Operation operation) {
         var result = service.apply(new MockMultipartFile("file", "test.xlsx", null, new byte[]{1}), command(operation, hash));

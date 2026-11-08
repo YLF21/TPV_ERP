@@ -6,6 +6,8 @@ const { validateBackendUrl } = require("./backend-config.cjs");
 const { BACKEND_ADDRESS_PATH, createBackendAddressResolver } = require("./backend-address.cjs");
 
 const DEFAULT_MAX_REQUEST_BYTES = 50 * 1024 * 1024;
+const BULK_DRAFT_IMAGE_REQUEST_BYTES = 110 * 1024 * 1024;
+const BULK_DRAFT_IMAGE_PATH = /^\/api\/v1\/product-bulk-edits\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\/images$/i;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const HOP_BY_HOP_HEADERS = new Set([
   "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
@@ -153,7 +155,11 @@ function createDesktopServer({
       request.resume();
       return;
     }
-    if (requestSizeExceeded(request, maxRequestBytes)) {
+    const isBulkImageUpload = request.method === "PUT"
+      && BULK_DRAFT_IMAGE_PATH.test(requestUrl.pathname)
+      && /^multipart\/form-data\s*;/i.test(request.headers["content-type"] || "");
+    const requestLimit = isBulkImageUpload ? BULK_DRAFT_IMAGE_REQUEST_BYTES : maxRequestBytes;
+    if (requestSizeExceeded(request, requestLimit)) {
       writeError(response, 413, "La solicitud supera el límite permitido");
       request.resume();
       return;
@@ -197,7 +203,7 @@ function createDesktopServer({
     let bytes = 0;
     request.on("data", (chunk) => {
       bytes += chunk.length;
-      if (bytes > maxRequestBytes) {
+      if (bytes > requestLimit) {
         locallyAborted = true;
         request.destroy();
         upstream.destroy();

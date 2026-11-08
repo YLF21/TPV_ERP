@@ -393,7 +393,9 @@ describe("StockScreen", () => {
       "productActive",
       "supplier",
       "principalSupplier",
-      "family"
+      "family",
+      "stockMin",
+      "stockMax"
     ]);
     expect(stockBulkSelectedActionsByTab.info).toEqual([
       "swapCodeBarcode",
@@ -422,7 +424,9 @@ describe("StockScreen", () => {
       "memberPrice",
       "wholesalePrice",
       "offerPrice",
-      "offerDiscountPercent"
+      "offerDiscountPercent",
+      "stockMin",
+      "stockMax"
     ]);
     expect(stockBulkQuickEditFieldsByTab.salePrice).toEqual(["purchasePrice", "salePrice", "benefit"]);
     expect(stockBulkQuickEditFieldsByTab.memberPrice).toEqual(["purchasePrice", "memberPrice", "benefit"]);
@@ -996,7 +1000,11 @@ describe("StockScreen", () => {
         supplierName: "Proveedor visual",
         promotionNames: "Promocion visual"
       },
-      draft: { discountType: "OFFER_PRICE" }
+      draft: { discountType: "OFFER_PRICE" },
+      suppliers: [{
+        id: "supplier-1", supplierCode: "P-1", legalName: "Proveedor", documentNumber: "B1", active: true,
+        productId: row.productId, grossPurchasePrice: 10, purchaseDiscount: 4.12345, netPurchasePrice: 9.588
+      }]
     }, {
       id: "row-empty",
       selected: false,
@@ -1009,6 +1017,10 @@ describe("StockScreen", () => {
     expect(normalized.product).toEqual(expect.objectContaining({ quantity: "0", totalQuantity: "0" }));
     expect(normalized.product).not.toHaveProperty("supplierName");
     expect(normalized.product).not.toHaveProperty("promotionNames");
+    expect(normalized.suppliers?.[0]).toEqual(expect.objectContaining({
+      id: "supplier-1", grossPurchasePrice: "10", purchaseDiscount: "4.12345", netPurchasePrice: "9.588"
+    }));
+    expect(normalized.suppliers?.[0]).not.toHaveProperty("productId");
     expect(stockBulkProductRowIds(rows)).toEqual(["row-1"]);
     expect(selectedStockBulkProductIds(rows)).toEqual([]);
     expect(selectedStockBulkProductIds(setAllStockBulkRowsSelected(rows, true))).toEqual([row.productId]);

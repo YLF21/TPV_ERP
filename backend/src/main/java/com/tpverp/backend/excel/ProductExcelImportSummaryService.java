@@ -102,7 +102,7 @@ public class ProductExcelImportSummaryService {
         var options = request.options();
         var full = new ProductExcelImportPreviewService.PreviewOptions(options.globalValues(), options.valueSources(),
                 false, options.context(), options.storeId(), options.companyId(), options.skipZeroPriceUpdate(),
-                options.requireQuantity(), options.documentPriceSource());
+                options.requireQuantity(), options.documentPriceSource(), options.purchaseDiscountMode());
         return new ProductExcelImportPreviewService.PreviewRequest(request.mapping(), request.edits(), full,
                 request.storeId(), request.companyId(), request.expectedSha256(), request.startRow(),
                 request.quantityColumn(), request.updateFields(), request.resolvedProducts());

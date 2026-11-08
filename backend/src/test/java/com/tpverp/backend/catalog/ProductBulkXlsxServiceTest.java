@@ -59,6 +59,7 @@ class ProductBulkXlsxServiceTest {
             assertThat(products.getRow(0).getCell(11).getStringCellValue()).isEqualTo("Usar precio");
             assertThat(products.getRow(1).getCell(7).getCellType()).isEqualTo(CellType.NUMERIC);
             assertThat(products.getRow(1).getCell(7).getNumericCellValue()).isEqualTo(12.50);
+            assertThat(products.getRow(1).getCell(6).getNumericCellValue()).isEqualTo(24.87531);
             assertThat(products.getRow(0).getCell(23).getStringCellValue()).isEqualTo("Codigo familia");
             assertThat(products.getRow(1).getCell(23).getStringCellValue()).isEqualTo("010");
             assertThat(products.getRow(0).getCell(26).getStringCellValue()).isEqualTo("Codigo subfamilia");
@@ -138,7 +139,7 @@ class ProductBulkXlsxServiceTest {
                 "Descripcion",
                 "Comentario",
                 "10.00",
-                "5.00",
+                "24.87531",
                 "12.50",
                 "11.50",
                 "10.50",

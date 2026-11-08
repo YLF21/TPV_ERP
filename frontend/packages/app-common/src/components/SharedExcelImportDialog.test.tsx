@@ -28,10 +28,33 @@ describe("SharedExcelImportDialog", () => {
     const groups = [1, 2, 3].map((column) => Array.from(container.querySelectorAll<HTMLElement>(".shared-excel-mapping-row"))
       .filter((row) => row.style.gridColumn === String(column)).map((row) => row.getAttribute("aria-label")));
     expect(groups).toEqual([
-      ["Código", "Código de barras", "Nombre", "Descripción", ...(context === "STOCK" ? [] : ["Cantidad"]), "Precio de compra", "Descuento de compra", "Familia / Subfamilia", "Código de barras 2"],
+      ["Código", "Código de barras", "Nombre", "Descripción", ...(context === "STOCK" ? [] : ["Cantidad"]),
+        "Precio de compra", context === "STOCK" ? "Descuento compra" : "Descuento de compra", "Familia / Subfamilia", "Código de barras 2"],
       ["Precio de venta", "Precio de miembro", "Precio mayorista", "Precio de oferta", "Descuento de oferta %", "Oferta desde", "Oferta hasta", "Oferta activa"],
       ["Tipo de producto", "Usar precio", "Prohibido descuento", "Impuestos", "Impuestos incluidos", "Cantidad por paquete", "Stock mínimo", "Stock máximo"]
     ]);
+  });
+
+  it("opens the family code reference and restores the Excel mapping when closed", () => {
+    render(<SharedExcelImportDialog open locale="es" context="STOCK" products={[]}
+      familyCatalog={{
+        families: [{ id: "drinks", familyCode: "7", name: "Bebidas" }],
+        subfamilies: [{ id: "water", familyId: "drinks", subfamilySuffix: "2", name: "Agua" }]
+      }}
+      onClose={vi.fn()} onImportAccepted={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Familia / Subfamilia Columna Excel"), { target: { value: "E" } });
+    const folder = screen.getByRole("button", { name: "Códigos de familias y subfamilias" });
+    fireEvent.click(folder);
+    const dialog = screen.getByRole("dialog", { name: "Códigos de familias y subfamilias" });
+    expect(within(dialog).getByRole("row", { name: "007 Bebidas —" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("row", { name: "007002 Bebidas Agua" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Importar Excel" })).not.toBeInTheDocument();
+    const close = within(dialog).getByRole("button", { name: "Cerrar" });
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(close, { key: "Escape" });
+    expect(dialog).not.toBeInTheDocument();
+    expect(folder).toHaveFocus();
+    expect(screen.getByLabelText("Familia / Subfamilia Columna Excel")).toHaveValue("E");
   });
 
   it("uses the requested fresh defaults and resets them without checking update permissions", () => {
@@ -48,6 +71,61 @@ describe("SharedExcelImportDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Limpiar configuración" }));
     for (const [label, value] of expected) expect(screen.getByRole("combobox", { name: label + " Columna o valor" })).toHaveValue(value);
     expect(screen.getByRole("combobox", { name: "Oferta activa Columna o valor" })).toHaveValue("");
+  });
+
+  it("reuses the discount column when switching to a final purchase price and sends the mode to preview", async () => {
+    const read = readApiFixture();
+    read.rows[0].push({ value: "Descuento de compra" });
+    read.rows[1].push({ value: "8" });
+    const requests: Array<{ mapping: Record<string, string>; options: { purchaseDiscountMode?: string } }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/read")) return jsonResponse(read);
+      if (url.endsWith("/preview")) {
+        requests.push(JSON.parse(await ((init!.body as FormData).get("config") as Blob).text()));
+      }
+      return jsonResponse(previewExistingFixture());
+    }));
+    const { container } = render(<SharedExcelImportDialog open locale="es" context="STOCK" products={[]}
+      onClose={vi.fn()} onImportAccepted={vi.fn()} />);
+    fireEvent.change(container.querySelector('input[type="file"]')!,
+      { target: { files: [new File(["xls"], "productos.xlsx")] } });
+    const discountColumn = screen.getByLabelText("Descuento compra Columna Excel");
+    await waitFor(() => expect(discountColumn).not.toHaveValue(""));
+    const mappedColumn = (discountColumn as HTMLInputElement).value;
+    const mode = screen.getByRole("switch", { name: "Precio final compra" });
+    const discountLabel = screen.getByText("Descuento compra", { exact: true });
+    const finalPriceLabel = screen.getByText("Precio final compra", { exact: true });
+    expect(mode).not.toBeChecked();
+    expect(mode).toHaveTextContent("%€");
+    expect(discountLabel).toHaveAttribute("data-active", "true");
+    expect(finalPriceLabel).toHaveAttribute("data-active", "false");
+    fireEvent.click(mode);
+    expect(mode).toBeChecked();
+    expect(discountLabel).toHaveAttribute("data-active", "false");
+    expect(finalPriceLabel).toHaveAttribute("data-active", "true");
+    expect(screen.getByLabelText("Precio final compra Columna Excel")).toHaveValue(mappedColumn);
+    expect(screen.getByRole("checkbox", { name: "Actualizar Precio final compra" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    await waitFor(() => expect(requests[0]).toMatchObject({
+      mapping: { purchaseDiscountPercent: mappedColumn },
+      options: { purchaseDiscountMode: "FINAL_PRICE" }
+    }));
+    await screen.findByRole("button", { name: "Productos importables (1)" });
+    fireEvent.click(screen.getByRole("button", { name: "Configuración del archivo" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Precio final compra" }));
+    expect(screen.getByLabelText("Descuento compra Columna Excel")).toHaveValue(mappedColumn);
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1].options.purchaseDiscountMode).toBeUndefined();
+  });
+
+  it("only uses the server-normalized percentage in drafts made from a final price", () => {
+    const row = { ...previewExistingFixture().rows[0], classification: "EXISTING" as const };
+    const sheet = [["Código", "Precio final"], ["A1", "8"]];
+    const mapping = { code: "A", purchaseDiscountPercent: "B" };
+    expect(previewRowToClassifiedRow(row, sheet, mapping, "", [], true).draft.purchaseDiscountPercent).toBe("");
+    const converted = { ...row, excelData: { ...row.excelData, purchaseDiscountPercent: "20" } };
+    expect(previewRowToClassifiedRow(converted, sheet, mapping, "", [], true).draft.purchaseDiscountPercent).toBe("20");
   });
 
   it("preserves saved column assignments and normalizes an old fixed product type", () => {
@@ -88,15 +166,15 @@ describe("SharedExcelImportDialog", () => {
     expect(screen.getByRole("combobox", { name: "Impuestos Columna o valor" })).toHaveValue("");
   });
 
-  it.each(["back", "escape"])("asks before closing through %s and preserves the mapping when cancelled", async (source) => {
+  it.each(["close", "escape"])("asks before closing through %s and preserves the mapping when cancelled", async (source) => {
     const onClose = vi.fn();
     const { container } = render(<SharedExcelImportDialog open locale="es" sheet={[["Código"], ["A1"]]}
       products={[]} onClose={onClose} onImportAccepted={vi.fn()} />);
     const column = screen.getByLabelText("Código Columna Excel");
     fireEvent.change(column, { target: { value: "AA" } });
-    const trigger = source === "back" ? screen.getByRole("button", { name: "Volver [Esc]" }) : column;
+    const trigger = source === "close" ? screen.getByRole("button", { name: "Cerrar" }) : column;
     trigger.focus();
-    const requestClose = () => source === "back" ? fireEvent.click(trigger) : fireEvent.keyDown(trigger, { key: "Escape" });
+    const requestClose = () => source === "close" ? fireEvent.click(trigger) : fireEvent.keyDown(trigger, { key: "Escape" });
     requestClose();
     const confirmation = screen.getByRole("alertdialog", { name: "¿Cerrar la importación de Excel?" });
     expect(confirmation).toHaveClass("app-venta-home-confirm-dialog");
@@ -119,9 +197,9 @@ describe("SharedExcelImportDialog", () => {
   it("Escape cancels only the close confirmation, ignores held Escape and traps focus inside it", async () => {
     const onClose = vi.fn();
     render(<SharedExcelImportDialog open locale="es" products={[]} onClose={onClose} onImportAccepted={vi.fn()} />);
-    const back = screen.getByRole("button", { name: "Volver [Esc]" });
-    back.focus();
-    fireEvent.keyDown(back, { key: "Escape" });
+    const closeTrigger = screen.getByRole("button", { name: "Cerrar" });
+    closeTrigger.focus();
+    fireEvent.keyDown(closeTrigger, { key: "Escape" });
     const confirmation = screen.getByRole("alertdialog");
     const cancel = within(confirmation).getByRole("button", { name: "Cancelar" });
     const confirm = within(confirmation).getByRole("button", { name: "Cerrar importador" });
@@ -134,7 +212,7 @@ describe("SharedExcelImportDialog", () => {
     fireEvent.keyDown(confirm, { key: "Tab" });
     expect(headerClose).toHaveFocus();
     fireEvent.keyDown(cancel, { key: "Escape" });
-    await waitFor(() => expect(back).toHaveFocus());
+    await waitFor(() => expect(closeTrigger).toHaveFocus());
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -655,10 +733,20 @@ describe("SharedExcelImportDialog", () => {
     expect(localizedImportErrorCatalog.GRID_CELL_LIMIT.zh.accepted).toContain("250,000");
   });
 
-  it("shows a short non-writing workflow before loading a file", () => {
-    const html = renderToStaticMarkup(<SharedExcelImportDialog open locale="es" products={[]} onClose={vi.fn()} onImportAccepted={vi.fn()} />);
-    expect(html).toContain("Abrir Excel → asignar columnas → Aplicar para revisar");
-    expect(html).not.toContain("Oferta activa utiliza 1");
+  it("shows the workflow when empty and restores it after clearing the file", () => {
+    const onImportAccepted = vi.fn();
+    const props = { open: true, locale: "es" as const, products: [], onClose: vi.fn(), onImportAccepted };
+    const { container, rerender } = render(<SharedExcelImportDialog {...props} />);
+    expect(screen.getByRole("heading", { name: "Guía de importación" })).toBeInTheDocument();
+    expect(container.querySelectorAll(".shared-excel-empty-preview li")).toHaveLength(5);
+    expect(screen.getByText(/Pulsa Aplicar para generar la revisión/)).toBeInTheDocument();
+    rerender(<SharedExcelImportDialog {...props} sheet={[["Código"], ["A1"]]} />);
+    expect(screen.queryByRole("heading", { name: "Guía de importación" })).not.toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Configuración del archivo" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar fichero" }));
+    expect(screen.getByRole("heading", { name: "Guía de importación" })).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Configuración del archivo" })).not.toBeInTheDocument();
+    expect(onImportAccepted).not.toHaveBeenCalled();
   });
 
   it("renders fullscreen preview, mapping controls and bottom sections", () => {
@@ -681,7 +769,8 @@ describe("SharedExcelImportDialog", () => {
     expect(html).toContain('class="filter-dialog shared-excel-dialog"');
     expect(html).toContain("Abrir Excel");
     expect(html).toContain("Editar tabla");
-    expect(html).toContain("Volver [Esc]");
+    expect(html).not.toContain("Volver [Esc]");
+    expect(html).toContain('aria-label="Cerrar"');
     expect(html).toContain("Limpiar fichero");
     expect(html).toContain("Limpiar configuración");
     expect(html).toContain("Aplicar");
@@ -1196,7 +1285,7 @@ describe("SharedExcelImportDialog", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Importar Excel al documento"));
     expect((screen.getByRole("button", { name: "Abrir Excel" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "Limpiar fichero" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Volver [Esc]" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Cerrar" }) as HTMLButtonElement).disabled).toBe(true);
     rerender(<SharedExcelImportDialog open locale="es" token="token"
       context="WAREHOUSE_INPUT"
       products={[{ id: "catalog-2", code: "B-2", barcode: "222" }]}
@@ -1552,8 +1641,9 @@ describe("SharedExcelImportDialog", () => {
   });
 
   it.each([
-    ["en", "Import summary", "Open Excel"],
-    ["zh", "导入说明", "打开 Excel"]
+    ["es", "Guía de importación", "Abrir Excel"],
+    ["en", "Import guide", "Open Excel"],
+    ["zh", "导入指南", "打开 Excel"]
   ] as const)("renders the complete import entry point in %s", (locale, heading, action) => {
     const html = renderToStaticMarkup(
       <SharedExcelImportDialog
@@ -1568,6 +1658,7 @@ describe("SharedExcelImportDialog", () => {
     expect(html).toContain(heading);
     expect(html).toContain(action);
     expect(html).not.toContain("Resumen de importación");
+    expect(html.match(/<li>/g)).toHaveLength(5);
   });
 
   it("sanitizes interactive Excel column entries to uppercase letters only", async () => {

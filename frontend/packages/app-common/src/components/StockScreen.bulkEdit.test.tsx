@@ -167,6 +167,86 @@ async function applyChanges() {
 }
 
 describe("Stock bulk editing save and apply", () => {
+  it("edits the main table stock limits through both menus without updating stock quantities", async () => {
+    const first = { ...initialProduct, stockMin: "2", stockMax: "20" };
+    const second = { ...first, productId: "product-2", code: "CAFE-2" };
+    const backend = mockBulkEditing([{ ...first, version: 5, stockMin: "4.5", stockMax: "25.5" }], {
+      content: [rowFor(first), { ...rowFor(second), id: "row-2", selected: false }]
+    });
+    const { container } = await openWorkspace();
+    const header = within(container.querySelector<HTMLElement>(".bulk-edit-head")!);
+    const firstRow = within(container.querySelector<HTMLElement>('[data-bulk-row-id="row-1"]')!);
+    const secondRow = within(container.querySelector<HTMLElement>('[data-bulk-row-id="row-2"]')!);
+    expect(header.getByText("Stock min")).toBeTruthy();
+    expect(header.getByText("Stock max")).toBeTruthy();
+
+    const min = firstRow.getByRole<HTMLInputElement>("textbox", { name: "Stock min" });
+    const max = firstRow.getByRole<HTMLInputElement>("textbox", { name: "Stock max" });
+    expect(min.value).toBe("2");
+    expect(max.value).toBe("20");
+
+    fireEvent.click(screen.getByRole("button", { name: /Editar seleccionado/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Stock min" }));
+    const editor = within(screen.getByRole("dialog", { name: "Stock min" }));
+    fireEvent.change(editor.getByRole("textbox", { name: "Stock min" }), { target: { value: "4,5" } });
+    fireEvent.click(editor.getByRole("button", { name: "Aplicar" }));
+    expect(min.value).toBe("4,5");
+    expect(secondRow.getByRole<HTMLInputElement>("textbox", { name: "Stock min" }).value).toBe("2");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edición rápida" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stock max" }));
+    await waitFor(() => expect(document.activeElement).toBe(max));
+    fireEvent.change(max, { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Terminar modo rápido" }));
+    await confirmApplyChanges();
+    expect(max.getAttribute("aria-invalid")).toBe("true");
+    expect(backend.applyAttempts).toHaveLength(0);
+
+    fireEvent.change(max, { target: { value: "25,5" } });
+    await applyChanges();
+    const updates = backend.applies[0].body.updates;
+    expect(updates).toHaveLength(1);
+    expect(updates[0].productId).toBe(first.productId);
+    expect(updates[0].product).toMatchObject({ stockMin: "4.5", stockMax: "25.5" });
+    expect(updates[0].product).not.toHaveProperty("quantity");
+    expect(updates[0].product).not.toHaveProperty("totalQuantity");
+  });
+
+  it.each([false, true])("keeps the progress dialog from draft save through apply (apply error: %s)", async (fails) => {
+    const canonical = { ...initialProduct, version: 5, taxId: "tax-2", taxName: "3%" };
+    const backend = mockBulkEditing([canonical], { applyError: fails ? new ApiError("Error de prueba", 500) : undefined });
+    const request = vi.mocked(apiRequest).getMockImplementation()!;
+    let releaseSave!: () => void;
+    let releaseApply!: () => void;
+    const saving = new Promise<void>((resolve) => { releaseSave = resolve; });
+    const applying = new Promise<void>((resolve) => { releaseApply = resolve; });
+    vi.mocked(apiRequest).mockImplementation(async (path, options) => {
+      if (path === "/product-bulk-edits/draft-v1" && options?.method === "PUT") await saving;
+      if (path === "/product-bulk-edits/draft-v1/apply") await applying;
+      return request(path, options);
+    });
+    await openWorkspace();
+    await selectTax("3%");
+    await confirmApplyChanges();
+
+    const progress = screen.getByRole("dialog", { name: "Aplicando cambios…" });
+    expect(within(progress).getByRole("progressbar")).toBeTruthy();
+    expect(document.activeElement).toBe(progress);
+    expect(backend.saves).toHaveLength(0);
+    fireEvent.keyDown(progress, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Aplicando cambios…" })).toBe(progress);
+
+    releaseSave();
+    await waitFor(() => expect(vi.mocked(apiRequest).mock.calls.some(([path]) => path.endsWith("/apply"))).toBe(true));
+    expect(screen.getByRole("dialog", { name: "Aplicando cambios…" })).toBe(progress);
+    expect(backend.applyAttempts).toHaveLength(0);
+
+    releaseApply();
+    await screen.findByText(fails ? "Error de prueba" : "Cambios aplicados", { exact: true });
+    expect(screen.queryByRole("dialog", { name: "Aplicando cambios…" })).toBeNull();
+    expect(backend.applyAttempts).toHaveLength(1);
+  });
+
   it.each(["venta", "gestion"] as const)("applies price actions only to the selected draft product in %s", async (app) => {
     const otherProduct = { ...initialProduct, productId: "product-2", code: "CABLE-1", name: "Cable de catálogo" };
     const { applyAttempts } = mockBulkEditing([], { content: [

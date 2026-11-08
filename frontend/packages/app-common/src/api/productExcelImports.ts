@@ -26,6 +26,7 @@ export type ProductExcelImportReadResult = {
 };
 
 export type ProductExcelImportContext = "STOCK" | "WAREHOUSE_INPUT" | "WAREHOUSE_OUTPUT" | "WAREHOUSE_TRANSFER";
+export type ProductExcelPurchaseDiscountMode = "PERCENT" | "FINAL_PRICE";
 
 export type ProductExcelImportCellEdit = {
   row: number;
@@ -48,6 +49,7 @@ export type ProductExcelImportPreviewConfig = {
     context: ProductExcelImportContext;
     skipZeroPriceUpdate: boolean;
     requireQuantity: boolean;
+    purchaseDiscountMode?: ProductExcelPurchaseDiscountMode;
     documentPriceSource?: "purchasePrice" | "salePrice" | "memberPrice" | "wholesalePrice" | "offerPrice";
   };
   expectedSha256: string;

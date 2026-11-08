@@ -149,6 +149,90 @@ describe("StockBulkImagePanel helpers", () => {
     });
   });
 
+  it.each([
+    ["large.jpg", "image/jpeg", "large.jpg", "image/jpeg"],
+    ["large.png", "image/png", "large.webp", "image/webp"]
+  ])("prepares an oversized source %s once and keeps all its assignments", async (name, type, preparedName, preparedType) => {
+    const file = new File([new Uint8Array(5 * 1024 * 1024 + 1)], name, { type });
+    const rows = stockBulkImageRows([file]);
+    const assigned = assignStockBulkImageSource(rows, rows[0].sourceId, ["product-1", "product-2"]);
+    const image = { width: 4000, height: 2000, close: vi.fn() };
+    const decode = vi.fn().mockResolvedValue(image);
+    const drawImage = vi.fn();
+    const canvas = {
+      getContext: () => ({ drawImage }),
+      toBlob: (done: BlobCallback, outputType: string) => done(new Blob(["prepared"], { type: outputType }))
+    };
+    vi.stubGlobal("createImageBitmap", decode);
+    vi.stubGlobal("document", { createElement: () => canvas });
+    try {
+      const request = vi.fn(async (_input: RequestInfo | URL, options?: RequestInit) => {
+        const body = options!.body as FormData;
+        const uploads = body.getAll("files") as File[];
+        expect(uploads).toHaveLength(1);
+        expect(uploads[0]).toMatchObject({ name: preparedName, type: preparedType, size: 8 });
+        const manifest = JSON.parse(await (body.get("manifest") as File).text());
+        expect(manifest.images).toEqual([
+          { productId: "product-1", fileIndex: 0 },
+          { productId: "product-2", fileIndex: 0 }
+        ]);
+        return new Response(JSON.stringify({
+          version: 2,
+          images: assigned.map((row, position) => ({
+            id: `saved-${position}`, productId: row.productId, position,
+            fileName: preparedName, contentType: preparedType, size: 8, sha256: "hash"
+          }))
+        }));
+      });
+      const result = await syncStockBulkDraftImages("draft", 1, { rows: assigned }, "token", request);
+      expect(decode).toHaveBeenCalledExactlyOnceWith(file);
+      expect(drawImage).toHaveBeenCalledExactlyOnceWith(image, 0, 0, 1600, 800);
+      expect(image.close).toHaveBeenCalledOnce();
+      expect(assigned[0].file).toBe(file);
+      expect(result.snapshot.rows[0]).toMatchObject({ fileName: preparedName, fileType: preparedType });
+      expect(result.snapshot.rows[0].file.size).toBe(8);
+      expect(result.snapshot.rows[1].file).toBe(result.snapshot.rows[0].file);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("identifies an unreadable oversized file without sending a partial draft", async () => {
+    const file = new File([new Uint8Array(5 * 1024 * 1024 + 1)], "broken.jpg", { type: "image/jpeg" });
+    const request = vi.fn();
+    vi.stubGlobal("createImageBitmap", vi.fn().mockRejectedValue(new Error("cannot decode")));
+    try {
+      await expect(syncStockBulkDraftImages("draft", 1, { rows: stockBulkImageRows([file]) }, "token", request))
+        .rejects.toMatchObject({ reason: "prepareError", fileName: "broken.jpg" });
+      expect(request).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("counts the size of every assignment in the draft even when the uploaded file is reused", async () => {
+    const file = new File([new Uint8Array(5 * 1024 * 1024)], "shared.jpg", { type: "image/jpeg" });
+    const rows = stockBulkImageRows([file]);
+    const assigned = assignStockBulkImageSource(rows, rows[0].sourceId,
+      Array.from({ length: 21 }, (_, index) => `product-${index}`));
+    const request = vi.fn();
+    await expect(syncStockBulkDraftImages("draft", 1, { rows: assigned }, "token", request))
+      .rejects.toMatchObject({ reason: "totalTooLarge" });
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("distinguishes an interrupted image upload from size and version conflicts", async () => {
+    const rows = stockBulkImageRows([new File(["image"], "p.jpg", { type: "image/jpeg" })]);
+    const request = vi.fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(new Response(null, { status: 413 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: "BULK_EDIT_LIST_VERSION_CONFLICT" }), { status: 409 }));
+    const sync = () => syncStockBulkDraftImages("draft", 1, { rows }, "token", request);
+    await expect(sync()).rejects.toMatchObject({ reason: "saveConnectionError" });
+    await expect(sync()).rejects.toMatchObject({ reason: "requestTooLarge" });
+    await expect(sync()).rejects.toMatchObject({ status: 409, problem: { code: "BULK_EDIT_LIST_VERSION_CONFLICT" } });
+  });
+
   it("loads persisted draft images and reconstructs editable files", async () => {
     const request = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify([{

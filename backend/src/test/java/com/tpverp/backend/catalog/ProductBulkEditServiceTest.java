@@ -408,6 +408,39 @@ class ProductBulkEditServiceTest {
     }
 
     @Test
+    void linksBothPendingSuppliersAndSetsTheRequestedPrincipal() {
+        UUID productId = UUID.randomUUID();
+        UUID principalId = UUID.randomUUID();
+        UUID additionalId = UUID.randomUUID();
+        var principalRow = rowWithPrincipalChange("row-1", productId, principalId);
+        var principal = principalRow.suppliers().getFirst();
+        var additional = new ProductBulkEditContent.SupplierData(
+                additionalId, "PROV-2", "Proveedor Dos", null, "B12345679", true,
+                null, null, null, null, null, null, null);
+        var pendingRow = new ProductBulkEditContent.Row(
+                principalRow.id(), false, principalRow.query(), principalRow.product(), principalRow.draft(),
+                List.of(), principal, true, principalId, List.of(additional));
+        var edit = new ProductBulkEdit(
+                storeId, "20260711001", "Revision proveedor", List.of(pendingRow), userId, Instant.now());
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+
+        var applied = service.apply(edit.getId(), new ProductBulkEditService.ProductBulkApplyRequest(
+                edit.getVersion(), List.of(),
+                List.of(new ProductBulkEditService.BulkSupplierAssignment(principalId, List.of(productId)),
+                        new ProductBulkEditService.BulkSupplierAssignment(additionalId, List.of(productId))),
+                List.of(new ProductBulkEditService.BulkSupplierPrincipalAssignment(productId, principalId)),
+                List.of(pendingRow)), managerAuthentication());
+
+        var order = org.mockito.Mockito.inOrder(productSuppliers);
+        order.verify(productSuppliers).linkProducts(principalId, List.of(productId));
+        order.verify(productSuppliers).linkProducts(additionalId, List.of(productId));
+        order.verify(productSuppliers).setPrincipal(productId, principalId);
+        var stored = applied.content().getFirst();
+        assertThat(stored.pendingSupplierLinks()).isEmpty();
+        assertThat(stored.suppliers()).containsExactly(principal.withPrincipal(true), additional.withPrincipal(false));
+    }
+
+    @Test
     void appliesAndFinalizesAManualPrincipalSupplierChange() {
         UUID supplierId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
