@@ -66,8 +66,10 @@ import {
   stockBulkExportFileName,
   resolveStockBulkImportedClassification,
   stageStockBulkPrincipalSupplier,
+  stageStockBulkSupplier,
   stockBulkClassificationCodesForRows,
   stockBulkDisplayedSupplier,
+  stockBulkPendingSuppliers,
   stockBulkEffectiveProduct,
   swapStockBulkCodeAndBarcode,
   stockOfferPriceFromDiscount,
@@ -99,6 +101,7 @@ import { StockBulkDecimalDialog } from "./StockBulkDecimalDialog";
 import {
   cloneStockBulkImageSnapshot,
   loadStockBulkDraftImages,
+  StockBulkImageSyncError,
   stockBulkImagePendingAssignments,
   StockBulkImagePanel,
   syncStockBulkDraftImages
@@ -184,7 +187,9 @@ type BulkValueField =
   | "memberPrice"
   | "wholesalePrice"
   | "offerPrice"
-  | "offerDiscountPercent";
+  | "offerDiscountPercent"
+  | "stockMin"
+  | "stockMax";
 type BulkQuickEditField = BulkValueField | "benefit";
 type BulkSelectedAction =
   | "supplier"
@@ -318,10 +323,6 @@ type TaxView = {
   active?: boolean;
   percentage?: number | string | null;
   name?: string | null;
-};
-
-type SupplierOptionView = StockBulkSupplierInfo & {
-  documentType: string;
 };
 
 type PurchaseDocumentKind = "invoice" | "deliveryNote";
@@ -510,7 +511,7 @@ export const stockBulkSelectedActionsByTab: Record<StockBulkEditTab, BulkSelecte
   main: [
     "purchasePrice", "salePrice", "memberPrice", "wholesalePrice", "offerPrice", "offerDiscountPercent",
     "priceUse", "offerActive", "offerDates", "tax", "taxesIncluded", "productActive", "supplier",
-    "principalSupplier", "family"
+    "principalSupplier", "family", "stockMin", "stockMax"
   ],
   info: ["swapCodeBarcode", "tax", "taxesIncluded", "productActive", "supplier", "principalSupplier", "family"],
   salePrice: ["purchasePrice", "salePrice", "benefit", "priceUse", "productActive", "supplier", "principalSupplier", "family"],
@@ -524,7 +525,10 @@ export const stockBulkSelectedActionsByTab: Record<StockBulkEditTab, BulkSelecte
 };
 
 export const stockBulkQuickEditFieldsByTab: Record<StockBulkEditTab, BulkQuickEditField[]> = {
-  main: ["name", "description", "purchasePrice", "salePrice", "memberPrice", "wholesalePrice", "offerPrice", "offerDiscountPercent"],
+  main: [
+    "name", "description", "purchasePrice", "salePrice", "memberPrice", "wholesalePrice", "offerPrice",
+    "offerDiscountPercent", "stockMin", "stockMax"
+  ],
   info: ["name", "description"],
   salePrice: ["purchasePrice", "salePrice", "benefit"],
   memberPrice: ["purchasePrice", "memberPrice", "benefit"],
@@ -644,7 +648,9 @@ const stockBulkColumnsByTab: Record<StockBulkEditTab, StockColumnDefinition[]> =
     { key: "family", labelKey: "stock.column.family", defaultWidth: 210 },
     { key: "subfamily", labelKey: "stock.column.subfamily", defaultWidth: 210 },
     { key: "tax", labelKey: "stock.column.tax", defaultWidth: 170 },
-    { key: "taxIncluded", labelKey: "stock.column.taxIncluded", defaultWidth: 170 }
+    { key: "taxIncluded", labelKey: "stock.column.taxIncluded", defaultWidth: 170 },
+    { key: "stockMin", labelKey: "stock.column.stockMin", defaultWidth: 92 },
+    { key: "stockMax", labelKey: "stock.column.stockMax", defaultWidth: 92 }
   ],
   info: [
     { key: "image", labelKey: "stock.column.image", defaultWidth: 82 },
@@ -1099,7 +1105,8 @@ function cloneBulkRows(rows: StockBulkEditRow[]) {
     product: row.product ? { ...row.product } : undefined,
     draft: { ...row.draft },
     suppliers: row.suppliers?.map((supplier) => ({ ...supplier })),
-    pendingSupplier: row.pendingSupplier ? { ...row.pendingSupplier } : undefined
+    pendingSupplier: row.pendingSupplier ? { ...row.pendingSupplier } : undefined,
+    pendingSuppliers: row.pendingSuppliers?.map((supplier) => ({ ...supplier }))
   }));
 }
 
@@ -1154,6 +1161,24 @@ function stockBulkPersistedProductData<T extends Partial<StockInventoryRow>>(val
   })) as unknown as T;
 }
 
+function stockBulkPersistedSupplierData(supplier: StockBulkSupplierInfo): StockBulkSupplierInfo {
+  return {
+    id: supplier.id,
+    supplierCode: supplier.supplierCode,
+    legalName: supplier.legalName,
+    tradeName: supplier.tradeName,
+    documentNumber: supplier.documentNumber,
+    active: supplier.active,
+    supplierReference: supplier.supplierReference,
+    principal: supplier.principal,
+    lastSupplier: supplier.lastSupplier,
+    grossPurchasePrice: supplier.grossPurchasePrice == null ? supplier.grossPurchasePrice : String(supplier.grossPurchasePrice),
+    purchaseDiscount: supplier.purchaseDiscount == null ? supplier.purchaseDiscount : String(supplier.purchaseDiscount),
+    netPurchasePrice: supplier.netPurchasePrice == null ? supplier.netPurchasePrice : String(supplier.netPurchasePrice),
+    lastEntryAt: supplier.lastEntryAt
+  };
+}
+
 function isStockAsyncExportView(view: StockViewKey) {
   return view !== "stock.bulkEdit";
 }
@@ -1181,7 +1206,10 @@ export function normalizeStockBulkContent(rows: StockBulkEditRowData[]) {
       draft: stockBulkPersistedProductData({
         ...row.draft,
         backendDiscountType
-      })
+      }),
+      suppliers: row.suppliers?.map(stockBulkPersistedSupplierData),
+      pendingSupplier: row.pendingSupplier && stockBulkPersistedSupplierData(row.pendingSupplier),
+      pendingSuppliers: row.pendingSuppliers?.map(stockBulkPersistedSupplierData)
     };
   });
 }
@@ -2322,7 +2350,7 @@ export function StockScreen({
   const [bulkExpandedFamilies, setBulkExpandedFamilies] = useState<Record<string, boolean>>({});
   const [bulkValidationErrors, setBulkValidationErrors] = useState<StockBulkValidationError[]>([]);
   const [bulkSupplierDialogMode, setBulkSupplierDialogMode] = useState<BulkSupplierDialogMode>(null);
-  const [bulkSupplierOptions, setBulkSupplierOptions] = useState<SupplierOptionView[]>([]);
+  const [bulkSupplierOptions, setBulkSupplierOptions] = useState<StockBulkSupplierInfo[]>([]);
   const [bulkProductSupplierLinks, setBulkProductSupplierLinks] = useState<StockBulkStoreSupplierLink[]>([]);
   const [bulkProductSupplierLinksReady, setBulkProductSupplierLinksReady] = useState(false);
   const [bulkSupplierSearch, setBulkSupplierSearch] = useState("");
@@ -2351,6 +2379,10 @@ export function StockScreen({
   const [bulkDirty, setBulkDirty] = useState(false);
   const [bulkImagesDirty, setBulkImagesDirty] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkApplying, setBulkApplying] = useState(false);
+  const bulkApplyInFlightRef = useRef(false);
+  const bulkApplyProgressRef = useRef<HTMLElement>(null);
+  const bulkApplyTriggerRef = useRef<HTMLButtonElement>(null);
   const [bulkConflictDraftId, setBulkConflictDraftId] = useState<string | null>(null);
   const [bulkRequestConflict, setBulkRequestConflict] = useState(false);
   const [bulkFinder, setBulkFinder] = useState<{ rowId: string; query: string } | null>(null);
@@ -3036,6 +3068,14 @@ export function StockScreen({
   }, [canManageProducts, selectedView]);
 
   useEffect(() => {
+    if (!bulkApplying) return;
+    bulkApplyProgressRef.current?.focus({ preventScroll: true });
+    return () => {
+      if (document.activeElement === document.body) bulkApplyTriggerRef.current?.focus({ preventScroll: true });
+    };
+  }, [bulkApplying]);
+
+  useEffect(() => {
     if (selectedView !== "stock.bulkEdit") {
       setBulkWorkspaceView("list");
     }
@@ -3111,6 +3151,10 @@ export function StockScreen({
       if (bulkWorkspaceView === "list") {
         return;
       }
+      if (bulkApplyInFlightRef.current) {
+        event.preventDefault();
+        return;
+      }
       if (app !== "pda" && event.key === STOCK_BULK_NEW_SHORTCUT
           && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
         event.preventDefault();
@@ -3167,7 +3211,7 @@ export function StockScreen({
       if (shortcut === "save") {
         event.preventDefault();
         if (activeBulkDraft || bulkDraftName.trim()) {
-          void saveBulkDraft();
+          submitBulkSave();
         } else {
           setBulkDialog("save");
         }
@@ -3480,7 +3524,17 @@ export function StockScreen({
     ] as const;
     return [
       ...criteria.flatMap(([key, label, describe]) => listFilterChips(key, label, stockBulkOptionValues(bulkFilters, key),
-        values => setBulkFilters(current => changeStockBulkOptions(current, key, values)), describe)),
+        values => setBulkFilters(current => {
+          let next = changeStockBulkOptions(current, key, values);
+          if (key === "familyId") {
+            const allowedSubfamilies = bulkCatalogFamilyTree
+              .filter(family => !values.length || values.includes(family.id))
+              .flatMap(family => family.subfamilies.map(subfamily => subfamily.id));
+            next = changeStockBulkOptions(next, "subfamilyId",
+              stockBulkOptionValues(next, "subfamilyId").filter(id => allowedSubfamilies.includes(id)));
+          }
+          return next;
+        }), describe)),
       ...otherCriteria.map(([key, label, value]) => ({
         key, label, value, onRemove: () => setBulkFilters(current => ({ ...current, [key]: null }))
       })),
@@ -3875,6 +3929,8 @@ export function StockScreen({
       wholesalePrice: "stock.column.wholesalePrice",
       offerPrice: "stock.column.offerPrice",
       offerDiscountPercent: "product.field.offerDiscountPercent",
+      stockMin: "stock.column.stockMin",
+      stockMax: "stock.column.stockMax",
       benefit: "stock.column.benefit",
       priceUse: "product.field.usePrice",
       offerActive: "stock.bulkEdit.offerActivation",
@@ -4252,6 +4308,10 @@ export function StockScreen({
         : conflict === "product" ? "stock.bulkEdit.productConflict" : "stock.bulkEdit.stateConflict"));
       return;
     }
+    if (error instanceof StockBulkImageSyncError) {
+      setBulkStatus(t(`stock.bulkEdit.images.${error.reason}`).replace("{file}", error.fileName));
+      return;
+    }
     setBulkStatus(error instanceof Error ? error.message : t(fallbackKey));
   }
 
@@ -4269,7 +4329,12 @@ export function StockScreen({
     }
   }
 
-  async function saveBulkDraft(afterAction = bulkAfterSave) {
+  function submitBulkSave() {
+    if (bulkAfterSave === "apply") void applyBulkChanges();
+    else void saveBulkDraft(bulkAfterSave);
+  }
+
+  async function saveBulkDraft(afterAction: "close" | "comments" | null) {
     if (!session.accessToken || bulkBusy) {
       return null;
     }
@@ -4323,9 +4388,7 @@ export function StockScreen({
       await reloadBulkDrafts();
       const nextAction = afterAction;
       setBulkAfterSave(null);
-      if (nextAction === "apply") {
-        queueMicrotask(() => void applyBulkChanges(persisted));
-      } else if (nextAction === "close") {
+      if (nextAction === "close") {
         queueMicrotask(resetBulkWorkspace);
       } else if (nextAction === "comments") {
         queueMicrotask(() => setBulkDialog("comments"));
@@ -4456,8 +4519,8 @@ export function StockScreen({
     resetBulkWorkspace();
   }
 
-  async function applyBulkChanges(persistedDraft?: StockBulkDraftView) {
-    if (!session.accessToken || bulkBusy) {
+  async function applyBulkChanges() {
+    if (!session.accessToken || bulkBusy || bulkApplyInFlightRef.current) {
       return;
     }
     const validationErrors = validateStockBulkRows(bulkRows);
@@ -4472,49 +4535,46 @@ export function StockScreen({
       return;
     }
     setBulkValidationErrors([]);
-    let draft = persistedDraft ?? activeBulkDraft;
-    if (!persistedDraft && (!draft || bulkDirty)) {
-      if (!draft && !bulkDraftName.trim()) {
-        setBulkAfterSave("apply");
-        setBulkDialog("save");
+    let draft = activeBulkDraft;
+    if (!draft && !bulkDraftName.trim()) {
+      setBulkAfterSave("apply");
+      setBulkDialog("save");
+      return;
+    }
+    bulkApplyInFlightRef.current = true;
+    setBulkApplying(true);
+    try {
+      if (!draft || bulkDirty) draft = await saveBulkDraft(null);
+      if (!draft) return;
+      const updates = buildStockBulkUpdates(bulkRows);
+      const creates = buildStockBulkCreates(bulkRows);
+      const supplierAssignments = buildStockBulkSupplierAssignments(bulkRows);
+      const supplierPrincipalAssignments = buildStockBulkSupplierPrincipalAssignments(bulkRows);
+      const imageSnapshot = cloneStockBulkImageSnapshot(bulkImageSnapshotRef.current);
+      const imageAssignments = stockBulkImagePendingAssignments(imageSnapshot);
+      const unassignedImages = imageSnapshot.rows.filter((row) => row.status !== "uploaded" && !row.productId);
+      if (unassignedImages.length > 0) {
+        setBulkEditTab("image");
+        setBulkStatus(t("stock.bulkEdit.images.assignFirst"));
+        setBulkDialog(null);
         return;
       }
-      draft = await saveBulkDraft(null);
-    }
-    if (!draft) {
-      return;
-    }
-    const updates = buildStockBulkUpdates(bulkRows);
-    const creates = buildStockBulkCreates(bulkRows);
-    const supplierAssignments = buildStockBulkSupplierAssignments(bulkRows);
-    const supplierPrincipalAssignments = buildStockBulkSupplierPrincipalAssignments(bulkRows);
-    const imageSnapshot = cloneStockBulkImageSnapshot(bulkImageSnapshotRef.current);
-    const imageAssignments = stockBulkImagePendingAssignments(imageSnapshot);
-    const unassignedImages = imageSnapshot.rows.filter((row) => row.status !== "uploaded" && !row.productId);
-    if (unassignedImages.length > 0) {
-      setBulkEditTab("image");
-      setBulkStatus(t("stock.bulkEdit.images.assignFirst"));
-      setBulkDialog(null);
-      return;
-    }
-    const hasCatalogChanges = updates.length > 0
-      || creates.length > 0
-      || supplierAssignments.length > 0
-      || supplierPrincipalAssignments.length > 0;
-    if (!hasCatalogChanges && imageAssignments.length === 0) {
-      setBulkStatus(t("stock.bulkEdit.noChanges"));
-      setBulkDialog(null);
-      return;
-    }
-    const appliedContent = currentBulkContent()
-      .map((row) => {
+      const hasCatalogChanges = updates.length > 0
+        || creates.length > 0
+        || supplierAssignments.length > 0
+        || supplierPrincipalAssignments.length > 0;
+      if (!hasCatalogChanges && imageAssignments.length === 0) {
+        setBulkStatus(t("stock.bulkEdit.noChanges"));
+        setBulkDialog(null);
+        return;
+      }
+      const appliedContent = currentBulkContent().map((row) => {
         const effectiveProduct = stockBulkEffectiveProduct(row);
         return effectiveProduct
           ? { ...row, product: effectiveProduct, draft: effectiveProduct }
           : row;
       });
-    setBulkBusy(true);
-    try {
+      setBulkBusy(true);
       const applied = await apiRequest<StockBulkDraftView>(
         `/product-bulk-edits/${encodeURIComponent(draft.id)}/apply`,
         {
@@ -4530,7 +4590,7 @@ export function StockScreen({
           }
         }
       );
-      const nextRows = withLiveBulkSupplierData(withEmptyBulkTail(applied.content));
+      const nextRows = withEmptyBulkTail(applied.content);
       const emptyImages = { rows: [] } satisfies StockBulkImageSnapshot;
       bulkRowsRef.current = nextRows;
       bulkImageSnapshotRef.current = emptyImages;
@@ -4549,9 +4609,11 @@ export function StockScreen({
       await reloadBulkDrafts();
     } catch (error) {
       setBulkDialog(null);
-      showBulkRequestError(error, "stock.bulkEdit.applyError", draft.id);
+      showBulkRequestError(error, "stock.bulkEdit.applyError", draft?.id);
     } finally {
       setBulkBusy(false);
+      bulkApplyInFlightRef.current = false;
+      setBulkApplying(false);
     }
   }
 
@@ -4778,18 +4840,18 @@ export function StockScreen({
 
   async function loadBulkSupplierCatalog() {
     if (!session.accessToken) return [];
-    const suppliers = await apiRequest<SupplierOptionView[]>(
+    const options = await apiRequest<StockBulkSupplierInfo[]>(
       "/product-bulk-edits/suppliers",
       { token: session.accessToken }
     );
+    const suppliers = options.map(({ id, supplierCode, legalName, tradeName, documentNumber, active }) => ({
+      id, supplierCode, legalName, tradeName, documentNumber, active
+    }));
     setBulkSupplierOptions(suppliers);
     return suppliers;
   }
 
-  async function openBulkFilterDialog() {
-    setBulkFilterOpen(true);
-    setBulkFileOpen(false);
-    setBulkImportOpen(false);
+  async function loadBulkFilterOptions() {
     if (bulkSupplierOptions.length > 0 || !session.accessToken || bulkBusy) return;
     setBulkBusy(true);
     try {
@@ -4799,6 +4861,13 @@ export function StockScreen({
     } finally {
       setBulkBusy(false);
     }
+  }
+
+  async function openBulkFilterDialog() {
+    setBulkFilterOpen(true);
+    setBulkFileOpen(false);
+    setBulkImportOpen(false);
+    await loadBulkFilterOptions();
   }
 
   async function applyBulkFilterSelection(value: StockBulkFilterCriteria) {
@@ -4995,26 +5064,26 @@ export function StockScreen({
     }
   }
 
-  async function applyBulkSupplier(selectedSupplier?: SupplierOptionView) {
+  async function applyBulkSupplier(supplier: StockBulkSupplierInfo) {
     if (!session.accessToken || !bulkSupplierDialogMode
         || bulkSupplierDialogMode === "principal" || bulkBusy) {
       return;
     }
-    const supplier = selectedSupplier
-      ?? bulkSupplierOptions.find((option) => option.id === bulkSelectedSupplierId);
-    if (!supplier || (bulkSupplierDialogMode === "assign" && !supplier.active)) {
+    if (bulkSupplierDialogMode === "assign" && !supplier.active) {
       return;
     }
     if (bulkSupplierDialogMode === "assign") {
-      const selectedIds = new Set(
-        bulkRows.filter((row) => row.product && row.selected).map((row) => row.id)
-      );
-      commitBulkRows((current) => current.map((row) => selectedIds.has(row.id)
-        ? { ...row, pendingSupplier: { ...supplier } }
-        : row));
-      setBulkStatus(t("stock.bulkEdit.supplierPending")
-        .replace("{count}", String(selectedIds.size))
-        .replace("{supplier}", supplier.legalName));
+      const selectedIds = new Set(selectedBulkRowIds());
+      const next = stageStockBulkSupplier(bulkRows, selectedIds, supplier);
+      const changedCount = next.filter((row, index) => row !== bulkRows[index]).length;
+      if (changedCount > 0) {
+        commitBulkRows((current) => stageStockBulkSupplier(current, selectedIds, supplier));
+        setBulkStatus(t("stock.bulkEdit.supplierPending")
+          .replace("{count}", String(changedCount))
+          .replace("{supplier}", supplier.legalName));
+      } else {
+        setBulkStatus(t("stock.bulkEdit.noChanges"));
+      }
       closeBulkSupplierDialog();
       return;
     }
@@ -5130,7 +5199,7 @@ export function StockScreen({
     }
     if (item === "stock.bulkEdit.saveList") {
       if (activeBulkDraft || bulkDraftName.trim()) {
-        void saveBulkDraft();
+        submitBulkSave();
       } else {
         setBulkDialog("save");
       }
@@ -5616,7 +5685,7 @@ export function StockScreen({
     const invalid = bulkCellInvalid(row, key);
     const numeric = [
       "purchasePrice", "purchaseDiscountPercent", "salePrice", "memberPrice", "wholesalePrice", "offerPrice",
-      "offerDiscountPercent"
+      "offerDiscountPercent", "stockMin", "stockMax"
     ].includes(String(key));
     const belowCost = !invalid && ["salePrice", "memberPrice", "wholesalePrice", "offerPrice"].includes(String(key))
       && stockPriceBelowCost(value, row.draft.purchasePrice ?? row.product?.purchasePrice);
@@ -6034,13 +6103,12 @@ export function StockScreen({
 
   function renderBulkSupplierCell(row: StockBulkEditRow) {
     const suppliers = row.suppliers ?? [];
+    const pendingSuppliers = stockBulkPendingSuppliers(row);
     const supplier = stockBulkDisplayedSupplier(row);
-    const additionalSupplierCount = suppliers.filter((value) => value.id !== supplier?.id).length;
-    const supplierNames = [row.pendingSupplier, ...suppliers]
-      .filter((value, index, values) => value && values.findIndex((item) => item?.id === value.id) === index)
-      .map((value) => value?.legalName)
-      .filter(Boolean)
-      .join(", ");
+    const displayedSuppliers = new Map([...pendingSuppliers, ...suppliers].map((value) => [value.id, value]));
+    const additionalSupplierCount = displayedSuppliers.size - Number(Boolean(supplier));
+    const supplierNames = [...displayedSuppliers.values()].map((value) => value.legalName).join(", ");
+    const pendingSupplierNames = pendingSuppliers.map((value) => value.legalName).join(", ");
     const lastEntryDate = supplier?.lastEntryAt ? new Date(supplier.lastEntryAt) : null;
     const lastEntryText = lastEntryDate && !Number.isNaN(lastEntryDate.getTime())
       ? supplierEntryDateFormatter.format(lastEntryDate)
@@ -6051,7 +6119,7 @@ export function StockScreen({
 
     return (
       <div
-        className={`bulk-supplier-cell ${row.pendingSupplier || row.principalSupplierChanged ? "changed" : ""}`}
+        className={`bulk-supplier-cell ${pendingSuppliers.length || row.principalSupplierChanged ? "changed" : ""}`}
         title={supplierNames || undefined}
       >
         <strong>{supplier?.legalName ?? "-"}</strong>
@@ -6064,6 +6132,9 @@ export function StockScreen({
                 <span>{t("stock.bulkEdit.supplierMore").replace("{count}", String(additionalSupplierCount))}</span>
               )}
             </div>
+            {pendingSupplierNames && (
+              <small>{t("stock.bulkEdit.supplierPendingLink").replace("{suppliers}", pendingSupplierNames)}</small>
+            )}
             <small>
               {t("stock.bulkEdit.supplierGross")}: {valueText(supplier.grossPurchasePrice)} · {t("stock.bulkEdit.supplierDiscount")}: {valueText(supplier.purchaseDiscount)}% · {t("stock.bulkEdit.supplierNet")}: {valueText(supplier.netPurchasePrice)}
             </small>
@@ -6077,9 +6148,8 @@ export function StockScreen({
   function renderBulkPrincipalSupplierCell(row: StockBulkEditRow) {
     const principal = row.principalSupplierChanged
       ? row.pendingPrincipalSupplierId
-        ? row.pendingSupplier?.id === row.pendingPrincipalSupplierId
-          ? row.pendingSupplier
-          : row.suppliers?.find((supplier) => supplier.id === row.pendingPrincipalSupplierId)
+        ? row.suppliers?.find((supplier) => supplier.id === row.pendingPrincipalSupplierId)
+          ?? stockBulkPendingSuppliers(row).find((supplier) => supplier.id === row.pendingPrincipalSupplierId)
         : undefined
       : row.suppliers?.find((supplier) => supplier.principal);
     return (
@@ -6276,6 +6346,8 @@ export function StockScreen({
         {renderBulkFamilyCell(row, true)}
         {renderBulkTaxCell(row)}
         {renderBulkTaxesIncludedCell(row)}
+        {renderBulkEditableCell(row, "stockMin", "stock.column.stockMin")}
+        {renderBulkEditableCell(row, "stockMax", "stock.column.stockMax")}
       </div>
     );
   }
@@ -6383,7 +6455,9 @@ export function StockScreen({
       label("stock.column.family"),
       label("stock.column.subfamily"),
       label("stock.column.tax"),
-      label("stock.column.taxIncluded")
+      label("stock.column.taxIncluded"),
+      label("stock.column.stockMin"),
+      label("stock.column.stockMax")
     ];
   }
 
@@ -6458,7 +6532,7 @@ export function StockScreen({
         <button type="button" disabled={bulkBusy} onClick={() => handleBulkFileAction("stock.bulkEdit.saveList")}>
           {t("common.save")}{app !== "pda" && <FloppyDisk size={16} aria-hidden="true" />}
         </button>
-        <button type="button" disabled={bulkBusy} onClick={() => setBulkDialog("apply")}>
+        <button ref={bulkApplyTriggerRef} type="button" disabled={bulkBusy || bulkApplying} onClick={() => setBulkDialog("apply")}>
           {t("stock.bulkEdit.applyChanges")}{app !== "pda" && <Check size={16} aria-hidden="true" />}
         </button>
         {bulkEditTab === "image" && (
@@ -6602,7 +6676,7 @@ export function StockScreen({
       ? Number(editor.value.replace(",", "."))
       : null;
     const valueRequired = editor.kind === "value"
-      && (editor.field === "purchasePrice" || editor.field === "salePrice");
+      && ["purchasePrice", "salePrice", "stockMin", "stockMax"].includes(editor.field);
     const valueInvalid = editor.kind === "value" && (
       (valueRequired && !editor.value.trim())
       || (editor.value.trim() !== "" && (!Number.isFinite(numericValue) || Number(numericValue) < 0))
@@ -7003,18 +7077,17 @@ export function StockScreen({
     }
     const assignMode = bulkSupplierDialogMode === "assign";
     const principalMode = bulkSupplierDialogMode === "principal";
-    const availableSuppliers: Array<SupplierOptionView | StockBulkSupplierInfo> = principalMode
-      ? filteredBulkSupplierOptions
-      : filteredBulkSupplierOptions;
+    const availableSuppliers = filteredBulkSupplierOptions;
     const selectedSupplier = availableSuppliers.find(
       (supplier) => supplier.id === bulkSelectedSupplierId
     );
 
-    function applySelectedSupplier(supplier: SupplierOptionView | StockBulkSupplierInfo) {
+    function applySelectedSupplier(supplier: StockBulkSupplierInfo) {
+      if ((assignMode || principalMode) && !supplier.active) return;
       if (principalMode) {
         applyBulkPrincipalSupplier(supplier.id);
       } else {
-        void applyBulkSupplier(supplier as SupplierOptionView);
+        void applyBulkSupplier(supplier);
       }
     }
 
@@ -7191,6 +7264,19 @@ export function StockScreen({
   }
 
   function renderBulkWorkspaceDialog() {
+    if (bulkApplying) {
+      return (
+        <div className="filter-overlay">
+          <section ref={bulkApplyProgressRef} className="app-loading-card bulk-apply-progress-dialog"
+            role="dialog" aria-modal="true" aria-labelledby="bulk-apply-progress-title" tabIndex={-1}>
+            <h2 id="bulk-apply-progress-title">{t("stock.bulkEdit.applyingChanges")}</h2>
+            <div className="app-loading-progress" role="progressbar" aria-labelledby="bulk-apply-progress-title">
+              <div className="app-loading-progress-fill" />
+            </div>
+          </section>
+        </div>
+      );
+    }
     if (!bulkDialog) {
       return null;
     }
@@ -7218,7 +7304,7 @@ export function StockScreen({
             className="filter-dialog bulk-compact-dialog bulk-workspace-dialog bulk-small-dialog"
             onKeyDown={(event) => acceptEnter(
               event,
-              () => void saveBulkDraft(),
+              submitBulkSave,
               !bulkDraftName.trim() || bulkBusy
             )}
           >
@@ -7232,7 +7318,7 @@ export function StockScreen({
             </label>
             <footer className="filter-actions erp-dialog-actions-row">
               <DialogDismissButton type="button" className="secondary erp-dialog-action-cancel erp-dialog-dismiss" onClick={close}>{t("common.cancel")}</DialogDismissButton>
-              <button type="button" className="erp-dialog-action-confirm" disabled={!bulkDraftName.trim() || bulkBusy} onClick={() => void saveBulkDraft()}>{t("common.save")}</button>
+              <button type="button" className="erp-dialog-action-confirm" disabled={!bulkDraftName.trim() || bulkBusy} onClick={submitBulkSave}>{t("common.save")}</button>
             </footer>
           </section>
         </div>
@@ -7440,18 +7526,23 @@ export function StockScreen({
       <div className="bulk-edit-screen">
         <div className="bulk-edit-controls">
         {app !== "pda" ? <ErpListFilterPanel translate={t} className="stock-bulk-standard-filters"
-          search={<div className="stock-bulk-standard-search">
-            <label><WarehouseSearchFrame><input className="erp-search-input" type="search" value={bulkSearchText}
+          search={<label><WarehouseSearchFrame><input className="erp-search-input" type="search" value={bulkSearchText}
               aria-label={t("stock.bulkEdit.searchList")} placeholder={t("stock.bulkEdit.searchList")}
-              onChange={event => setBulkSearchText(event.target.value)} /></WarehouseSearchFrame></label>
-            {renderBulkFilterButton()}
-          </div>}
-          filters={null}
+              onChange={event => setBulkSearchText(event.target.value)} /></WarehouseSearchFrame></label>}
+          onOpenChange={open => { if (open) void loadBulkFilterOptions(); }}
+          toolbarContent={renderBulkFileControl()}
+          filters={<StockBulkFilterDialog
+            inline open autoApply allowIndependentSubfamily locale={locale}
+            value={bulkFilters} families={bulkCatalogFamilyTree}
+            suppliers={bulkSupplierOptions.map(supplier => ({ value: supplier.id, label: supplier.tradeName || supplier.legalName }))}
+            taxes={bulkCatalogTaxOptions}
+            onClose={() => {}}
+            onApply={value => void updateBulkListFilters(value)}
+          />}
           actions={<>
             {renderBulkLeftActions(false, false)}
             {renderBulkEditSelectedControl()}
             {renderBulkQuickEditControl()}
-            {renderBulkFileControl()}
           </>}
         /> : <div className="bulk-edit-toolbar">
           <div className="bulk-edit-actions">{renderBulkLeftActions()}</div>
@@ -7525,6 +7616,7 @@ export function StockScreen({
           currentPurchasePrice={(product) => bulkProducts.find((candidate) => candidate.productId === product.id)?.purchasePrice}
           onClose={() => setBulkExcelImportOpen(false)}
           onImportAccepted={importSharedBulkRows}
+          familyCatalog={stockCatalog}
           taxOptions={stockCatalog.taxes.map((tax) => ({
             id: tax.id,
             defaultTax: tax.defaultTax,
@@ -7537,7 +7629,7 @@ export function StockScreen({
           token={session.accessToken}
           context="STOCK"
         />
-        <StockBulkFilterDialog
+        {app === "pda" && <StockBulkFilterDialog
           open={bulkFilterOpen}
           allowIndependentSubfamily={app !== "pda"}
           autoApply={app !== "pda"}
@@ -7551,7 +7643,7 @@ export function StockScreen({
           taxes={bulkCatalogTaxOptions}
           onClose={() => setBulkFilterOpen(false)}
           onApply={(value) => void (app === "pda" ? applyBulkFilterSelection(value) : updateBulkListFilters(value))}
-        />
+        />}
         <StockBulkFamilyDialog
           open={bulkFamilyDialogOpen}
           app={app}
@@ -7615,11 +7707,11 @@ export function StockScreen({
       { key: "image", label: "stock.bulkEdit.image" }
     ];
     return (
-      <header className="work-panel-heading stock-panel-heading bulk-edit-heading">
+      <header className={`work-panel-heading stock-panel-heading bulk-edit-heading ${app !== "pda" ? "bulk-edit-heading-desktop" : ""}`}>
         <div className="bulk-edit-title">
-          <button type="button" className="bulk-workspace-back" onClick={closeBulkWorkspace}>
+          {app === "pda" && <button type="button" className="bulk-workspace-back" onClick={closeBulkWorkspace}>
             {t("stock.bulkEdit.workspace.back")}
-          </button>
+          </button>}
           <h2>{selectedViewLabel}</h2>
           <span>{activeBulkDraft ? `${activeBulkDraft.code} · V${activeBulkDraft.versionNumber} · ${activeBulkDraft.name}` : t("stock.bulkEdit.workspace.unsaved")}</span>
         </div>
@@ -7630,6 +7722,9 @@ export function StockScreen({
             </button>
           ))}
         </nav>
+        {app !== "pda" && <button type="button" className="bulk-workspace-back" onClick={closeBulkWorkspace}>
+          {t("stock.bulkEdit.workspace.back")}
+        </button>}
       </header>
     );
   }

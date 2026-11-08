@@ -292,24 +292,8 @@ html body .stock-screen .stock-standard-filters .erp-list-filter-actions > :is(.
   opacity: .5;
 }
 
-html body .stock-screen .stock-bulk-standard-filters .erp-list-filter-search {
-  flex: 1 1 380px;
-  max-width: 460px;
-}
-html body .stock-screen .stock-bulk-standard-search {
-  display: flex;
-  align-items: flex-end;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-}
-html body .stock-screen .stock-bulk-standard-search > label {
-  display: block;
-  flex: 1 1 260px;
-  min-width: min(260px, 100%);
-  max-width: 360px;
-}
 html body .stock-screen .stock-bulk-standard-filters :is(.stock-filter-button,
+  .bulk-edit-file > button,
   .erp-list-filter-actions > button,
   .erp-list-filter-actions > :is(.bulk-edit-file, .bulk-edit-selected, .bulk-quick-edit) > button) {
   box-sizing: border-box;
@@ -338,13 +322,13 @@ html body .stock-screen .stock-bulk-standard-filters :is(.bulk-edit-file, .bulk-
   position: relative;
 }
 .stock-bulk-standard-filters .bulk-file-menu {
-  right: 0;
-  left: auto;
+  right: auto;
+  left: 0;
 }
 @media (min-width: 761px) {
   .stock-bulk-standard-filters .bulk-import-menu {
-    right: calc(100% + 8px);
-    left: auto;
+    right: auto;
+    left: calc(100% + 8px);
   }
 }
 html body .stock-screen .stock-bulk-standard-filters .erp-list-filter-actions > :is(.bulk-edit-file, .bulk-edit-selected, .bulk-quick-edit) > button > svg {

@@ -163,14 +163,14 @@ class ProductControllerContractTest {
     @Test
     void managementProductReadExposesPurchaseFieldsForProductManagers() throws Exception {
         var product = productWithPurchasePrice();
-        product.configurePurchaseDiscount(new BigDecimal("10.00"));
+        product.configurePurchaseDiscount(new BigDecimal("24.87531"));
         when(service.product(product.getId())).thenReturn(product);
 
         mvc.perform(get("/api/v1/products/management/{productId}", product.getId())
                         .with(user("manager").authorities(() -> GESTION_PRODUCTO)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.purchasePrice").value(1.20))
-                .andExpect(jsonPath("$.purchaseDiscountPercent").value(10.00))
+                .andExpect(jsonPath("$.purchaseDiscountPercent").value(24.87531))
                 .andExpect(jsonPath("$.salePrice").value(2.40));
     }
 
@@ -193,6 +193,7 @@ class ProductControllerContractTest {
         product.configurePriceUse(PriceUseMode.OFFER_DISCOUNT, new BigDecimal("10.00"));
         product.setPrice(PriceTier.OFERTA, new BigDecimal("2.16"));
         product.configureOffer(true, LocalDate.of(2026, 7, 1), null);
+        product.configurePurchaseDiscount(new BigDecimal("24.87531"));
 
         when(service.createProduct(any(CatalogService.ProductRequest.class))).thenReturn(product);
 
@@ -211,6 +212,7 @@ class ProductControllerContractTest {
                                   "description": "Descripcion",
                                   "comments": "Comentario",
                                   "purchasePrice": 1.20,
+                                  "purchaseDiscountPercent": 24.87531,
                                   "taxesIncluded": true,
                                   "code": "A001",
                                   "salePrice": 2.40,
@@ -226,6 +228,10 @@ class ProductControllerContractTest {
                 .andExpect(jsonPath("$.salePrice").value(2.40))
                 .andExpect(jsonPath("$.priceUseMode").value("OFFER_DISCOUNT"))
                 .andExpect(jsonPath("$.offerDiscountPercent").value(10.00));
+
+        var request = ArgumentCaptor.forClass(CatalogService.ProductRequest.class);
+        verify(service).createProduct(request.capture());
+        assertThat(request.getValue().purchaseDiscountPercent()).isEqualByComparingTo("24.87531");
     }
 
     @Test

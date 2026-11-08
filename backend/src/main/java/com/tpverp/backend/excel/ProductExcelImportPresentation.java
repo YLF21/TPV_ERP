@@ -39,6 +39,9 @@ final class ProductExcelImportPresentation {
         String code = error.code() == null ? "" : error.code();
         if ("en".equals(labels.locale())) {
             return switch (code) {
+                case "PURCHASE_DISCOUNT_MODE_INVALID" -> new ErrorCopy("The purchase discount mode is invalid", "PERCENT; FINAL_PRICE only for product imports", "Select a valid purchase discount mode");
+                case "PURCHASE_DISCOUNT_BASE_REQUIRED" -> new ErrorCopy("The final price requires a positive original purchase price", "An applicable purchase price greater than zero", "Enter the original price or check the saved product price");
+                case "PURCHASE_FINAL_PRICE_INVALID" -> new ErrorCopy("The final price exceeds the original purchase price", "A final price between zero and the original price", "Correct the final or original purchase price");
                 case "DATE_INVALID" -> new ErrorCopy("The date is invalid", "A valid native Excel date, DD-MM-YY, DD-MM-YYYY, or ISO", "Correct the date using a real calendar day");
                 case "DATE_RANGE_INVALID" -> new ErrorCopy("The end date is before the start date", "Offer until on or after Offer from", "Correct the offer interval");
                 case "INVALID_BOOLEAN" -> new ErrorCopy("The boolean value is invalid", "0 or 1", "Enter 0 or 1");
@@ -68,7 +71,7 @@ final class ProductExcelImportPresentation {
                 case "CELL_ERROR_VALUE", "FORMULA_RESULT_ERROR" -> new ErrorCopy("The cell or formula contains an Excel error", "A valid calculated value without Excel errors", "Fix the error, recalculate, and save the workbook");
                 case "FIELD_LENGTH_INVALID" -> new ErrorCopy("A field exceeds its maximum length", "The field length allowed by the importer", "Shorten the indicated field");
                 case "PRODUCT_TYPE_INVALID" -> new ErrorCopy("The product type is invalid", "1 = Unit (UNIT), 2 = Weight (WEIGHT), 3 = Service (SERVICE)", "Select a valid product type");
-                case "NUMBER_SCALE_INVALID" -> new ErrorCopy("The number has too many decimal places", "Prices, quantities and stock: up to 3 decimals; percentages: up to 2", "Correct the indicated cell and apply again");
+                case "NUMBER_SCALE_INVALID" -> new ErrorCopy("The number has too many decimal places", "The precision allowed for the indicated field", "Correct the indicated cell and apply again");
                 case "ZERO_PRICE_INVALID", "NUMBER_INVALID", "NUMBER_FORMAT_AMBIGUOUS", "NUMBER_PRECISION_INVALID", "DISCOUNT_PROHIBITED_PRICE_MODE" -> new ErrorCopy("The numeric or pricing value is invalid", "A value satisfying the selected price mode", "Correct the numeric or discount setting");
                 case "GLOBAL_VALUE_UNKNOWN", "VALUE_SOURCE_UNKNOWN", "VALUE_SOURCE_INVALID", "UPDATE_FIELD_UNKNOWN" -> new ErrorCopy("The import configuration value is invalid", "A supported field and value source", "Correct the import configuration");
                 case "TAX_REQUIRED", "FAMILY_REQUIRED", "FAMILY_UNKNOWN", "FAMILY_AMBIGUOUS", "SUBFAMILY_UNKNOWN", "SUBFAMILY_AMBIGUOUS", "SUBFAMILY_FAMILY_MISMATCH" -> new ErrorCopy("The product classification reference is invalid", "A unique active reference from this store", "Select a valid store reference");
@@ -110,7 +113,10 @@ final class ProductExcelImportPresentation {
             case "CELL_ERROR_VALUE", "FORMULA_RESULT_ERROR" -> new ErrorCopy("单元格或公式包含 Excel 错误", "不含 Excel 错误的有效计算值", "修正错误、重新计算并保存工作簿");
             case "FIELD_LENGTH_INVALID" -> new ErrorCopy("字段超过最大长度", "导入器允许的字段长度", "缩短指定字段");
             case "PRODUCT_TYPE_INVALID" -> new ErrorCopy("商品类型无效", "1 = 计件 (UNIT)，2 = 称重 (WEIGHT)，3 = 服务 (SERVICE)", "选择有效商品类型");
-            case "NUMBER_SCALE_INVALID" -> new ErrorCopy("小数位数超出限制", "价格、数量和库存最多3位小数；百分比最多2位", "更正所示单元格后重新应用");
+            case "PURCHASE_DISCOUNT_MODE_INVALID" -> new ErrorCopy("采购折扣模式无效", "PERCENT；FINAL_PRICE 仅适用于商品导入", "选择有效的采购折扣模式");
+            case "PURCHASE_DISCOUNT_BASE_REQUIRED" -> new ErrorCopy("最终价格需要大于零的原采购价", "适用的采购价必须大于零", "输入原价或检查商品已保存的采购价");
+            case "PURCHASE_FINAL_PRICE_INVALID" -> new ErrorCopy("最终价格超过原采购价", "最终价格应在零和原价之间", "更正最终价格或原采购价");
+            case "NUMBER_SCALE_INVALID" -> new ErrorCopy("小数位数超出限制", "所示字段允许的小数位数", "更正所示单元格后重新应用");
             case "ZERO_PRICE_INVALID", "NUMBER_INVALID", "NUMBER_FORMAT_AMBIGUOUS", "NUMBER_PRECISION_INVALID", "DISCOUNT_PROHIBITED_PRICE_MODE" -> new ErrorCopy("数字或价格值无效", "符合所选价格模式的值", "更正数字或折扣设置");
             case "GLOBAL_VALUE_UNKNOWN", "VALUE_SOURCE_UNKNOWN", "VALUE_SOURCE_INVALID", "UPDATE_FIELD_UNKNOWN" -> new ErrorCopy("导入配置值无效", "受支持的字段和值来源", "更正导入配置");
             case "TAX_REQUIRED", "FAMILY_REQUIRED", "FAMILY_UNKNOWN", "FAMILY_AMBIGUOUS", "SUBFAMILY_UNKNOWN", "SUBFAMILY_AMBIGUOUS", "SUBFAMILY_FAMILY_MISMATCH" -> new ErrorCopy("商品分类引用无效", "此门店唯一启用的引用", "选择有效的门店引用");

@@ -87,4 +87,26 @@ describe("desktop loopback server", () => {
     expect(safeStaticPath(root, "/../../windows.ini")).toBeNull();
     expect((await request(`${origin}/api/v1/test`, { method: "POST", headers: { "content-length": "3" }, body: "abc" })).status).toBe(413);
   });
+
+  it("uses the image transport limit only for multipart bulk draft uploads", async () => {
+    const backend = http.createServer((req, res) => {
+      req.resume();
+      req.once("end", () => res.end("uploaded"));
+    });
+    await new Promise((resolve) => backend.listen(0, "127.0.0.1", resolve));
+    resources.push({ close: () => new Promise((resolve) => backend.close(resolve)) });
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "tpv-desktop-test-"));
+    const desktop = createDesktopServer({
+      staticRoot: root,
+      backendUrl: `http://127.0.0.1:${backend.address().port}`,
+      maxRequestBytes: 2
+    });
+    resources.push({ root, close: desktop.close });
+    const origin = await desktop.start();
+    const target = `${origin}/api/v1/product-bulk-edits/00000000-0000-0000-0000-000000000001/images`;
+    const options = { method: "PUT", headers: { "content-length": "3", "content-type": "multipart/form-data; boundary=test" }, body: "abc" };
+    expect(await request(target, options)).toMatchObject({ status: 200, body: "uploaded" });
+    expect((await request(target, { ...options, method: "POST" })).status).toBe(413);
+    expect((await request(target, { ...options, headers: { ...options.headers, "content-type": "application/json" } })).status).toBe(413);
+  });
 });

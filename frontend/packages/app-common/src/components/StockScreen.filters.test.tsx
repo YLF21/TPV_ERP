@@ -249,16 +249,16 @@ describe("Stock applied filter chips", () => {
     const firstRow = container.querySelector<HTMLElement>('[data-bulk-row-id="row-0"]')!;
     fireEvent.change(within(firstRow).getByRole("textbox", { name: "Precio venta" }), { target: { value: "9.75" } });
     fireEvent.click(screen.getByRole("button", { name: /^Filtrar/ }));
-    const dialog = screen.getByRole("dialog", { name: "Filtrar edición masiva" });
-    fireEvent.change(within(dialog).getByRole("spinbutton", { name: "Precio mínimo" }), { target: { value: "4" } });
-    expect(within(dialog).queryByRole("button", { name: "Aplicar" })).toBeNull();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }));
+    const panel = container.querySelector<HTMLElement>(".stock-bulk-standard-filters")!;
+    fireEvent.change(within(panel).getByRole("spinbutton", { name: "Precio mínimo" }), { target: { value: "4" } });
+    expect(within(panel).queryByRole("button", { name: "Aplicar" })).toBeNull();
     fireEvent.change(screen.getByRole("searchbox", { name: "Buscar en la lista" }), { target: { value: "Café" } });
     fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Buscar" }));
     expect(container.querySelector('[data-bulk-row-id="row-1"]')).toBeNull();
     expect(screen.getByRole("button", { name: "Quitar filtro Precio mínimo" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Limpiar todos" }));
     expect(container.querySelector('[data-bulk-row-id="row-1"]')).not.toBeNull();
+    expect(within(panel).getByRole("spinbutton", { name: "Precio mínimo" })).toHaveProperty("value", "");
     expect(within(container.querySelector<HTMLElement>('[data-bulk-row-id="row-0"]')!).getByRole("textbox", { name: "Precio venta" }))
       .toHaveProperty("value", "9.75");
     expect(vi.mocked(apiRequest).mock.calls.some(([, options]) => options?.method === "PUT" || options?.method === "POST")).toBe(false);
@@ -267,26 +267,23 @@ describe("Stock applied filter chips", () => {
   it("keeps an independent bulk subfamily editable when removing only its family chip", async () => {
     const { container } = await openBulkWorkspace();
     fireEvent.click(screen.getByRole("button", { name: /^Filtrar/ }));
-    let dialog = screen.getByRole("dialog", { name: "Filtrar edición masiva" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Familia" }));
+    const panel = container.querySelector<HTMLElement>(".stock-bulk-standard-filters")!;
+    fireEvent.click(within(panel).getByRole("button", { name: "Familia" }));
     fireEvent.click(await screen.findByRole("option", { name: "Bebidas" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Subfamilia" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Subfamilia" }));
     fireEvent.click(screen.getByRole("option", { name: "Café" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Quitar filtro Familia" }));
     fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Familia" }));
     expect(screen.getByRole("group", { name: "Filtros aplicados" }).textContent).toContain("Subfamilia: Café");
     expect(container.querySelector('[data-bulk-row-id="row-0"]')).not.toBeNull();
     expect(container.querySelector('[data-bulk-row-id="row-1"]')).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /^Filtrar/ }));
-    dialog = screen.getByRole("dialog", { name: "Filtrar edición masiva" });
-    const subfamily = within(dialog).getByRole("button", { name: "Subfamilia" });
+    const subfamily = within(panel).getByRole("button", { name: "Subfamilia" });
     expect(subfamily).toHaveProperty("disabled", false);
     expect(subfamily.textContent).toContain("Café");
     fireEvent.click(subfamily);
     expect(screen.getByRole("option", { name: "Bebidas / Agua" })).toBeTruthy();
     fireEvent.click(screen.getByRole("option", { name: "Bebidas / Café" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }));
     expect(screen.queryByRole("button", { name: "Quitar filtro Subfamilia" })).toBeNull();
     expect(container.querySelector('[data-bulk-row-id="row-1"]')).not.toBeNull();
   });

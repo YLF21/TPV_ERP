@@ -13,6 +13,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 public final class ProductBulkEditContent {
 
@@ -48,7 +49,12 @@ public final class ProductBulkEditContent {
                 throw invalid(index, "suppliers no puede superar "
                         + MAX_SUPPLIERS_PER_ROW + " elementos");
             }
-            totalSuppliers += row.suppliers().size() + (row.pendingSupplier() == null ? 0 : 1);
+            List<SupplierData> pendingSuppliers = row.pendingSupplierLinks().toList();
+            if (pendingSuppliers.size() > MAX_SUPPLIERS_PER_ROW) {
+                throw invalid(index, "pendingSuppliers no puede superar "
+                        + MAX_SUPPLIERS_PER_ROW + " elementos");
+            }
+            totalSuppliers += row.suppliers().size() + pendingSuppliers.size();
             if (totalSuppliers > MAX_TOTAL_SUPPLIERS) {
                 throw new IllegalArgumentException(
                         "content no puede superar " + MAX_TOTAL_SUPPLIERS + " proveedores");
@@ -58,7 +64,13 @@ public final class ProductBulkEditContent {
                 throw new IllegalArgumentException(
                         "content supera el limite de 8 MB de JSON");
             }
-            validateSupplier(row.pendingSupplier(), index, "pendingSupplier");
+            Set<UUID> pendingSupplierIds = new HashSet<>();
+            for (SupplierData supplier : pendingSuppliers) {
+                validateSupplier(supplier, index, "pendingSuppliers");
+                if (!pendingSupplierIds.add(supplier.id())) {
+                    throw invalid(index, "pendingSuppliers contiene un proveedor duplicado");
+                }
+            }
             for (SupplierData supplier : row.suppliers()) {
                 if (supplier == null) {
                     throw invalid(index, "suppliers no admite valores nulos");
@@ -69,16 +81,15 @@ public final class ProductBulkEditContent {
                 throw invalid(index, "pendingPrincipalSupplierId requiere principalSupplierChanged");
             }
             if (row.product() == null) {
-                if (row.principalSupplierChanged()) {
-                    throw invalid(index, "no se puede cambiar el proveedor principal sin producto");
+                if (row.principalSupplierChanged() || !pendingSuppliers.isEmpty()) {
+                    throw invalid(index, "no se puede asignar un proveedor sin producto");
                 }
                 continue;
             }
             if (row.principalSupplierChanged() && row.pendingPrincipalSupplierId() != null) {
                 boolean linked = row.suppliers().stream()
                         .anyMatch(supplier -> supplier.id().equals(row.pendingPrincipalSupplierId()));
-                boolean pending = row.pendingSupplier() != null
-                        && row.pendingSupplier().id().equals(row.pendingPrincipalSupplierId());
+                boolean pending = pendingSupplierIds.contains(row.pendingPrincipalSupplierId());
                 if (!linked && !pending) {
                     throw invalid(index, "el proveedor principal debe estar vinculado o pendiente");
                 }
@@ -201,6 +212,11 @@ public final class ProductBulkEditContent {
         if (number != null && (number.signum() < 0 || number.compareTo(ONE_HUNDRED) > 0)) {
             throw invalid(rowIndex, field + " debe estar entre 0 y 100");
         }
+        if (number != null && "purchaseDiscountPercent".equals(field)
+                && number.stripTrailingZeros().scale() > Product.PURCHASE_DISCOUNT_SCALE) {
+            throw invalid(rowIndex, field + " no puede tener mas de "
+                    + Product.PURCHASE_DISCOUNT_SCALE + " decimales");
+        }
     }
 
     private static BigDecimal decimal(
@@ -246,6 +262,9 @@ public final class ProductBulkEditContent {
         long size = 256 + textSize(row.id(), row.query())
                 + estimatedSize(row.product()) + estimatedSize(row.draft());
         for (SupplierData supplier : row.suppliers()) {
+            size += estimatedSize(supplier);
+        }
+        for (SupplierData supplier : row.pendingSuppliers()) {
             size += estimatedSize(supplier);
         }
         return size + estimatedSize(row.pendingSupplier());
@@ -309,7 +328,22 @@ public final class ProductBulkEditContent {
             List<@Valid SupplierData> suppliers,
             @Valid SupplierData pendingSupplier,
             Boolean principalSupplierChanged,
-            UUID pendingPrincipalSupplierId) {
+            UUID pendingPrincipalSupplierId,
+            List<@Valid SupplierData> pendingSuppliers) {
+
+        public Row(
+                String id,
+                boolean selected,
+                String query,
+                ProductData product,
+                ProductData draft,
+                List<SupplierData> suppliers,
+                SupplierData pendingSupplier,
+                Boolean principalSupplierChanged,
+                UUID pendingPrincipalSupplierId) {
+            this(id, selected, query, product, draft, suppliers, pendingSupplier,
+                    principalSupplierChanged, pendingPrincipalSupplierId, List.of());
+        }
 
         public Row(
                 String id,
@@ -330,7 +364,12 @@ public final class ProductBulkEditContent {
             query = query == null ? "" : query.trim();
             draft = draft == null ? ProductData.empty() : draft;
             suppliers = suppliers == null ? List.of() : List.copyOf(suppliers);
+            pendingSuppliers = pendingSuppliers == null ? List.of() : List.copyOf(pendingSuppliers);
             principalSupplierChanged = Boolean.TRUE.equals(principalSupplierChanged);
+        }
+
+        public Stream<SupplierData> pendingSupplierLinks() {
+            return Stream.concat(Stream.ofNullable(pendingSupplier), pendingSuppliers.stream());
         }
 
         public ProductData effectiveProduct() {

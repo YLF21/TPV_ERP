@@ -94,7 +94,7 @@ public class ProductBulkEditService {
         Set<UUID> imageProductIds = images.findByEdicion_IdOrderByPosicionAsc(edit.getId()).stream()
                 .map(ProductBulkEditImage::getProductId).filter(Objects::nonNull).collect(Collectors.toSet());
         Set<UUID> eligible = content.stream()
-                .filter(row -> row.product() != null && row.pendingSupplier() == null
+                .filter(row -> row.product() != null && row.pendingSupplier() == null && row.pendingSuppliers().isEmpty()
                         && !row.principalSupplierChanged() && !imageProductIds.contains(row.product().productId())
                         && row.product().equals(row.effectiveProduct()))
                 .map(row -> row.product().productId()).collect(Collectors.toSet());
@@ -127,7 +127,7 @@ public class ProductBulkEditService {
                             subfamilyNames.get(product.getSubfamilyId()), taxNames.get(product.getTaxId()));
             return new ProductBulkEditContent.Row(row.id(), row.selected(), row.query(), refreshed,
                     ProductBulkEditContent.ProductData.empty(), row.suppliers(), row.pendingSupplier(),
-                    row.principalSupplierChanged(), row.pendingPrincipalSupplierId());
+                    row.principalSupplierChanged(), row.pendingPrincipalSupplierId(), row.pendingSuppliers());
         }).toList();
     }
 
@@ -403,7 +403,7 @@ public class ProductBulkEditService {
             throw new IllegalArgumentException(
                     "supplierAssignments no puede superar 100 proveedores");
         }
-        Set<UUID> assignmentSuppliers = new HashSet<>();
+        Map<UUID, Set<UUID>> supplierProducts = new HashMap<>();
         int totalSupplierProducts = 0;
         for (int index = 0; index < request.supplierAssignments().size(); index++) {
             BulkSupplierAssignment assignment = request.supplierAssignments().get(index);
@@ -411,7 +411,8 @@ public class ProductBulkEditService {
                     || assignment.productIds() == null || assignment.productIds().isEmpty()) {
                 throw new IllegalArgumentException("supplierAssignments[" + index + "] no es valido");
             }
-            if (!assignmentSuppliers.add(assignment.supplierId())) {
+            Set<UUID> assignedProducts = new HashSet<>();
+            if (supplierProducts.putIfAbsent(assignment.supplierId(), assignedProducts) != null) {
                 throw new IllegalArgumentException(
                         "supplierAssignments contiene el proveedor duplicado " + assignment.supplierId());
             }
@@ -420,7 +421,6 @@ public class ProductBulkEditService {
                 throw new IllegalArgumentException(
                         "supplierAssignments no puede superar 20000 vinculaciones");
             }
-            Set<UUID> assignedProducts = new HashSet<>();
             for (UUID productId : assignment.productIds()) {
                 if (productId == null || !assignedProducts.add(productId)) {
                     throw new IllegalArgumentException(
@@ -428,6 +428,14 @@ public class ProductBulkEditService {
                 }
                 requireContentProduct(
                         contentProducts.keySet(), productId, "supplierAssignments[" + index + "]");
+            }
+        }
+        for (var row : content) {
+            for (var supplier : row.pendingSupplierLinks().toList()) {
+                if (!supplierProducts.getOrDefault(supplier.id(), Set.of()).contains(row.product().productId())) {
+                    throw new IllegalArgumentException(
+                            "content contiene un proveedor pendiente sin asignacion para " + row.product().productId());
+                }
             }
         }
         if (request.supplierPrincipalAssignments().size() > 5_000) {
@@ -531,7 +539,8 @@ public class ProductBulkEditService {
                     row.suppliers(),
                     row.pendingSupplier(),
                     row.principalSupplierChanged(),
-                    row.pendingPrincipalSupplierId());
+                    row.pendingPrincipalSupplierId(),
+                    row.pendingSuppliers());
         }).toList();
     }
 
@@ -635,14 +644,13 @@ public class ProductBulkEditService {
     private static List<ProductBulkEditContent.Row> finalizeSupplierState(
             List<ProductBulkEditContent.Row> content) {
         return content.stream().map(row -> {
-            if (row.pendingSupplier() == null && !row.principalSupplierChanged()) {
+            if (row.pendingSupplier() == null && row.pendingSuppliers().isEmpty() && !row.principalSupplierChanged()) {
                 return row;
             }
             var suppliers = new java.util.ArrayList<>(row.suppliers());
-            if (row.pendingSupplier() != null) {
-                suppliers.removeIf(supplier -> supplier.id().equals(row.pendingSupplier().id()));
-                suppliers.add(row.pendingSupplier());
-            }
+            row.pendingSupplierLinks()
+                    .filter(pending -> row.suppliers().stream().noneMatch(existing -> existing.id().equals(pending.id())))
+                    .forEach(suppliers::add);
             if (row.principalSupplierChanged()) {
                 UUID principalId = row.pendingPrincipalSupplierId();
                 suppliers.replaceAll(supplier -> supplier.withPrincipal(

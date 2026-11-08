@@ -22,6 +22,8 @@ import org.hibernate.annotations.BatchSize;
 @Table(name = "producto")
 public class Product {
 
+    public static final int PURCHASE_DISCOUNT_SCALE = 5;
+
     @Id
     private UUID id;
 
@@ -64,7 +66,7 @@ public class Product {
     @Column(name = "precio_compra", nullable = false, precision = 20, scale = 3)
     private BigDecimal purchasePrice;
 
-    @Column(name = "descuento_compra_porcentaje", precision = 5, scale = 2)
+    @Column(name = "descuento_compra_porcentaje", precision = 8, scale = PURCHASE_DISCOUNT_SCALE)
     private BigDecimal purchaseDiscountPercent;
 
     @Column(name = "stock_min", precision = 19, scale = 3)
@@ -448,6 +450,10 @@ public class Product {
         if (discountPercent != null && (discountPercent.signum() < 0
                 || discountPercent.compareTo(new BigDecimal("100")) > 0)) {
             throw new IllegalArgumentException("El descuento de compra debe estar entre 0 y 100");
+        }
+        if (discountPercent != null && discountPercent.stripTrailingZeros().scale() > PURCHASE_DISCOUNT_SCALE) {
+            throw new IllegalArgumentException("El descuento de compra no puede tener mas de "
+                    + PURCHASE_DISCOUNT_SCALE + " decimales");
         }
         purchaseDiscountPercent = discountPercent;
     }

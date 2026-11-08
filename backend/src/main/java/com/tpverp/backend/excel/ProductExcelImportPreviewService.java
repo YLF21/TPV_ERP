@@ -14,6 +14,7 @@ import com.tpverp.backend.catalog.Subfamily;
 import com.tpverp.backend.catalog.SubfamilyRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -34,6 +35,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -72,6 +74,8 @@ public class ProductExcelImportPreviewService {
     private static final int MAX_CONTRACT_KEY_CHARACTERS = 128;
     private static final long MAX_CONTRACT_CHARACTERS = 100_000L;
     private static final BigDecimal MAX_JAVASCRIPT_SAFE_INTEGER = new BigDecimal("9007199254740991");
+    private static final Pattern PURCHASE_DISCOUNT_STEP = Pattern.compile("[0-9]{1,3}(?:[.,][0-9]{1,5})?\\s*%?");
+    private static final int MAX_PURCHASE_DISCOUNT_STEPS = 32;
 
     private final ProductExcelImportReadService reader;
     private final CurrentOrganization organization;
@@ -161,7 +165,7 @@ public class ProductExcelImportPreviewService {
             normalizedOptions = new PreviewOptions(normalizedOptions.globalValues(), normalizedOptions.valueSources(),
                     normalizedOptions.showOnlyImported(), normalizedContext, store.getId(), store.getEmpresa().getId(),
                     normalizedOptions.skipZeroPriceUpdate(), normalizedOptions.requireQuantity(),
-                    normalizedOptions.documentPriceSource());
+                    normalizedOptions.documentPriceSource(), normalizedOptions.purchaseDiscountMode());
         }
         requireContextPermission(normalizedOptions);
         Map<String, String> effectiveMapping = new LinkedHashMap<>(effective.mapping() == null ? Map.of() : effective.mapping());
@@ -286,7 +290,7 @@ public class ProductExcelImportPreviewService {
         List<PreviewRow> sourceRows = originalRows.stream().map(original -> {
             PreviewRow group = groupByRow.getOrDefault(original.rowNumber(), original);
             PreviewRow source = new PreviewRow(original.rowNumber(), List.of(original.rowNumber()), group.classification(),
-                    reviewExcelData(inputsByRow.get(original.rowNumber()), reviewOptions, storeTaxes),
+                    reviewExcelData(inputsByRow.get(original.rowNumber()), reviewOptions, storeTaxes, original.excelData()),
                     reviewDatabaseData(group.databaseData(), storeFamilies, referencedSubfamilies, storeTaxes),
                     group.version(), original.changes(), group.errors(),
                     original.purchasePriceChanged(), group.masterDataChanged(), group.concurrencyToken());
@@ -299,8 +303,13 @@ public class ProductExcelImportPreviewService {
     }
 
     /** Source rows are a review projection, never the normalized commands used for writes. */
-    private static Map<String, Object> reviewExcelData(RowInput input, PreviewOptions options, List<StoreTax> taxes) {
+    private static Map<String, Object> reviewExcelData(RowInput input, PreviewOptions options, List<StoreTax> taxes,
+            Map<String, Object> canonicalData) {
         Map<String, Object> values = new LinkedHashMap<>(input.data());
+        if (finalPurchasePrice(options) || stockPurchaseDiscount(options, "purchaseDiscountPercent")
+                && isPurchaseDiscountChain(input.data().get("purchaseDiscountPercent"))) {
+            values.put("purchaseDiscountPercent", canonicalData.getOrDefault("purchaseDiscountPercent", ""));
+        }
         for (String field : List.of("offerActive", "productType", "priceUseMode", "discountType", "taxId", "taxesIncluded")) {
             String value = "discountType".equals(field)
                     ? effective(input.data(), options, "prohibitedDiscount", "discountType") : effective(input.data(), options, field);
@@ -358,7 +367,7 @@ public class ProductExcelImportPreviewService {
         var options = request.options();
         return new PreviewRequest(mapping, request.edits(), new PreviewOptions(options.globalValues(), options.valueSources(),
                 options.showOnlyImported(), options.context(), options.storeId(), options.companyId(), options.skipZeroPriceUpdate(),
-                false, options.documentPriceSource()), request.storeId(), request.companyId(), request.expectedSha256(),
+                false, options.documentPriceSource(), options.purchaseDiscountMode()), request.storeId(), request.companyId(), request.expectedSha256(),
                 request.startRow(), null, updates, request.resolvedProducts());
     }
 
@@ -485,14 +494,28 @@ public class ProductExcelImportPreviewService {
         }
         for (String field : List.of("purchasePrice", "purchaseDiscountPercent", "salePrice", "memberPrice",
                 "wholesalePrice", "offerPrice", "offerDiscountPercent", "packageQuantity", "stockMin", "stockMax", "quantity")) {
+            if ("purchaseDiscountPercent".equals(field) && finalPurchasePrice(options)) {
+                convertFinalPurchasePrice(data, mapping, mappedCells, row, product, options, updateFields, errors);
+                continue;
+            }
             String value = data.get(field);
             boolean warehouseLineValue = requiresWarehouseLineValidation(options, field);
+            boolean stockDiscount = stockPurchaseDiscount(options, field);
+            boolean chainedDiscount = stockDiscount && isPurchaseDiscountChain(value);
+            if (chainedDiscount) data.remove(field);
             if (!blank(value) && (field.equals("quantity") || warehouseLineValue
                     || product == null || applies(updateFields, field))) {
                 ProductExcelImportReadService.CellView sourceCell = mappedCells.get(field);
                 boolean numericSource = sourceCell != null && sourceCell.numeric();
-                BigDecimal number = parseDecimal(value, field, row, firstColumn(mapping, field), errors,
-                        numericSource);
+                Integer column = firstColumn(mapping, field);
+                BigDecimal number;
+                if (chainedDiscount && !numericSource) {
+                    number = parsePurchaseDiscountChain(value, row, column, errors);
+                } else if (stockDiscount) {
+                    number = parseDecimal(value, field, row, column, errors, numericSource, false, Product.PURCHASE_DISCOUNT_SCALE);
+                } else {
+                    number = parseDecimal(value, field, row, column, errors, numericSource);
+                }
                 if (number != null) {
                     String canonical = number.toPlainString();
                     data.put(field, canonical);
@@ -1160,7 +1183,8 @@ public class ProductExcelImportPreviewService {
 
     private static void validateCellProvenance(RowInput input, Map<String, String> mapping,
             Product product, PreviewOptions options, Map<String, Boolean> updateFields, List<ImportError> errors) {
-        Set<String> percentageFields = Set.of("purchaseDiscountPercent", "offerDiscountPercent", "taxId");
+        Set<String> percentageFields = finalPurchasePrice(options)
+                ? Set.of("offerDiscountPercent", "taxId") : Set.of("purchaseDiscountPercent", "offerDiscountPercent", "taxId");
         Set<String> integerSelectors = Set.of("priceUseMode", "discountType", "prohibitedDiscount", "taxesIncluded", "offerActive");
         for (Map.Entry<String, ProductExcelImportReadService.CellView> entry : input.mappedCells().entrySet()) {
             String field = entry.getKey();
@@ -1336,6 +1360,12 @@ public class ProductExcelImportPreviewService {
             errors.add(error("CONTEXT_INVALID", null, null, "context", truncate(options.context()), "El contexto no está soportado", "STOCK, WAREHOUSE_INPUT, WAREHOUSE_OUTPUT o WAREHOUSE_TRANSFER", "Selecciona un consumidor válido"));
         }
         if (options != null && options.context() != null) contractCharacters += options.context().length();
+        if (options != null && (!Set.of("PERCENT", "FINAL_PRICE").contains(options.purchaseDiscountMode())
+                || finalPurchasePrice(options) && !"STOCK".equals(options.context()))) {
+            errors.add(error("PURCHASE_DISCOUNT_MODE_INVALID", null, null, "purchaseDiscountMode",
+                    options.purchaseDiscountMode(), "El modo de descuento de compra no es válido para este contexto",
+                    "PERCENT; FINAL_PRICE solo en STOCK", "Selecciona un modo de descuento válido"));
+        }
         if (options != null && options.documentPriceSource() != null) {
             String source = options.documentPriceSource().trim();
             contractCharacters += source.length();
@@ -1682,6 +1712,84 @@ public class ProductExcelImportPreviewService {
                 && imported != null && imported.signum() == 0;
         return ignoredZero ? persisted : imported;
     }
+    private static boolean finalPurchasePrice(PreviewOptions options) {
+        return options != null && "FINAL_PRICE".equals(options.purchaseDiscountMode());
+    }
+
+    private static boolean stockPurchaseDiscount(PreviewOptions options, String field) {
+        return "purchaseDiscountPercent".equals(field) && options != null && "STOCK".equals(options.context());
+    }
+
+    private static boolean isPurchaseDiscountChain(String value) {
+        return value != null && value.indexOf('+', 1) >= 0;
+    }
+
+    private static BigDecimal parsePurchaseDiscountChain(String value, int row, Integer column, List<ImportError> errors) {
+        String[] steps = value.split("\\+", MAX_PURCHASE_DISCOUNT_STEPS + 1);
+        BigDecimal remaining = BigDecimal.ONE;
+        try {
+            if (steps.length > MAX_PURCHASE_DISCOUNT_STEPS) throw new NumberFormatException();
+            for (String raw : steps) {
+                String step = raw.strip();
+                if (!PURCHASE_DISCOUNT_STEP.matcher(step).matches()) throw new NumberFormatException();
+                BigDecimal percent = parseFormattedNumber(step, true);
+                if (percent.compareTo(BigDecimal.valueOf(100)) > 0) throw new NumberFormatException();
+                remaining = remaining.multiply(BigDecimal.ONE.subtract(percent.movePointLeft(2)));
+            }
+        } catch (NumberFormatException exception) {
+            errors.add(error("NUMBER_INVALID", row, column, "purchaseDiscountPercent", value,
+                    "La cadena de descuentos de compra no es válida",
+                    "De 2 a " + MAX_PURCHASE_DISCOUNT_STEPS + " porcentajes entre 0 y 100 separados por +",
+                    "Introduce los descuentos como texto, por ejemplo 20+5+5+5"));
+            return null;
+        }
+        return BigDecimal.ONE.subtract(remaining).movePointRight(2)
+                .setScale(Product.PURCHASE_DISCOUNT_SCALE, RoundingMode.HALF_UP).stripTrailingZeros();
+    }
+
+    private static void convertFinalPurchasePrice(Map<String, String> data, Map<String, String> mapping,
+            Map<String, ProductExcelImportReadService.CellView> cells, int row, Product product,
+            PreviewOptions options, Map<String, Boolean> updateFields, List<ImportError> errors) {
+        String field = "purchaseDiscountPercent";
+        // Never expose the source amount as a percentage, even when ignored or rejected.
+        String received = data.remove(field);
+        if (blank(received) || product != null && !applies(updateFields, field)) return;
+        var cell = cells.get(field);
+        if (cell != null && (cell.errorCode() != null || cell.percentage() || textualPercentage(cell.value()))) return;
+        BigDecimal finalPrice;
+        try {
+            // The final amount is a reference only. Retain the precision of cached Excel formulas.
+            finalPrice = parseFormattedNumber(received, true);
+            if (finalPrice.signum() < 0 || finalPrice.precision() > 32 || finalPrice.scale() > 32) {
+                throw new NumberFormatException();
+            }
+        } catch (NumberFormatException exception) {
+            errors.add(error("NUMBER_INVALID", row, firstColumn(mapping, field), field, received,
+                    "El precio de compra final no es un decimal válido", "Importe no negativo",
+                    "Corrige el precio de compra final"));
+            return;
+        }
+        boolean incomingBase = !blank(data.get("purchasePrice")) && (product == null || applies(updateFields, "purchasePrice"));
+        BigDecimal base = incomingBase ? decimal(data.get("purchasePrice")) : product == null ? null : product.getPurchasePrice();
+        if (incomingBase && base != null && base.signum() == 0 && product != null
+                && Boolean.TRUE.equals(options.skipZeroPriceUpdate())) base = product.getPurchasePrice();
+        if (base == null || base.signum() <= 0) {
+            errors.add(error("PURCHASE_DISCOUNT_BASE_REQUIRED", row, firstColumn(mapping, field), field, received,
+                    "El precio final necesita un precio de compra original mayor que cero",
+                    "Precio de compra aplicable mayor que 0", "Indica el precio original o revisa el precio guardado del producto"));
+            return;
+        }
+        if (finalPrice.compareTo(base) > 0) {
+            errors.add(error("PURCHASE_FINAL_PRICE_INVALID", row, firstColumn(mapping, field), field, received,
+                    "El precio final no puede superar el precio de compra original", "Precio final entre 0 y " + base.toPlainString(),
+                    "Corrige el precio final o el precio de compra original"));
+            return;
+        }
+        BigDecimal discount = base.subtract(finalPrice).movePointRight(2)
+                .divide(base, Product.PURCHASE_DISCOUNT_SCALE, RoundingMode.HALF_UP);
+        data.put(field, discount.stripTrailingZeros().toPlainString());
+    }
+
     private static BigDecimal parseDecimal(String value, String field, int row, Integer column,
             List<ImportError> errors) {
         return parseDecimal(value, field, row, column, errors, false);
@@ -1689,35 +1797,42 @@ public class ProductExcelImportPreviewService {
 
     private static BigDecimal parseDecimal(String value, String field, int row, Integer column,
             List<ImportError> errors, boolean numericSource) {
+        boolean price = DOCUMENT_PRICE_FIELDS.contains(field);
+        int scale = field.endsWith("Percent") ? 2 : 3;
+        return parseDecimal(value, field, row, column, errors, numericSource, price, scale);
+    }
+
+    private static BigDecimal parseDecimal(String value, String field, int row, Integer column,
+            List<ImportError> errors, boolean numericSource, boolean price, int scale) {
         try {
-            boolean price = DOCUMENT_PRICE_FIELDS.contains(field);
-            boolean scale3Field = price || Set.of("quantity", "packageQuantity", "stockMin", "stockMax").contains(field);
-            if (!numericSource && !price && hasAmbiguousThousands(value)) {
+            boolean extendedDecimal = price || scale == Product.PURCHASE_DISCOUNT_SCALE;
+            boolean unambiguousDecimal = numericSource || extendedDecimal
+                    || Set.of("quantity", "packageQuantity", "stockMin", "stockMax").contains(field);
+            if (!numericSource && !extendedDecimal && hasAmbiguousThousands(value)) {
                 errors.add(error("NUMBER_FORMAT_AMBIGUOUS", row, column, field, value,
                         "Un separador y tres dígitos finales puede ser decimal o millar",
                         "1234 o 1.234,00 / 1,234.00", "Indica los decimales con dos dígitos o usa ambos separadores"));
                 return null;
             }
-            BigDecimal decimal = parseFormattedNumber(value, numericSource || scale3Field).stripTrailingZeros();
+            BigDecimal decimal = parseFormattedNumber(value, unambiguousDecimal).stripTrailingZeros();
             if (decimal.signum() < 0) throw new NumberFormatException();
-            if (field.toLowerCase(Locale.ROOT).contains("percent")
+            if (!price && field.toLowerCase(Locale.ROOT).contains("percent")
                     && decimal.compareTo(BigDecimal.valueOf(100)) > 0) throw new NumberFormatException();
             if ((field.equals("quantity") || field.equals("packageQuantity")) && decimal.signum() <= 0) {
                 throw new NumberFormatException();
             }
-            boolean percent = field.toLowerCase(Locale.ROOT).contains("percent");
-            int scale = percent ? 2 : 3;
+            boolean percent = !price && field.toLowerCase(Locale.ROOT).contains("percent");
             if (decimal.scale() > scale) {
                 errors.add(error("NUMBER_SCALE_INVALID", row, column, field, value,
-                        "El número tiene más decimales de los permitidos", "Precios/cantidades/stock: 3; porcentajes: 2",
+                        "El número tiene más decimales de los permitidos", "Hasta " + scale + " decimales",
                         "Redondea el valor al número de decimales permitido"));
                 return null;
             }
-            int maxPrecision = percent ? 5 : price ? 20 : 19;
+            int maxIntegerDigits = percent ? 3 : price ? 17 : 16;
             int integerDigits = Math.max(1, decimal.precision() - decimal.scale());
-            if (integerDigits > maxPrecision - scale) {
+            if (integerDigits > maxIntegerDigits) {
                 errors.add(error("NUMBER_PRECISION_INVALID", row, column, field, value,
-                        "El número supera la precisión máxima del campo", "Hasta " + (maxPrecision - scale) + " dígitos enteros y " + scale + " decimales",
+                        "El número supera la precisión máxima del campo", "Hasta " + maxIntegerDigits + " dígitos enteros y " + scale + " decimales",
                         "Acorta el valor numérico"));
                 return null;
             }
@@ -1859,7 +1974,16 @@ public class ProductExcelImportPreviewService {
     public record ValueSource(String source, String value) { }
     public record PreviewOptions(Map<String, String> globalValues, Map<String, ValueSource> valueSources,
             Boolean showOnlyImported, String context, UUID storeId, UUID companyId,
-            Boolean skipZeroPriceUpdate, Boolean requireQuantity, String documentPriceSource) {
+            Boolean skipZeroPriceUpdate, Boolean requireQuantity, String documentPriceSource, String purchaseDiscountMode) {
+        public PreviewOptions {
+            purchaseDiscountMode = purchaseDiscountMode == null ? "PERCENT" : purchaseDiscountMode;
+        }
+        public PreviewOptions(Map<String, String> globalValues, Map<String, ValueSource> valueSources,
+                Boolean showOnlyImported, String context, UUID storeId, UUID companyId,
+                Boolean skipZeroPriceUpdate, Boolean requireQuantity, String documentPriceSource) {
+            this(globalValues, valueSources, showOnlyImported, context, storeId, companyId,
+                    skipZeroPriceUpdate, requireQuantity, documentPriceSource, "PERCENT");
+        }
         public PreviewOptions(Map<String, String> globalValues, Map<String, ValueSource> valueSources,
                 Boolean showOnlyImported, String context, UUID storeId, UUID companyId,
                 Boolean skipZeroPriceUpdate, Boolean requireQuantity) {

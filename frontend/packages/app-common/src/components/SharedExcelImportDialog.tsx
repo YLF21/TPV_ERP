@@ -1,4 +1,5 @@
 import { WindowCloseButton } from "./WindowCloseButton";
+import { FolderOpen } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import "../styles/shared-excel-import.css";
 import type { PointerEvent } from "react";
@@ -17,7 +18,8 @@ import {
   type ProductExcelImportPreviewResult,
   type ProductExcelImportPreviewRow,
   type ProductExcelImportReadResult,
-  type ProductExcelImportPreviewConfig
+  type ProductExcelImportPreviewConfig,
+  type ProductExcelPurchaseDiscountMode
 } from "../api/productExcelImports";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode, TerminalContext } from "../types";
@@ -28,6 +30,7 @@ import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { ExcelImportReviewTable, type ExcelReviewColumn, type ExcelReviewRow } from "./ExcelImportReviewTable";
 import { revealExcelTableRow, useExcelTableHeader } from "./useExcelTableHeader";
 import { parseMoneyValue } from "../money";
+import { familyBusinessCode, sortFamilyCatalog, type FamilyCatalogView, type SubfamilyCatalogView } from "../catalog/familyCatalogApi";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import {
   classifyExcelProductRows,
@@ -111,12 +114,18 @@ type SharedExcelImportDialogProps = {
   initialPanel?: SharedExcelImportPanel;
   terminalContext?: Pick<TerminalContext, "terminalCode" | "terminalId">;
   taxOptions?: readonly SharedExcelImportTaxOption[];
+  familyCatalog?: ExcelFamilyCatalog;
   showDocumentPriceSource?: boolean;
   token?: string;
   context?: ProductExcelImportContext;
   supplier?: SharedExcelImportSupplier | null;
   warehouseId?: string;
   documentDate?: string;
+};
+
+type ExcelFamilyCatalog = {
+  families: readonly FamilyCatalogView[];
+  subfamilies: readonly SubfamilyCatalogView[];
 };
 
 type MappingField = {
@@ -219,6 +228,7 @@ export function SharedExcelImportDialog({
   initialPanel = "mapping",
   terminalContext,
   taxOptions = [],
+  familyCatalog,
   showDocumentPriceSource: requestedDocumentPriceSource = true,
   token,
   context = "STOCK",
@@ -227,6 +237,7 @@ export function SharedExcelImportDialog({
   documentDate
 }: SharedExcelImportDialogProps) {
   const t = createTranslator(locale);
+  const showPurchaseDiscountMode = context === "STOCK" && !providedSheet;
   const transferContext = context === "WAREHOUSE_TRANSFER";
   const showDocumentPriceSource = (context === "WAREHOUSE_INPUT" || transferContext) && requestedDocumentPriceSource;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -254,6 +265,11 @@ export function SharedExcelImportDialog({
   const [skipZeroPriceUpdate, setSkipZeroPriceUpdate] = useState(storedSettings.options.skipZeroPriceUpdate);
   const [updateSupplier, setUpdateSupplier] = useState(storedSettings.options.updateSupplier);
   const [priceSource, setPriceSource] = useState<SharedExcelImportPriceSource>(storedSettings.options.priceSource);
+  const [purchaseDiscountMode, setPurchaseDiscountMode] = useState<ProductExcelPurchaseDiscountMode>("PERCENT");
+  const [familyCodesOpen, setFamilyCodesOpen] = useState(false);
+  const familyCodesButtonRef = useRef<HTMLButtonElement>(null);
+  const familyCodesDialogRef = useRef<HTMLElement>(null);
+  const importFinalPurchasePrice = showPurchaseDiscountMode && purchaseDiscountMode === "FINAL_PRICE";
   const [valueSources, setValueSources] = useState<SharedExcelImportValueSources>(storedSettings.options.valueSources);
   const taxDefaultPending = useRef(Boolean(storedSettings.useDefaultTax));
   const [editingSheet, setEditingSheet] = useState(false);
@@ -400,6 +416,7 @@ export function SharedExcelImportDialog({
         context,
         skipZeroPriceUpdate,
         requireQuantity: context !== "STOCK" && requireQuantity,
+        ...(importFinalPurchasePrice ? { purchaseDiscountMode: "FINAL_PRICE" } : {}),
         ...(showDocumentPriceSource ? { documentPriceSource: priceSource } : {})
       },
       expectedSha256: serverRead.sha256,
@@ -433,6 +450,8 @@ export function SharedExcelImportDialog({
       setStatus("");
       setResolvedProducts({});
       setManualQueue([]);
+      setPurchaseDiscountMode("PERCENT");
+      setFamilyCodesOpen(false);
       setActivePanel(initialPanel);
       setLocalFile(null);
       applyStoredOptions(nextStoredSettings.options, nextStoredSettings.useDefaultTax);
@@ -591,6 +610,10 @@ export function SharedExcelImportDialog({
       event.preventDefault();
       event.stopImmediatePropagation();
       if (event.repeat) return;
+      if (familyCodesOpen) {
+        setFamilyCodesOpen(false);
+        return;
+      }
       if (closeConfirmationOpen) {
         cancelClose();
         return;
@@ -603,7 +626,16 @@ export function SharedExcelImportDialog({
     };
     window.addEventListener("keydown", closeOnEscape, true);
     return () => window.removeEventListener("keydown", closeOnEscape, true);
-  }, [manualQueue.length, masterConfirmationCount, closeConfirmationOpen, onClose, open]);
+  }, [manualQueue.length, masterConfirmationCount, closeConfirmationOpen, familyCodesOpen, onClose, open]);
+
+  useEffect(() => {
+    if (!open || !familyCodesOpen || !familyCodesDialogRef.current) return;
+    const release = activateModalFocusTrap(familyCodesDialogRef.current as unknown as ModalFocusRoot, document, { restoreFocus: false });
+    return () => {
+      release();
+      familyCodesButtonRef.current?.focus();
+    };
+  }, [open, familyCodesOpen]);
 
   useEffect(() => {
     if (!closeConfirmationOpen || !closeConfirmationRef.current) return;
@@ -657,7 +689,7 @@ export function SharedExcelImportDialog({
   const acceptedRows = resultRows.filter((row) => Boolean(row.product));
   const errorRows = resultRows.filter((row) => row.status === "error");
   const existingRows = acceptedRows;
-  const summaryRows = generateSummaryDocument ? (serverPreview?.sourceRows?.map((row) => previewRowToClassifiedRow(row, sheet, mapping, quantityColumn, importProducts)) ?? resultRows) : [];
+  const summaryRows = generateSummaryDocument ? (serverPreview?.sourceRows?.map((row) => previewRowToClassifiedRow(row, sheet, mapping, quantityColumn, importProducts, importFinalPurchasePrice)) ?? resultRows) : [];
 
   const sourceReviewRows = serverPreview?.sourceRows ?? serverPreview?.rows;
   const matchesReviewPanel = (row: ProductExcelImportPreviewRow, panel: SharedExcelImportPanel) => {
@@ -675,7 +707,7 @@ export function SharedExcelImportDialog({
   const reviewCount = (panel: SharedExcelImportPanel, fallback: number) =>
     sourceReviewRows ? sourceReviewRows.filter((row) => matchesReviewPanel(row, panel)).length : fallback;
   const reviewRows = sourceReviewRows ? sourceReviewRows.filter((row) => matchesReviewPanel(row, activePanel)).map((row) => {
-    const classified = previewRowToClassifiedRow(row, sheet, mapping, quantityColumn, importProducts);
+    const classified = previewRowToClassifiedRow(row, sheet, mapping, quantityColumn, importProducts, importFinalPurchasePrice);
     return { ...classified, errorTexts: classified.structuredErrors?.length === row.errors.length ? row.errorTexts : undefined };
   })
     : activePanel === "summary" ? summaryRows : activePanel === "missing" ? missingRows
@@ -803,7 +835,7 @@ export function SharedExcelImportDialog({
   async function refreshReview(config: ProductExcelImportPreviewConfig) {
     if (!selectedFile) return [];
     const result = await previewProductExcelImport(selectedFile, config, token);
-    const rows = result.rows.map((row) => previewRowToClassifiedRow(row, sheet, mapping, quantityColumn, importProducts));
+    const rows = result.rows.map((row) => previewRowToClassifiedRow(row, sheet, mapping, quantityColumn, importProducts, importFinalPurchasePrice));
     setServerPreview(result);
     setServerPreviewFingerprint(stableSerialize(config));
     serverPreviewCatalogFingerprintRef.current = catalogFingerprint;
@@ -859,7 +891,7 @@ export function SharedExcelImportDialog({
         const rows = serverPreview.rows.flatMap((row) => {
           const applied = byRow.get(row.rowNumber);
           if (!applied?.productId) return [];
-          const classified = previewRowToClassifiedRow(row, sheet, mapping, quantityColumn, importProducts);
+          const classified = previewRowToClassifiedRow(row, sheet, mapping, quantityColumn, importProducts, importFinalPurchasePrice);
           return [{ ...classified, product: { ...classified.product, id: applied.productId } }];
         });
         const metadata: SharedExcelImportMetadata = context === "WAREHOUSE_INPUT"
@@ -936,6 +968,7 @@ export function SharedExcelImportDialog({
     setQuantityColumn("");
     setStartRow(2);
     setUpdateFields({});
+    setPurchaseDiscountMode("PERCENT");
     applyStoredOptions(defaults, true);
     clearStoredExcelImportSettings(terminalContext);
     invalidateServerPreview();
@@ -950,6 +983,7 @@ export function SharedExcelImportDialog({
     setQuantityColumn("");
     setStartRow(2);
     setUpdateFields({});
+    setPurchaseDiscountMode("PERCENT");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -994,7 +1028,7 @@ export function SharedExcelImportDialog({
           const result = await previewProductExcelImport(operationFile, config, token);
           if (operationSequenceRef.current !== operationSequence) return;
           const nextRows = result.rows.map((row) => previewRowToClassifiedRow(
-            row, operationSheet, operationMapping, operationQuantityColumn, operationProducts
+            row, operationSheet, operationMapping, operationQuantityColumn, operationProducts, importFinalPurchasePrice
           ));
           const nextMissingRows = nextRows.filter((row) => row.status === "missing");
           const nextPriceChangedRows = nextRows.filter((row) => row.status === "purchasePriceChanged");
@@ -1156,7 +1190,7 @@ export function SharedExcelImportDialog({
   return (
     <>
     <div className="filter-overlay shared-excel-overlay" role="dialog" aria-modal="true" aria-busy={isApplying} aria-labelledby="shared-excel-title"
-      aria-hidden={closeConfirmationOpen || undefined} inert={closeConfirmationOpen || undefined}>
+      aria-hidden={closeConfirmationOpen || familyCodesOpen || undefined} inert={closeConfirmationOpen || familyCodesOpen || undefined}>
       <section className="filter-dialog shared-excel-dialog">
         <header className="shared-excel-toolbar">
           <input
@@ -1199,7 +1233,6 @@ export function SharedExcelImportDialog({
             </button>
             <button type="button" disabled={isApplying} onClick={clearFile}>{t("sharedExcel.clearFile")}</button>
             {activePanel === "mapping" && <button type="button" disabled={isApplying || !serverRead || !selectedFile} onClick={() => void exportReview("mapping")}>{t("sharedExcel.export")}</button>}
-            <button type="button" className="erp-dialog-action-cancel" disabled={isApplying} onClick={handleClose}>{t("sharedExcel.back")}</button>
           </div>
           <WindowCloseButton type="button" aria-label={t("common.close")} disabled={isApplying} onClick={handleClose} onLight desktopOnly />
         </header>
@@ -1220,8 +1253,15 @@ export function SharedExcelImportDialog({
           </div>}
           {sheet.length === 0 ? (
             <div className="shared-excel-empty-preview">
-              <h3>{t("sharedExcel.summary.title")}</h3>
-              <p>{t("sharedExcel.flowHelp")}</p>
+              <h3>{t("sharedExcel.guide.title")}</h3>
+              <ol>
+                <li>{t("sharedExcel.guide.open")}</li>
+                <li>{t("sharedExcel.guide.map")}</li>
+                <li>{t("sharedExcel.guide.update")}</li>
+                <li>{t("sharedExcel.guide.review")}</li>
+                <li>{interpolateMessage(t("sharedExcel.guide.finish"), { action: operationLabel("PREPARE_DESTINATION") })}</li>
+              </ol>
+              {showPurchaseDiscountMode && <p className="shared-excel-guide-note">{t("sharedExcel.guide.discount")}</p>}
             </div>
           ) : (
             <div className="shared-excel-frozen-table shared-excel-raw-table">
@@ -1395,11 +1435,15 @@ export function SharedExcelImportDialog({
               </div>
               <p className="shared-excel-mapping-hint">{t("sharedExcel.mappingOrderHint")}</p>
                 <div className="shared-excel-mapping" role="group" aria-label={t("sharedExcel.mappingOrderHint")}>
-                {sharedExcelFieldGroups.flatMap((group, groupIndex) => group.filter((field) => context !== "STOCK" || field.key !== "quantity").map((field, rowIndex) => (
-                  <div key={field.key} className="shared-excel-mapping-row" role="group" aria-label={fieldLabel(field, locale)}
+                {sharedExcelFieldGroups.flatMap((group, groupIndex) => group.filter((field) => context !== "STOCK" || field.key !== "quantity").map((field, rowIndex) => {
+                  const hasModeSwitch = showPurchaseDiscountMode && field.key === "purchaseDiscountPercent";
+                  const label = hasModeSwitch
+                    ? t(importFinalPurchasePrice ? "sharedExcel.finalPurchasePrice" : "sharedExcel.purchaseDiscount")
+                    : fieldLabel(field, locale);
+                  return <div key={field.key} className="shared-excel-mapping-row" role="group" aria-label={label}
                     style={{ gridColumn: groupIndex + 1, gridRow: rowIndex + 1 }}>
                     <span className="shared-excel-mapping-update">
-                      {field.updateKey ? renderUpdateCheckbox(field.updateKey, fieldLabel(field, locale), updateFields, updateUpdateFields, t, isApplying) : null}
+                      {field.updateKey ? renderUpdateCheckbox(field.updateKey, label, updateFields, updateUpdateFields, t, isApplying) : null}
                     </span>
                     {specialValueField(field.key) ? (() => {
                       const key = field.key;
@@ -1427,7 +1471,7 @@ export function SharedExcelImportDialog({
                         inputMode="text"
                         maxLength={2}
                         pattern="[A-Za-z]+"
-                        aria-label={`${fieldLabel(field, locale)} ${t("sharedExcel.columnLetter")}`}
+                        aria-label={`${label} ${t("sharedExcel.columnLetter")}`}
                         value={field.key === "quantity" ? quantityColumn : mapping[field.key] ?? ""}
                         onChange={(event) => {
                           const value = sanitizeExcelColumnLetter(event.target.value);
@@ -1437,8 +1481,23 @@ export function SharedExcelImportDialog({
                         }}
                       />
                     )}
-                    <span className="shared-excel-mapping-name">
-                      {fieldLabel(field, locale)}
+                    {hasModeSwitch ? (
+                      <span className="shared-excel-discount-mode">
+                        <span data-active={!importFinalPurchasePrice}>{t("sharedExcel.purchaseDiscount")}</span>
+                        <button type="button" role="switch" className="shared-excel-discount-switch"
+                          aria-label={t("sharedExcel.finalPurchasePrice")}
+                          aria-checked={importFinalPurchasePrice} disabled={isApplying}
+                          onClick={() => {
+                            setPurchaseDiscountMode(importFinalPurchasePrice ? "PERCENT" : "FINAL_PRICE");
+                            invalidateServerPreview();
+                          }}>
+                          <span aria-hidden="true">%</span>
+                          <span aria-hidden="true">€</span>
+                        </button>
+                        <span data-active={importFinalPurchasePrice}>{t("sharedExcel.finalPurchasePrice")}</span>
+                      </span>
+                    ) : <span className="shared-excel-mapping-name">
+                      {label}
                       {field.key === "taxId" && !effectiveTaxOptions.length && <small className="shared-excel-date-hint">{t("sharedExcel.noTaxesAvailable")}</small>}
                       {field.key === "familyId" && (
                         <small className="shared-excel-date-hint">{locale === "zh"
@@ -1449,13 +1508,20 @@ export function SharedExcelImportDialog({
                       {(field.key === "offerFrom" || field.key === "offerUntil") && (
                         <small className="shared-excel-date-hint">{t("sharedExcel.dateFormatHint")}</small>
                       )}
-                    </span>
-                  </div>
-                )))}
+                    </span>}
+                    {field.key === "familyId" && familyCatalog && (
+                      <button type="button" ref={familyCodesButtonRef} className="shared-excel-family-button"
+                        aria-label={t("sharedExcel.familyCodes")} title={t("sharedExcel.familyCodes")}
+                        aria-haspopup="dialog" disabled={isApplying} onClick={() => setFamilyCodesOpen(true)}>
+                        <FolderOpen size={18} aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>;
+                }))}
               </div>
               <div className="shared-excel-config-actions">
                 <button type="button" disabled={isApplying} onClick={clearMapping}>{t("sharedExcel.clearConfiguration")}</button>
-                <button type="button" className="erp-dialog-action-confirm" disabled={isApplying} onClick={() => void applyMapping()}>{t("common.apply")}</button>
+                <button type="button" disabled={isApplying} onClick={() => void applyMapping()}>{t("common.apply")}</button>
               </div>
             </div>
           ) : (
@@ -1528,6 +1594,18 @@ export function SharedExcelImportDialog({
         onClose={() => { if (!manualSaveInFlightRef.current) setManualQueue([]); }}
       />}
     </div>
+    {familyCodesOpen && familyCatalog && (
+      <div className="app-venta-home-confirm-overlay" role="presentation">
+        <section ref={familyCodesDialogRef} className="app-venta-home-confirm-dialog shared-excel-family-dialog"
+          role="dialog" aria-modal="true" aria-labelledby="shared-excel-family-codes-title">
+          <header>
+            <h2 id="shared-excel-family-codes-title">{t("sharedExcel.familyCodes")}</h2>
+            <WindowCloseButton aria-label={t("common.close")} onClick={() => setFamilyCodesOpen(false)} />
+          </header>
+          <ExcelFamilyCodesTable catalog={familyCatalog} t={t} />
+        </section>
+      </div>
+    )}
     {closeConfirmationOpen && <div className="app-venta-home-confirm-overlay" role="presentation">
       <section ref={closeConfirmationRef} className="app-venta-home-confirm-dialog" role="alertdialog" aria-modal="true"
         aria-labelledby="shared-excel-close-title" aria-describedby="shared-excel-close-message"
@@ -1541,6 +1619,51 @@ export function SharedExcelImportDialog({
       </section>
     </div>}
     </>
+  );
+}
+
+function ExcelFamilyCodesTable({ catalog, t }: { catalog: ExcelFamilyCatalog; t: (key: string) => string }) {
+  if (!catalog.families.length) {
+    return <p>{t("stock.filter.noFamilies")}</p>;
+  }
+  const children = new Map<string, SubfamilyCatalogView[]>();
+  for (const subfamily of sortFamilyCatalog([...catalog.subfamilies])) {
+    if (!subfamily.familyId) continue;
+    const siblings = children.get(subfamily.familyId);
+    if (siblings) siblings.push(subfamily);
+    else children.set(subfamily.familyId, [subfamily]);
+  }
+  return (
+    <div className="shared-excel-family-table-scroll" role="region" aria-label={t("sharedExcel.familyCodes")} tabIndex={0}>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">{t("stock.column.code")}</th>
+            <th scope="col">{t("stock.column.family")}</th>
+            <th scope="col">{t("stock.column.subfamily")}</th>
+          </tr>
+        </thead>
+        {sortFamilyCatalog([...catalog.families]).map((family) => {
+          const codedFamily = { ...family, familyCode: family.familyCode ?? family.familyId };
+          return (
+            <tbody key={family.id}>
+              <tr>
+                <td>{familyBusinessCode(codedFamily) || "—"}</td>
+                <td>{family.name || "—"}</td>
+                <td>—</td>
+              </tr>
+              {children.get(family.id)?.map((subfamily) => (
+                <tr key={subfamily.id}>
+                  <td>{familyBusinessCode(codedFamily, { ...subfamily, subfamilyCode: subfamily.subfamilyCode ?? subfamily.subfamilyId }) || "—"}</td>
+                  <td>{family.name || "—"}</td>
+                  <td>{subfamily.name || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          );
+        })}
+      </table>
+    </div>
   );
 }
 
@@ -1628,7 +1751,8 @@ export function previewRowToClassifiedRow(
   sheet: ExcelSheet,
   mapping: ExcelColumnMapping,
   quantityColumn: string,
-  products: readonly ExcelImportProductIdentity[] = []
+  products: readonly ExcelImportProductIdentity[] = [],
+  importFinalPurchasePrice = false
 ): ExcelImportClassifiedRow {
   const source = [...(sheet[row.rowNumber - 1] ?? [])];
   const quantityIndex = excelColumnLetterToIndex(quantityColumn);
@@ -1637,6 +1761,7 @@ export function previewRowToClassifiedRow(
     source[quantityIndex] = String(row.excelData.quantity);
   }
   const draft = buildExcelImportDraft(source, mapping);
+  if (importFinalPurchasePrice) draft.purchaseDiscountPercent = "";
   (Object.keys(draft) as Array<keyof typeof draft>).forEach((key) => {
     if (row.excelData[key] != null) {
       draft[key] = String(row.excelData[key]);
@@ -2187,6 +2312,8 @@ const localizedImportAttributeLabels: Record<string, Record<LocaleCode, string>>
   context: { es: "Contexto", en: "Context", zh: "上下文" },
   storeId: { es: "Tienda", en: "Store", zh: "门店" },
   companyId: { es: "Empresa", en: "Company", zh: "企业" },
+  purchaseDiscountMode: { es: "Modo de descuento de compra", en: "Purchase discount mode", zh: "采购折扣模式" },
+  purchaseFinalPrice: { es: "Precio de compra final", en: "Final purchase price", zh: "最终采购价" },
   edits: { es: "Ediciones", en: "Edits", zh: "编辑" },
   cell: { es: "Celda", en: "Cell", zh: "单元格" },
   version: { es: "Versión", en: "Version", zh: "版本" },
@@ -2208,6 +2335,7 @@ export const PRODUCT_EXCEL_IMPORT_ERROR_CODES = [
   "CONTEXT_REQUIRED", "CONTEXT_INVALID", "STORE_CONTEXT_MISMATCH", "COMPANY_CONTEXT_MISMATCH", "START_ROW_INVALID",
   "ROW_LIMIT", "NO_ROWS_DETECTED", "CELL_EDIT_INVALID", "EDIT_LIMIT", "EDIT_VALUE_LIMIT", "FIELD_LENGTH_INVALID",
   "IDENTIFIER_REQUIRED", "IDENTIFIER_DUPLICATE", "PRODUCT_AMBIGUOUS", "DUPLICATE_CONFLICT", "INVALID_PRICE_MODE",
+  "PURCHASE_DISCOUNT_MODE_INVALID", "PURCHASE_DISCOUNT_BASE_REQUIRED", "PURCHASE_FINAL_PRICE_INVALID",
   "INVALID_BOOLEAN", "PRODUCT_TYPE_INVALID", "DISCOUNT_PROHIBITED_PRICE_MODE", "ZERO_PRICE_INVALID", "NUMBER_INVALID",
   "NUMBER_FORMAT_AMBIGUOUS", "NUMBER_SCALE_INVALID", "NUMBER_PRECISION_INVALID", "DATE_INVALID", "DATE_RANGE_INVALID",
   "OFFER_REQUIRED", "TAX_REQUIRED", "TAX_UNKNOWN", "TAX_AMBIGUOUS", "FAMILY_REQUIRED", "FAMILY_UNKNOWN", "FAMILY_AMBIGUOUS",
@@ -2306,6 +2434,21 @@ export const localizedImportErrorCatalog: Record<string, ImportErrorCatalog> = {
     es: { reason: "El modo de precio no es válido", accepted: "1 = Venta, 2 = Miembro, 3 = Oferta, 4 = Descuento oferta", fix: "Introduce un modo del 1 al 4" },
     en: { reason: "The price mode is invalid", accepted: "1 = Sale, 2 = Member, 3 = Offer, 4 = Offer discount", fix: "Enter a mode from 1 to 4" },
     zh: { reason: "价格模式无效", accepted: "1 = 销售、2 = 会员、3 = 促销、4 = 促销折扣", fix: "输入 1 到 4 的模式" }
+  },
+  PURCHASE_DISCOUNT_MODE_INVALID: {
+    es: { reason: "El modo de descuento de compra no es válido", accepted: "Descuento de compra o precio de compra final", fix: "Selecciona un modo de importación de productos" },
+    en: { reason: "The purchase discount mode is invalid", accepted: "Purchase discount or final purchase price", fix: "Select a product import mode" },
+    zh: { reason: "采购折扣模式无效", accepted: "采购折扣或最终采购价", fix: "请选择商品导入模式" }
+  },
+  PURCHASE_DISCOUNT_BASE_REQUIRED: {
+    es: { reason: "Falta un precio de compra mayor que cero", accepted: "Precio de compra positivo", fix: "Asigna la columna de precio de compra o revisa el precio del producto" },
+    en: { reason: "A purchase price greater than zero is required", accepted: "Positive purchase price", fix: "Map the purchase price column or check the product's price" },
+    zh: { reason: "需要大于零的采购价", accepted: "正数采购价", fix: "指定采购价列或检查商品采购价" }
+  },
+  PURCHASE_FINAL_PRICE_INVALID: {
+    es: { reason: "El precio de compra final debe estar entre cero y el precio de compra", accepted: "Importe entre cero y el precio de compra", fix: "Corrige el precio de compra final en el Excel" },
+    en: { reason: "The final purchase price must be between zero and the purchase price", accepted: "An amount between zero and the purchase price", fix: "Correct the final purchase price in Excel" },
+    zh: { reason: "最终采购价必须在零与采购价之间", accepted: "零到采购价之间的金额", fix: "请更正 Excel 中的最终采购价" }
   },
   DISCOUNT_PROHIBITED_PRICE_MODE: {
     es: { reason: "No se permiten precios especiales con descuento prohibido", accepted: "Modo 1 = Precio de venta/NORMAL", fix: "Cambia el modo de precio o permite descuentos" },

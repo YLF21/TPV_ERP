@@ -181,9 +181,9 @@ public class ProductBulkXlsxService {
                 writeSupplier(sheet.createRow(rowNumber++), value.id(), productId,
                         supplier, false, instantStyle);
             }
-            if (value.pendingSupplier() != null) {
+            for (ProductBulkEditContent.SupplierData supplier : value.pendingSupplierLinks().toList()) {
                 writeSupplier(sheet.createRow(rowNumber++), value.id(), productId,
-                        value.pendingSupplier(), true, instantStyle);
+                        supplier, true, instantStyle);
             }
         }
         finish(sheet, headers.length, rowNumber);
@@ -217,14 +217,14 @@ public class ProductBulkXlsxService {
     }
 
     private static String supplierReference(ProductBulkEditContent.Row row) {
-        if (row.pendingSupplier() != null && !blank(row.pendingSupplier().supplierReference())) {
-            return row.pendingSupplier().supplierReference();
-        }
-        return row.suppliers().stream()
+        return row.pendingSupplierLinks().map(ProductBulkEditContent.SupplierData::supplierReference)
+                .filter(reference -> !blank(reference))
+                .findFirst()
+                .or(() -> row.suppliers().stream()
                 .filter(supplier -> Boolean.TRUE.equals(supplier.principal()))
                 .findFirst()
                 .or(() -> row.suppliers().stream().findFirst())
-                .map(ProductBulkEditContent.SupplierData::supplierReference)
+                .map(ProductBulkEditContent.SupplierData::supplierReference))
                 .orElse(null);
     }
 

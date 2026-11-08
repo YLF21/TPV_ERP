@@ -272,7 +272,8 @@ public class ProductExcelImportApplyService {
         // Master actions validate product attributes, never document quantities or tariffs.
         var scopedOptions = new ProductExcelImportPreviewService.PreviewOptions(options.globalValues(), options.valueSources(),
                 false, prepare ? options.context() : "STOCK", options.storeId(), options.companyId(), options.skipZeroPriceUpdate(),
-                prepare && Boolean.TRUE.equals(options.requireQuantity()), prepare ? options.documentPriceSource() : null);
+                prepare && Boolean.TRUE.equals(options.requireQuantity()), prepare ? options.documentPriceSource() : null,
+                options.purchaseDiscountMode());
         var scopedRequest = new ProductExcelImportPreviewService.PreviewRequest(original.mapping(), original.edits(), scopedOptions,
                 original.storeId(), original.companyId(), original.expectedSha256(), original.startRow(), original.quantityColumn(),
                 fields, original.resolvedProducts());
@@ -393,7 +394,7 @@ public class ProductExcelImportApplyService {
         var forced = options == null ? null : new ProductExcelImportPreviewService.PreviewOptions(
                 options.globalValues(), options.valueSources(), false, options.context(), options.storeId(),
                 options.companyId(), options.skipZeroPriceUpdate(), options.requireQuantity(),
-                options.documentPriceSource());
+                options.documentPriceSource(), options.purchaseDiscountMode());
         return new ProductExcelImportPreviewService.PreviewRequest(request.mapping(), request.edits(), forced,
                 request.storeId(), request.companyId(), request.expectedSha256(), request.startRow(),
                 request.quantityColumn(), request.updateFields(), request.resolvedProducts());
@@ -407,7 +408,7 @@ public class ProductExcelImportApplyService {
                 options.globalValues(), options.valueSources(), options.showOnlyImported(),
                 ProductExcelImportPreviewService.canonicalContext(options.context()),
                 options.storeId(), options.companyId(), options.skipZeroPriceUpdate(), options.requireQuantity(),
-                options.documentPriceSource());
+                options.documentPriceSource(), options.purchaseDiscountMode());
         return new ProductExcelImportPreviewService.PreviewRequest(request.mapping(), request.edits(), canonical,
                 request.storeId(), request.companyId(), request.expectedSha256(), request.startRow(),
                 request.quantityColumn(), request.updateFields(), request.resolvedProducts());

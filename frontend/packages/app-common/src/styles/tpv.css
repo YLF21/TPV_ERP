@@ -116,6 +116,43 @@ textarea {
   transition: width 200ms linear;
 }
 
+.bulk-apply-progress-dialog.app-loading-card {
+  width: min(360px, calc(100vw - 32px));
+  gap: 16px;
+  padding: 24px;
+  border: 1px solid #b8c7da;
+  border-radius: 8px;
+  color: #0b2346;
+  outline: none;
+}
+
+.bulk-apply-progress-dialog h2 {
+  margin: 0;
+  font-size: 17px;
+  text-align: center;
+}
+
+.bulk-apply-progress-dialog .app-loading-progress {
+  height: 12px;
+}
+
+.bulk-apply-progress-dialog .app-loading-progress-fill {
+  width: 38%;
+  border-radius: inherit;
+  animation: bulk-apply-progress-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes bulk-apply-progress-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(265%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bulk-apply-progress-dialog .app-loading-progress-fill {
+    animation: none;
+  }
+}
+
 .app-loading-progress-label {
   position: absolute;
   inset: 0;
@@ -6545,6 +6582,30 @@ textarea {
   grid-template-columns: minmax(360px, 2fr) minmax(0, 3fr);
   gap: 18px;
   align-items: center;
+}
+
+.bulk-edit-heading.bulk-edit-heading-desktop {
+  grid-template-columns: minmax(190px, auto) minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.bulk-edit-heading-desktop .bulk-edit-title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.bulk-edit-heading-desktop .bulk-edit-title > span { grid-column: 1; }
+.bulk-edit-heading-desktop > .bulk-workspace-back {
+  grid-row: auto;
+  justify-self: end;
+  white-space: nowrap;
+}
+.bulk-edit-heading-desktop .bulk-edit-tabs { flex-wrap: wrap; overflow: visible; }
+.bulk-edit-heading-desktop .bulk-edit-tabs button { border-radius: 6px !important; }
+
+@media (max-width: 1100px) {
+  .bulk-edit-heading.bulk-edit-heading-desktop { grid-template-columns: minmax(0, 1fr) auto; }
+  .bulk-edit-heading-desktop .bulk-edit-tabs { grid-row: 2; grid-column: 1 / -1; }
 }
 
 .bulk-edit-title h2 {
@@ -17749,7 +17810,7 @@ textarea:focus,
   min-height: 100dvh !important;
   overflow: hidden;
   display: grid;
-  grid-template-rows: 34px 33vh minmax(0, 1fr) auto auto;
+  grid-template-rows: auto 33vh minmax(0, 1fr) auto auto;
   gap: 0;
   padding: 0 !important;
   border: 0 !important;

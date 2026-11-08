@@ -14,6 +14,7 @@ import {
   resolveStockBulkImportedClassification,
   shouldClearStockBulkImportedSubfamily,
   stageStockBulkPrincipalSupplier,
+  stageStockBulkSupplier,
   stockBulkClassificationCodesForRows,
   stockBulkDisplayedSupplier,
   stockBulkEffectiveProduct,
@@ -1056,6 +1057,40 @@ describe("stock bulk edit", () => {
     expect(buildStockBulkSupplierPrincipalAssignments(staged)).toEqual([
       { productId: product.productId, supplierId: supplier.id },
       { productId: "product-2", supplierId: supplier.id }
+    ]);
+  });
+
+  it("keeps explicit supplier links separate from a staged principal link", () => {
+    const principal = {
+      id: "supplier-1", supplierCode: "P-001", legalName: "Proveedor Uno", documentNumber: "B00000001", active: true
+    };
+    const additional = { ...principal, id: "supplier-2", legalName: "Proveedor Dos" };
+    const linked = { ...principal, id: "supplier-3", lastSupplier: true, purchaseDiscount: "3.12345" };
+    const rows = [
+      { id: "row-1", selected: true, query: "A001", product, draft: {}, suppliers: [linked] },
+      { id: "row-2", selected: false, query: "A002", product: { ...product, productId: "product-2" }, draft: {} }
+    ];
+    const selected = new Set(["row-1"]);
+    const withPrincipal = stageStockBulkPrincipalSupplier(rows, selected, principal);
+    const staged = stageStockBulkSupplier(withPrincipal, selected, additional);
+
+    expect(staged[1]).toBe(rows[1]);
+    expect(stockBulkDisplayedSupplier(staged[0])).toBe(principal);
+    expect(buildStockBulkSupplierAssignments(staged)).toEqual([
+      { supplierId: principal.id, productIds: [product.productId] },
+      { supplierId: additional.id, productIds: [product.productId] }
+    ]);
+    expect(buildStockBulkSupplierPrincipalAssignments(staged)).toEqual([
+      { productId: product.productId, supplierId: principal.id }
+    ]);
+    expect(stageStockBulkSupplier(staged, selected, linked)[0]).toBe(staged[0]);
+    expect(finalizeStockBulkSupplierAssignments(staged)[0].suppliers).toEqual([
+      { ...linked, principal: false }, { ...principal, principal: true }, { ...additional, principal: false }
+    ]);
+
+    const changedPrincipal = stageStockBulkPrincipalSupplier(staged, selected, linked);
+    expect(buildStockBulkSupplierAssignments(changedPrincipal)).toEqual([
+      { supplierId: additional.id, productIds: [product.productId] }
     ]);
   });
 
