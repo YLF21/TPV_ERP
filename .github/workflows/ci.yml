@@ -155,7 +155,9 @@ jobs:
         run: npm ci
       - name: Install browser for autonomous SaaS E2E
         working-directory: frontend-saas
-        run: npx playwright install --with-deps chromium
+        run: |
+          sudo sh ../.github/scripts/configure-ubuntu-apt.sh https://mirrors.edge.kernel.org/ubuntu
+          npx playwright install --with-deps chromium
       - name: Unit tests
         working-directory: frontend-saas
         run: npm test
@@ -183,7 +185,9 @@ jobs:
       - name: Validate production Compose
         run: docker compose --env-file backend-saas/.env.production.example -f backend-saas/docker-compose.yml config --quiet
       - name: Build pinned production images
-        run: docker compose --env-file backend-saas/.env.production.example -f backend-saas/docker-compose.yml build --pull
+        run: |
+          docker compose --env-file backend-saas/.env.production.example -f backend-saas/docker-compose.yml build --pull \
+            --build-arg UBUNTU_APT_MIRROR=https://mirrors.edge.kernel.org/ubuntu
       - name: Validate Flyway migration inventory
         shell: python
         run: |
@@ -394,6 +398,7 @@ jobs:
         working-directory: frontend-saas
         run: |
           npm ci
+          sudo sh ../.github/scripts/configure-ubuntu-apt.sh https://mirrors.edge.kernel.org/ubuntu
           npx playwright install --with-deps chromium
       - name: Start SaaS backend
         working-directory: backend-saas

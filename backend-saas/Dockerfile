@@ -8,7 +8,11 @@ RUN mvn -f backend-saas/pom.xml -B -q -DskipTests package
 
 FROM eclipse-temurin:25-jre@sha256:ecdc0adb37bde1a281c4d245a3cd535004b1fc8322d560f5b09463b248c81df0
 WORKDIR /app
-RUN apt-get update \
+ARG UBUNTU_APT_MIRROR=""
+COPY .github/scripts/configure-ubuntu-apt.sh /tmp/configure-ubuntu-apt.sh
+RUN sh /tmp/configure-ubuntu-apt.sh "$UBUNTU_APT_MIRROR" \
+    && rm /tmp/configure-ubuntu-apt.sh \
+    && apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=3 update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /var/lib/tpv-saas/backup-vault \
