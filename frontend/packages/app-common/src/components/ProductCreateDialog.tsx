@@ -2,6 +2,7 @@ import { X } from "@phosphor-icons/react";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
 import { ErpConfirmDialog } from "./ErpConfirmDialog";
+import { ZoomableProductImage } from "./ZoomableProductImage";
 import "./ErpClassicWindow.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
@@ -2500,7 +2501,7 @@ export function ProductCreateDialog({
             <h3>{t("product.fieldset.additional")}</h3>
             <div className="product-image-preview">
               {imagePreview || existingImagePreview
-                ? <img alt={form.name} src={imagePreview || existingImagePreview} />
+                ? <ZoomableProductImage alt={form.name} src={imagePreview || existingImagePreview} locale={locale} />
                 : <span>{t("product.image.empty")}</span>}
             </div>
             <div className="product-image-actions">

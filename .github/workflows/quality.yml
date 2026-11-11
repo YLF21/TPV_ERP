@@ -98,7 +98,9 @@ jobs:
       - run: chmod +x backend/mvnw
       - run: npm ci
         working-directory: frontend
-      - run: npx playwright install --with-deps chromium
+      - run: |
+          sudo sh ../.github/scripts/configure-ubuntu-apt.sh https://mirrors.edge.kernel.org/ubuntu
+          npx playwright install --with-deps chromium
         working-directory: frontend
       - run: npx playwright test e2e/stock-apps.spec.ts e2e/app-gestion-core-flows.spec.ts
         working-directory: frontend

@@ -3,6 +3,7 @@ import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { StockInventoryRow } from "./StockScreen";
 import { ProductCommercialHistory } from "./ProductCommercialHistory";
+import { ZoomableProductImage } from "./ZoomableProductImage";
 import {
   calculateNetPurchasePrice,
   useProductInformationResources,
@@ -121,7 +122,7 @@ export function StockProductInformationPanel({
       <div className="stock-product-information-identity">
         <div className="stock-product-information-image">
           {imageSource
-            ? <img src={imageSource} alt={product.name} />
+            ? <ZoomableProductImage src={imageSource} alt={product.name} locale={locale} />
             : <span>{product.name.slice(0, 1).toLocaleUpperCase() || "-"}</span>}
         </div>
         <div className="stock-product-information-identity-details">

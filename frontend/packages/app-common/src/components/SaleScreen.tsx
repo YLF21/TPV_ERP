@@ -1977,6 +1977,8 @@ function SaleScreenContent({
   const [productSearchSelectedId, setProductSearchSelectedId] = useState("");
   const [productCreateOpen, setProductCreateOpen] = useState(false);
   const [productInformationProduct, setProductInformationProduct] = useState<SaleProduct | null>(null);
+  const productInformationOriginRef = useRef<"search" | "cart">("search");
+  const productInformationCartFocusRef = useRef<HTMLButtonElement | null>(null);
   const [consultationMode, setConsultationMode] = useState<"PRICE" | "STOCK" | null>(null);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [salesUtilityOpening, setSalesUtilityOpening] = useState(false);
@@ -3011,6 +3013,12 @@ function SaleScreenContent({
         key={cartLineId}
         data-cart-line-id={cartLineId}
         onClick={() => setSelectedLineId(cartLineId)}
+        onDoubleClick={(event) => {
+          if (paymentLocked) return;
+          setSelectedLineId(cartLineId);
+          productInformationCartFocusRef.current = event.currentTarget.querySelector(".sale-cart-select");
+          openProductInformation(product, "cart");
+        }}
       >
         {visibleCartColumns.map((column) => renderCell(column.key))}
       </tr>
@@ -4281,15 +4289,20 @@ function SaleScreenContent({
     setSalesHistoryOpen(true);
   }
 
-  function openProductInformation(product: SaleProduct) {
-    setProductSearchSelectedId(product.id);
+  function openProductInformation(product: SaleProduct, origin: "search" | "cart" = "search") {
+    productInformationOriginRef.current = origin;
+    if (origin === "search") setProductSearchSelectedId(product.id);
     setProductSearchOpen(false);
     setProductInformationProduct(product);
   }
 
   function closeProductInformation() {
     setProductInformationProduct(null);
-    setProductSearchOpen(true);
+    if (productInformationOriginRef.current === "search") {
+      setProductSearchOpen(true);
+    } else {
+      queueMicrotask(() => productInformationCartFocusRef.current?.focus({ preventScroll: true }));
+    }
   }
 
   function addProductFromInformation(product: SaleProduct) {
