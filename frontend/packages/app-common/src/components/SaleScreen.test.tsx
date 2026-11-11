@@ -6362,6 +6362,42 @@ describe("SaleScreen", () => {
     expect(screen.queryByRole("button", { name: /Cafe molido.*1 x 10,00/s })).not.toBeInTheDocument();
   });
 
+  it.each(["name", "quantity"])("opens product information by double-clicking the cart %s and returns to the same line", async (column) => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      const body = path.endsWith("/products/sale") ? products.slice(0, 2)
+        : path.endsWith("/products/coffee") ? {
+          ...products[0], productType: "UNIT", discountType: "NORMAL", priceUseMode: "NORMAL", active: true,
+        }
+        : [];
+      return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, products[0].code!);
+    submitQuickEntry(search, products[1].code!);
+    const coffee = await screen.findByRole("button", { name: /Cafe molido.*1 x 10,00/s });
+    const bread = screen.getByRole("button", { name: /Pan integral.*1 x 2,50/s });
+    const row = coffee.closest("tr")!;
+    const target = column === "name" ? coffee : row.querySelector("[data-column-key='quantity']")!;
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(target);
+    expect(screen.queryByRole("dialog", { name: "Cafe molido" })).not.toBeInTheDocument();
+    fireEvent.doubleClick(target);
+    const information = await screen.findByRole("dialog", { name: "Cafe molido" });
+    expect(await within(information).findByText("Información del producto")).toBeVisible();
+    fireEvent.keyDown(information, { key: "Escape" });
+
+    await waitFor(() => expect(coffee).toHaveFocus());
+    expect(coffee).toHaveAttribute("aria-pressed", "true");
+    expect(bread).toHaveAttribute("aria-pressed", "false");
+    expect(coffee).toHaveAccessibleName(/Cafe molido.*1 x 10,00/s);
+    expect(bread).toHaveAccessibleName(/Pan integral.*1 x 2,50/s);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("opens product information with the explicit touch action and adds from that dialog", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const parsed = new URL(url, "http://localhost");
@@ -6436,7 +6472,12 @@ describe("SaleScreen", () => {
     expect(screen.queryByRole("dialog", { name: "Buscador de productos" })).not.toBeInTheDocument();
     expect(await within(informationDialog).findByText("Información del producto")).toBeVisible();
 
-    fireEvent.click(within(informationDialog).getByRole("button", { name: /Añadir al carrito/ }));
+    fireEvent.keyDown(informationDialog, { key: "Escape" });
+    expect(await screen.findByRole("dialog", { name: "Buscador de productos" })).toBeVisible();
+    expect(screen.getByRole("option", { name: /Cafe molido/ })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Ver información" }));
+    const reopenedInformation = await screen.findByRole("dialog", { name: "Cafe molido" });
+    fireEvent.click(within(reopenedInformation).getByRole("button", { name: /Añadir al carrito/ }));
     expect(await screen.findByRole("button", { name: /Cafe molido.*1 x 10,00/s })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Cafe molido" })).not.toBeInTheDocument();
   });

@@ -1,0 +1,55 @@
+.product-image-zoom-thumbnail {
+  cursor: zoom-in;
+}
+
+.product-image-zoom-thumbnail:focus-visible {
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: 2px;
+}
+
+dialog.product-image-viewer {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: rgb(0 0 0 / 85%);
+  overflow: hidden;
+  overscroll-behavior: contain;
+  cursor: zoom-out;
+}
+
+dialog.product-image-viewer[open] {
+  display: grid;
+  place-items: center;
+}
+
+dialog.product-image-viewer::backdrop {
+  background: transparent;
+}
+
+dialog.product-image-viewer > img {
+  display: block;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+  transform-origin: center;
+  user-select: none;
+  cursor: default;
+}
+
+.product-image-viewer-instructions {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

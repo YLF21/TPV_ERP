@@ -8,6 +8,7 @@ import {
 } from "./productInformationResources";
 import type { StockInventoryRow } from "./StockScreen";
 import { ProductCommercialHistory } from "./ProductCommercialHistory";
+import { ZoomableProductImage } from "./ZoomableProductImage";
 
 type SaleProductInformationPanelProps = {
   product: StockInventoryRow;
@@ -157,7 +158,7 @@ export function SaleProductInformationPanel({
         <section className="sale-product-details-hero">
           <div className="sale-product-details-image">
             {imageSource
-              ? <img src={imageSource} alt={product.name} />
+              ? <ZoomableProductImage src={imageSource} alt={product.name} locale={locale} />
               : <span>{product.name.slice(0, 1).toLocaleUpperCase() || "-"}</span>}
           </div>
           <div className="sale-product-details-summary">
