@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SalesReportScreen } from "./SalesReportScreen";
+import { previewExport } from "../export/previewExport";
 import type { AppKind, LocaleCode } from "../types";
 import { createSalesActivityTranslator } from "../i18n/SalesActivityMessages";
 
@@ -14,6 +15,7 @@ vi.mock("../api/client", async () => ({
   ...await vi.importActual<typeof import("../api/client")>("../api/client"),
   apiRequest: vi.fn().mockResolvedValue(null),
 }));
+vi.mock("../export/previewExport", () => ({ previewExport: vi.fn() }));
 
 const currentDate = "2026-09-11";
 const empty = { items: [], nextCursor: null, hasMore: false };
@@ -35,6 +37,9 @@ function mount(request = fixture(), report = "tickets", app: AppKind = "venta", 
     onBack={vi.fn()} onLocaleChange={vi.fn()} />);
 }
 
+beforeEach(() => {
+  vi.mocked(previewExport).mockReset().mockResolvedValue({ downloaded: true, printed: false, canceled: false });
+});
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); Reflect.deleteProperty(window, "tpvDesktop"); });
 
 describe("report quick date integration", () => {
@@ -91,27 +96,36 @@ describe("report quick date integration", () => {
 
   it("sends the applied date range to Excel export and makes no business write", async () => {
     const request = fixture();
-    const saveFile = vi.fn().mockResolvedValue({ ok: true });
-    Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { reports: { saveFile } } });
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new Uint8Array([1]), { status: 200 }));
     mount(request);
     await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
     fireEvent.change(screen.getByRole("combobox", { name: "Trimestre" }), { target: { value: "2025-Q4" } });
     await waitFor(() => expect(request).toHaveBeenCalledWith("/document-reports/tickets?limit=500&dateFrom=2025-10-01&dateTo=2025-12-31", { token: "token" }));
     fireEvent.keyDown(window, { key: "F6" });
-    await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(previewExport).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      blob: expect.any(Blob), fileName: expect.stringMatching(/\.xlsx$/)
+    })));
     expect(await screen.findByText("Excel exportado correctamente")).toBeInTheDocument();
     expect(JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)).toMatchObject({ reportKey: "salesReport.tickets", filters: { dateFrom: "2025-10-01", dateTo: "2025-12-31" } });
     expect(request.mock.calls.every(([, options]) => options.token === "token"
       && (options.method === undefined || options.method === "GET") && options.body === undefined)).toBe(true);
   });
 
+  it.each(["F6", "F7"])("does not report a successful %s download when preview is canceled", async (key) => {
+    vi.mocked(previewExport).mockResolvedValueOnce({ downloaded: false, printed: false, canceled: true });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new Uint8Array([1]), { status: 200 }));
+    mount();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
+    fireEvent.keyDown(window, { key });
+    await waitFor(() => expect(previewExport).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByText(/Exportando (Excel|PDF)/)).not.toBeInTheDocument());
+    expect(screen.queryByText(/exportado correctamente/)).not.toBeInTheDocument();
+  });
+
   it.each([
     ["F6", "Excel exportado correctamente"],
     ["F7", "PDF exportado correctamente"],
   ])("cancels the %s export progress reset on unmount", async (key, success) => {
-    const saveFile = vi.fn().mockResolvedValue({ ok: true });
-    Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { reports: { saveFile } } });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new Uint8Array([1]), { status: 200 }));
     const view = mount();
     await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
@@ -126,27 +140,24 @@ describe("report quick date integration", () => {
     expect(clearTimeoutSpy).toHaveBeenCalledWith(resetTimer);
   });
 
-  it("does not schedule an export progress reset if the save finishes after unmount", async () => {
-    let finishSave!: (result: { ok: true }) => void;
-    const saveFile = vi.fn(() => new Promise<{ ok: true }>((resolve) => { finishSave = resolve; }));
-    Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { reports: { saveFile } } });
+  it("does not schedule an export progress reset if the preview finishes after unmount", async () => {
+    let finishPreview!: (result: { downloaded: boolean; printed: boolean; canceled: boolean }) => void;
+    vi.mocked(previewExport).mockImplementationOnce(() => new Promise((resolve) => { finishPreview = resolve; }));
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new Uint8Array([1]), { status: 200 }));
     const view = mount();
     await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
     const setTimeoutSpy = vi.spyOn(window, "setTimeout");
     fireEvent.keyDown(window, { key: "F6" });
-    await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(previewExport).toHaveBeenCalledTimes(1));
     view.unmount();
-    await act(async () => finishSave({ ok: true }));
+    await act(async () => finishPreview({ downloaded: true, printed: false, canceled: false }));
     expect(setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 700)).toHaveLength(0);
   });
 
-  it.each(["F6", "F7"])("does not save a %s export when its request finishes after unmount", async (key) => {
+  it.each(["F6", "F7"])("does not open a %s preview when its request finishes after unmount", async (key) => {
     let finishFetch!: (response: Response) => void;
     const fetchSpy = vi.spyOn(globalThis, "fetch")
       .mockImplementation(() => new Promise<Response>((resolve) => { finishFetch = resolve; }));
-    const saveFile = vi.fn().mockResolvedValue({ ok: true });
-    Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { reports: { saveFile } } });
     const view = mount();
     await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
     const setTimeoutSpy = vi.spyOn(window, "setTimeout");
@@ -154,16 +165,15 @@ describe("report quick date integration", () => {
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
     view.unmount();
     await act(async () => finishFetch(new Response(new Uint8Array([1]), { status: 200 })));
-    expect(saveFile).not.toHaveBeenCalled();
+    expect(previewExport).not.toHaveBeenCalled();
     expect(setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 700)).toHaveLength(0);
   });
 
   it("cancels the previous progress reset when a second export starts", async () => {
-    let finishSecondSave!: (result: { ok: true }) => void;
-    const saveFile = vi.fn()
-      .mockResolvedValueOnce({ ok: true })
-      .mockImplementationOnce(() => new Promise<{ ok: true }>((resolve) => { finishSecondSave = resolve; }));
-    Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { reports: { saveFile } } });
+    let finishSecondPreview!: (result: { downloaded: boolean; printed: boolean; canceled: boolean }) => void;
+    vi.mocked(previewExport)
+      .mockResolvedValueOnce({ downloaded: true, printed: false, canceled: false })
+      .mockImplementationOnce(() => new Promise((resolve) => { finishSecondPreview = resolve; }));
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array([1]), { status: 200 }));
     const view = mount();
     await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
@@ -175,10 +185,10 @@ describe("report quick date integration", () => {
     expect(resetIndex).toBeGreaterThanOrEqual(0);
     const previousReset = setTimeoutSpy.mock.results[resetIndex].value;
     fireEvent.keyDown(window, { key: "F6" });
-    await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(previewExport).toHaveBeenCalledTimes(2));
     expect(clearTimeoutSpy).toHaveBeenCalledWith(previousReset);
     await waitFor(() => expect(screen.getByRole("progressbar")).toHaveAttribute("value", "90"));
-    await act(async () => finishSecondSave({ ok: true }));
+    await act(async () => finishSecondPreview({ downloaded: true, printed: false, canceled: false }));
     view.unmount();
   });
 

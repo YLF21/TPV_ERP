@@ -3,6 +3,9 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SalesReportScreen } from "./SalesReportScreen";
+import { previewExport } from "../export/previewExport";
+
+vi.mock("../export/previewExport", () => ({ previewExport: vi.fn().mockResolvedValue({ downloaded: true, printed: false, canceled: false }) }));
 
 function today() {
   const value = new Date();
@@ -16,7 +19,7 @@ function selectValue(dialog: HTMLElement, field: string, value: string) {
   fireEvent.click(trigger);
 }
 
-afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.clearAllMocks(); });
 
 describe("Report pagination after multi-value filters", () => {
   it.each([
@@ -51,11 +54,7 @@ describe("Report pagination after multi-value filters", () => {
         supplierCode: code, supplierName: `Proveedor ${code}`, warehouseName: "GENERAL"
       }), hasMore: true, nextCursor: cursor ? "later-page" : "next-page" });
     });
-    const saveFile = vi.fn().mockResolvedValue({ ok: true });
-    const previousDesktop = window.tpvDesktop;
-    Object.defineProperty(window, "tpvDesktop", { configurable: true, writable: true, value: { reports: { saveFile } } });
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
-    try {
       const { container } = render(<SalesReportScreen app={app} locale="es" initialReport={report}
         session={{ username: "remote-code-test", displayName: "ADMIN", accessToken: "token", permissions: ["ADMIN"] }}
         terminalContext={{ storeName: "Prueba", terminalCode: "01" }} request={request} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
@@ -91,7 +90,7 @@ describe("Report pagination after multi-value filters", () => {
 
       for (const [index, button] of ["Excel", "PDF"].entries()) {
         fireEvent.click(screen.getByRole("button", { name: button }));
-        await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(index + 1));
+        await waitFor(() => expect(previewExport).toHaveBeenCalledTimes(index + 1));
       }
       const exports = fetchSpy.mock.calls.filter(([url]) => String(url).includes("/sales-reports/export"));
       expect(exports).toHaveLength(2);
@@ -102,9 +101,6 @@ describe("Report pagination after multi-value filters", () => {
       }));
       expect(pageCalls()).toHaveLength(2);
       expect(request.mock.calls.some(([path]) => /^\/(customers|suppliers)/.test(path))).toBe(false);
-    } finally {
-      Object.defineProperty(window, "tpvDesktop", { configurable: true, writable: true, value: previousDesktop });
-    }
   });
 
   it.each([false, true])("continues loading when filters leave too few rows (empty: %s)", async (empty) => {

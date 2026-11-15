@@ -463,45 +463,45 @@ class CustomerDocumentReportRepositoryPostgreSqlTest {
         var bytes = service.export(request, authentication);
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
             var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getLastRowNum()).isEqualTo(8);
-            assertThat(sheet.getRow(0).getCell(1).getCellType()).isEqualTo(CellType.STRING);
-            assertThat(sheet.getRow(0).getCell(1).getStringCellValue()).isEqualTo("C-001-000001");
-            assertThat(sheet.getRow(1).getCell(1).getCellType()).isEqualTo(CellType.STRING);
-            assertThat(sheet.getRow(1).getCell(1).getStringCellValue()).isEqualTo("00123456A");
-            assertThat(sheet.getRow(2).getCell(1).getStringCellValue()).isEqualTo("Cliente de la ficha BD");
-            assertThat(sheet.getRow(3).getCell(0).getStringCellValue()).isEqualTo("Filtros: Sin filtros");
-            assertThat(sheet.getRow(5).getCell(0).getStringCellValue()).isEqualTo("a");
-            assertThat(sheet.getRow(5).getCell(1).getLocalDateTimeCellValue().toLocalDate())
+            assertThat(sheet.getLastRowNum()).isEqualTo(12);
+            assertThat(sheet.getRow(3).getCell(1).getCellType()).isEqualTo(CellType.STRING);
+            assertThat(sheet.getRow(3).getCell(1).getStringCellValue()).isEqualTo("C-001-000001");
+            assertThat(sheet.getRow(4).getCell(1).getCellType()).isEqualTo(CellType.STRING);
+            assertThat(sheet.getRow(4).getCell(1).getStringCellValue()).isEqualTo("00123456A");
+            assertThat(sheet.getRow(5).getCell(1).getStringCellValue()).isEqualTo("Cliente de la ficha BD");
+            assertThat(sheet.getRow(6).getCell(0).getStringCellValue()).isEqualTo("Filtros: Sin filtros");
+            assertThat(sheet.getRow(9).getCell(0).getStringCellValue()).isEqualTo("a");
+            assertThat(sheet.getRow(9).getCell(1).getLocalDateTimeCellValue().toLocalDate())
                     .isEqualTo(DATE.minusDays(2));
-            assertThat(sheet.getRow(5).getCell(2).getStringCellValue()).isEqualTo("Factura");
-            assertThat(sheet.getRow(5).getCell(3).getStringCellValue()).isEqualTo("Parcial");
-            assertThat(sheet.getRow(5).getCell(4).getNumericCellValue()).isEqualTo(2);
-            assertThat(sheet.getRow(5).getCell(5).getNumericCellValue()).isEqualTo(8);
-            assertThat(sheet.getRow(5).getCell(6).getNumericCellValue()).isEqualTo(10);
-            assertThat(sheet.getRow(5).getCell(7).getStringCellValue()).isEqualTo("Alfa");
-            assertThat(sheet.getRow(5).getCell(8).getStringCellValue()).isEqualTo("Alfa");
-            assertThat(sheet.getRow(6).getCell(6).getNumericCellValue()).isEqualTo(-5);
-            assertThat(sheet.getRow(6).getCell(7).getStringCellValue()).isEqualTo("—");
-            assertThat(sheet.getRow(6).getCell(8).getStringCellValue()).isEqualTo("—");
-            assertThat(sheet.getRow(7).getCell(0).getStringCellValue()).isEqualTo("A");
-            assertThat(sheet.getRow(8).getCell(0).getStringCellValue()).isEqualTo("Total documentos");
-            var total = sheet.getRow(8).getCell(6);
-            assertThat(total.getCellFormula()).isEqualTo("SUM(G6:G8)");
+            assertThat(sheet.getRow(9).getCell(2).getStringCellValue()).isEqualTo("Factura");
+            assertThat(sheet.getRow(9).getCell(3).getStringCellValue()).isEqualTo("Parcial");
+            assertThat(sheet.getRow(9).getCell(4).getNumericCellValue()).isEqualTo(2);
+            assertThat(sheet.getRow(9).getCell(5).getNumericCellValue()).isEqualTo(8);
+            assertThat(sheet.getRow(9).getCell(6).getNumericCellValue()).isEqualTo(10);
+            assertThat(sheet.getRow(9).getCell(7).getStringCellValue()).isEqualTo("Alfa");
+            assertThat(sheet.getRow(9).getCell(8).getStringCellValue()).isEqualTo("Alfa");
+            assertThat(sheet.getRow(10).getCell(6).getNumericCellValue()).isEqualTo(-5);
+            assertThat(sheet.getRow(10).getCell(7).getStringCellValue()).isEqualTo("—");
+            assertThat(sheet.getRow(10).getCell(8).getStringCellValue()).isEqualTo("—");
+            assertThat(sheet.getRow(11).getCell(0).getStringCellValue()).isEqualTo("A");
+            assertThat(sheet.getRow(12).getCell(0).getStringCellValue()).isEqualTo("Total documentos");
+            var total = sheet.getRow(12).getCell(6);
+            assertThat(total.getCellFormula()).isEqualTo("SUM(G10:G12)");
             assertThat(total.getCachedFormulaResultType()).isEqualTo(CellType.NUMERIC);
             assertThat(BigDecimal.valueOf(total.getNumericCellValue())).isEqualByComparingTo("15.00");
-            assertThat(sheet.getCTWorksheet().getAutoFilter().getRef()).isEqualTo("A5:I8");
+            assertThat(sheet.getCTWorksheet().getAutoFilter().getRef()).isEqualTo("A9:I12");
         }
         var filtered = new CustomerDocumentExportRequest(fixture.customerId(), "invoices",
                 new CustomerDocumentExportRequest.Filters("a", null, null, null),
                 "number", "desc", null, columns, labels);
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.export(filtered, authentication)))) {
             var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getLastRowNum()).isEqualTo(7);
-            assertThat(sheet.getRow(3).getCell(0).getStringCellValue()).isEqualTo("Filtros: Búsqueda: a");
-            assertThat(sheet.getRow(5).getCell(0).getStringCellValue()).isEqualTo("a");
-            assertThat(sheet.getRow(6).getCell(0).getStringCellValue()).isEqualTo("A");
-            assertThat(sheet.getRow(7).getCell(6).getCellFormula()).isEqualTo("SUM(G6:G7)");
-            assertThat(BigDecimal.valueOf(sheet.getRow(7).getCell(6).getNumericCellValue()))
+            assertThat(sheet.getLastRowNum()).isEqualTo(11);
+            assertThat(sheet.getRow(6).getCell(0).getStringCellValue()).isEqualTo("Filtros: Búsqueda: a");
+            assertThat(sheet.getRow(9).getCell(0).getStringCellValue()).isEqualTo("a");
+            assertThat(sheet.getRow(10).getCell(0).getStringCellValue()).isEqualTo("A");
+            assertThat(sheet.getRow(11).getCell(6).getCellFormula()).isEqualTo("SUM(G10:G11)");
+            assertThat(BigDecimal.valueOf(sheet.getRow(11).getCell(6).getNumericCellValue()))
                     .isEqualByComparingTo("20.00");
         }
         var otherCustomer = document(fixture.store(), fixture.otherCustomerId(),

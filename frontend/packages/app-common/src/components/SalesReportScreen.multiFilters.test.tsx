@@ -3,6 +3,9 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SalesReportScreen } from "./SalesReportScreen";
+import { previewExport } from "../export/previewExport";
+
+vi.mock("../export/previewExport", () => ({ previewExport: vi.fn().mockResolvedValue({ downloaded: true, printed: false, canceled: false }) }));
 
 function today() {
   const value = new Date();
@@ -42,7 +45,7 @@ function closeFilters(dialog: HTMLElement) { fireEvent.click(within(dialog).quer
 function documentRows(container: HTMLElement) { return container.querySelectorAll(".report-table tbody tr"); }
 function rowText(container: HTMLElement) { return [...documentRows(container)].map(row => row.textContent); }
 
-afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.clearAllMocks(); });
 
 describe("Desktop multi-value report filtering", () => {
   it.each(["venta", "gestion"] as const)("orders payments and counts mixed payments once in %s", async app => {
@@ -100,11 +103,7 @@ describe("Desktop multi-value report filtering", () => {
   });
 
   it.each(["venta", "gestion"] as const)("sends the same multiple selections and bounded period to Excel and PDF in %s", async app => {
-    const saveFile = vi.fn().mockResolvedValue({ ok: true });
-    const previousDesktop = window.tpvDesktop;
-    Object.defineProperty(window, "tpvDesktop", { configurable: true, writable: true, value: { reports: { saveFile } } });
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
-    try {
       const { container } = show(app);
       await waitFor(() => expect(documentRows(container)).toHaveLength(5));
       const dialog = openFilters();
@@ -114,7 +113,7 @@ describe("Desktop multi-value report filtering", () => {
       closeFilters(dialog);
       for (const [index, button] of ["Excel", "PDF"].entries()) {
         fireEvent.click(screen.getByRole("button", { name: button }));
-        await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(index + 1));
+        await waitFor(() => expect(previewExport).toHaveBeenCalledTimes(index + 1));
       }
       const calls = fetchSpy.mock.calls.filter(([url]) => String(url).includes("/sales-reports/export"));
       expect(calls).toHaveLength(2);
@@ -126,8 +125,5 @@ describe("Desktop multi-value report filtering", () => {
           customers: ["C-1", "C-2"], payments: ["EFECTIVO", "TARJETA"], users: ["ANA"]
         })
       })));
-    } finally {
-      Object.defineProperty(window, "tpvDesktop", { configurable: true, writable: true, value: previousDesktop });
-    }
   });
 });

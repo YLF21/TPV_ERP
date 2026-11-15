@@ -3,11 +3,13 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
+import { previewExport } from "../export/previewExport";
 import { openWarehouseDocumentPreview } from "../warehouse/warehouseDocumentPrinting";
 import { SharedExcelImportDialog } from "./SharedExcelImportDialog";
 import { WarehouseDocumentDialog, type WarehouseDocumentView } from "./WarehouseDocumentDialog";
 
 vi.mock("../api/client", async (original) => ({ ...await original<typeof import("../api/client")>(), apiRequest: vi.fn() }));
+vi.mock("../export/previewExport", () => ({ previewExport: vi.fn().mockResolvedValue({ downloaded: true, printed: false, canceled: false }) }));
 vi.mock("../warehouse/warehouseDocumentPrinting", async (original) => ({
   ...await original<typeof import("../warehouse/warehouseDocumentPrinting")>(),
   openWarehouseDocumentPreview: vi.fn(() => true)
@@ -100,8 +102,6 @@ describe("Warehouse transfer document shared workspace", () => {
 
   it("opens the full transfer Excel importer and exports the current draft without saving it", async () => {
     vi.mocked(apiRequest).mockResolvedValue(new Blob(["xlsx"]));
-    vi.stubGlobal("URL", class extends URL { static createObjectURL = vi.fn(() => "blob:export"); static revokeObjectURL = vi.fn(); });
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     const view = setup();
     fireEvent.click(view.menu().getByRole("button", { name: "Importar Excel Ctrl+Shift+I" }));
     expect(vi.mocked(SharedExcelImportDialog).mock.calls.at(-1)?.[0]).toMatchObject({ open: true,
@@ -111,6 +111,9 @@ describe("Warehouse transfer document shared workspace", () => {
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/warehouse-transfers/export.xlsx", expect.objectContaining({
       method: "POST", responseType: "blob", body: expect.objectContaining({ sourceWarehouseId: "origin", targetWarehouseId: "target",
         number: "TR-2026-000001", locale: "es", lines: [expect.objectContaining({ quantity: 2, unitPrice: 10, discount: 10 })] })
+    })));
+    await waitFor(() => expect(previewExport).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      blob: expect.any(Blob), fileName: "TR-2026-000001.xlsx", locale: "es", formattedWorkbook: true
     })));
     expect(view.persistence.save).not.toHaveBeenCalled();
     expect(view.persistence.confirm).not.toHaveBeenCalled();

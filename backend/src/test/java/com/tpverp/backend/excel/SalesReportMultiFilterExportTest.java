@@ -41,6 +41,9 @@ import java.util.List;
 import java.util.UUID;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -78,11 +81,11 @@ class SalesReportMultiFilterExportTest {
         var request = request("salesReport.invoices", "invoice", filters);
 
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(excel.export(request, authentication)))) {
-            var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getLastRowNum()).isEqualTo(2);
-            assertThat(sheet.getRow(1).getCell(0).getStringCellValue()).isEqualTo("MIXTO");
-            assertThat(sheet.getRow(2).getCell(0).getStringCellValue()).isEqualTo("TARJETA");
-            assertThat(sheet.getRow(1).getCell(1).getNumericCellValue()).isEqualTo(12.10);
+            var rows = dataRows(workbook.getSheetAt(0));
+            assertThat(rows).hasSize(2);
+            assertThat(rows.get(0).getCell(0).getStringCellValue()).isEqualTo("MIXTO");
+            assertThat(rows.get(1).getCell(0).getStringCellValue()).isEqualTo("TARJETA");
+            assertThat(rows.get(0).getCell(1).getNumericCellValue()).isEqualTo(12.10);
         }
         try (var pdf = Loader.loadPDF(new SalesReportPdfExportService(excel).export(request, authentication))) {
             assertThat(new PDFTextStripper().getText(pdf)).contains("MIXTO", "TARJETA")
@@ -98,10 +101,7 @@ class SalesReportMultiFilterExportTest {
         when(reports.allInvoices(true, false)).thenReturn(invoices);
         var filters = new SalesReportExportRequest.Filters("", "", "Ana", "cliente c-001", "", "CASH", "", "", "",
                 List.of(), List.of(), null, List.of(), null, null, null);
-        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(excel.export(request("salesReport.invoices", "invoice", filters), authentication)))) {
-            assertThat(workbook.getSheetAt(0).getLastRowNum()).isEqualTo(1);
-            assertThat(workbook.getSheetAt(0).getRow(1).getCell(0).getStringCellValue()).isEqualTo("LEGACY");
-        }
+        assertExportNumbers(request("salesReport.invoices", "invoice", filters), "LEGACY");
     }
 
     @Test
@@ -114,12 +114,7 @@ class SalesReportMultiFilterExportTest {
                 .thenReturn(secondPage);
         var filters = new SalesReportExportRequest.Filters("", "", "", "", "", "", "", "", "",
                 null, null, List.of("P-001", "P-002"), null, null, List.of("salesReport.status.confirmed"), List.of("GENERAL", "RESERVA"));
-        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(excel.export(request("salesReport.inputInvoices", "invoice", filters), authentication)))) {
-            var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getLastRowNum()).isEqualTo(10);
-            assertThat(sheet.getRow(9).getCell(0).getStringCellValue()).isEqualTo("INCLUIDA1");
-            assertThat(sheet.getRow(10).getCell(0).getStringCellValue()).isEqualTo("INCLUIDA2");
-        }
+        assertExportNumbers(request("salesReport.inputInvoices", "invoice", filters), "INCLUIDA1", "INCLUIDA2");
     }
 
     @Test
@@ -139,12 +134,7 @@ class SalesReportMultiFilterExportTest {
                 null, List.of("Ana - 123", "Cliente histórico"), null, null, null, null, List.of("GENERAL", "RESERVA"));
         var request = request("salesReport.warehouseOutputs", "output", filters);
 
-        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(excel.export(request, authentication)))) {
-            var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getLastRowNum()).isEqualTo(10);
-            assertThat(sheet.getRow(9).getCell(0).getStringCellValue()).isEqualTo("INCLUIDA1");
-            assertThat(sheet.getRow(10).getCell(0).getStringCellValue()).isEqualTo("INCLUIDA2");
-        }
+        assertExportNumbers(request, "INCLUIDA1", "INCLUIDA2");
         try (var pdf = Loader.loadPDF(new SalesReportPdfExportService(excel).export(request, authentication))) {
             assertThat(new PDFTextStripper().getText(pdf)).contains("INCLUIDA1", "INCLUIDA2")
                     .doesNotContain("OTROCLIENTE", "OTROALMACEN", "SINCLIENTE");
@@ -174,11 +164,11 @@ class SalesReportMultiFilterExportTest {
                 List.of("salesReport.status.returned", "salesReport.status.invoiced"), null);
         var request = request("salesReport.tickets", "ticket", filters);
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(excel.export(request, authentication)))) {
-            var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getLastRowNum()).isEqualTo(2);
-            assertThat(sheet.getRow(1).getCell(0).getStringCellValue()).isEqualTo("DEVOLUCION");
-            assertThat(sheet.getRow(1).getCell(1).getNumericCellValue()).isEqualTo(-12.10);
-            assertThat(sheet.getRow(2).getCell(0).getStringCellValue()).isEqualTo("FACTURADO");
+            var rows = dataRows(workbook.getSheetAt(0));
+            assertThat(rows).hasSize(2);
+            assertThat(rows.get(0).getCell(0).getStringCellValue()).isEqualTo("DEVOLUCION");
+            assertThat(rows.get(0).getCell(1).getNumericCellValue()).isEqualTo(-12.10);
+            assertThat(rows.get(1).getCell(0).getStringCellValue()).isEqualTo("FACTURADO");
         }
         verify(tickets).list(500, null, null, new CustomerDocumentReportFilter(null, null,
                 LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30), null, null));
@@ -249,13 +239,15 @@ class SalesReportMultiFilterExportTest {
 
     private void assertExportNumbers(SalesReportExportRequest request, String... expected) throws Exception {
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(excel.export(request, authentication)))) {
-            var sheet = workbook.getSheetAt(0);
-            var actual = new java.util.ArrayList<String>();
-            for (int index = 1; index <= sheet.getLastRowNum(); index++) {
-                actual.add(sheet.getRow(index).getCell(0).getStringCellValue());
-            }
-            assertThat(actual).containsExactly(expected);
+            assertThat(dataRows(workbook.getSheetAt(0)))
+                    .extracting(row -> row.getCell(0).getStringCellValue()).containsExactly(expected);
         }
+    }
+
+    private List<Row> dataRows(XSSFSheet sheet) {
+        var range = CellRangeAddress.valueOf(sheet.getCTWorksheet().getAutoFilter().getRef());
+        return java.util.stream.IntStream.rangeClosed(range.getFirstRow() + 1, range.getLastRow())
+                .mapToObj(index -> (Row) sheet.getRow(index)).toList();
     }
 
     private SalesReportExportRequest request(String report, String numberColumn, SalesReportExportRequest.Filters filters) {
@@ -321,6 +313,7 @@ class SalesReportMultiFilterExportTest {
         when(store.getCodigoTienda()).thenReturn("01");
         when(store.getNombreEfectivo()).thenReturn("TIENDA DEMO");
         when(store.getMoneda()).thenReturn("EUR");
+        when(store.getTimezone()).thenReturn("Europe/Madrid");
         return organization;
     }
 }

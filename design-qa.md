@@ -1397,3 +1397,9 @@ final result: passed
 - Compilación final de todos los workspaces frontend correcta (`npm run build`) y presupuestos correctos; permanece el aviso de CSS Ventas 457821/460000.
 - Revisiones finales acotadas de Electron/visor y backend/exportaciones sin hallazgos P1/P2 confirmados. Se reutilizan las pruebas focalizadas y la evidencia visual anteriores, sin imprimir físicamente ni modificar datos de negocio.
 - Base verificada: backend/main = HEAD 0d035076 antes del commit. Preparados únicamente los 111 archivos de código, pruebas, plantillas y QA del alcance de exportaciones. git diff --cached --check correcto.
+
+## PR #318: adaptación de contratos de exportación en CI — 2026-11-15
+
+- Siete suites frontend todavía esperaban descarga directa mediante saveFile. Ahora verifican previewExport y el resultado explícito del visor, manteniendo filtros, selección, ausencia de escrituras, desmontaje y temporizadores; cubren cancelación de Excel/PDF.
+- Las pruebas de exportación con múltiples filtros y de documentos de cliente con PostgreSQL se ajustan a las nuevas cabeceras, rangos de datos y fórmulas; el mock de tienda declara su zona horaria. Se conservan las comprobaciones de precisión, importes negativos y aislamiento de cliente/tienda.
+- Validación local: 110 pruebas frontend, 10 de filtros de exportación y 37 de repositorio PostgreSQL correctas. PostgreSQL 17.6 temporal aislado, eliminado tras validar; sin acceso a datos de negocio. TypeScript Ventas/Gestión y git diff --check correctos. Sin cambios de producción en esta corrección.

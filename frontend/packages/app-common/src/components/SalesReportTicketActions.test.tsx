@@ -3,6 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
+import { previewExport } from "../export/previewExport";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getHardwareBridge } from "../hardware/hardware";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -15,6 +16,7 @@ vi.mock("../api/client", async () => ({
   ...await vi.importActual<typeof import("../api/client")>("../api/client"),
   apiRequest: vi.fn(),
 }));
+vi.mock("../export/previewExport", () => ({ previewExport: vi.fn().mockResolvedValue({ downloaded: true, printed: false, canceled: false }) }));
 vi.mock("../sale/ticketPrinting", async () => ({
   ...await vi.importActual<typeof import("../sale/ticketPrinting")>("../sale/ticketPrinting"),
   outputConfirmedTicketsSequentially: vi.fn(),
@@ -301,13 +303,12 @@ describe("Ticket report document actions", () => {
 
   it("exports only the selected ticket without opening its detail or writing business data", async () => {
     const { row, request } = await mountReport();
-    const saveFile = vi.fn().mockResolvedValue({ ok: true });
-    Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { reports: { saveFile } } });
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
       new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
     fireEvent.click(row);
     fireEvent.click(within(openMenu()).getByRole("menuitem", { name: "Exportar Excel" }));
-    await waitFor(() => expect(saveFile).toHaveBeenCalledWith(expect.objectContaining({ defaultFileName: "T-002.xlsx" })));
+    await waitFor(() => expect(previewExport).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ fileName: "T-002.xlsx", blob: expect.any(Blob) })));
     expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining("/excel/documents/ticket-2/export"), {
       headers: { Authorization: "Bearer token" },
     });
