@@ -39,6 +39,12 @@ public class SyncEventService {
     private CustomerAddressBookService customerAddressBookService;
     private CommercialDocumentSyncProjector commercialDocumentSyncProjector;
     private com.tpverp.saas.supervision.StoreFailureProjector storeFailureProjector;
+    private ReplenishmentRequestProjector replenishmentRequestProjector;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setReplenishmentRequestProjector(ReplenishmentRequestProjector projector) {
+        this.replenishmentRequestProjector = projector;
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     void setStoreFailureProjector(com.tpverp.saas.supervision.StoreFailureProjector projector) {
@@ -137,10 +143,12 @@ public class SyncEventService {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Procedencia del evento incompatible con la instalacion autenticada");
             }
             if (sameEvent(existing, installation, request, payloadHash)) {
-                if (existing.getProjectionStatus() == SaasSyncEvent.ProjectionStatus.ERROR) {
+                if (existing.getProjectionStatus() == SaasSyncEvent.ProjectionStatus.ERROR
+                        || ReplenishmentRequestProjector.ENTITY_TYPE.equals(request.entityType())
+                                && existing.getProjectionStatus() == SaasSyncEvent.ProjectionStatus.IGNORED) {
                     project(existing, request, clock.instant());
                 }
-                return new SyncEventReceipt(request.eventId(), true);
+                return receipt(existing);
             }
             String error = "El eventId ya existe con contenido o procedencia diferente. hashRecibido="
                     + payloadHash;
@@ -167,7 +175,7 @@ public class SyncEventService {
         event = events.save(event);
 
         project(event, request, received.value());
-        return new SyncEventReceipt(request.eventId(), true);
+        return receipt(event);
     }
 
     // The guarded recovery service owns the transaction and the same locks as receive().
@@ -184,6 +192,14 @@ public class SyncEventService {
     }
 
     private void projectEvent(SaasSyncEvent event, SyncEventRequest request, java.time.Instant projectedAt) {
+        if (replenishmentRequestProjector != null && replenishmentRequestProjector.supports(request.entityType())) {
+            events.flush();
+            replenishmentRequestProjector.project(event, request);
+            event.markProjected(projectedAt);
+            event.purgeReplenishmentPayload();
+            replenishmentRequestProjector.purgeSupersededEvents(event, request);
+            return;
+        }
         if (customerAddressBookService != null && customerAddressBookService.supports(request.entityType(), request.operation())) {
             customerAddressBookService.project(event, request.payload());
             // A revision conflict is persisted as a terminal business outcome.
@@ -324,6 +340,11 @@ public class SyncEventService {
                 && Objects.equals(
                         existing.getInstallation() == null ? null : existing.getInstallation().getId(),
                         installation.getId());
+    }
+    private static SyncEventReceipt receipt(SaasSyncEvent event) {
+        return new SyncEventReceipt(event.getEventId(), true,
+                ReplenishmentRequestProjector.ENTITY_TYPE.equals(event.getEntityType())
+                        ? event.getProjectionStatus() : null);
     }
     private record InstantHolder(java.time.Instant value) {
     }

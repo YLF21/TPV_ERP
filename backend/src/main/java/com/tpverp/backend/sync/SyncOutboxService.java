@@ -36,6 +36,11 @@ public class SyncOutboxService {
         return event;
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void discardReplenishmentSnapshots(UUID companyId, UUID storeId, UUID requestId) {
+        repository.discardReplenishmentSnapshots(companyId, storeId, requestId);
+    }
+
     @Transactional(readOnly = true)
     public List<SyncOutboxEvent> pending() {
         return repository.findByStatusOrderByCreatedAtAsc(SyncOutboxStatus.PENDIENTE);

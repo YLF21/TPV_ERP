@@ -192,6 +192,9 @@ public class SyncOutboxEvent {
         this.claimedAt = null;
         this.claimToken = null;
         this.updatedAt = sentAt;
+        // Replenishment is a transient list, not a business audit ledger. Keep only
+        // delivery metadata once SaaS has acknowledged the persisted projection.
+        if ("REPLENISHMENT_REQUEST".equals(entityType)) this.payload = new LinkedHashMap<>();
         return true;
     }
 

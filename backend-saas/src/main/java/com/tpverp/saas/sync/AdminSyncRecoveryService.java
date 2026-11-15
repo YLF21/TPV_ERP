@@ -80,11 +80,18 @@ public class AdminSyncRecoveryService {
                 || !Objects.equals(event.getInstallation().getId(), installation.getId())) {
             throw conflict("La procedencia del evento no es compatible con la instalacion");
         }
-        if (!request.expectedPayloadHash().equals(event.getPayloadHash())
-                || !event.getPayloadHash().equals(hash(event.getPayload()))) {
+        if (!request.expectedPayloadHash().equals(event.getPayloadHash())) {
+            throw conflict("La huella del evento no coincide con el contenido original");
+        }
+        boolean purgedReplenishment = ReplenishmentRequestProjector.ENTITY_TYPE.equals(event.getEntityType())
+                && ReplenishmentRequestProjector.PURGED_PAYLOAD.equals(event.getPayload());
+        if (!purgedReplenishment && !event.getPayloadHash().equals(hash(event.getPayload()))) {
             throw conflict("La huella del evento no coincide con el contenido original");
         }
         var before = event.getProjectionStatus();
+        if (purgedReplenishment && before != SaasSyncEvent.ProjectionStatus.PROJECTED) {
+            throw conflict("El payload purgado carece de proyeccion confirmada");
+        }
         if (before == SaasSyncEvent.ProjectionStatus.PROJECTED
                 || before == SaasSyncEvent.ProjectionStatus.IGNORED) {
             if (event.getProjectionError() != null) throw conflict("El evento conserva un conflicto que requiere revision");

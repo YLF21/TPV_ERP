@@ -123,6 +123,14 @@ public class SaasSyncEvent {
         projectionError = null;
     }
 
+    public void purgeReplenishmentPayload() {
+        if (!ReplenishmentRequestProjector.ENTITY_TYPE.equals(entityType)
+                || projectionStatus != ProjectionStatus.PROJECTED) {
+            throw new IllegalStateException("Solo se puede purgar una reposicion proyectada");
+        }
+        payload = ReplenishmentRequestProjector.PURGED_PAYLOAD;
+    }
+
     public void markIgnored(Instant now) {
         projectionStatus = ProjectionStatus.IGNORED;
         projectedAt = now;

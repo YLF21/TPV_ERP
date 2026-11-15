@@ -12,6 +12,16 @@ import org.springframework.data.repository.query.Param;
 
 public interface SyncOutboxEventRepository extends JpaRepository<SyncOutboxEvent, UUID> {
 
+    /** A final replenishment deletion supersedes its queued snapshots, including failed deliveries. */
+    @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true)
+    @Query("""
+            delete from SyncOutboxEvent event
+            where event.companyId = :companyId and event.storeId = :storeId
+              and event.entityType = 'REPLENISHMENT_REQUEST' and event.entityId = :requestId
+            """)
+    int discardReplenishmentSnapshots(@Param("companyId") UUID companyId,
+            @Param("storeId") UUID storeId, @Param("requestId") UUID requestId);
+
     // Read JSON as text so epoch decimals are not rounded by Map<String,Object>/Double.
     @Query(value = """
             select event_id as eventId, empresa_id as companyId, tienda_id as storeId,
