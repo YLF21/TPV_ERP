@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
-import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.ss.usermodel.FillPatternType;
 import org.junit.jupiter.api.Test;
@@ -86,38 +85,28 @@ class WarehouseDocumentExcelExportServiceTest {
 
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
             var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getRow(0).getCell(1).getStringCellValue()).isEqualTo("EMPRESA PRUEBAS SL");
-            assertThat(sheet.getRow(0).getCell(3).getStringCellValue()).isEqualTo("Documento");
-            assertThat(sheet.getRow(0).getCell(4).getStringCellValue()).isEqualTo("Salida de almacén");
-            assertThat(sheet.getRow(6).getCell(0).getStringCellValue()).isEqualTo("Código");
-            assertThat(sheet.getRow(7).getCell(0).getStringCellValue()).isEqualTo("DEV-CAFE");
-            assertThat(sheet.getRow(7).getCell(3).getNumericCellValue()).isEqualTo(2.208);
-            assertThat(sheet.getRow(7).getCell(3).getCellStyle().getDataFormatString()).contains("0.00#");
-            assertThat(sheet.getRow(7).getCell(4).getNumericCellValue()).isEqualTo(22.08);
-            assertThat(sheet.getRow(7).getCell(4).getCellStyle().getDataFormatString()).doesNotContain("0.00#");
-            assertThat(workbook.getFontAt(sheet.getRow(0).getCell(0).getCellStyle().getFontIndex()).getBold())
-                    .isTrue();
-            assertThat(workbook.getFontAt(sheet.getRow(6).getCell(0).getCellStyle().getFontIndex()).getBold())
-                    .isTrue();
-            assertThat(sheet.getRow(0).getCell(0).getCellStyle().getFillPattern())
-                    .isEqualTo(FillPatternType.NO_FILL);
-            assertThat(sheet.getRow(0).getCell(1).getCellStyle().getFillPattern())
-                    .isEqualTo(FillPatternType.NO_FILL);
-            assertThat(workbook.getFontAt(sheet.getRow(0).getCell(1).getCellStyle().getFontIndex()).getBold())
-                    .isTrue();
-            assertThat(sheet.getRow(6).getCell(0).getCellStyle().getFillPattern())
-                    .isEqualTo(FillPatternType.NO_FILL);
-            assertThat(sheet.getRow(0).getCell(0).getCellStyle().getBorderTop())
-                    .isEqualTo(BorderStyle.THIN);
-            assertThat(sheet.getRow(0).getCell(4).getCellStyle().getBorderRight())
-                    .isEqualTo(BorderStyle.THIN);
-            assertThat(sheet.getRow(6).getCell(4).getCellStyle().getBorderBottom())
-                    .isEqualTo(BorderStyle.THIN);
-            assertThat(sheet.getRow(9).getCell(0).getCellStyle().getFillPattern())
-                    .isEqualTo(FillPatternType.NO_FILL);
-            assertThat(workbook.getFontAt(sheet.getRow(9).getCell(0).getCellStyle().getFontIndex()).getBold())
-                    .isTrue();
-            assertThat(sheet.getPaneInformation()).isNotNull();
+            int header = sheet.getPaneInformation().getHorizontalSplitPosition() - 1;
+            var data = sheet.getRow(header + 1);
+            var total = sheet.getRow(sheet.getLastRowNum());
+            assertThat(workbook.getNumberOfSheets()).isEqualTo(1);
+            assertThat(sheet.getRow(0).getCell(0).getStringCellValue()).isEqualTo("SALIDA DE ALMACÉN");
+            assertThat(sheet.getRow(1).getCell(1).getStringCellValue()).isEqualTo("EMPRESA PRUEBAS SL");
+            assertThat(sheet.getRow(header).getCell(0).getStringCellValue()).isEqualTo("Código");
+            assertThat(data.getCell(0).getStringCellValue()).isEqualTo("DEV-CAFE");
+            assertThat(data.getCell(2).getNumericCellValue()).isEqualTo(10);
+            assertThat(data.getCell(3).getNumericCellValue()).isEqualTo(2.208);
+            assertThat(data.getCell(3).getCellStyle().getDataFormatString()).contains("0.00#");
+            assertThat(data.getCell(4).getNumericCellValue()).isEqualTo(22.08);
+            assertThat(data.getCell(4).getCellStyle().getDataFormatString()).doesNotContain("0.00#");
+            assertThat(total.getCell(4).getNumericCellValue()).isEqualTo(22.08);
+            assertThat(workbook.getFontAt(data.getCell(1).getCellStyle().getFontIndex()).getFontName()).isEqualTo("Calibri");
+            assertThat(data.getCell(1).getCellStyle().getWrapText()).isTrue();
+            assertThat(sheet.getRow(0).getCell(0).getCellStyle().getFillPattern()).isEqualTo(FillPatternType.SOLID_FOREGROUND);
+            assertThat(sheet.getRow(header).getCell(0).getCellStyle().getFillPattern()).isEqualTo(FillPatternType.SOLID_FOREGROUND);
+            assertThat(workbook.getFontAt(total.getCell(4).getCellStyle().getFontIndex()).getBold()).isTrue();
+            var path = java.nio.file.Path.of("target", "warehouse-design", "Salida-individual.xlsx");
+            java.nio.file.Files.createDirectories(path.getParent());
+            java.nio.file.Files.write(path, bytes);
         }
     }
 
@@ -151,19 +140,20 @@ class WarehouseDocumentExcelExportServiceTest {
 
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
             var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getRow(0).getCell(1).getStringCellValue()).isEqualTo("EMPRESA PRUEBAS SL");
-            assertThat(sheet.getRow(0).getCell(4).getStringCellValue()).isEqualTo(
-                    type == WarehouseInputDocumentType.FACTURA_ENTRADA ? "Entrada de factura" : "Entrada de albarán");
-            assertThat(sheet.getRow(9).getCell(0).getStringCellValue()).isEqualTo("Subtotal");
-            assertThat(sheet.getRow(9).getCell(1).getNumericCellValue()).isEqualTo(100);
-            assertThat(sheet.getRow(10).getCell(0).getStringCellValue()).isEqualTo("Descuento total del documento %");
-            assertThat(sheet.getRow(10).getCell(1).getNumericCellValue()).isEqualTo(ratio);
+            int totalRow = sheet.getLastRowNum();
+            assertThat(sheet.getRow(1).getCell(1).getStringCellValue()).isEqualTo("EMPRESA PRUEBAS SL");
+            assertThat(sheet.getRow(0).getCell(0).getStringCellValue()).isEqualTo(
+                    type == WarehouseInputDocumentType.FACTURA_ENTRADA ? "ENTRADA DE FACTURA" : "ENTRADA DE ALBARÁN");
+            assertThat(sheet.getRow(totalRow - 2).getCell(0).getStringCellValue()).isEqualTo("Subtotal");
+            assertThat(sheet.getRow(totalRow - 2).getCell(4).getNumericCellValue()).isEqualTo(100);
+            assertThat(sheet.getRow(totalRow - 1).getCell(0).getStringCellValue()).isEqualTo("Descuento total del documento %");
+            assertThat(sheet.getRow(totalRow - 1).getCell(4).getNumericCellValue()).isEqualTo(ratio);
             assertThat(new org.apache.poi.ss.usermodel.DataFormatter(Locale.US)
-                    .formatCellValue(sheet.getRow(10).getCell(1))).isEqualTo(formatted);
+                    .formatCellValue(sheet.getRow(totalRow - 1).getCell(4))).isEqualTo(formatted);
             assertThat(new org.apache.poi.ss.usermodel.DataFormatter(Locale.forLanguageTag("es-ES"))
-                    .formatCellValue(sheet.getRow(10).getCell(1))).isEqualTo(formatted.replace('.', ','));
-            assertThat(sheet.getRow(11).getCell(0).getStringCellValue()).isEqualTo("Total de compra");
-            assertThat(sheet.getRow(11).getCell(1).getNumericCellValue()).isEqualTo(total);
+                    .formatCellValue(sheet.getRow(totalRow - 1).getCell(4))).isEqualTo(formatted.replace('.', ','));
+            assertThat(sheet.getRow(totalRow).getCell(0).getStringCellValue()).isEqualTo("Total de compra");
+            assertThat(sheet.getRow(totalRow).getCell(4).getNumericCellValue()).isEqualTo(total);
         }
         verify(inputs).findByIdAndStoreId(input.getId(), store.getId());
     }

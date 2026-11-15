@@ -1,4 +1,5 @@
 import { WindowCloseButton } from "./WindowCloseButton";
+import { previewPreparedPdf } from "../export/preparedPdfExport";
 import { DialogDismissButton } from "./DialogDismissButton";
 import { sortProductsByCode } from "./productSearchOrdering";
 import { useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
@@ -472,11 +473,13 @@ export function SaleProductLabelDialog({
       const next = await persistProfile();
       const payload = request(contexts);
       if (pdf) {
-        const result = await bridge.exportProductLabelPdf(payload, `etiquetas-${selectedItems.length}.pdf`);
-        if (!result.ok) throw new Error(result.message);
-        if (!result.canceled) {
+        const result = await previewPreparedPdf("labels", payload, `etiquetas-${selectedItems.length}.pdf`, locale);
+        if (result.downloaded) {
           setStatus(t.pdfSaved);
           onPrinted(true);
+        } else if (result.printed) {
+          setStatus(t.printed);
+          onPrinted(false);
         }
       } else {
         const result = await bridge.printProductLabel(payload, next);

@@ -71,9 +71,23 @@ public class SalesActivityJasperRenderer {
         if (summary.operations() != null) {
             appendCommercialSections(lines, summary.operations());
         }
+        if (format == DocumentTemplateFormat.A4) {
+            markDailyA4Sections(lines);
+        }
         return render(root, format == DocumentTemplateFormat.TICKET_80
                 ? "RESUMEN_VENTAS_DIA_TICKET_80.jrxml"
                 : "RESUMEN_VENTAS_DIA_A4.jrxml", format);
+    }
+
+    private static void markDailyA4Sections(ArrayNode lines) {
+        int section = 0;
+        for (var node : lines) {
+            var row = (ObjectNode) node;
+            if ("SECTION".equals(row.path("lineType").asText())) {
+                section++;
+            }
+            row.put("sectionKey", section);
+        }
     }
 
     public RenderedReport renderDocuments(
@@ -185,11 +199,11 @@ public class SalesActivityJasperRenderer {
                     ? row.ticketNumber() + " -> " + row.invoiceNumber()
                     : !row.ticketNumber().isBlank() ? row.ticketNumber() : row.invoiceNumber();
             String details = String.join(" | ", java.util.stream.Stream.of(
-                            date + (occurred.isBlank() ? "" : " " + occurred), number,
-                            row.userName(), String.join(", ", row.paymentMethods()),
+                            number, row.userName(), String.join(", ", row.paymentMethods()),
                             displayStatus(row))
                     .filter(value -> value != null && !value.isBlank()).toList());
-            line(lines, "DOCUMENT", details, money(row.total()));
+            line(lines, "DOCUMENT", date + (occurred.isBlank() ? "" : " " + occurred),
+                    details, money(row.total()));
         }
     }
 

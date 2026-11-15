@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FilePdf, FileXls, Plus, Trash } from "@phosphor-icons/react";
 import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
 import { apiRequest } from "../../../packages/app-common/src/api/client";
+import { previewExport } from "../../../packages/app-common/src/export/previewExport";
 import { ErpListSelect } from "../../../packages/app-common/src/components/ErpListSelect";
 import { listFilterChips, matchesListFilter } from "../../../packages/app-common/src/components/listFilterValues";
 import { ErpListFilterPanel } from "../../../packages/app-common/src/components/ErpListFilterPanel";
@@ -53,8 +54,8 @@ export function StockCountScreen({ session, locale = "es", t }: { session: UserS
   async function run(action: () => Promise<void>) { if (busy) return; setBusy(true); setError(""); try { await action(); } catch (cause) { setError(cause instanceof Error ? cause.message : c("error")); } finally { setBusy(false); } }
   function open(id: string) { void run(async () => setEditor({ document: await loadStockCount(id, token) })); }
   async function exportFile(format: "pdf" | "xlsx") {
-    if (!selection) return; const blob = await exportStockCount(selection.id, format, token); const url = URL.createObjectURL(blob);
-    const link = document.createElement("a"); link.href = url; link.download = `${selection.number}.${format}`; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    if (!selection) return; const blob = await exportStockCount(selection.id, format, token);
+    await previewExport({ blob, fileName: `${selection.number}.${format}`, locale, formattedWorkbook: format === "xlsx" });
   }
   async function cancelDocument() {
     if (!cancelDocumentId || busy || cancelBusy.current) return;

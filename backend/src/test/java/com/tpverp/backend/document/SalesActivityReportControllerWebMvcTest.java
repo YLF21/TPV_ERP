@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 
 import com.tpverp.backend.cash.CashPermissionService;
 import com.tpverp.backend.document.template.DocumentTemplateFormat;
@@ -89,7 +90,8 @@ class SalesActivityReportControllerWebMvcTest {
         mvc.perform(get("/api/v1/sales-activity/daily/excel")
                         .param("date", DATE.toString())
                         .with(user("sales").authorities(() -> "GESTION_VENTAS")))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"Ventas_160826.xlsx\""));
         mvc.perform(get("/api/v1/sales-activity/daily/render")
                         .param("date", DATE.toString())
                         .param("format", "A4")
@@ -110,7 +112,19 @@ class SalesActivityReportControllerWebMvcTest {
                         .param("dateFrom", DATE.toString())
                         .param("dateTo", DATE.toString())
                         .with(user("sales").authorities(() -> "GESTION_VENTAS")))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=\"Documentos_de_ventas_160826.xlsx\""));
+
+        var from = DATE.withDayOfMonth(5);
+        when(excel.documents(from, DATE, SalesActivityPrintGrouping.DOCUMENT)).thenReturn(new byte[] {1});
+        mvc.perform(get("/api/v1/sales-activity/documents/excel")
+                        .param("dateFrom", from.toString())
+                        .param("dateTo", DATE.toString())
+                        .with(user("sales").authorities(() -> "GESTION_VENTAS")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=\"Documentos_de_ventas_050826-160826.xlsx\""));
 
         verify(excel).documents(DATE, DATE, SalesActivityPrintGrouping.DOCUMENT);
     }

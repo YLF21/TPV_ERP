@@ -12,7 +12,44 @@ function safeImage(value) {
   return /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(source) ? source : "";
 }
 
+function renderPartyDirectoryReportHtml(report) {
+  const columns = Array.isArray(report.columns) ? report.columns : [];
+  const rows = Array.isArray(report.rows) ? report.rows : [];
+  const filters = Array.isArray(report.filters) ? report.filters : [];
+  const totals = Array.isArray(report.totals) ? report.totals : [];
+  const locale = ["es", "en", "zh"].includes(report.locale) ? report.locale : "es";
+  const labels = locale === "zh" ? ["公司", "门店", "第", " 页，共 "]
+    : locale === "en" ? ["Company", "Store", "Page ", " of "]
+      : ["Empresa", "Tienda", "Página ", " de "];
+  const printDateLabel = locale === "zh" ? "打印日期" : locale === "en" ? "Print date" : "Fecha de impresión";
+  const metadata = [
+    ...(typeof report.companyName === "string" && report.companyName.trim() ? [{ label: labels[0], value: report.companyName.trim() }] : []),
+    ...(typeof report.storeName === "string" && report.storeName.trim() ? [{ label: labels[1], value: report.storeName.trim() }] : []),
+    ...(typeof report.printedAt === "string" && report.printedAt.trim() ? [{ label: printDateLabel, value: report.printedAt.trim() }] : []),
+  ];
+  const orientation = columns.length > 6 ? "landscape" : "portrait";
+  return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>${escapeHtml(report.title)}</title><style>
+@page{size:A4 ${orientation};margin:14mm 10mm 18mm}
+@page{@bottom-right{content:"${labels[2]}" counter(page) "${labels[3]}" counter(pages);font:10px Calibri,Arial,sans-serif;color:#536a83}}
+*{box-sizing:border-box}body{margin:0;color:#172334;font:11px Calibri,Arial,sans-serif}
+h1{margin:0 0 10px;padding:12px 14px;background:#0A2F56;color:white;font-size:18px}
+.metadata{margin:8px 0 10px;font-size:10px}.metadata div{margin:2px 0}
+.filters{margin:10px 0}.filters div{margin:2px 0}
+table{width:100%;margin-top:12px;border-collapse:collapse;table-layout:fixed}thead{display:table-header-group}
+th,td{border:1px solid #ccd3dd;padding:8px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+th{background:#0A2F56;color:white;font-weight:700}tbody tr:nth-child(even){background:#f2f6fa}
+tr{break-inside:avoid}.totals{margin-top:10px;font-size:14px;font-weight:700;break-inside:avoid}
+</style></head><body><h1>${escapeHtml(report.title)}</h1>
+<section class="metadata">${metadata.map((item) => `<div><strong>${escapeHtml(item.label)}:</strong> ${escapeHtml(item.value)}</div>`).join("")}</section>
+<section class="filters">${filters.map((item) => `<div><strong>${escapeHtml(item.label)}:</strong> ${escapeHtml(item.value)}</div>`).join("")}</section>
+<table><thead><tr>${columns.map((column) => `<th scope="col">${escapeHtml(column.label)}</th>`).join("")}</tr></thead>
+<tbody>${rows.map((row) => `<tr>${columns.map((_column, index) => `<td>${escapeHtml(row[index])}</td>`).join("")}</tr>`).join("")}</tbody></table>
+<section class="totals">${totals.map((item) => `<div><strong>${escapeHtml(item.label)}:</strong> ${escapeHtml(item.value)}</div>`).join("")}</section>
+</body></html>`;
+}
+
 function renderTableReportHtml(report = {}) {
+  if (report.reportStyle === "partyDirectory") return renderPartyDirectoryReportHtml(report);
   const columns = Array.isArray(report.columns) ? report.columns : [];
   const rows = Array.isArray(report.rows) ? report.rows : [];
   const filters = Array.isArray(report.filters) ? report.filters : [];

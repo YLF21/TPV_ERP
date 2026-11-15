@@ -172,7 +172,8 @@ public class SalesReportExcelExportService {
     }
 
     private Map<String, Object> ticketReportRow(TicketReportView value) {
-        var row = baseRow(value.fecha(), value.usuarioNombre(), value.terminalOrigenNombre(), value.ocurridoEn());
+        var row = new TicketExportRow(value.effectiveTotal() == null ? value.total() : value.effectiveTotal());
+        row.putAll(baseRow(value.fecha(), value.usuarioNombre(), value.terminalOrigenNombre(), value.ocurridoEn()));
         row.put("ticket", value.numero());
         row.put("customer", text(value.customerCode(), id(value.customerId())));
         row.put("customerName", value.customerName());
@@ -385,6 +386,9 @@ public class SalesReportExcelExportService {
     }
 
     private byte[] workbook(SalesReportExportRequest request, List<Map<String, Object>> rows) {
+        if (TicketReportWorkbookLayout.supports(request.reportKey())) {
+            return TicketReportWorkbookLayout.write(request, rows, organization);
+        }
         try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
             var sheet = workbook.createSheet("Informe");
             var headerStyle = workbook.createCellStyle();
@@ -643,5 +647,17 @@ public class SalesReportExcelExportService {
 
     private static BigDecimal amount(Object value) {
         return value instanceof BigDecimal decimal ? decimal : new BigDecimal(String.valueOf(value));
+    }
+
+    static final class TicketExportRow extends LinkedHashMap<String, Object> {
+        private final BigDecimal effectiveTotal;
+
+        TicketExportRow(BigDecimal effectiveTotal) {
+            this.effectiveTotal = effectiveTotal;
+        }
+
+        BigDecimal effectiveTotal() {
+            return effectiveTotal == null ? BigDecimal.ZERO : effectiveTotal;
+        }
     }
 }

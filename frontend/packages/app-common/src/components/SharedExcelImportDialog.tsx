@@ -1,5 +1,6 @@
 import { WindowCloseButton } from "./WindowCloseButton";
 import { FolderOpen } from "@phosphor-icons/react";
+import { previewExport } from "../export/previewExport";
 import { useEffect, useMemo, useRef, useState } from "react";
 import "../styles/shared-excel-import.css";
 import type { PointerEvent } from "react";
@@ -602,6 +603,7 @@ export function SharedExcelImportDialog({
       return;
     }
     const closeOnEscape = (event: KeyboardEvent) => {
+      if (document.querySelector('.export-preview-dialog[open]')) return;
       if (manualQueue.length || manualSaveInFlightRef.current) return;
       if (event.target instanceof Element && event.target.closest(".erp-select--open")) return;
       if (sharedExcelImportKeyAction(event.key) !== "close") {
@@ -1126,8 +1128,9 @@ export function SharedExcelImportDialog({
         { view: exportViewForPanel[panel], columns: raw ? [] : exportColumns.map((column) => column.key),
           ...(errorReport ? { errorRows: reviewTableRows.map((row) => row.values) } : {}) });
       if (operationSequenceRef.current !== sequence) return;
-      downloadSummaryBlob(download.blob, download.fileName);
-      setStatus(t("sharedExcel.status.exported"));
+      const result = await previewExport({ blob: download.blob, fileName: download.fileName, locale });
+      if (operationSequenceRef.current !== sequence) return;
+      setStatus(result.downloaded ? t("sharedExcel.status.exported") : "");
     } catch (error) {
       if (operationSequenceRef.current !== sequence) return;
       const structured = productExcelImportErrorsFromApi(error);
@@ -2635,16 +2638,4 @@ function metadataDecimal(value: unknown): number | undefined {
   if (value === null || value === undefined || String(value).trim() === "") return undefined;
   const parsed = Number(String(value).trim().replace(",", "."));
   return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function downloadSummaryBlob(blob: Blob, fileName: string) {
-  const url = URL.createObjectURL(blob);
-  try {
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = fileName;
-    link.click();
-  } finally {
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
-  }
 }

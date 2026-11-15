@@ -4,7 +4,7 @@ import { useTableInitialFocus } from "./useTableInitialFocus";
 import { ensureTableRowVisible } from "./ensureTableRowVisible";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { apiProblemCode, apiRequest } from "../api/client";
-import type { AppKind, LocaleCode, Permission, UserSession } from "../types";
+import type { AppKind, LocaleCode, Permission, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ErpListSelect } from "./ErpListSelect";
 import { compactListFilter, listFilterChips, listFilterValues, matchesListFilter } from "./listFilterValues";
@@ -69,6 +69,7 @@ export type PartyDirectoryPanelProps = {
   kind: PartyDirectoryKind;
   locale: LocaleCode;
   session: UserSession;
+  terminalContext?: TerminalContext;
   onOpenCustomerReceivables?: (customerId: string) => void;
   allowSafeRetirement?: boolean;
   headerExtra?: ReactNode;
@@ -430,6 +431,7 @@ export function PartyDirectoryPanel({
   kind,
   locale,
   session,
+  terminalContext,
   onOpenCustomerReceivables,
   allowSafeRetirement = false,
   headerExtra
@@ -818,6 +820,9 @@ export function PartyDirectoryPanel({
   const toolbarEntry = rows.find(entry => entry.id === selectedRowId) ?? null;
   async function exportDirectory(format: "xlsx" | "pdf") {
     if (app !== "gestion" || exportBusyRef.current || loading || loadError) return;
+    const exportedAt = new Date();
+    const datePart = `${String(exportedAt.getDate()).padStart(2, "0")}${String(exportedAt.getMonth() + 1).padStart(2, "0")}${String(exportedAt.getFullYear()).slice(-2)}`;
+    const fileName = `${({ customers: "Clientes", suppliers: "Proveedores", members: "Socios" })[kind]}_${datePart}.${format}`;
     exportBusyRef.current = true;
     setExporting(true); setStatus("");
     try {
@@ -838,12 +843,17 @@ export function PartyDirectoryPanel({
       const filters = filterChips.map(chip => ({ label: chip.label, value: chip.value }));
       await savePartyDirectoryExport(format, {
         title,
+        companyName: terminalContext?.companyName,
+        storeName: terminalContext?.storeName,
+        printedAt: new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES", {
+          day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+        }).format(exportedAt),
         columns: visibleColumns.map(column => ({ key: column.key, label: columnLabel(column.key) })),
         rows: exportRows.map(entry => visibleColumns.map(column => column.key === "name" && isSupplier && (entry as SupplierView).tradeName
           ? `${cellText(column.key, entry)} · ${(entry as SupplierView).tradeName}` : cellText(column.key, entry))),
         filters,
         totals: [{ label: t("party.results").replace("{count}", String(exportRows.length)), value: "" }]
-      }, `${title}.${format}`);
+      }, fileName, locale);
     } catch {
       setStatus(t("salesReport.exportFailed"));
     } finally {

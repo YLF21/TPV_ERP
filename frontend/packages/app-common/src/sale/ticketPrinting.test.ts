@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { defaultHardwareConfig } from "../hardware/hardware";
 import type { HardwareBridge } from "../hardware/hardware";
 import type { TerminalContext } from "../types";
+import { previewPreparedPdf } from "../export/preparedPdfExport";
 import {
   commercialDocumentAsA4Document,
   printCustomerReceivablePaymentReceipt,
@@ -17,6 +18,9 @@ import type { ConfirmedTicketPrintSnapshot, CustomerReceivablePaymentReceiptSnap
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { buildTicketBuffer } = require("../../../../desktop/escpos.cjs");
+
+vi.mock("../export/preparedPdfExport", () => ({ previewPreparedPdf: vi.fn() }));
+const previewPreparedPdfMock = vi.mocked(previewPreparedPdf);
 
 const snapshot: ConfirmedTicketPrintSnapshot = {
   documentId: "document-1",
@@ -354,23 +358,39 @@ describe("confirmed ticket printing", () => {
     expect(hardware.printTicket).not.toHaveBeenCalled();
   });
 
-  it("exports the authoritative ticket snapshot as a PDF", async () => {
-    const exportTicketPdf = vi.fn().mockResolvedValue({
-      ok: true,
-      canceled: false,
-      filePath: "T-1.pdf",
-    });
+  it("previews the authoritative ticket PDF without dispatching physical output", async () => {
+    previewPreparedPdfMock.mockResolvedValueOnce({ downloaded: true, printed: false, canceled: false });
+    const exportTicketPdf = vi.fn();
+    const printTicket = vi.fn();
     const hardware = {
       getHardwareConfig: vi.fn().mockResolvedValue(defaultHardwareConfig),
       exportTicketPdf,
+      printTicket,
     } as unknown as HardwareBridge;
 
     await expect(outputConfirmedTicket(snapshot, terminal, "PDF", "es", hardware))
       .resolves.toEqual({ status: "PRINTED" });
-    expect(exportTicketPdf).toHaveBeenCalledWith(
-      expect.objectContaining({ documentNumber: "T-1", total: 7 }),
-      "T-1.pdf",
+    expect(previewPreparedPdfMock).toHaveBeenCalledWith(
+      "ticket", expect.objectContaining({ documentNumber: "T-1", total: 7 }), "T-1.pdf", "es",
     );
+    expect(exportTicketPdf).not.toHaveBeenCalled();
+    expect(printTicket).not.toHaveBeenCalled();
+  });
+
+  it("skips canceled ticket PDF preview and reports a rejected preview as failure", async () => {
+    previewPreparedPdfMock.mockResolvedValueOnce({ downloaded: false, printed: false, canceled: true })
+      .mockRejectedValueOnce(new Error("preview unavailable"));
+    const hardware = {
+      getHardwareConfig: vi.fn().mockResolvedValue(defaultHardwareConfig),
+      exportTicketPdf: vi.fn(), printTicket: vi.fn(), printA4Document: vi.fn(),
+    } as unknown as HardwareBridge;
+    await expect(outputConfirmedTicket(snapshot, terminal, "PDF", "es", hardware))
+      .resolves.toEqual({ status: "SKIPPED" });
+    await expect(outputConfirmedTicket(snapshot, terminal, "PDF", "es", hardware))
+      .resolves.toEqual({ status: "FAILED", technicalMessage: "preview unavailable" });
+    expect(hardware.exportTicketPdf).not.toHaveBeenCalled();
+    expect(hardware.printTicket).not.toHaveBeenCalled();
+    expect(hardware.printA4Document).not.toHaveBeenCalled();
   });
 
   it("routes a ticket to the configured A4 printer for this sale only", async () => {
@@ -475,15 +495,13 @@ describe("confirmed ticket printing", () => {
     );
   });
 
-  it("exports a pending commercial document as PDF when selected for this sale", async () => {
-    const exportA4DocumentPdf = vi.fn().mockResolvedValue({
-      ok: true,
-      canceled: false,
-      filePath: "FV-1.pdf",
-    });
+  it("previews a pending commercial document PDF without dispatching physical output", async () => {
+    previewPreparedPdfMock.mockResolvedValueOnce({ downloaded: true, printed: false, canceled: false });
+    const exportA4DocumentPdf = vi.fn();
     const hardware = {
       getHardwareConfig: vi.fn().mockResolvedValue(defaultHardwareConfig),
       exportA4DocumentPdf,
+      printTicket: vi.fn(), printA4Document: vi.fn(),
     } as unknown as HardwareBridge;
 
     await expect(printPendingCommercialDocument({
@@ -495,14 +513,36 @@ describe("confirmed ticket printing", () => {
       total: "7.00",
     }, terminal, hardware, "es", "PDF")).resolves.toEqual({ status: "PRINTED" });
 
-    expect(exportA4DocumentPdf).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(previewPreparedPdfMock).toHaveBeenCalledWith(
+      "a4", expect.objectContaining({
         documentType: "INVOICE",
         title: "Factura FV-1",
         total: 7,
-      }),
-      "FV-1.pdf",
+      }), "FV-1.pdf", "es",
     );
+    expect(exportA4DocumentPdf).not.toHaveBeenCalled();
+    expect(hardware.printTicket).not.toHaveBeenCalled();
+    expect(hardware.printA4Document).not.toHaveBeenCalled();
+  });
+
+  it("skips canceled commercial PDF preview and reports a rejected preview as failure", async () => {
+    previewPreparedPdfMock.mockResolvedValueOnce({ downloaded: false, printed: false, canceled: true })
+      .mockRejectedValueOnce(new Error("preview unavailable"));
+    const hardware = {
+      getHardwareConfig: vi.fn().mockResolvedValue(defaultHardwareConfig),
+      exportA4DocumentPdf: vi.fn(), printTicket: vi.fn(), printA4Document: vi.fn(),
+    } as unknown as HardwareBridge;
+    const document = {
+      kind: "COMMERCIAL_DOCUMENT" as const, documentType: "FACTURA_VENTA" as const,
+      documentNumber: "FV-1", lines: snapshot.lines, total: "7.00",
+    };
+    await expect(printPendingCommercialDocument(document, terminal, hardware, "es", "PDF"))
+      .resolves.toEqual({ status: "SKIPPED" });
+    await expect(printPendingCommercialDocument(document, terminal, hardware, "es", "PDF"))
+      .resolves.toEqual({ status: "FAILED", technicalMessage: "preview unavailable" });
+    expect(hardware.exportA4DocumentPdf).not.toHaveBeenCalled();
+    expect(hardware.printTicket).not.toHaveBeenCalled();
+    expect(hardware.printA4Document).not.toHaveBeenCalled();
   });
 
   it("keeps a pending document but skips output when no print is selected", async () => {

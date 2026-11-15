@@ -23,6 +23,19 @@ import {
 } from "./SharedExcelImportDialog";
 
 describe("SharedExcelImportDialog", () => {
+  it("keeps import open when Escape belongs to the export preview", () => {
+    const close = vi.fn();
+    render(<SharedExcelImportDialog open locale="es" context="STOCK" products={[]} onClose={close} onImportAccepted={vi.fn()} />);
+    const preview = document.createElement("dialog");
+    preview.className = "export-preview-dialog"; preview.setAttribute("open", ""); document.body.append(preview);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(close).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    preview.remove();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(close).not.toHaveBeenCalled();
+  });
   it.each(["STOCK", "WAREHOUSE_INPUT"] as const)("keeps the exact three attribute groups in %s", (context) => {
     const { container } = render(<SharedExcelImportDialog open locale="es" context={context} products={[]} onClose={vi.fn()} onImportAccepted={vi.fn()} />);
     const groups = [1, 2, 3].map((column) => Array.from(container.querySelectorAll<HTMLElement>(".shared-excel-mapping-row"))

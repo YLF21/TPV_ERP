@@ -3,6 +3,18 @@ import vm from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 
 describe("desktop preload hardware bridge", () => {
+  it("separates export preparation and explicit preview printing from hardware output", async () => {
+    const invoke = vi.fn().mockResolvedValue({ ok: true });
+    let api;
+    vm.runInNewContext(fs.readFileSync(new URL("./preload.cjs", import.meta.url), "utf8"), {
+      require: () => ({ contextBridge: { exposeInMainWorld: (_name, value) => { api = value; } }, ipcRenderer: { invoke } }),
+    });
+    const prepare = { kind: "table", document: { title: "Report" } };
+    const print = { html: "<p>Report</p>" };
+    await api.reports.preparePdf(prepare);
+    await api.reports.printExport(print);
+    expect(invoke.mock.calls).toEqual([["tpv:reports:prepare-pdf", prepare], ["tpv:reports:print-export", print]]);
+  });
   it("enumerates COM ports through a dedicated channel without renderer arguments", async () => {
     const result = { ok: true, ports: [{ path: "COM2" }] };
     const invoke = vi.fn().mockResolvedValue(result);

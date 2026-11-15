@@ -2,6 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { previewExport } from "../export/previewExport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -17,6 +18,7 @@ function mount(props: Partial<Parameters<typeof CustomerModel347Dialog>[0]> = {}
 }
 beforeEach(() => {
   vi.mocked(apiRequest).mockReset().mockResolvedValue(pdf);
+  vi.mocked(previewExport).mockReset().mockResolvedValue({ downloaded: true, printed: false, canceled: false });
   window.tpvDesktop = { reports: { saveFile: vi.fn().mockResolvedValue({ ok: true }) } } as unknown as typeof window.tpvDesktop;
 });
 afterEach(() => { cleanup(); delete window.tpvDesktop; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -29,7 +31,7 @@ describe("CustomerModel347Dialog", () => {
     vi.mocked(apiRequest).mockRejectedValue(new ApiError("internal", 422, { code }));
     mount(); fireEvent.click(screen.getByRole("button", { name: "Generar PDF" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
-    expect(window.tpvDesktop!.reports!.saveFile).not.toHaveBeenCalled();
+    expect(previewExport).not.toHaveBeenCalled();
   });
 
   it("focuses the current year, submits on Enter and saves the Jasper PDF bytes", async () => {
@@ -39,9 +41,9 @@ describe("CustomerModel347Dialog", () => {
     expect(screen.getByRole("spinbutton")).toHaveValue(new Date().getFullYear());
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "2024" } });
     await user.keyboard("{Enter}");
-    await waitFor(() => expect(window.tpvDesktop!.reports!.saveFile).toHaveBeenCalledExactlyOnceWith({
-      defaultFileName: "C-001-Cliente de prueba-Modelo 347-2024.pdf",
-      filters: [{ name: "PDF", extensions: ["pdf"] }], bytes: new Uint8Array([37, 80, 68, 70]),
+    await waitFor(() => expect(previewExport).toHaveBeenCalledExactlyOnceWith({
+      fileName: "C-001-Cliente de prueba-Modelo 347-2024.pdf",
+      blob: expect.any(Object), locale: "es",
     }));
     expect(apiRequest).toHaveBeenCalledExactlyOnceWith("/customer-document-reports/saas/customer-1/annual.pdf?year=2024&locale=es", {
       token: "test-token", responseType: "blob", signal: expect.any(AbortSignal),
@@ -94,18 +96,28 @@ describe("CustomerModel347Dialog", () => {
     expect(close).toHaveBeenCalledOnce();
     expect(vi.mocked(apiRequest).mock.calls[0][1]!.signal?.aborted).toBe(true);
     await act(async () => finish(pdf));
-    expect(window.tpvDesktop!.reports!.saveFile).not.toHaveBeenCalled();
+    expect(previewExport).not.toHaveBeenCalled();
   });
 
-  it("aborts on unmount while PDF bytes are being read", async () => {
-    let finish!: (value: ArrayBuffer) => void;
-    const arrayBuffer = vi.fn(() => new Promise<ArrayBuffer>((resolve) => { finish = resolve; }));
-    vi.mocked(apiRequest).mockResolvedValue({ arrayBuffer });
+  it("keeps the parent dialog open when Escape belongs to the export preview", () => {
+    const close = vi.fn(); mount({ onClose: close });
+    const preview = document.createElement("dialog");
+    preview.className = "export-preview-dialog"; preview.setAttribute("open", ""); document.body.append(preview);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(close).not.toHaveBeenCalled();
+    preview.remove();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("aborts on unmount while the report request is pending", async () => {
+    let finish!: (value: unknown) => void;
+    vi.mocked(apiRequest).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
     const view = mount(); fireEvent.click(screen.getByRole("button", { name: "Generar PDF" }));
-    await waitFor(() => expect(arrayBuffer).toHaveBeenCalledOnce());
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledOnce());
     view.unmount();
-    await act(async () => finish(new ArrayBuffer(0)));
-    expect(window.tpvDesktop!.reports!.saveFile).not.toHaveBeenCalled();
+    await act(async () => finish(pdf));
+    expect(previewExport).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -119,7 +131,7 @@ describe("CustomerModel347Dialog", () => {
     expect(screen.getByText(new RegExp(scope))).toBeInTheDocument();
     expect(screen.getByText(new RegExp(notice))).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: generate }));
-    await waitFor(() => expect(window.tpvDesktop!.reports!.saveFile).toHaveBeenCalledOnce());
+    await waitFor(() => expect(previewExport).toHaveBeenCalledOnce());
     expect(apiRequest).toHaveBeenCalledWith(expect.stringContaining(`&locale=${locale}`), expect.anything());
     expect(await screen.findByRole("status")).toHaveTextContent(createTranslator(locale)("customerModel347.saved"));
   });
@@ -134,18 +146,20 @@ describe("CustomerModel347Dialog", () => {
     mount({ customer: { ...customer, clientId: " AC/001 ", fiscalName: 'Niño "海洋" ' + "X".repeat(150) } });
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "2025" } });
     fireEvent.click(screen.getByRole("button", { name: "Generar PDF" }));
-    await waitFor(() => expect(downloadedName).toBe(`AC-001-Niño -海洋- ${"X".repeat(70)}-Modelo 347-2025.pdf`));
-    expect(downloadedName.length).toBeLessThan(255);
-    expect(createObjectURL).toHaveBeenCalledWith(blob); expect(revokeObjectURL).toHaveBeenCalledWith("blob:model347");
+    await waitFor(() => expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({
+      fileName: `AC-001-Niño -海洋- ${"X".repeat(70)}-Modelo 347-2025.pdf`, blob
+    })));
+    expect(downloadedName).toBe("");
+    expect(createObjectURL).not.toHaveBeenCalled(); expect(revokeObjectURL).not.toHaveBeenCalled();
   });
 
   it("keeps the dialog ready for retry after canceling the desktop save dialog", async () => {
-    vi.mocked(window.tpvDesktop!.reports!.saveFile).mockResolvedValueOnce({ ok: true, canceled: true });
+    vi.mocked(previewExport).mockResolvedValueOnce({ downloaded: false, printed: false, canceled: true });
     mount(); fireEvent.click(screen.getByRole("button", { name: "Generar PDF" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Generar PDF" })).toBeEnabled());
     expect(screen.queryByRole("status")).not.toBeInTheDocument(); expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Generar PDF" }));
-    await waitFor(() => expect(window.tpvDesktop!.reports!.saveFile).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(previewExport).toHaveBeenCalledTimes(2));
   });
 
   it.each([403, 500])("shows a translated error for HTTP %s without internal details, and retries", async (status) => {
@@ -155,14 +169,17 @@ describe("CustomerModel347Dialog", () => {
       ? "No tienes permiso para consultar estos documentos." : "No se pudo generar o guardar el PDF.");
     expect(screen.getByRole("alert")).not.toHaveTextContent("SQL");
     fireEvent.click(screen.getByRole("button", { name: "Generar PDF" }));
-    await waitFor(() => expect(window.tpvDesktop!.reports!.saveFile).toHaveBeenCalledOnce());
+    await waitFor(() => expect(previewExport).toHaveBeenCalledOnce());
   });
 
   it("shows save failures as a recoverable error", async () => {
-    vi.mocked(window.tpvDesktop!.reports!.saveFile).mockResolvedValue({ ok: false, code: "disk", message: "internal path" });
+    vi.mocked(previewExport).mockRejectedValueOnce(new Error("internal path"));
     mount(); fireEvent.click(screen.getByRole("button", { name: "Generar PDF" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo generar o guardar el PDF.");
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Generar PDF" })).toBeEnabled();
   });
 });
+
+vi.mock("../export/previewExport", () => ({ previewExport: vi.fn().mockResolvedValue({ downloaded: true, printed: false, canceled: false }) }));
+beforeEach(() => vi.mocked(previewExport).mockClear());

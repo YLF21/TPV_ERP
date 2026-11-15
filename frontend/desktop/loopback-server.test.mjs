@@ -28,6 +28,19 @@ afterEach(async () => {
 });
 
 describe("desktop loopback server", () => {
+  it("serves the packaged PDF module worker with a JavaScript MIME type under nosniff", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "tpv-desktop-test-"));
+    fs.writeFileSync(path.join(root, "index.html"), "ok");
+    fs.writeFileSync(path.join(root, "pdf.worker.mjs"), "export const WorkerMessageHandler = {};");
+    const desktop = createDesktopServer({ staticRoot: root, backendUrl: "http://127.0.0.1:1" });
+    resources.push({ root, close: desktop.close });
+    const origin = await desktop.start();
+    const response = await request(`${origin}/pdf.worker.mjs`);
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toBe("text/javascript; charset=utf-8");
+    expect(response.headers["x-content-type-options"]).toBe("nosniff");
+    expect(response.body).toContain("WorkerMessageHandler");
+  });
   it("reports the configured backend independently of its availability and rejects mutations", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "tpv-desktop-test-"));
     fs.writeFileSync(path.join(root, "index.html"), "ok");

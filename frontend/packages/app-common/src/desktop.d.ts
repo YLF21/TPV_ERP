@@ -128,6 +128,9 @@ declare global {
         close: () => Promise<DesktopResult>;
       };
       reports?: {
+        preparePdf: (request: { kind: "table" | "ticket" | "a4" | "labels"; document: unknown }) =>
+          Promise<{ ok: true; bytes: Uint8Array } | { ok: false; code: string; message: string }>;
+        printExport: (request: { html: string }) => Promise<DesktopResult>;
         saveFile: (request: {
           defaultFileName: string;
           filters: Array<{ name: string; extensions: string[] }>;

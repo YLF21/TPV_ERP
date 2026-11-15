@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { previewExport } from "../export/previewExport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { ApiError, apiRequest } from "../api/client";
@@ -78,8 +79,8 @@ describe("CustomerDocumentsDialog", () => {
     expect(screen.getByRole("dialog", { name: "Modelo 347" })).toBeInTheDocument();
     expect(screen.getByRole("spinbutton", { name: "Año" })).toHaveFocus();
     expect(document.querySelector(".customer-documents-dialog")).toHaveAttribute("inert");
-    const saveFile = vi.fn().mockResolvedValue({ ok: true });
-    window.tpvDesktop = { reports: { saveFile } } as unknown as typeof window.tpvDesktop;
+    const saveFile = vi.mocked(previewExport);
+    window.tpvDesktop = { reports: { saveFile: vi.fn() } } as unknown as typeof window.tpvDesktop;
     vi.mocked(apiRequest).mockResolvedValue({ arrayBuffer: async () => new ArrayBuffer(0) });
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "2025" } });
     fireEvent.click(screen.getByRole("button", { name: "Generar PDF" }));
@@ -109,8 +110,8 @@ describe("CustomerDocumentsDialog", () => {
   });
 
   it.each(["customer", "inactive", "permission", "unmount", "tab"])("aborts Model 347 on %s changes without saving late responses", async (change) => {
-    const saveFile = vi.fn(); let finish!: (blob: unknown) => void;
-    window.tpvDesktop = { reports: { saveFile } } as unknown as typeof window.tpvDesktop;
+    const saveFile = vi.mocked(previewExport); let finish!: (blob: unknown) => void;
+    window.tpvDesktop = { reports: { saveFile: vi.fn() } } as unknown as typeof window.tpvDesktop;
     vi.mocked(apiRequest).mockImplementation(async (path) => path.includes("annual.pdf")
       ? new Promise((resolve) => { finish = resolve; }) : page());
     const props = { customer, session: { ...session, permissions: ["INVOICES_READ", "TICKETS_READ"] as UserSession["permissions"] }, locale: "es" as const, canEdit: false, onEdit: vi.fn(), onClose: vi.fn() };
@@ -153,6 +154,13 @@ describe("CustomerDocumentsDialog", () => {
     fireEvent.keyDown(window, { key: "F7", repeat: true });
     expect(edit).not.toHaveBeenCalled();
     fireEvent.keyDown(window, { key: "F7" }); expect(edit).toHaveBeenCalledOnce();
+    const preview = document.createElement("dialog");
+    preview.className = "export-preview-dialog"; preview.setAttribute("open", ""); document.body.append(preview);
+    fireEvent.keyDown(window, { key: "F1" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(close).not.toHaveBeenCalled();
+    expect(screen.getByRole("tab", { name: "Facturas F2" })).toHaveAttribute("aria-selected", "true");
+    preview.remove();
     fireEvent.keyDown(window, { key: "Escape" }); expect(close).toHaveBeenCalledOnce();
   });
 
@@ -450,14 +458,14 @@ describe("CustomerDocumentsDialog", () => {
   });
 
   it("exports exactly loaded IDs without filters and all filtered results with translated visible columns", async () => {
-    const saveFile = vi.fn().mockResolvedValue({ ok: true });
-    window.tpvDesktop = { reports: { saveFile } } as unknown as typeof window.tpvDesktop;
+    const saveFile = vi.mocked(previewExport);
+    window.tpvDesktop = { reports: { saveFile: vi.fn() } } as unknown as typeof window.tpvDesktop;
     const blob = { arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer };
     vi.mocked(apiRequest).mockImplementation(async (path) => path.endsWith("export.xlsx") ? blob : page([ticket]));
     mount(); await screen.findByText("T-001");
     fireEvent.click(screen.getByRole("button", { name: "Exportar a Excel" }));
     await waitFor(() => expect(saveFile).toHaveBeenCalledOnce());
-    expect(saveFile).toHaveBeenCalledWith(expect.objectContaining({ defaultFileName: "C-001-Cliente de prueba-Tickets.xlsx" }));
+    expect(saveFile).toHaveBeenCalledWith(expect.objectContaining({ fileName: "C-001-Cliente de prueba-Tickets.xlsx" }));
     let body = vi.mocked(apiRequest).mock.calls.find(([path]) => path.endsWith("export.xlsx"))![1]!.body;
     expect(body).toMatchObject({ reportKey: "tickets", customerId: customer.id, filters: {}, documentKeys: [{ storeId: ticket.storeId, documentId: ticket.documentId }], sortBy: "date", sortDirection: "desc" });
     expect(body).toMatchObject({ columns: [{ key: "store", label: "Tienda" }, { key: "number", label: "Documento" }, ...["date", "type", "status", "base", "tax", "total", "terminal", "user", "currency"].map((key) => ({ key, label: expect.any(String) }))] });
@@ -472,8 +480,8 @@ describe("CustomerDocumentsDialog", () => {
   });
 
   it("blocks double export and aborts it on close without saving a late response", async () => {
-    const saveFile = vi.fn(); let finish!: (blob: unknown) => void;
-    window.tpvDesktop = { reports: { saveFile } } as unknown as typeof window.tpvDesktop;
+    const saveFile = vi.mocked(previewExport); let finish!: (blob: unknown) => void;
+    window.tpvDesktop = { reports: { saveFile: vi.fn() } } as unknown as typeof window.tpvDesktop;
     vi.mocked(apiRequest).mockResolvedValueOnce(page()).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
     const view = mount(); await screen.findByText("T-001");
     const button = screen.getByRole("button", { name: "Exportar a Excel" }); fireEvent.click(button); fireEvent.click(button);
@@ -489,14 +497,14 @@ describe("CustomerDocumentsDialog", () => {
     ["en", "Customer code", "Tax ID", "Customer name", "Documents total", "Filters", "No filters", "Tickets"],
     ["zh", "客户编号", "税号", "客户名称", "单据合计", "筛选条件", "无筛选条件", "小票"],
   ] as const)("sends customer, filter and total labels in %s without supplying customer identity values", async (locale, customerCode, customerTaxId, customerName, grandTotal, title, none, documentType) => {
-    const saveFile = vi.fn().mockResolvedValue({ ok: true });
-    window.tpvDesktop = { reports: { saveFile } } as unknown as typeof window.tpvDesktop;
+    const saveFile = vi.mocked(previewExport);
+    window.tpvDesktop = { reports: { saveFile: vi.fn() } } as unknown as typeof window.tpvDesktop;
     vi.mocked(apiRequest).mockImplementation(async (path) => path.endsWith("export.xlsx")
       ? { arrayBuffer: async () => new ArrayBuffer(0) } : page());
     mount({ locale }); await screen.findByText("T-001");
     fireEvent.click(screen.getByRole("button", { name: createTranslator(locale)("stock.history.exportExcel") }));
     await waitFor(() => expect(saveFile).toHaveBeenCalledOnce());
-    expect(saveFile).toHaveBeenCalledWith(expect.objectContaining({ defaultFileName: `C-001-Cliente de prueba-${documentType}.xlsx` }));
+    expect(saveFile).toHaveBeenCalledWith(expect.objectContaining({ fileName: `C-001-Cliente de prueba-${documentType}.xlsx` }));
     const request = vi.mocked(apiRequest).mock.calls.find(([path]) => path.endsWith("export.xlsx"))![1]!.body;
     expect(request).toMatchObject({ customerId: customer.id, filters: {}, labels: {
       customerCode, customerTaxId, customerName, grandTotal, filters: { title, none },
@@ -509,15 +517,15 @@ describe("CustomerDocumentsDialog", () => {
   it.each([
     ["INVOICES_READ", "Facturas"], ["DELIVERY_NOTES_READ", "Albaranes"],
   ] as const)("names the desktop export with customer code, name and %s document type", async (permission, documentType) => {
-    const saveFile = vi.fn().mockResolvedValue({ ok: true });
-    window.tpvDesktop = { reports: { saveFile } } as unknown as typeof window.tpvDesktop;
+    const saveFile = vi.mocked(previewExport);
+    window.tpvDesktop = { reports: { saveFile: vi.fn() } } as unknown as typeof window.tpvDesktop;
     vi.mocked(apiRequest).mockImplementation(async (path) => path.endsWith("export.xlsx")
       ? { arrayBuffer: async () => new ArrayBuffer(0) } : page());
     mount({ app: "gestion", session: { ...session, permissions: [permission] } });
     await screen.findByText("T-001");
     fireEvent.click(screen.getByRole("button", { name: "Exportar a Excel" }));
     await waitFor(() => expect(saveFile).toHaveBeenCalledWith(expect.objectContaining({
-      defaultFileName: `C-001-Cliente de prueba-${documentType}.xlsx`,
+      fileName: `C-001-Cliente de prueba-${documentType}.xlsx`, formattedWorkbook: true,
     })));
   });
 
@@ -536,9 +544,12 @@ describe("CustomerDocumentsDialog", () => {
     mount({ customer: { ...customer, clientId: "  AC/001  ", fiscalName: 'Niño "海洋" ' + "X".repeat(150) } });
     await screen.findByText("T-001");
     fireEvent.click(screen.getByRole("button", { name: "Exportar a Excel" }));
-    await waitFor(() => expect(downloadedName).toBe(`AC-001-Niño -海洋- ${"X".repeat(70)}-Tickets.xlsx`));
-    expect(downloadedName.length).toBeLessThan(255);
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:customer-export");
+    await waitFor(() => expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({
+      fileName: `AC-001-Niño -海洋- ${"X".repeat(70)}-Tickets.xlsx`
+    })));
+    expect(downloadedName).toBe("");
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(revokeObjectURL).not.toHaveBeenCalled();
   });
 
   it("shows a translated export limit error without technical details", async () => {
@@ -731,8 +742,8 @@ describe("CustomerDocumentsDialog", () => {
   });
 
   it("drags columns without reloading documents and exports the displayed column order", async () => {
-    const saveFile = vi.fn().mockResolvedValue({ ok: true });
-    window.tpvDesktop = { reports: { saveFile } } as unknown as typeof window.tpvDesktop;
+    const saveFile = vi.mocked(previewExport);
+    window.tpvDesktop = { reports: { saveFile: vi.fn() } } as unknown as typeof window.tpvDesktop;
     vi.mocked(apiRequest).mockImplementation(async (path) => path.endsWith("export.xlsx")
       ? { arrayBuffer: async () => new ArrayBuffer(0) } : page());
     mount(); await screen.findByText("T-001");
@@ -752,3 +763,6 @@ describe("CustomerDocumentsDialog", () => {
     }));
   });
 });
+
+vi.mock("../export/previewExport", () => ({ previewExport: vi.fn().mockResolvedValue({ downloaded: true, printed: false, canceled: false }) }));
+beforeEach(() => vi.mocked(previewExport).mockClear());

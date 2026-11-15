@@ -65,6 +65,8 @@ contextBridge.exposeInMainWorld("tpvDesktop", {
     close: () => ipcRenderer.invoke("tpv:sales-utility:close")
   },
   reports: {
+    preparePdf: (request) => ipcRenderer.invoke("tpv:reports:prepare-pdf", request),
+    printExport: (request) => ipcRenderer.invoke("tpv:reports:print-export", request),
     saveFile: (request) => ipcRenderer.invoke("tpv:reports:save-file", request),
     exportPdf: (defaultFileName) => ipcRenderer.invoke("tpv:reports:export-pdf", defaultFileName),
     exportTablePdf: (request, defaultFileName) =>

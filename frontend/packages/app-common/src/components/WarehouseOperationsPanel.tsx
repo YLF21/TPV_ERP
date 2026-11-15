@@ -6,6 +6,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { Eye, FilePdf, FileXls, PencilSimple, Plus, Trash } from "@phosphor-icons/react";
+import { previewExport } from "../export/previewExport";
 import { useTableArrowRepeat } from "./useTableArrowRepeat";
 import { useTableInitialFocus } from "./useTableInitialFocus";
 import { ensureTableRowVisible } from "./ensureTableRowVisible";
@@ -26,7 +27,7 @@ import { ErpListSelect } from "./ErpListSelect";
 import { listFilterChips, matchesListFilter } from "./listFilterValues";
 import { ErpSelect } from "./ErpSelect";
 import { ErpFilterChips, type ErpFilterChip } from "./ErpFilterChips";
-import { ReportDateRangeFilter, ReportDateRangeSummary, type ReportDateRange } from "./ReportDateRangeFilter";
+import { ReportDateRangeFilter, ReportDateRangeSummary, isValidReportDate, type ReportDateRange } from "./ReportDateRangeFilter";
 import "./WarehouseClassicTables.css";
 import "./ErpSearchField.css";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
@@ -518,14 +519,13 @@ export function WarehouseOperationsPanel({
           columns: keys.map((key) => ({ key, label: t(`salesReport.column.${key}`) }))
         }
       });
-      const url = URL.createObjectURL(file);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = purchasePeriodFilter
-        ? `${reportKey.replace("salesReport.", "")}.${format}`
+      const stamp = (date: string) => `${date.slice(8, 10)}${date.slice(5, 7)}${date.slice(2, 4)}`;
+      const period = isValidReportDate(dateFrom) && isValidReportDate(dateTo)
+        ? `_${stamp(dateFrom)}-${stamp(dateTo)}` : "";
+      const fileName = purchasePeriodFilter
+        ? `${documentType === "FACTURA_ENTRADA" ? "Facturas_de_compra" : "Albaranes_de_compra"}${period}.${format}`
         : `${mode === "input" ? "entradas" : "salidas"}-almacen.${format}`;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await previewExport({ blob: file, fileName, locale, formattedWorkbook: format === "xlsx" });
     } catch (cause) { setError(warehouseOperationsErrorMessage(cause, t("warehouse.report.exportError"))); }
     finally { setExportBusy(false); }
   }

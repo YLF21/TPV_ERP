@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
+import { previewExport } from "../export/previewExport";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode, UserSession } from "../types";
 import type { PromotionView } from "./PromotionForm";
@@ -11,6 +12,7 @@ import { writeStoredTableLayout } from "./tableLayoutPreferences";
 vi.mock("../api/client", async (importOriginal) => ({
   ...await importOriginal<typeof import("../api/client")>(), apiRequest: vi.fn()
 }));
+vi.mock("../export/previewExport", () => ({ previewExport: vi.fn() }));
 
 const warehouseId = "11111111-1111-4111-8111-111111111111";
 const session: UserSession = {
@@ -35,7 +37,7 @@ const promotions: PromotionView[] = [
   }
 ];
 
-const saveFile = vi.fn().mockResolvedValue({ ok: true });
+const preview = vi.mocked(previewExport);
 const fetchFile = vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), {
   status: 200,
   headers: { "Content-Disposition": "attachment; filename=export.xlsx; filename*=UTF-8''Promoci%C3%B3n-%E4%BC%98%E6%83%A0.xlsx" }
@@ -55,10 +57,9 @@ function renderScreen(locale: LocaleCode = "es") {
 
 beforeEach(() => {
   localStorage.clear();
-  saveFile.mockClear();
+  preview.mockReset().mockResolvedValue({ downloaded: true, printed: false, canceled: false });
   fetchFile.mockClear();
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
-  Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { reports: { saveFile } } });
   vi.stubGlobal("fetch", fetchFile);
   vi.mocked(apiRequest).mockReset().mockImplementation(async (path) => {
     if (path.startsWith("/stock/page")) return {
@@ -80,7 +81,6 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup(); localStorage.clear(); vi.unstubAllGlobals();
-  delete (window as { tpvDesktop?: unknown }).tpvDesktop;
   delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
 });
 
@@ -124,11 +124,11 @@ describe("StockScreen promotion Excel exports", () => {
       { key: "family", label: t("stock.column.family") },
       { key: "subfamily", label: t("stock.column.subfamily") }
     ]);
-    await waitFor(() => expect(saveFile).toHaveBeenCalledOnce());
-    expect(vi.mocked(apiRequest).mock.calls).toContainEqual(["/stock/exports/job-1", { token: "test-token" }]);
-    expect(saveFile).toHaveBeenCalledWith(expect.objectContaining({
-      defaultFileName: "Promoción-优惠.xlsx", bytes: new Uint8Array([1, 2, 3])
+    await waitFor(() => expect(preview).toHaveBeenCalledOnce());
+    expect(preview).toHaveBeenCalledWith(expect.objectContaining({
+      fileName: "Promoción-优惠.xlsx", formattedWorkbook: true, locale, blob: expect.any(Blob)
     }));
+    expect(vi.mocked(apiRequest).mock.calls).toContainEqual(["/stock/exports/job-1", { token: "test-token" }]);
     expect(fetchFile).toHaveBeenCalledWith(expect.stringContaining("/stock/exports/job-1/file"),
       expect.objectContaining({ headers: { Authorization: "Bearer test-token" } }));
   });
@@ -141,6 +141,8 @@ describe("StockScreen promotion Excel exports", () => {
     await waitFor(() => expect(activeButton).toHaveProperty("disabled", false));
     fireEvent.click(activeButton);
     await waitFor(() => expect(exportBodies()).toHaveLength(1));
+    await waitFor(() => expect(preview).toHaveBeenCalledOnce());
+    expect(preview).toHaveBeenCalledWith(expect.objectContaining({ formattedWorkbook: true }));
     expect(exportBodies()[0]).toMatchObject({
       view: "promotions", promotionScope: "ACTIVE", promotionId: null, search: "", warehouseId,
       productType: null, stockStatus: null, priceUseMode: null, language: "es"
@@ -150,10 +152,29 @@ describe("StockScreen promotion Excel exports", () => {
       { key: "promotionType", label: t("stock.column.promotionType") },
       { key: "promotionValidity", label: t("stock.column.promotionValidity") }
     ]);
-    await waitFor(() => expect(saveFile).toHaveBeenCalledOnce());
     await waitFor(() => expect(activeButton).toHaveProperty("disabled", false));
     fireEvent.keyDown(document.body, { key: "F6" });
     await waitFor(() => expect(exportBodies()).toHaveLength(2));
     expect(exportBodies()[1]).toMatchObject({ promotionScope: "SELECTED", promotionId: "expired" });
+    await waitFor(() => expect(preview).toHaveBeenCalledTimes(2));
+    expect(preview.mock.calls[1][0]).toEqual(expect.objectContaining({ formattedWorkbook: true }));
+  });
+
+  it("uses the selected promotion dates and the export day in fallback names", async () => {
+    const t = createTranslator("es");
+    const today = new Date();
+    const exportDay = `${String(today.getDate()).padStart(2, "0")}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getFullYear()).slice(-2)}`;
+    fetchFile.mockImplementation(async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: /Promoción caducada/ }));
+    const selectedButton = screen.getByRole("button", { name: t("stock.exportExcel.selectedPromotion") });
+    await waitFor(() => expect(selectedButton).toHaveProperty("disabled", false));
+    fireEvent.click(selectedButton);
+    await waitFor(() => expect(preview).toHaveBeenCalledOnce());
+    expect(preview.mock.calls[0][0]).toEqual(expect.objectContaining({ fileName: "Promoción caducada_010125-310125.xlsx" }));
+    const activeButton = screen.getByRole("button", { name: t("stock.exportExcel.activePromotions") });
+    fireEvent.click(activeButton);
+    await waitFor(() => expect(preview).toHaveBeenCalledTimes(2));
+    expect(preview.mock.calls[1][0]).toEqual(expect.objectContaining({ fileName: `Promociones_${exportDay}.xlsx` }));
   });
 });

@@ -41,7 +41,7 @@ class CustomerModel347JasperRendererTest {
                     "T4", "01/10/2024 - 31/12/2024", "450,10 EUR",
                     "TOTAL ANUAL", "12.716,04 EUR", "Todas las tiendas de la empresa",
                     "pagadas o pendientes", "Sin importe mínimo",
-                    "no constituye una declaración oficial");
+                    "no constituye una declaración oficial", "Página 1 de 1");
             writePreview(bytes, pdf, "es");
         }
     }
@@ -65,7 +65,7 @@ class CustomerModel347JasperRendererTest {
         try (var pdf = Loader.loadPDF(RENDERER.render(sample(), "en-GB"))) {
             assertThat(text(pdf)).contains(
                     "FORM 347", "Year: 2024", "ISSUER", "CUSTOMER", "Q1", "Q4",
-                    "12,716.04 EUR", "ANNUAL TOTAL", "not an official Form 347 filing");
+                    "12,716.04 EUR", "ANNUAL TOTAL", "not an official Form 347 filing", "Page 1 of 1");
         }
         var base = sample();
         var report = new CustomerModel347Report(base.year(), base.issuer(),
@@ -118,6 +118,13 @@ class CustomerModel347JasperRendererTest {
                     "Óptica Peña y Servicios Profesionales de Canarias, S.L.",
                     "FINAL EMISOR", "FINAL CLIENTE", "31/12/2024", "12.716,04 EUR",
                     "no constituye una declaración oficial");
+            for (int page = 1; page <= pdf.getNumberOfPages(); page++) {
+                var stripper = new PDFTextStripper();
+                stripper.setStartPage(page);
+                stripper.setEndPage(page);
+                assertThat(stripper.getText(pdf).replaceAll("\\s+", " "))
+                        .contains("Página " + page + " de " + pdf.getNumberOfPages());
+            }
             writePreview(bytes, pdf, "long-addresses");
         }
     }

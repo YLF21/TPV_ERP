@@ -31,9 +31,11 @@ class StockCountExportServiceTest {
         var exports = new StockCountExportService(counts);
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(exports.excel(id)))) {
             var sheet = workbook.getSheet("Inventario");
-            assertThat(sheet.getRow(5).getCell(4).getCellType()).isEqualTo(org.apache.poi.ss.usermodel.CellType.BLANK);
-            assertThat(sheet.getRow(5).getCell(5).getCellType()).isEqualTo(org.apache.poi.ss.usermodel.CellType.BLANK);
-            assertThat(sheet.getRow(6).getCell(4).getNumericCellValue()).isZero();
+            int first = sheet.getPaneInformation().getHorizontalSplitPosition();
+            assertThat(sheet.getRow(first).getCell(4).getCellType()).isEqualTo(org.apache.poi.ss.usermodel.CellType.BLANK);
+            assertThat(sheet.getRow(first).getCell(5).getCellType()).isEqualTo(org.apache.poi.ss.usermodel.CellType.BLANK);
+            assertThat(sheet.getRow(first + 1).getCell(4).getNumericCellValue()).isZero();
+            assertThat(sheet.getRow(0).getCell(0).getCellStyle().getFontIndex()).isGreaterThan((short) 0);
         }
         try (var pdf = Loader.loadPDF(exports.pdf(id))) {
             assertThat(new PDFTextStripper().getText(pdf)).contains("PENDING", "ZERO", "-10");
@@ -51,13 +53,16 @@ class StockCountExportServiceTest {
                 null, null, List.of(line), 0, java.time.LocalDate.of(2026, 8, 3), "ADMIN"));
         var exports = new StockCountExportService(counts);
 
-        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(exports.excel(id)))) {
+        byte[] excel = exports.excel(id);
+        byte[] pdfBytes = exports.pdf(id);
+        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(excel))) {
             var sheet = workbook.getSheet("Inventario");
-            assertThat(sheet.getRow(5).getCell(0).getStringCellValue()).isEqualTo("CAF");
-            assertThat(sheet.getRow(5).getCell(1).getStringCellValue()).isEqualTo("8430000000001");
-            assertThat(sheet.getRow(5).getCell(5).getNumericCellValue()).isEqualTo(-2d);
+            int first = sheet.getPaneInformation().getHorizontalSplitPosition();
+            assertThat(sheet.getRow(first).getCell(0).getStringCellValue()).isEqualTo("CAF");
+            assertThat(sheet.getRow(first).getCell(1).getStringCellValue()).isEqualTo("8430000000001");
+            assertThat(sheet.getRow(first).getCell(5).getNumericCellValue()).isEqualTo(-2d);
         }
-        try (var pdf = Loader.loadPDF(exports.pdf(id))) {
+        try (var pdf = Loader.loadPDF(pdfBytes)) {
             var text = new PDFTextStripper().getText(pdf);
             assertThat(text).contains("INVENTARIO", "CAF", "8430000000001", "-2");
             var windows = System.getenv("WINDIR");
@@ -67,5 +72,9 @@ class StockCountExportServiceTest {
                 assertThat(text).contains("茶");
             }
         }
+        var target = Path.of("target", "warehouse-design");
+        Files.createDirectories(target);
+        Files.write(target.resolve("stock-count.xlsx"), excel);
+        Files.write(target.resolve("stock-count.pdf"), pdfBytes);
     }
 }

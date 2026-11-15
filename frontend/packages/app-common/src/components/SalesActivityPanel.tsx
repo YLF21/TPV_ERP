@@ -3,6 +3,7 @@ import { useTableRowArrowFocus } from "./useTableRowArrowFocus";
 import { FilePdf, FileXls, Printer } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import { apiBaseUrl } from "../api/runtime";
+import { previewExport } from "../export/previewExport";
 import { getHardwareBridge, type HardwareConfig } from "../hardware/hardware";
 import {
   createSalesActivityTranslator,
@@ -158,6 +159,10 @@ function isoDate(value: Date) {
   const month = String(value.getMonth() + 1).padStart(2, "0");
   const day = String(value.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function exportDateStamp(value: string) {
+  return `${value.slice(8, 10)}${value.slice(5, 7)}${value.slice(2, 4)}`;
 }
 
 function localDate(value: string) {
@@ -479,19 +484,14 @@ export function SalesActivityPanel({
     }
   }
 
+  const dailyFileName = `Ventas_${exportDateStamp(dailyDate)}`;
+  const documentsFileName = `Documentos_de_ventas_${exportDateStamp(range.from)}${range.from === range.to ? "" : `-${exportDateStamp(range.to)}`}`;
+
   async function saveBytes(bytes: Uint8Array, fileName: string, extension: "xlsx" | "pdf", mime: string) {
-    if (window.tpvDesktop?.reports) {
-      const result = await window.tpvDesktop.reports.saveFile({
-        defaultFileName: fileName,
-        filters: [{ name: extension === "xlsx" ? "Excel" : "PDF", extensions: [extension] }],
-        bytes
-      });
-      if (!result.ok) throw new Error(result.message);
-      return;
-    }
-    const url = URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type: mime }));
-    const link = document.createElement("a"); link.href = url; link.download = fileName; link.click();
-    URL.revokeObjectURL(url);
+    return previewExport({
+      blob: new Blob([bytes.slice().buffer as ArrayBuffer], { type: mime }), fileName, locale,
+      formattedWorkbook: extension === "xlsx"
+    });
   }
 
   async function exportExcel() {
@@ -504,10 +504,10 @@ export function SalesActivityPanel({
         : `/sales-activity/documents/excel?dateFrom=${encodeURIComponent(range.from)}&dateTo=${encodeURIComponent(range.to)}&grouping=${viewMode}`;
       const response = await fetch(`${apiBaseUrl}${query}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error(await response.text());
-      await saveBytes(new Uint8Array(await response.arrayBuffer()),
-        mode === "daily" ? `resumen-ventas-${dailyDate}.xlsx` : `documentos-ventas-${range.from}-${range.to}.xlsx`,
+      const result = await saveBytes(new Uint8Array(await response.arrayBuffer()),
+        mode === "daily" ? `${dailyFileName}.xlsx` : `${documentsFileName}.xlsx`,
         "xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      setNotice({ kind: "success", key: "exportSuccess" });
+      setNotice(result.downloaded ? { kind: "success", key: "exportSuccess" } : null);
     } catch (failure) {
       setNotice(failure instanceof Error
         ? { kind: "error", text: failure.message }
@@ -529,10 +529,10 @@ export function SalesActivityPanel({
     setBusy(true); setNotice({ kind: "info", key: "loading" });
     try {
       const value = await rendered("A4");
-      await saveBytes(base64Bytes(value.renderedPdf.base64),
-        mode === "daily" ? `resumen-ventas-${dailyDate}.pdf` : `documentos-ventas-${range.from}-${range.to}.pdf`,
+      const result = await saveBytes(base64Bytes(value.renderedPdf.base64),
+        mode === "daily" ? `${dailyFileName}.pdf` : `${documentsFileName}.pdf`,
         "pdf", "application/pdf");
-      setNotice({ kind: "success", key: "exportSuccess" });
+      setNotice(result.downloaded ? { kind: "success", key: "exportSuccess" } : null);
     } catch (failure) {
       setNotice(failure instanceof Error
         ? { kind: "error", text: failure.message }
@@ -591,6 +591,7 @@ export function SalesActivityPanel({
 
   useEffect(() => {
     function handleOutputShortcut(event: KeyboardEvent) {
+      if (document.querySelector('.export-preview-dialog[open]')) return;
       if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.repeat) return;
       if (event.key !== "F5" && event.key !== "F6" && event.key !== "F7") return;
       event.preventDefault();

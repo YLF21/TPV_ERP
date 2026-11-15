@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ArrowCounterClockwise, CheckCircle, FilePdf, FileXls, Funnel, PencilSimple, Trash } from "@phosphor-icons/react";
+import { previewExport } from "../export/previewExport";
 import type { AppKind, LocaleCode } from "../types";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -130,9 +131,7 @@ export function ReplenishmentScreen({ token, locale, app = "gestion", username =
     setBusy(true); setError("");
     try {
       const blob = await exportReplenishments(token, format, locale, filters, selected.length ? selected : undefined);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a"); anchor.href = url; anchor.download = `solicitudes-reposicion.${format}`;
-      document.body.append(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+      await previewExport({ blob, fileName: `solicitudes-reposicion.${format}`, locale, formattedWorkbook: format === "xlsx" });
     } catch (failure) { setError(failure instanceof Error ? failure.message : t("replenishment.exportError")); }
     finally { setBusy(false); }
   }

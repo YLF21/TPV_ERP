@@ -4,13 +4,17 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -38,7 +42,8 @@ class SalesReportExcelExportControllerContractTest {
                         .content(requestBody()))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .andExpect(header().string("Content-Disposition", containsString("Tickets.xlsx")));
     }
 
     @Test
@@ -61,7 +66,63 @@ class SalesReportExcelExportControllerContractTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody()))
                 .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_PDF));
+                .andExpect(content().contentType(MediaType.APPLICATION_PDF))
+                .andExpect(header().string("Content-Disposition", containsString("Tickets.pdf")));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"tickets, Tickets", "invoices, Facturas", "deliveryNotes, Albaranes",
+            "inputInvoices, Facturas_de_compra", "inputDeliveryNotes, Albaranes_de_compra"})
+    void salesDocumentExportsIncludeTheDateRangeInBothFilenames(String report, String stem) throws Exception {
+        String authority = report.startsWith("input") ? "GESTION_ALMACEN" : "GESTION_VENTAS";
+        when(service.export(any(), any())).thenReturn(new byte[] {1, 2, 3});
+        when(pdfService.export(any(), any())).thenReturn("%PDF".getBytes());
+        String body = ticketRequestBody("2026-03-07", "2026-11-14").replace("salesReport.tickets", "salesReport." + report);
+
+        mvc.perform(post("/api/v1/sales-reports/export")
+                        .with(user("manager").authorities(() -> authority))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", containsString(stem + "_070326-141126.xlsx")));
+
+        mvc.perform(post("/api/v1/sales-reports/export-pdf")
+                        .with(user("manager").authorities(() -> authority))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", containsString(stem + "_070326-141126.pdf")));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"tickets, Tickets", "invoices, Facturas", "deliveryNotes, Albaranes",
+            "inputInvoices, Facturas_de_compra", "inputDeliveryNotes, Albaranes_de_compra"})
+    void salesDocumentExportsIncludeTheRangeWhenBothDatesAreTheSame(String report, String stem) throws Exception {
+        String authority = report.startsWith("input") ? "GESTION_ALMACEN" : "GESTION_VENTAS";
+        when(service.export(any(), any())).thenReturn(new byte[] {1, 2, 3});
+
+        mvc.perform(post("/api/v1/sales-reports/export")
+                        .with(user("manager").authorities(() -> authority))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ticketRequestBody("2026-11-14", "2026-11-14").replace("salesReport.tickets", "salesReport." + report)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", containsString(stem + "_141126-141126.xlsx")));
+    }
+
+    @Test
+    void invalidTicketDatesFallBackToBaseFilenameWithoutBreakingTheExport() throws Exception {
+        when(service.export(any(), any())).thenReturn(new byte[] {1, 2, 3});
+
+        mvc.perform(post("/api/v1/sales-reports/export")
+                        .with(user("manager").authorities(() -> "GESTION_VENTAS"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ticketRequestBody("not-a-date", "2026-11-14")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", containsString("Tickets.xlsx")));
     }
 
     @Test
@@ -79,7 +140,9 @@ class SalesReportExcelExportControllerContractTest {
                                   "warehouses":["GENERAL","RESERVA"]
                                 }, "columns":[{"key":"invoice","label":"Factura"}]}
                                 """))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", containsString("Facturas.xlsx")));
+
         verify(service).export(argThat(request -> request.filters().users().size() == 2
                 && request.filters().customers().size() == 2 && request.filters().suppliers().size() == 2
                 && request.filters().payments().equals(java.util.List.of("EFECTIVO", "TARJETA"))
@@ -109,6 +172,17 @@ class SalesReportExcelExportControllerContractTest {
                   "columns": [{"key": "date", "label": "Fecha"}]
                 }
                 """;
+    }
+
+    private String ticketRequestBody(String dateFrom, String dateTo) {
+        return """
+                {
+                  "reportKey": "salesReport.tickets",
+                  "filters": {"dateFrom": "%s", "dateTo": "%s"},
+                  "search": "",
+                  "columns": [{"key": "date", "label": "Fecha"}]
+                }
+                """.formatted(dateFrom, dateTo);
     }
 
     @EnableMethodSecurity

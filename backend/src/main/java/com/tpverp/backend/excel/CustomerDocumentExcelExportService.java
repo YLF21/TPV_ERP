@@ -7,6 +7,8 @@ import com.tpverp.backend.document.CustomerDocumentReportFilter;
 import com.tpverp.backend.document.CustomerDocumentReportQueryRepository;
 import com.tpverp.backend.document.DocumentStatus;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.party.Customer;
 import com.tpverp.backend.party.CustomerRepository;
 import com.tpverp.backend.security.application.PermissionChecks;
@@ -24,19 +26,20 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.FillPatternType;
 import org.apache.poi.ss.usermodel.HorizontalAlignment;
-import org.apache.poi.ss.usermodel.IndexedColors;
+import org.apache.poi.ss.usermodel.PrintSetup;
 import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.apache.poi.ss.util.CellReference;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.ss.util.WorkbookUtil;
 import org.apache.poi.xssf.streaming.SXSSFWorkbook;
+import org.apache.poi.xssf.usermodel.XSSFCellStyle;
+import org.apache.poi.xssf.usermodel.XSSFColor;
+import org.apache.poi.xssf.usermodel.XSSFFont;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
@@ -50,7 +53,7 @@ public class CustomerDocumentExcelExportService {
 
     static final int MAX_ROWS = 50_000;
     private static final int PAGE_SIZE = 500;
-    private static final int HEADER_ROW = 4;
+    private static final int HEADER_ROW = 8;
     private static final Set<String> COLUMNS = Set.of(
             "number", "date", "type", "status", "base", "tax", "total", "terminal", "user");
     private static final Set<String> RECEIVED_COLUMNS = Set.of(
@@ -82,8 +85,10 @@ public class CustomerDocumentExcelExportService {
         var filter = request.queryFilter();
         boolean filtered = hasFilters(filter);
         validateRequest(request, types, filtered);
-        var storeId = organization.currentStore().getId();
-        var customer = customers.findByIdAndCompanyId(request.customerId(), organization.currentCompany().getId())
+        var store = organization.currentStore();
+        var company = organization.currentCompany();
+        var storeId = store.getId();
+        var customer = customers.findByIdAndCompanyId(request.customerId(), company.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Cliente no encontrado"));
 
         var workbook = new SXSSFWorkbook(PAGE_SIZE);
@@ -93,6 +98,8 @@ public class CustomerDocumentExcelExportService {
             try {
                 sheet.setDisplayGridlines(false);
                 var styles = Styles.create(workbook);
+                setColumnWidths(sheet, request.columns());
+                writePresentation(sheet, request, styles, company, store);
                 writeHeader(sheet, request.columns(), styles);
                 writeCustomer(sheet, customer, request, filter, styles);
                 var summary = filtered
@@ -101,6 +108,7 @@ public class CustomerDocumentExcelExportService {
                 writeTotal(sheet, request, summary, styles);
                 sheet.setAutoFilter(new CellRangeAddress(HEADER_ROW, HEADER_ROW + summary.count(), 0, request.columns().size() - 1));
                 sheet.createFreezePane(0, HEADER_ROW + 1);
+                configurePrint(sheet, request.columns().size(), presentationLocale(request));
                 workbook.write(output);
                 var result = output.toByteArray();
                 audit.record("CUSTOMER_DOCUMENTS_EXPORTED", AuditResult.EXITO,
@@ -258,12 +266,18 @@ public class CustomerDocumentExcelExportService {
 
     private static void writeHeader(Sheet sheet, List<CustomerDocumentExportRequest.Column> columns, Styles styles) {
         var header = sheet.createRow(HEADER_ROW);
-        header.setHeightInPoints(25);
+        header.setHeightInPoints(31);
         for (int index = 0; index < columns.size(); index++) {
             var column = columns.get(index);
             var cell = header.createCell(index);
             cell.setCellValue(column.label());
             cell.setCellStyle(styles.header());
+        }
+    }
+
+    private static void setColumnWidths(Sheet sheet, List<CustomerDocumentExportRequest.Column> columns) {
+        for (int index = 0; index < columns.size(); index++) {
+            var column = columns.get(index);
             int width = switch (column.key()) {
                 case "number" -> 25;
                 case "date" -> 14;
@@ -273,6 +287,99 @@ public class CustomerDocumentExcelExportService {
             };
             sheet.setColumnWidth(index, Math.min(40, Math.max(width, column.label().length() + 3)) * 256);
         }
+    }
+
+    private static void writePresentation(Sheet sheet, CustomerDocumentExportRequest request, Styles styles,
+            Company company, Store store) {
+        writeTitle(sheet, request, styles);
+        String locale = presentationLocale(request);
+        if (store == null) {
+            writeMetadata(sheet, 1, tr(locale, "Ámbito", "Scope", "范围"),
+                    tr(locale, "Todas las tiendas", "All stores", "所有门店"), request.columns().size(), styles);
+            sheet.createRow(2).setHeightInPoints(9);
+        } else {
+            writeMetadata(sheet, 1, tr(locale, "Empresa", "Company", "公司"),
+                    company == null ? "" : company.getRazonSocial() + " · " + company.getTaxId(),
+                    request.columns().size(), styles);
+            writeMetadata(sheet, 2, tr(locale, "Tienda", "Store", "门店"),
+                    store.getCodigoTienda() + " · " + store.getNombreEfectivo(), request.columns().size(), styles);
+        }
+        sheet.createRow(7).setHeightInPoints(9);
+    }
+
+    private static void writeTitle(Sheet sheet, CustomerDocumentExportRequest request, Styles styles) {
+        var row = sheet.createRow(0);
+        for (int index = 0; index < request.columns().size(); index++) {
+            row.createCell(index).setCellStyle(styles.title());
+        }
+        row.getCell(0).setCellValue(request.labels().sheetName());
+        if (request.columns().size() > 1) {
+            sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, request.columns().size() - 1));
+        }
+        setReadableHeight(row, 36, wrappedLines(sheet, request.labels().sheetName(), 0,
+                request.columns().size() - 1, 18), 24);
+    }
+
+    private static void writeMetadata(Sheet sheet, int rowNumber, String label, String value,
+            int columns, Styles styles) {
+        var row = sheet.createRow(rowNumber);
+        var name = row.createCell(0);
+        String displayLabel = columns == 1 ? label + ": " + value : label;
+        name.setCellValue(displayLabel);
+        name.setCellStyle(styles.customerLabel());
+        if (columns > 1) {
+            var content = row.createCell(1);
+            content.setCellValue(value);
+            content.setCellStyle(styles.customerValue());
+            if (columns > 2) sheet.addMergedRegion(new CellRangeAddress(rowNumber, rowNumber, 1, columns - 1));
+        }
+        int labelLines = wrappedLines(sheet, displayLabel, 0, 0, 10);
+        int valueLines = columns == 1 ? 0 : wrappedLines(sheet, value, 1, columns - 1, 10);
+        setReadableHeight(row, 27, Math.max(labelLines, valueLines), 15);
+    }
+
+    private static int wrappedLines(Sheet sheet, String value, int firstColumn, int lastColumn, int fontSize) {
+        int characters = 0;
+        for (int column = firstColumn; column <= lastColumn; column++) {
+            characters += Math.max(1, sheet.getColumnWidth(column) / 256);
+        }
+        characters = Math.max(1, (characters - 3) * 8 / fontSize);
+        int lines = 0;
+        for (String segment : (value == null ? "" : value).split("\\R", -1)) {
+            int units = segment.codePoints().map(codePoint -> {
+                var script = Character.UnicodeScript.of(codePoint);
+                return script == Character.UnicodeScript.HAN || script == Character.UnicodeScript.HIRAGANA
+                        || script == Character.UnicodeScript.KATAKANA || script == Character.UnicodeScript.HANGUL
+                        ? 2 : 1;
+            }).sum();
+            lines += Math.max(1, (units + characters - 1) / characters);
+        }
+        return lines;
+    }
+
+    private static void setReadableHeight(org.apache.poi.ss.usermodel.Row row, int minimum, int lines, int lineHeight) {
+        row.setHeightInPoints(Math.min(409, Math.max(minimum, lines * lineHeight + 8)));
+    }
+
+    private static void configurePrint(Sheet sheet, int columns, String locale) {
+        sheet.setRepeatingRows(new CellRangeAddress(HEADER_ROW, HEADER_ROW, -1, -1));
+        sheet.setPrintGridlines(false);
+        sheet.getPrintSetup().setPaperSize(PrintSetup.A4_PAPERSIZE);
+        sheet.getPrintSetup().setLandscape(columns > 5);
+        sheet.getPrintSetup().setFitWidth((short) 1);
+        sheet.getPrintSetup().setFitHeight((short) 0);
+        sheet.setFitToPage(true);
+        sheet.getFooter().setRight(tr(locale, "Página &P de &N", "Page &P of &N", "第 &P / &N 页"));
+    }
+
+    private static String presentationLocale(CustomerDocumentExportRequest request) {
+        String label = request.labels().customerCode();
+        return label.contains("客户") ? "zh" : label.toLowerCase(java.util.Locale.ROOT).contains("customer") ? "en" : "es";
+    }
+
+    private static String tr(String locale, String es, String en, String zh) {
+        String language = locale == null ? "es" : locale.toLowerCase(java.util.Locale.ROOT);
+        return language.startsWith("zh") ? zh : language.startsWith("en") ? en : es;
     }
 
     private static void writeCustomer(Sheet sheet, Customer customer, CustomerDocumentExportRequest request,
@@ -285,8 +392,8 @@ public class CustomerDocumentExcelExportService {
             CustomerDocumentReportFilter filter, Styles styles) {
         String[] labels = { request.labels().customerCode(), request.labels().customerTaxId(), request.labels().customerName() };
         for (int index = 0; index < labels.length; index++) {
-            var row = sheet.createRow(index);
-            row.setHeightInPoints(index == 2 ? 32 : 25);
+            int rowNumber = index + 3;
+            var row = sheet.createRow(rowNumber);
             var label = row.createCell(0);
             label.setCellValue(labels[index]);
             label.setCellStyle(styles.customerLabel());
@@ -294,8 +401,11 @@ public class CustomerDocumentExcelExportService {
             value.setCellValue(values[index] == null ? "" : values[index]);
             value.setCellStyle(styles.customerValue());
             if (request.columns().size() > 2) {
-                sheet.addMergedRegion(new CellRangeAddress(index, index, 1, request.columns().size() - 1));
+                sheet.addMergedRegion(new CellRangeAddress(rowNumber, rowNumber, 1, request.columns().size() - 1));
             }
+            int labelLines = wrappedLines(sheet, labels[index], 0, 0, 10);
+            int valueLines = wrappedLines(sheet, values[index], 1, Math.max(1, request.columns().size() - 1), 10);
+            setReadableHeight(row, index == 2 ? 32 : 25, Math.max(labelLines, valueLines), 15);
         }
         var filterLabels = request.labels().filters();
         var criteria = new ArrayList<String>();
@@ -304,12 +414,14 @@ public class CustomerDocumentExcelExportService {
         var dateFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy");
         if (filter.dateFrom() != null) criteria.add(filterLabels.dateFrom() + ": " + filter.dateFrom().format(dateFormat));
         if (filter.dateTo() != null) criteria.add(filterLabels.dateTo() + ": " + filter.dateTo().format(dateFormat));
-        var filterRow = sheet.createRow(3);
-        filterRow.setHeightInPoints(32);
+        var filterRow = sheet.createRow(6);
         var filterCell = filterRow.createCell(0);
-        filterCell.setCellValue(filterLabels.title() + ": " + (criteria.isEmpty() ? filterLabels.none() : String.join("; ", criteria)));
+        String filterText = filterLabels.title() + ": " + (criteria.isEmpty() ? filterLabels.none() : String.join("; ", criteria));
+        filterCell.setCellValue(filterText);
         filterCell.setCellStyle(styles.customerValue());
-        sheet.addMergedRegion(new CellRangeAddress(3, 3, 0, Math.max(1, request.columns().size() - 1)));
+        sheet.addMergedRegion(new CellRangeAddress(6, 6, 0, Math.max(1, request.columns().size() - 1)));
+        setReadableHeight(filterRow, 32, wrappedLines(sheet, filterText, 0,
+                Math.max(1, request.columns().size() - 1), 10), 15);
     }
 
     private static ExportSummary writeRows(Sheet sheet, CustomerDocumentExportRequest request,
@@ -319,7 +431,7 @@ public class CustomerDocumentExcelExportService {
         for (var row : rows) {
             var excelRow = sheet.createRow(HEADER_ROW + ++count);
             total = total.add(row.total());
-            excelRow.setHeightInPoints(20);
+            excelRow.setHeightInPoints(25);
             for (int index = 0; index < request.columns().size(); index++) {
                 var key = request.columns().get(index).key();
                 Object value = switch (key) {
@@ -336,10 +448,25 @@ public class CustomerDocumentExcelExportService {
                     case "currency" -> row.currency();
                     default -> throw new IllegalArgumentException("Columna de exportación no válida");
                 };
-                writeValue(excelRow.createCell(index), value, styles);
+                writeValue(excelRow.createCell(index), value, styles, count % 2 == 0);
             }
+            fitBodyRow(excelRow);
         }
         return new ExportSummary(count, total);
+    }
+
+    private static void fitBodyRow(org.apache.poi.ss.usermodel.Row row) {
+        int lines = 1;
+        for (var cell : row) {
+            if (cell.getCellType() != org.apache.poi.ss.usermodel.CellType.STRING) continue;
+            int width = Math.max(1, row.getSheet().getColumnWidth(cell.getColumnIndex()) / 256 - 2);
+            int cellLines = 0;
+            for (String segment : cell.getStringCellValue().split("\\R", -1)) {
+                cellLines += Math.max(1, (segment.length() + width - 1) / width);
+            }
+            lines = Math.max(lines, cellLines);
+        }
+        row.setHeightInPoints(Math.min(409, Math.max(25, lines * 15 + 8)));
     }
 
     private static void writeTotal(Sheet sheet, CustomerDocumentExportRequest request, ExportSummary summary, Styles styles) {
@@ -369,17 +496,17 @@ public class CustomerDocumentExcelExportService {
     private record ExportSummary(int count, BigDecimal total) {
     }
 
-    private static void writeValue(Cell cell, Object value, Styles styles) {
+    private static void writeValue(Cell cell, Object value, Styles styles, boolean stripe) {
         if (value instanceof BigDecimal decimal) {
             cell.setCellValue(decimal.doubleValue());
-            cell.setCellStyle(styles.amount());
+            cell.setCellStyle(stripe ? styles.amountStripe() : styles.amount());
         } else if (value instanceof LocalDate date) {
             cell.setCellValue(date.atStartOfDay());
-            cell.setCellStyle(styles.date());
+            cell.setCellStyle(stripe ? styles.dateStripe() : styles.date());
         } else {
             // Always write text as a string, including values beginning with '=' or '+'.
             cell.setCellValue(value == null ? "" : value.toString());
-            cell.setCellStyle(styles.body());
+            cell.setCellStyle(stripe ? styles.bodyStripe() : styles.body());
         }
     }
 
@@ -412,6 +539,9 @@ public class CustomerDocumentExcelExportService {
                 // Currency is explicit in each row and total; do not apply the legacy EUR-only format.
                 styles.amount().setDataFormat(workbook.createDataFormat().getFormat("#,##0.00"));
                 styles.totalAmount().setDataFormat(styles.amount().getDataFormat());
+                styles.amountStripe().setDataFormat(styles.amount().getDataFormat());
+                setColumnWidths(sheet, request.columns());
+                writePresentation(sheet, request, styles, null, null);
                 writeHeader(sheet, request.columns(), styles);
                 writeCustomer(sheet, new String[]{customerCode, customerTaxId, customerName}, request, request.queryFilter(), styles);
                 var totals = new java.util.TreeMap<String, BigDecimal>();
@@ -429,6 +559,7 @@ public class CustomerDocumentExcelExportService {
                         };
                         if (decimal != null) exactNumber(excelRow.getCell(index), decimal);
                     }
+                    fitBodyRow(excelRow);
                     totals.merge(row.currency(), row.total(), BigDecimal::add);
                 }
                 int totalColumn = java.util.stream.IntStream.range(0, request.columns().size())
@@ -451,14 +582,17 @@ public class CustomerDocumentExcelExportService {
                     if (numeric && exactlyRepresentable(entry.getValue()) && count > 0 && totalColumn >= 0) {
                         String amounts = CellReference.convertNumToColString(totalColumn);
                         String currencies = CellReference.convertNumToColString(currencyColumn);
-                        amount.setCellFormula("SUMIFS(" + amounts + "6:" + amounts + (HEADER_ROW + count + 1)
-                                + "," + currencies + "6:" + currencies + (HEADER_ROW + count + 1) + ",\"" + entry.getKey() + "\")");
+                        int firstRow = HEADER_ROW + 2;
+                        int lastRow = HEADER_ROW + count + 1;
+                        amount.setCellFormula("SUMIFS(" + amounts + firstRow + ":" + amounts + lastRow
+                                + "," + currencies + firstRow + ":" + currencies + lastRow + ",\"" + entry.getKey() + "\")");
                     }
                     exactNumber(amount, entry.getValue());
                     amount.setCellStyle(styles.totalAmount());
                 }
                 sheet.setAutoFilter(new CellRangeAddress(HEADER_ROW, HEADER_ROW + count, 0, request.columns().size() - 1));
                 sheet.createFreezePane(0, HEADER_ROW + 1);
+                configurePrint(sheet, request.columns().size(), presentationLocale(request));
                 workbook.write(output);
                 return output.toByteArray();
             } finally { sheet.flushRows(); }
@@ -483,55 +617,53 @@ public class CustomerDocumentExcelExportService {
         }
     }
 
-    private record Styles(CellStyle header, CellStyle body, CellStyle date, CellStyle amount,
+    private record Styles(CellStyle title, CellStyle header, CellStyle body, CellStyle bodyStripe,
+            CellStyle date, CellStyle dateStripe, CellStyle amount, CellStyle amountStripe,
             CellStyle customerLabel, CellStyle customerValue, CellStyle totalLabel, CellStyle totalAmount) {
-        static Styles create(Workbook workbook) {
-            var body = workbook.createCellStyle();
-            var font = workbook.createFont();
-            font.setFontName("Arial");
-            font.setFontHeightInPoints((short) 10);
-            body.setFont(font);
-            body.setVerticalAlignment(VerticalAlignment.CENTER);
-            body.setBorderBottom(BorderStyle.HAIR);
-            body.setBottomBorderColor(IndexedColors.GREY_25_PERCENT.getIndex());
-            body.setAlignment(HorizontalAlignment.LEFT);
+        private static final XSSFColor NAVY = color(10, 47, 86);
+        private static final XSSFColor PALE = color(234, 241, 247);
+        private static final XSSFColor STRIPE = color(246, 249, 252);
+        private static final XSSFColor WHITE = color(255, 255, 255);
 
-            var header = workbook.createCellStyle();
-            header.cloneStyleFrom(body);
-            header.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
-            header.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-            header.setBorderBottom(BorderStyle.THIN);
-            var headerFont = workbook.createFont();
-            headerFont.setFontName("Arial");
-            headerFont.setFontHeightInPoints((short) 10);
-            headerFont.setBold(true);
-            headerFont.setColor(IndexedColors.BLACK.getIndex());
-            header.setFont(headerFont);
+        static Styles create(SXSSFWorkbook workbook) {
+            var book = workbook.getXSSFWorkbook();
+            book.getFontAt(0).setFontName("Calibri");
+            var title = style(book, NAVY, WHITE, 18, true, null);
+            var header = style(book, NAVY, WHITE, 10, true, null);
+            var body = style(book, WHITE, NAVY, 10, false, null);
+            var bodyStripe = style(book, STRIPE, NAVY, 10, false, null);
+            var date = style(book, WHITE, NAVY, 10, false, "dd/mm/yyyy");
+            var dateStripe = style(book, STRIPE, NAVY, 10, false, "dd/mm/yyyy");
+            var amount = style(book, WHITE, NAVY, 10, false, "#,##0.00 [$€-x-euro2]");
+            var amountStripe = style(book, STRIPE, NAVY, 10, false, "#,##0.00 [$€-x-euro2]");
+            var customerLabel = style(book, PALE, NAVY, 10, true, null);
+            var customerValue = style(book, PALE, NAVY, 10, false, null);
+            var totalLabel = style(book, NAVY, WHITE, 13, true, null);
+            var totalAmount = style(book, NAVY, WHITE, 13, true, "#,##0.00 [$€-x-euro2]");
+            return new Styles(title, header, body, bodyStripe, date, dateStripe, amount, amountStripe,
+                    customerLabel, customerValue, totalLabel, totalAmount);
+        }
 
-            var date = workbook.createCellStyle();
-            date.cloneStyleFrom(body);
-            date.setDataFormat(workbook.createDataFormat().getFormat("dd/mm/yyyy"));
-            var amount = workbook.createCellStyle();
-            amount.cloneStyleFrom(body);
-            amount.setAlignment(HorizontalAlignment.RIGHT);
-            amount.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00 [$€-x-euro2]"));
-            var customerValue = workbook.createCellStyle();
-            customerValue.cloneStyleFrom(body);
-            customerValue.setBorderBottom(BorderStyle.NONE);
-            customerValue.setWrapText(true);
-            var customerLabel = workbook.createCellStyle();
-            customerLabel.cloneStyleFrom(customerValue);
-            customerLabel.setFont(headerFont);
-            var totalLabel = workbook.createCellStyle();
-            totalLabel.cloneStyleFrom(header);
-            totalLabel.setWrapText(true);
-            totalLabel.setBorderTop(BorderStyle.THIN);
-            totalLabel.setTopBorderColor(IndexedColors.GREY_50_PERCENT.getIndex());
-            var totalAmount = workbook.createCellStyle();
-            totalAmount.cloneStyleFrom(totalLabel);
-            totalAmount.setAlignment(HorizontalAlignment.RIGHT);
-            totalAmount.setDataFormat(amount.getDataFormat());
-            return new Styles(header, body, date, amount, customerLabel, customerValue, totalLabel, totalAmount);
+        private static XSSFCellStyle style(org.apache.poi.xssf.usermodel.XSSFWorkbook book,
+                XSSFColor background, XSSFColor foreground, int size, boolean bold, String format) {
+            var style = book.createCellStyle();
+            style.setFillForegroundColor(background);
+            style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            XSSFFont font = book.createFont();
+            font.setFontName("Calibri");
+            font.setFontHeightInPoints((short) size);
+            font.setBold(bold);
+            font.setColor(foreground);
+            style.setFont(font);
+            style.setVerticalAlignment(VerticalAlignment.CENTER);
+            style.setWrapText(true);
+            style.setAlignment(format == null ? HorizontalAlignment.LEFT : HorizontalAlignment.RIGHT);
+            if (format != null) style.setDataFormat(book.createDataFormat().getFormat(format));
+            return style;
+        }
+
+        private static XSSFColor color(int red, int green, int blue) {
+            return new XSSFColor(new byte[]{(byte) red, (byte) green, (byte) blue}, null);
         }
     }
 }

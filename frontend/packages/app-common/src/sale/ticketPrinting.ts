@@ -10,6 +10,7 @@ import type {
 import type { TerminalContext } from "../types";
 import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
+import { previewPreparedPdf } from "../export/preparedPdfExport";
 
 type NumericValue = number | string;
 type FiscalPartySnapshot = {
@@ -346,13 +347,11 @@ export async function outputConfirmedTicket(
     }
     if (mode === "PDF") {
       const safeNumber = snapshot.documentNumber.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-");
-      const result = await hardware.exportTicketPdf(
+      const result = await previewPreparedPdf("ticket",
         ticketPrintRequest(snapshot, terminal, locale),
-        `${safeNumber || "ticket"}.pdf`,
+        `${safeNumber || "ticket"}.pdf`, locale,
       );
-      return result.ok
-        ? { status: result.canceled ? "SKIPPED" : "PRINTED" }
-        : { status: "FAILED", technicalMessage: result.message };
+      return { status: result.canceled ? "SKIPPED" : "PRINTED" };
     }
     if (mode === "A4_PRINTER") {
       const result = await hardware.printA4Document(
@@ -612,13 +611,11 @@ export async function printPendingCommercialDocument(
     const parties = partyLabels(locale);
     if (mode === "PDF") {
       const safeNumber = snapshot.documentNumber.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-");
-      const result = await hardware.exportA4DocumentPdf(
+      const result = await previewPreparedPdf("a4",
         commercialDocumentAsA4Document(snapshot, terminal, locale),
-        `${safeNumber || "documento"}.pdf`,
+        `${safeNumber || "documento"}.pdf`, locale,
       );
-      return result.ok
-        ? { status: result.canceled ? "SKIPPED" : "PRINTED" }
-        : { status: "FAILED", technicalMessage: result.message };
+      return { status: result.canceled ? "SKIPPED" : "PRINTED" };
     }
     if (route?.printerTarget === "TICKET_PRINTER" && config.ticketPrinterDriver === "ESCPOS_RAW") {
       const result = await hardware.printTicket({

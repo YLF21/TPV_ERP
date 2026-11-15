@@ -1,3 +1,4 @@
+import { previewExport } from "../export/previewExport";
 import { ErpListSelect } from "./ErpListSelect";
 import { listFilterChips } from "./listFilterValues";
 import "./ErpClassicWindow.css";
@@ -271,6 +272,7 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
   useEffect(() => {
     if (!active || model347Open) return;
     function handleKey(event: KeyboardEvent) {
+      if (document.querySelector('.export-preview-dialog[open]')) return;
       if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
       const targetTab = tabs.find((item) => item.shortcut === event.key);
       if (!targetTab && event.key !== "F7" && event.key !== "Escape") return;
@@ -358,16 +360,7 @@ export function CustomerDocumentsDialog({ customer, session, locale, app = "vent
         .map((part) => part.trim().replace(/[<>:"/\\|?*\u0000-\u001f]+/g, "-")
           .replace(/\s+/g, " ").slice(0, 80).replace(/[. ]+$/, ""))
         .join("-") + ".xlsx";
-      if (window.tpvDesktop?.reports) {
-        const bytes = new Uint8Array(await blob.arrayBuffer());
-        if (controller.signal.aborted) return;
-        const result = await window.tpvDesktop.reports.saveFile({ defaultFileName: fileName, filters: [{ name: "Excel", extensions: ["xlsx"] }], bytes });
-        if (!result.ok) throw new Error("export_save_failed");
-      } else {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a"); link.href = url; link.download = fileName; link.click();
-        URL.revokeObjectURL(url);
-      }
+      await previewExport({ blob, fileName, locale, formattedWorkbook: true });
     } catch (failure: unknown) {
       if (!controller.signal.aborted) setExportErrorKey(apiProblemCode(failure) === "customer_documents_export_limit_exceeded"
         ? "customerDocuments.exportLimit" : classifyApiFailure(failure) === "forbidden"

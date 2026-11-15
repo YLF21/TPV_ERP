@@ -77,79 +77,47 @@ public class WarehouseTransferExportService {
 
         try (var book = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
             var sheet = book.createSheet(labels.text("Traspaso", "Transfer", "调拨"));
-            var normal = style(book, false, false, null);
-            var header = style(book, true, true, null);
-            var money = style(book, false, false, "#,##0.00");
-            var decimal = style(book, false, false, "#,##0.000");
-            var percent = style(book, false, false, "0.00\"%\"");
-            var title = sheet.createRow(0);
-            cell(title, 0, labels.text("TRASPASO DE ALMACÉN", "WAREHOUSE TRANSFER", "仓库调拨"), header);
-            sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 6));
-            info(sheet, 1, labels.text("Empresa", "Company", "公司"), company == null ? "" : company.getRazonSocial(), normal);
-            info(sheet, 2, labels.text("Tienda", "Store", "门店"), store.getNombreEfectivo(), normal);
-            info(sheet, 3, labels.text("Fecha", "Date", "日期"), request.date().toString(), normal);
-            info(sheet, 4, labels.text("Número", "Number", "编号"), request.number(), normal);
-            info(sheet, 5, labels.text("Estado", "Status", "状态"), labels.status(request.status()), normal);
-            info(sheet, 6, labels.text("Origen", "Source", "调出仓库"), source.getName(), normal);
-            info(sheet, 7, labels.text("Destino", "Destination", "调入仓库"), target.getName(), normal);
-            info(sheet, 8, labels.text("Número externo", "External number", "外部编号"), request.externalNumber(), normal);
-            info(sheet, 9, labels.text("Observaciones", "Notes", "备注"), request.notes(), normal);
-            sheet.getRow(9).setHeightInPoints(Math.min(180, 30 + 15 * ((request.notes() == null ? 0 : request.notes().length()) / 90)));
-            info(sheet, 10, labels.text("Fuente de precio", "Price source", "价格来源"), labels.priceSource(priceSource), normal);
+            var metadata = new java.util.ArrayList<>(WarehouseExportLayout.organizationMetadata(store, company,
+                    request.locale() == null ? store.getLocale() : request.locale(), java.time.Instant.now()));
+            metadata.add(new WarehouseExportLayout.MetadataField(labels.text("Fecha", "Date", "日期"), request.date().toString()));
+            metadata.add(new WarehouseExportLayout.MetadataField(labels.text("Número", "Number", "编号"), request.number()));
+            metadata.add(new WarehouseExportLayout.MetadataField(labels.text("Estado", "Status", "状态"), labels.status(request.status())));
+            metadata.add(new WarehouseExportLayout.MetadataField(labels.text("Origen", "Source", "调出仓库"), source.getName()));
+            metadata.add(new WarehouseExportLayout.MetadataField(labels.text("Destino", "Destination", "调入仓库"), target.getName()));
+            metadata.add(new WarehouseExportLayout.MetadataField(labels.text("Número externo", "External number", "外部编号"), request.externalNumber()));
+            metadata.add(new WarehouseExportLayout.MetadataField(labels.text("Observaciones", "Notes", "备注"), request.notes()));
+            metadata.add(new WarehouseExportLayout.MetadataField(labels.text("Fuente de precio", "Price source", "价格来源"), labels.priceSource(priceSource)));
             var headings = List.of(labels.text("Código", "Code", "编码"), labels.text("Código de barras", "Barcode", "条码"),
                     labels.text("Artículo", "Product", "商品"), labels.text("Descuento", "Discount", "折扣"),
                     labels.text("Precio unitario", "Unit price", "单价"), labels.text("Cantidad", "Quantity", "数量"),
                     labels.text("Total", "Total", "合计"));
-            var headingRow = sheet.createRow(12);
-            for (int col = 0; col < headings.size(); col++) cell(headingRow, col, headings.get(col), header);
-            int rowNumber = 13;
+            var layout = WarehouseExportLayout.workbook(book, sheet,
+                    labels.text("TRASPASO DE ALMACÉN", "WAREHOUSE TRANSFER", "仓库调拨"),
+                    metadata, headings, new int[] {20, 24, 48, 16, 20, 18, 22},
+                    request.locale() == null ? store.getLocale() : request.locale());
+            int rowNumber = layout.headerRow() + 1;
             for (var line : lines) {
                 var row = sheet.createRow(rowNumber++);
-                cell(row, 0, line.code(), normal);
-                cell(row, 1, line.barcode(), normal);
-                cell(row, 2, line.values().getProductName(), normal);
-                number(row, 3, line.values().getDiscount(), percent);
-                number(row, 4, line.values().getPurchaseUnitPrice(), decimal);
-                number(row, 5, line.values().getQuantity(), decimal);
-                number(row, 6, line.values().getTotal(), money);
+                boolean stripe = (rowNumber - layout.headerRow()) % 2 == 0;
+                cell(row, 0, line.code(), layout.text(stripe));
+                cell(row, 1, line.barcode(), layout.text(stripe));
+                cell(row, 2, line.values().getProductName(), layout.text(stripe));
+                number(row, 3, line.values().getDiscount(), layout.percent(stripe));
+                number(row, 4, line.values().getPurchaseUnitPrice(), layout.money3(stripe));
+                number(row, 5, line.values().getQuantity(), layout.number(stripe));
+                number(row, 6, line.values().getTotal(), layout.money(stripe));
+                WarehouseExportLayout.bodyRow(row, layout, rowNumber - layout.headerRow() - 2);
             }
-            sheet.setAutoFilter(new CellRangeAddress(12, rowNumber - 1, 0, 6));
-            summary(sheet, ++rowNumber, labels.text("Subtotal", "Subtotal", "小计"), subtotal, header, money);
-            summary(sheet, ++rowNumber, labels.text("Descuento global", "Global discount", "整单折扣"), discount, header, percent);
-            summary(sheet, ++rowNumber, labels.text("Importe descuento", "Discount amount", "折扣金额"), subtotal.subtract(total), header, money);
-            summary(sheet, ++rowNumber, labels.text("Total", "Total", "合计"), total, header, money);
-            int[] widths = {20, 24, 48, 16, 20, 18, 22};
-            for (int col = 0; col < widths.length; col++) sheet.setColumnWidth(col, widths[col] * 256);
-            sheet.createFreezePane(0, 13);
-            sheet.setRepeatingRows(new CellRangeAddress(12, 12, -1, -1));
-            sheet.getPrintSetup().setLandscape(true);
-            sheet.getPrintSetup().setPaperSize(PrintSetup.A4_PAPERSIZE);
-            sheet.getPrintSetup().setFitWidth((short) 1);
-            sheet.getPrintSetup().setFitHeight((short) 0);
-            sheet.setFitToPage(true);
+            WarehouseExportLayout.autoFilter(sheet, layout.headerRow(), rowNumber - 1, 7);
+            summary(sheet, ++rowNumber, labels.text("Subtotal", "Subtotal", "小计"), subtotal, layout.totalLabel(), layout.totalMoney());
+            summary(sheet, ++rowNumber, labels.text("Descuento global", "Global discount", "整单折扣"), discount, layout.totalLabel(), layout.totalPercent());
+            summary(sheet, ++rowNumber, labels.text("Importe descuento", "Discount amount", "折扣金额"), subtotal.subtract(total), layout.totalLabel(), layout.totalMoney());
+            summary(sheet, ++rowNumber, labels.text("Total", "Total", "合计"), total, layout.totalLabel(), layout.totalMoney());
             book.write(output);
             return output.toByteArray();
         } catch (IOException error) {
             throw new IllegalStateException("No se pudo generar el Excel del traspaso", error);
         }
-    }
-
-    private static CellStyle style(XSSFWorkbook book, boolean bold, boolean grey, String format) {
-        var style = book.createCellStyle();
-        var font = book.createFont();
-        font.setFontName("Arial");
-        font.setFontHeightInPoints((short) 10);
-        font.setBold(bold);
-        font.setColor(IndexedColors.BLACK.getIndex());
-        style.setFont(font);
-        style.setVerticalAlignment(VerticalAlignment.TOP);
-        style.setWrapText(true);
-        if (grey) {
-            style.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
-            style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-        }
-        if (format != null) style.setDataFormat(book.createDataFormat().getFormat(format));
-        return style;
     }
 
     private static void cell(Row row, int column, String value, CellStyle style) {
@@ -164,17 +132,12 @@ public class WarehouseTransferExportService {
         cell.setCellStyle(style);
     }
 
-    private static void info(Sheet sheet, int rowNumber, String label, String value, CellStyle style) {
-        var row = sheet.createRow(rowNumber);
-        cell(row, 0, label, style);
-        cell(row, 1, value, style);
-        sheet.addMergedRegion(new CellRangeAddress(rowNumber, rowNumber, 1, 6));
-    }
-
     private static void summary(Sheet sheet, int rowNumber, String label, BigDecimal value,
                                 CellStyle labelStyle, CellStyle valueStyle) {
         var row = sheet.createRow(rowNumber);
+        row.setHeightInPoints(30);
         cell(row, 4, label, labelStyle);
+        cell(row, 5, "", labelStyle);
         sheet.addMergedRegion(new CellRangeAddress(rowNumber, rowNumber, 4, 5));
         number(row, 6, value, valueStyle);
     }

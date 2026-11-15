@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.text.Normalizer;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -16,6 +15,7 @@ import java.sql.Types;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -114,24 +114,83 @@ public class StockExcelExportService {
                     && inProgress.includePurchaseFields == includePurchaseFields) return inProgress.view();
             throw new IllegalStateException("stock_excel_export_busy");
         }
-        String promotionName = null;
+        PromotionExportDetails promotion = null;
         if ("SELECTED".equals(normalized.promotionScope())) {
-            var names = jdbc.query("""
-                    select promotion.nombre
+            var matches = jdbc.query("""
+                    select promotion.nombre, promotion.fecha_inicio, promotion.fecha_fin
                     from promocion promotion
                     join tienda store on store.empresa_id = promotion.empresa_id
                     where store.id = ? and promotion.id = ?
-                    """, (result, row) -> result.getString(1), storeId, normalized.promotionId());
-            if (names.isEmpty()) throw new IllegalArgumentException("stock_excel_export_promotion_not_found");
-            promotionName = names.get(0);
+                    """, (result, row) -> new PromotionExportDetails(result.getString(1),
+                            result.getObject(2, LocalDate.class), result.getObject(3, LocalDate.class)),
+                    storeId, normalized.promotionId());
+            if (matches.isEmpty()) throw new IllegalArgumentException("stock_excel_export_promotion_not_found");
+            promotion = matches.get(0);
         }
         Instant createdAt = Instant.now();
-        LocalDate exportDate = LocalDate.now();
+        StockExportLayout.Metadata metadata = StockExportLayout.supports(normalized)
+                ? stockMetadata(storeId, normalized, createdAt) : StockExportLayout.Metadata.empty(createdAt);
+        // Keep promotion eligibility on its original calendar date; filenames use the store date.
+        LocalDate exportDate = "PROMOTIONS".equals(normalized.view())
+                ? LocalDate.ofInstant(createdAt, java.time.ZoneId.systemDefault()) : metadata.localDate();
         var job = new ExportJob(UUID.randomUUID(), storeId, normalizedOwner, format,
-                includePurchaseFields, normalized, createdAt, exportDate,
-                fileName(normalized, promotionName, exportDate, format));
+                includePurchaseFields, normalized, createdAt, exportDate, metadata,
+                fileName(normalized, promotion, metadata.localDate(), format), promotion == null ? null : promotion.name());
         jobs.put(job.id, job);
         return job.view();
+    }
+
+    private StockExportLayout.Metadata stockMetadata(UUID storeId, ExportRequest request, Instant createdAt) {
+        var matches = jdbc.query("""
+                select company.razon_social, company.tax_id,
+                       store.codigo_tienda || ' - ' || coalesce(store.nombre, company.razon_social),
+                       concat_ws(', ', nullif(store.direccion ->> 'linea1', ''),
+                               nullif(store.direccion ->> 'linea2', ''),
+                               nullif(store.direccion ->> 'codigoPostal', ''),
+                               nullif(store.direccion ->> 'ciudad', ''),
+                               nullif(store.direccion ->> 'provincia', ''),
+                               nullif(store.direccion ->> 'pais', '')),
+                       store.timezone
+                from tienda store
+                join empresa company on company.id = store.empresa_id
+                where store.id = ?
+                """, (result, row) -> new StockExportLayout.Metadata(
+                        result.getString(1), result.getString(2), result.getString(3),
+                        result.getString(4), null, result.getString(5), createdAt), storeId);
+        if (matches == null || matches.isEmpty()) {
+            throw new IllegalArgumentException("stock_excel_export_store_not_found");
+        }
+        var chosen = "TOP_SALES".equals(request.view())
+                ? request.choices().topSalesWarehouseIds() : request.choices().warehouseIds();
+        var effective = chosen.isEmpty()
+                ? request.warehouseId() == null ? List.<UUID>of() : List.of(request.warehouseId())
+                : "TOP_SALES".equals(request.view()) && request.warehouseId() != null
+                        ? chosen.stream().filter(request.warehouseId()::equals).toList() : chosen;
+        var requested = new LinkedHashSet<UUID>(chosen);
+        if (request.warehouseId() != null) requested.add(request.warehouseId());
+        if (requested.isEmpty()) return matches.get(0);
+        var warehouses = jdbc.query("""
+                select warehouse.id, warehouse.nombre
+                from almacen warehouse
+                where warehouse.tienda_id = ?
+                  and warehouse.id = any(cast(string_to_array(?, ',') as uuid[]))
+                order by lower(warehouse.nombre), warehouse.id
+                """, (result, row) -> new StockExportLayout.Warehouse(
+                        result.getObject(1, UUID.class), result.getString(2)), storeId,
+                StockListFilterChoices.sqlArray(List.copyOf(requested)));
+        if (warehouses == null || warehouses.size() != requested.size()) {
+            throw new IllegalArgumentException("stock_excel_export_warehouse_not_found");
+        }
+        var base = matches.get(0);
+        var effectiveIds = Set.copyOf(effective);
+        String label = effectiveIds.isEmpty()
+                ? StockExportLayout.translate(request.language(), "Sin almacenes coincidentes",
+                        "No matching warehouses", "无匹配仓库")
+                : warehouses.stream().filter(warehouse -> effectiveIds.contains(warehouse.id()))
+                        .map(StockExportLayout.Warehouse::name)
+                        .collect(java.util.stream.Collectors.joining(", "));
+        return new StockExportLayout.Metadata(base.company(), base.taxId(), base.store(),
+                base.address(), label, base.timezone(), createdAt);
     }
 
     @Transactional(readOnly = true)
@@ -147,7 +206,8 @@ public class StockExcelExportService {
                 try {
                     workbook = Files.createTempFile(directory, "stock-pdf-source-", ".xlsx");
                     writeWorkbook(job, workbook);
-                    StockPdfRenderer.render(workbook, output, job.request);
+                    StockPdfRenderer.render(workbook, output, job.request, job.metadata,
+                            Math.toIntExact(job.processedRows.get()));
                 } finally {
                     delete(workbook);
                 }
@@ -179,22 +239,114 @@ public class StockExcelExportService {
         var workbook = new SXSSFWorkbook(ROW_WINDOW);
         workbook.setCompressTempFiles(false);
         try (workbook; var stream = Files.newOutputStream(output)) {
+            if (StockExportLayout.supports(job.request)) {
+                writeDesignedWorkbook(workbook, job);
+                workbook.write(stream);
+                return;
+            }
             var sheet = workbook.createSheet("Stock");
             var styles = new Styles(workbook);
             writeHeader(sheet, job.request.columns(), styles.header());
+            BigDecimal[] totals = new BigDecimal[job.request.columns().size()];
+            java.util.Arrays.fill(totals, BigDecimal.ZERO);
             if (isTopSales(job.request)) {
                 writeTopSalesRows(sheet, job, styles);
             } else {
-                writeInventoryRows(sheet, job, styles);
+                writeInventoryRows(sheet, job, styles, null, totals);
             }
-            finish(sheet, job.request.columns(), Math.toIntExact(job.processedRows.get()));
+            int rows = Math.toIntExact(job.processedRows.get());
+            finish(sheet, job.request.columns(), rows);
             workbook.write(stream);
         } finally {
             workbook.dispose();
         }
     }
 
-    private void writeInventoryRows(Sheet sheet, ExportJob job, Styles styles) {
+    private void writeDesignedWorkbook(SXSSFWorkbook workbook, ExportJob job) {
+        var styles = new Styles(workbook);
+        var layout = new StockExportLayout.Styles(workbook);
+        var columns = job.request.columns();
+        var sheet = workbook.createSheet(StockExportLayout.sheetName(job.request));
+        StockExportLayout.heading(sheet, job.request, columns, job.metadata, layout, job.promotionName);
+        var totals = new HashMap<String, BigDecimal>();
+        if (isTopSales(job.request)) writeDesignedTopSalesRows(sheet, job, styles, layout, totals);
+        else writeDesignedInventoryRows(sheet, job, styles, layout, totals);
+        int rows = Math.toIntExact(job.processedRows.get());
+        StockExportLayout.totals(sheet, job.request, columns, layout, totals, rows);
+        StockExportLayout.printSetup(sheet, columns,
+                StockExportLayout.HEADER_ROW + rows + 2, job.request.language());
+    }
+
+    private void writeDesignedInventoryRows(Sheet sheet, ExportJob job, Styles styles,
+            StockExportLayout.Styles layout, Map<String, BigDecimal> totals) {
+        jdbc.query(connection -> {
+            PreparedStatement statement = connection.prepareStatement(
+                    exportSql(job.request), ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+            statement.setFetchSize(FETCH_SIZE);
+            bind(statement, job);
+            return statement;
+        }, result -> {
+            int rowNumber = StockExportLayout.HEADER_ROW + 1;
+            while (result.next()) {
+                if (rowNumber >= MAX_EXCEL_ROWS - 2) {
+                    throw new IllegalStateException("stock_excel_export_row_limit");
+                }
+                Row row = sheet.createRow(rowNumber);
+                writeRow(row, result, job.request.columns(), job.request.language(), styles);
+                StockExportLayout.body(row, job.request.columns(), layout,
+                        Math.toIntExact(job.processedRows.get()));
+                for (String key : StockExportLayout.totalKeys(job.request)) {
+                    if (job.request.columns().stream().noneMatch(column -> key.equals(column.key()))) continue;
+                    BigDecimal value = result.getBigDecimal("totalStock".equals(key)
+                            ? "total_stock" : "local_stock");
+                    if (value != null) totals.merge(key, value, BigDecimal::add);
+                }
+                job.processedRows.incrementAndGet();
+                rowNumber++;
+            }
+            return null;
+        });
+    }
+
+    private void writeDesignedTopSalesRows(Sheet sheet, ExportJob job, Styles styles,
+            StockExportLayout.Styles layout, Map<String, BigDecimal> totals) {
+        var request = job.request;
+        var rankedRows = request.choices().topSalesWarehouseIds().isEmpty()
+                ? topSales.topSales(job.storeId, request.dateFrom(), request.dateTo(), request.warehouseId())
+                : topSales.topSalesFiltered(job.storeId, request.dateFrom(), request.dateTo(), request.warehouseId(),
+                        request.choices().topSalesWarehouseIds());
+        var rankByRow = new HashMap<StockTopSalesRow, Integer>();
+        for (int index = 0; index < rankedRows.size(); index++) rankByRow.put(rankedRows.get(index), index);
+        Comparator<StockTopSalesRow> comparator = "ranking".equals(request.sortBy())
+                ? Comparator.comparingInt(rankByRow::get) : topSalesComparator(request);
+        if ("ranking".equals(request.sortBy()) && "desc".equals(request.sortDirection())) {
+            comparator = comparator.reversed();
+        }
+        var rows = rankedRows.stream().filter(row -> topSalesMatches(row, request))
+                .sorted(comparator).toList();
+        for (var value : rows) {
+            int index = Math.toIntExact(job.processedRows.get());
+            if (StockExportLayout.HEADER_ROW + index + 1 >= MAX_EXCEL_ROWS - 2) {
+                throw new IllegalStateException("stock_excel_export_row_limit");
+            }
+            Row row = sheet.createRow(StockExportLayout.HEADER_ROW + index + 1);
+            writeTopSalesRow(row, value, rankByRow.get(value), job.request.columns(), styles);
+            StockExportLayout.body(row, job.request.columns(), layout, index);
+            if (request.columns().stream().anyMatch(column -> "soldUnits".equals(column.key()))) {
+                totals.merge("soldUnits", value.soldQuantity(), BigDecimal::add);
+            }
+            if (request.columns().stream().anyMatch(column -> "currentStock".equals(column.key()))) {
+                totals.merge("currentStock", value.currentStock(), BigDecimal::add);
+            }
+            if (request.columns().stream().anyMatch(column -> "amount".equals(column.key()))) {
+                totals.merge("amount", value.netAmount(), BigDecimal::add);
+            }
+            job.processedRows.incrementAndGet();
+        }
+    }
+
+    private void writeInventoryRows(Sheet sheet, ExportJob job, Styles styles,
+            StockExportLayout.Styles layout, BigDecimal[] totals) {
         jdbc.query(connection -> {
             PreparedStatement statement = connection.prepareStatement(
                     exportSql(job.request),
@@ -204,13 +356,25 @@ public class StockExcelExportService {
             bind(statement, job);
             return statement;
         }, result -> {
-            int rowNumber = 1;
+            int rowNumber = layout == null ? 1 : StockExportLayout.HEADER_ROW + 1;
             while (result.next()) {
-                if (rowNumber >= MAX_EXCEL_ROWS) {
+                if (rowNumber >= MAX_EXCEL_ROWS - (layout == null ? 0 : 2)) {
                     throw new IllegalStateException("stock_excel_export_row_limit");
                 }
-                writeRow(sheet.createRow(rowNumber++), result,
+                Row row = sheet.createRow(rowNumber++);
+                writeRow(row, result,
                         job.request.columns(), job.request.language(), styles);
+                if (layout != null) {
+                    StockExportLayout.body(row, job.request.columns(), layout,
+                            Math.toIntExact(job.processedRows.get()));
+                    for (int c = 0; c < job.request.columns().size(); c++) {
+                        String key = job.request.columns().get(c).key();
+                        if (!StockExportLayout.TOTAL_QUANTITIES.contains(key)) continue;
+                        BigDecimal value = result.getBigDecimal("totalStock".equals(key)
+                                ? "total_stock" : "local_stock");
+                        if (value != null) totals[c] = totals[c].add(value);
+                    }
+                }
                 job.processedRows.incrementAndGet();
             }
             return null;
@@ -779,15 +943,24 @@ public class StockExcelExportService {
         return "NO_DISCOUNT".equals(optionalUpper(request.view())) ? "NONE" : null;
     }
 
-    private static String fileName(ExportRequest request, String promotionName, LocalDate date,
+    record PromotionExportDetails(String name, LocalDate startDate, LocalDate endDate) { }
+
+    private static String fileName(ExportRequest request, PromotionExportDetails promotion, LocalDate date,
             ExportFormat format) {
+        var compactDate = DateTimeFormatter.ofPattern("ddMMyy");
+        if ("PROMOTIONS".equals(request.view())) {
+            if ("SELECTED".equals(request.promotionScope())) {
+                if (promotion == null || promotion.startDate() == null) {
+                    throw new IllegalArgumentException("stock_excel_export_promotion_period_missing");
+                }
+                String period = promotion.startDate().format(compactDate) + "-"
+                        + (promotion.endDate() == null ? "Sin_fin" : promotion.endDate().format(compactDate));
+                return safePromotionName(promotion.name()) + "_" + period + format.extension;
+            }
+            return "Promociones_" + date.format(compactDate) + format.extension;
+        }
         String language = request.language();
         String prefix = switch (request.view() == null ? "STOCK" : request.view()) {
-            case "PROMOTIONS" -> "SELECTED".equals(request.promotionScope())
-                    ? translatedPrefix(language, "productos-promocion", "promotion-products", "促销商品")
-                            + "-" + safeName(promotionName, language)
-                    : translatedPrefix(language, "productos-promociones-activas",
-                            "active-promotions-products", "有效促销商品");
             case "OFFERS" -> translatedPrefix(language, "productos-con-oferta", "products-on-offer", "优惠商品");
             case "MEMBER_PRICE" -> translatedPrefix(language, "productos-precio-miembro",
                     "member-price-products", "会员价商品");
@@ -796,6 +969,16 @@ public class StockExcelExportService {
             case "TOP_SALES" -> translatedPrefix(language, "top-ventas", "top-sales", "热销商品");
             default -> translatedPrefix(language, "stock", "stock", "库存");
         };
+        if (StockExportLayout.supports(request)) {
+            String report = switch (request.view() == null ? "CURRENT_STOCK" : request.view()) {
+                case "TOP_SALES" -> "Top_ventas";
+                case "OFFERS" -> "Ofertas";
+                case "MEMBER_PRICE" -> "Precio_de_socio";
+                case "NO_DISCOUNT" -> "Sin_descuento";
+                default -> "Stock";
+            };
+            return report + "_" + date.format(DateTimeFormatter.ofPattern("ddMMyy")) + format.extension;
+        }
         return prefix + "-" + date + format.extension;
     }
 
@@ -803,15 +986,14 @@ public class StockExcelExportService {
         return "en".equals(language) ? en : "zh".equals(language) ? zh : es;
     }
 
-    private static String safeName(String value, String language) {
-        String normalized = Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}+", "")
-                .toLowerCase(Locale.ROOT)
-                .replaceAll("[^\\p{L}\\p{N}]+", "-")
-                .replaceAll("^-+|-+$", "");
-        if (normalized.isEmpty()) return translatedPrefix(language, "seleccionada", "selected", "已选促销");
-        int length = normalized.offsetByCodePoints(0, Math.min(60, normalized.codePointCount(0, normalized.length())));
-        return normalized.substring(0, length).replaceAll("-+$", "");
+    private static String safePromotionName(String value) {
+        String normalized = (value == null ? "" : value)
+                .replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]+", " ")
+                .replaceAll("(?U)\\s+", " ")
+                .replaceAll("^[. ]+|[. ]+$", "");
+        int length = normalized.offsetByCodePoints(0, Math.min(100, normalized.codePointCount(0, normalized.length())));
+        String shortened = normalized.substring(0, length).replaceAll("[. ]+$", "");
+        return shortened.isEmpty() ? "Promocion" : shortened;
     }
 
     private static String normalizedStockStatus(String value) {
@@ -960,7 +1142,9 @@ public class StockExcelExportService {
         private final ExportRequest request;
         private final Instant createdAt;
         private final LocalDate exportDate;
+        private final StockExportLayout.Metadata metadata;
         private final String fileName;
+        private final String promotionName;
         private final AtomicLong processedRows = new AtomicLong();
         private volatile JobStatus status = JobStatus.QUEUED;
         private volatile Path file;
@@ -969,7 +1153,8 @@ public class StockExcelExportService {
 
         private ExportJob(
                 UUID id, UUID storeId, String owner, ExportFormat format, boolean includePurchaseFields,
-                ExportRequest request, Instant createdAt, LocalDate exportDate, String fileName) {
+                ExportRequest request, Instant createdAt, LocalDate exportDate,
+                StockExportLayout.Metadata metadata, String fileName, String promotionName) {
             this.id = id;
             this.storeId = storeId;
             this.owner = owner;
@@ -978,7 +1163,9 @@ public class StockExcelExportService {
             this.request = request;
             this.createdAt = createdAt;
             this.exportDate = exportDate;
+            this.metadata = metadata;
             this.fileName = fileName;
+            this.promotionName = promotionName;
         }
 
         private synchronized boolean start() {

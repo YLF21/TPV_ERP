@@ -16,6 +16,7 @@ const { sendLineDisplay } = require("./customer-line-display.cjs");
 const { listSerialPorts } = require("./serial-ports.cjs");
 const { renderProductLabelHtml, normalizedProfile } = require("./product-label-renderer.cjs");
 const { renderTableReportHtml } = require("./table-report-renderer.cjs");
+const { createExportPreviewService } = require("./export-preview.cjs");
 const { restrictNavigation, trustedOrigin } = require("./navigation-security.cjs");
 const { buildCashDrawerBuffer, buildRasterDocumentBuffer, buildTicketBuffer, sendEscposBuffer, shouldOpenCashDrawerForTicket } = require("./escpos.cjs");
 const {
@@ -52,6 +53,7 @@ if (process.platform === "win32") {
   app.setAppUserModelId(desktopAppConfig.appId);
 }
 const desktopAppIcon = resolveDesktopIcon(desktopAppConfig);
+const exportPreview = createExportPreviewService({ BrowserWindow, icon: desktopAppIcon });
 const customerDisplayBrandPath = path.resolve(__dirname, "..", "branding", "espos-wordmark.png");
 // Temporary development preview for checking the customer layout at different sizes.
 const customerDisplayWindowed = !app.isPackaged;
@@ -1431,7 +1433,9 @@ for (const method of ["load", "discover", "refreshLink", "cancelLink", "restart"
 for (const method of ["probe", "requestLink", "saveAddress"]) {
   registerIpc(`tpv:backend-connection:${method}`, (_event, input) => connectionCall(method, input));
 }
-registerIpc("tpv:reports:save-file", (_event, request) => saveBinaryFile(request));
+registerIpc("tpv:reports:save-file", (_event, request) => saveBinaryFile(request), mainAndSalesWindows);
+registerIpc("tpv:reports:prepare-pdf", (_event, request) => exportPreview.preparePdf(request), mainAndSalesWindows);
+registerIpc("tpv:reports:print-export", (_event, request) => exportPreview.printExport(request), mainAndSalesWindows);
 registerIpc("tpv:reports:export-pdf", (_event, defaultFileName) => exportCurrentPagePdf(defaultFileName));
 registerIpc("tpv:reports:export-table-pdf", (_event, report, defaultFileName) =>
   exportTableReportPdf(report, defaultFileName));

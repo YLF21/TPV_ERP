@@ -2,9 +2,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { apiRequest } from "../api/client";
+import { previewExport } from "../export/previewExport";
 import { ReplenishmentScreen } from "./ReplenishmentScreen";
 
 vi.mock("../api/client", () => ({ apiRequest: vi.fn() }));
+vi.mock("../export/previewExport", () => ({ previewExport: vi.fn().mockResolvedValue({ downloaded: false, printed: false, canceled: true }) }));
 const item = { id: "r1", version: 3, productId: "p1", warehouseId: "w1", warehouseName: "General", code: "A1", barcode: "123", name: "Café", quantity: 2.5, reason: "Reposición", stock: 0, purchasePrice: null, supplierId: "s1", supplierName: "Proveedor", familyId: "f1", familyName: "Bebidas", subfamilyId: "sf1", subfamilyName: "Café", status: "PENDING" as const, orderDate: null };
 beforeEach(() => {
   vi.mocked(apiRequest).mockImplementation(async (path) => {
@@ -16,6 +18,21 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("replenishment UI", () => {
+  it("previews Excel with workbook styles and PDF without them", async () => {
+    vi.mocked(apiRequest).mockImplementation(async (path) => {
+      if (path === "/warehouses") return [] as never;
+      if (path === "/replenishment-requests") return [item] as never;
+      if (path === "/replenishment-requests/export") return new Blob(["report"]) as never;
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const view = render(<ReplenishmentScreen token="token" locale="es" />);
+    await screen.findByRole("checkbox", { name: "Seleccionar Café" });
+    fireEvent.click(view.container.querySelector('button[aria-keyshortcuts="F6"]')!);
+    await waitFor(() => expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({ fileName: "solicitudes-reposicion.xlsx", formattedWorkbook: true })));
+    fireEvent.click(view.container.querySelector('button[aria-keyshortcuts="F7"]')!);
+    await waitFor(() => expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({ fileName: "solicitudes-reposicion.pdf", formattedWorkbook: false })));
+  });
+
   it("toggles each row from its cells and checks boxes only once, preserving multi-selection", async () => {
     const second = { ...item, id: "r2", name: "Agua", code: "A2" };
     vi.mocked(apiRequest).mockImplementation(async path => {

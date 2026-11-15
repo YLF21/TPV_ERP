@@ -44,6 +44,11 @@ public class SalesReportPdfExportService {
              var document = new PDDocument();
              var output = new ByteArrayOutputStream()) {
             var sheet = workbook.getSheetAt(0);
+            if (TicketReportWorkbookLayout.supports(request.reportKey())) {
+                TicketReportPdfRenderer.render(document, sheet, request);
+                document.save(output);
+                return output.toByteArray();
+            }
             var locale = Locale.forLanguageTag("es-ES");
             var formatter = new DataFormatter(locale);
             var currencyFormatter = NumberFormat.getNumberInstance(locale);

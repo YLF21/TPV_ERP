@@ -35,6 +35,11 @@ class WarehouseTransferListExportServiceTest {
         var store = mock(Store.class);
         when(store.getId()).thenReturn(storeId); when(store.getTimezone()).thenReturn("Europe/Madrid");
         when(store.getNombreEfectivo()).thenReturn("Tienda de ejemplo"); when(organization.currentStore()).thenReturn(store);
+        when(store.getDireccion()).thenReturn(Map.of("linea1", "Calle Mayor 1", "codigoPostal", "28001", "ciudad", "Madrid"));
+        var company = mock(Company.class);
+        when(company.getRazonSocial()).thenReturn("Empresa Ejemplo");
+        when(company.getTaxId()).thenReturn("B12345678");
+        when(organization.currentCompany()).thenReturn(company);
         when(warehouses.findByStoreIdOrderByNombre(storeId)).thenReturn(List.of(source, target));
         when(transfers.listFiltered(anyInt(), eq(100), eq(List.of(filters.status())), eq(List.of(source.getId())), eq(List.of(target.getId())),
                 eq(filters.from()), eq(filters.before()), eq("TRA"))).thenAnswer(invocation -> {
@@ -55,12 +60,16 @@ class WarehouseTransferListExportServiceTest {
         byte[] bytes = service.export("xlsx", filters);
         try (var book = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
             var sheet = book.getSheetAt(0);
-            assertThat(sheet.getLastRowNum()).isEqualTo(120);
-            assertThat(sheet.getRow(120).getCell(0).getStringCellValue()).isEqualTo("TRA-2026-000119");
-            assertThat(sheet.getRow(1).getCell(2).getStringCellValue()).isEqualTo("GENERAL");
-            assertThat(sheet.getRow(1).getCell(3).getStringCellValue()).isEqualTo("DEPÓSITO");
-            assertThat(sheet.getRow(1).getCell(7).getNumericCellValue()).isEqualTo(18.5);
-            assertThat(sheet.getRow(2).getCell(4).getCellType()).isEqualTo(org.apache.poi.ss.usermodel.CellType.STRING);
+            int first = sheet.getPaneInformation().getHorizontalSplitPosition();
+            assertThat(sheet.getLastRowNum()).isEqualTo(first + 119);
+            assertThat(sheet.getRow(first + 119).getCell(0).getStringCellValue()).isEqualTo("TRA-2026-000119");
+            assertThat(sheet.getRow(first).getCell(2).getStringCellValue()).isEqualTo("GENERAL");
+            assertThat(sheet.getRow(first).getCell(3).getStringCellValue()).isEqualTo("DEPÓSITO");
+            assertThat(sheet.getRow(first).getCell(7).getNumericCellValue()).isEqualTo(18.5);
+            assertThat(sheet.getRow(first + 1).getCell(4).getCellType()).isEqualTo(org.apache.poi.ss.usermodel.CellType.STRING);
+            assertThat(sheet.getRow(0).getCell(0).getStringCellValue()).isEqualTo("Traspasos de almacén");
+            assertThat(sheet.getRow(1).getCell(1).getStringCellValue()).isEqualTo("Empresa Ejemplo");
+            assertThat(sheet.getRow(2).getCell(1).getStringCellValue()).isEqualTo("B12345678");
         }
         verify(transfers).listFiltered(1, 100, List.of(filters.status()), List.of(source.getId()), List.of(target.getId()), filters.from(), filters.before(), "TRA");
         saveArtifact("traspasos.xlsx", bytes);
@@ -73,6 +82,11 @@ class WarehouseTransferListExportServiceTest {
             String text = new PDFTextStripper().getText(pdf);
             assertThat(text).contains("TRA-2026-000000", "TRA-2026-000119", "GENERAL", "DEPÓSITO", "18,5");
             assertThat(text.split("Traspasos de almacén", -1).length - 1).isEqualTo(pdf.getNumberOfPages());
+            assertThat(text).contains("Página 1 de " + pdf.getNumberOfPages());
+            var firstPage = new PDFTextStripper(); firstPage.setStartPage(1); firstPage.setEndPage(1);
+            var secondPage = new PDFTextStripper(); secondPage.setStartPage(2); secondPage.setEndPage(2);
+            assertThat(firstPage.getText(pdf)).contains("Empresa Ejemplo", "Calle Mayor 1");
+            assertThat(secondPage.getText(pdf)).doesNotContain("Empresa Ejemplo", "Calle Mayor 1");
             String output = System.getProperty("warehouse.transfer.export.artifacts");
             if (output != null) {
                 Files.createDirectories(Path.of(output));
@@ -98,7 +112,8 @@ class WarehouseTransferListExportServiceTest {
     }
 
     private static void saveArtifact(String name, byte[] bytes) throws Exception {
-        String output = System.getProperty("warehouse.transfer.export.artifacts");
-        if (output != null) { Files.createDirectories(Path.of(output)); Files.write(Path.of(output, name), bytes); }
+        String output = System.getProperty("warehouse.transfer.export.artifacts", "target/warehouse-design");
+        Files.createDirectories(Path.of(output));
+        Files.write(Path.of(output, name), bytes);
     }
 }

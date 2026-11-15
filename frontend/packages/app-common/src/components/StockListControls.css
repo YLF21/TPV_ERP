@@ -335,6 +335,66 @@ html body .stock-screen .stock-bulk-standard-filters .erp-list-filter-actions > 
   flex: 0 0 16px;
 }
 
+.stock-screen .stock-pdf-columns-dialog {
+  width: min(620px, calc(100vw - 32px));
+}
+
+.stock-pdf-columns-dialog > p {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+}
+
+.stock-pdf-columns-tools {
+  display: flex;
+  gap: 8px;
+}
+
+.stock-pdf-columns-tools button {
+  padding: 5px 9px;
+  border: 1px solid #b8c6d6;
+  border-radius: 3px;
+  background: #fff;
+  color: #092b53;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.stock-pdf-columns-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+  max-height: min(48dvh, 350px);
+  overflow: auto;
+}
+
+.stock-pdf-columns-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 6px;
+  border: 1px solid #e3e9f0;
+  border-radius: 3px;
+  color: #17233b;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.stock-pdf-columns-choice:focus-within,
+.stock-pdf-columns-tools button:focus-visible {
+  outline: 2px solid #2f70b3;
+  outline-offset: 1px;
+}
+
+.stock-pdf-columns-choice input { margin: 0; accent-color: #092b53; }
+.stock-pdf-columns-dialog > .stock-pdf-columns-required { color: #a12e2e; }
+
+@media (max-width: 540px) {
+  .stock-pdf-columns-list { grid-template-columns: minmax(0, 1fr); }
+}
+
 @layer gestion-accents {
   @media screen {
     .stock-screen.stock-document-screen :is(.stock-toolbar, .stock-top-sales-toolbar),

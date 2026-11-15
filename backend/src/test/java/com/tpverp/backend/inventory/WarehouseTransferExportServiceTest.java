@@ -16,6 +16,8 @@ import jakarta.validation.ValidatorFactory;
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -65,14 +67,16 @@ class WarehouseTransferExportServiceTest {
                 new BigDecimal("1.237"), new BigDecimal("10.00"), "=Nombre histórico", true);
         var request = request(source.getId(), List.of(line), "es", new BigDecimal("7.50"));
 
-        try (var book = new XSSFWorkbook(new ByteArrayInputStream(service.export(request)))) {
+        byte[] bytes = service.export(request);
+        try (var book = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
             var sheet = book.getSheetAt(0);
             assertThat(sheet.getRow(1).getCell(1).getStringCellValue()).isEqualTo("Empresa");
-            assertThat(sheet.getRow(2).getCell(1).getStringCellValue()).isEqualTo("Tienda 1");
-            assertThat(sheet.getRow(3).getCell(1).getStringCellValue()).isEqualTo("2026-09-23");
-            assertThat(sheet.getRow(4).getCell(1).getStringCellValue()).isEmpty();
-            assertThat(sheet.getRow(5).getCell(1).getStringCellValue()).isEqualTo("Borrador");
-            var row = sheet.getRow(13);
+            assertThat(metadata(sheet, "Tienda")).isEqualTo("Tienda 1");
+            assertThat(metadata(sheet, "Fecha")).isEqualTo("2026-09-23");
+            assertThat(metadata(sheet, "Número")).isEmpty();
+            assertThat(metadata(sheet, "Estado")).isEqualTo("Borrador");
+            int first = sheet.getPaneInformation().getHorizontalSplitPosition();
+            var row = sheet.getRow(first);
             assertThat(row.getCell(0).getStringCellValue()).isEqualTo("00001");
             assertThat(row.getCell(1).getStringCellValue()).isEqualTo("0012345678901");
             assertThat(row.getCell(2).getCellType()).isEqualTo(CellType.STRING);
@@ -80,13 +84,16 @@ class WarehouseTransferExportServiceTest {
             assertThat(row.getCell(4).getNumericCellValue()).isEqualTo(1.237);
             assertThat(row.getCell(5).getNumericCellValue()).isEqualTo(2.5);
             assertThat(row.getCell(6).getNumericCellValue()).isEqualTo(2.78);
-            assertThat(sheet.getRow(15).getCell(6).getNumericCellValue()).isEqualTo(2.78);
-            assertThat(sheet.getRow(16).getCell(6).getNumericCellValue()).isEqualTo(7.5);
-            assertThat(sheet.getRow(17).getCell(6).getNumericCellValue()).isEqualTo(.21);
-            assertThat(sheet.getRow(18).getCell(6).getNumericCellValue()).isEqualTo(2.57);
+            assertThat(sheet.getRow(first + 2).getCell(6).getNumericCellValue()).isEqualTo(2.78);
+            assertThat(sheet.getRow(first + 3).getCell(6).getNumericCellValue()).isEqualTo(7.5);
+            assertThat(sheet.getRow(first + 4).getCell(6).getNumericCellValue()).isEqualTo(.21);
+            assertThat(sheet.getRow(first + 5).getCell(6).getNumericCellValue()).isEqualTo(2.57);
         }
         verify(products, never()).save(any());
         verify(warehouses, never()).save(any());
+        Path directory = Path.of("target", "warehouse-design");
+        Files.createDirectories(directory);
+        Files.write(directory.resolve("warehouse-transfer-draft.xlsx"), bytes);
     }
 
     @Test
@@ -99,10 +106,11 @@ class WarehouseTransferExportServiceTest {
         try (var book = new XSSFWorkbook(new ByteArrayInputStream(service.export(request)))) {
             var sheet = book.getSheetAt(0);
             assertThat(sheet.getSheetName()).isEqualTo("调拨");
-            assertThat(sheet.getRow(5).getCell(1).getStringCellValue()).isEqualTo("已确认");
-            assertThat(sheet.getRow(10).getCell(1).getStringCellValue()).isEqualTo("零售价");
-            assertThat(sheet.getRow(13).getCell(2).getStringCellValue()).isEqualTo("Nombre actual");
-            assertThat(sheet.getRow(13).getCell(4).getNumericCellValue()).isEqualTo(8.75);
+            assertThat(metadata(sheet, "状态")).isEqualTo("已确认");
+            assertThat(metadata(sheet, "价格来源")).isEqualTo("零售价");
+            int first = sheet.getPaneInformation().getHorizontalSplitPosition();
+            assertThat(sheet.getRow(first).getCell(2).getStringCellValue()).isEqualTo("Nombre actual");
+            assertThat(sheet.getRow(first).getCell(4).getNumericCellValue()).isEqualTo(8.75);
         }
     }
 
@@ -148,6 +156,13 @@ class WarehouseTransferExportServiceTest {
     private WarehouseTransferExportController.Line line() {
         return new WarehouseTransferExportController.Line(productId, BigDecimal.ONE,
                 BigDecimal.ONE, BigDecimal.ZERO, null, false);
+    }
+
+    private static String metadata(org.apache.poi.ss.usermodel.Sheet sheet, String label) {
+        for (int r = 1; r < sheet.getPaneInformation().getHorizontalSplitPosition() - 1; r++)
+            if (label.equals(sheet.getRow(r).getCell(0).getStringCellValue()))
+                return sheet.getRow(r).getCell(1).getStringCellValue();
+        throw new AssertionError("Falta metadato: " + label);
     }
 
     private WarehouseTransferExportController.Request request(UUID sourceId,
