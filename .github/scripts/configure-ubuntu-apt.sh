@@ -11,7 +11,8 @@ case "$mirror" in
 esac
 
 apt_dir=${TPV_APT_CONFIG_DIR:-/etc/apt}
-ubuntu_uri='https?://(([[:alnum:]-]+\.)?archive|security)\.ubuntu\.com/ubuntu/?'
+# AWS-hosted runners can add a regional EC2 Ubuntu mirror to this list.
+ubuntu_uri='https?://(([[:alnum:]-]+\.)?(ec2\.)?archive|security)\.ubuntu\.com/ubuntu/?'
 mirror_uri='mirror\+file:/etc/apt/apt-mirrors(-security)?\.txt'
 
 found=0
@@ -30,7 +31,7 @@ for source in "$apt_dir/sources.list" "$apt_dir"/sources.list.d/*.list "$apt_dir
   done
   if grep -Eq "($ubuntu_uri|$mirror_uri)([[:space:]]|$)" "$source"; then
     sed -E -i \
-      -e "s#${ubuntu_uri}([[:space:]]|\$)#${mirror}\\3#g" \
+      -e "s#${ubuntu_uri}([[:space:]]|\$)#${mirror}\\4#g" \
       -e "s#${mirror_uri}([[:space:]]|\$)#${mirror}\\2#g" \
       "$source"
     found=1
