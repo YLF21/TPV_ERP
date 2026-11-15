@@ -4,6 +4,7 @@ import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.security.application.PermissionChecks;
+import com.tpverp.backend.sync.SyncOperation;
 import org.springframework.security.core.context.SecurityContextHolder;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
@@ -24,10 +25,12 @@ public class ReplenishmentService {
     private final CurrentOrganization organization;
     private final ProductRepository products;
     private final WarehouseRepository warehouses;
+    private final ReplenishmentSyncPublisher sync;
 
     public ReplenishmentService(NamedParameterJdbcTemplate jdbc, CurrentOrganization organization,
-            ProductRepository products, WarehouseRepository warehouses) {
+            ProductRepository products, WarehouseRepository warehouses, ReplenishmentSyncPublisher sync) {
         this.jdbc = jdbc; this.organization = organization; this.products = products; this.warehouses = warehouses;
+        this.sync = sync;
     }
 
     private static final String SELECT = """
@@ -95,12 +98,14 @@ public class ReplenishmentService {
                 .orElseThrow(() -> new IllegalArgumentException("Producto no válido"));
         var warehouse = warehouses.findById(warehouseId).filter(w -> w.getStoreId().equals(storeId) && w.isActive())
                 .orElseThrow(() -> new IllegalArgumentException("Almacén no válido"));
+        UUID requestId = UUID.randomUUID();
         jdbc.update("""
             insert into replenishment_request(id, store_id, product_id, warehouse_id, quantity, reason)
             values (:id, :storeId, :productId, :warehouseId, :quantity, :reason)
-            """, new MapSqlParameterSource("id", UUID.randomUUID()).addValue("storeId", storeId)
+            """, new MapSqlParameterSource("id", requestId).addValue("storeId", storeId)
                 .addValue("productId", product.getId()).addValue("warehouseId", warehouse.getId())
                 .addValue("quantity", quantity).addValue("reason", reason.trim()));
+        sync.publish(storeId, requestId, SyncOperation.CREAR);
     }
 
     public void edit(UUID id, long version, BigDecimal quantity, String reason) {
@@ -110,6 +115,7 @@ public class ReplenishmentService {
             update replenishment_request set quantity = :quantity, reason = :reason, version = version + 1
             where id = :id and store_id = :storeId and version = :version and status = 'PENDING'
             """, params));
+        sync.publish((UUID) params.getValue("storeId"), id, SyncOperation.ACTUALIZAR);
     }
 
     public void changeStatus(List<Item> items, boolean ordered) {
@@ -127,6 +133,7 @@ public class ReplenishmentService {
                   version = version + 1
                 where id = :id and store_id = :storeId and version = :version
                 """, params));
+            sync.publish(store.getId(), item.id(), SyncOperation.ACTUALIZAR);
         }
     }
 
@@ -134,6 +141,7 @@ public class ReplenishmentService {
         validateItems(items);
         for (var item : items.stream().sorted(Comparator.comparing(Item::id)).toList()) {
             requireChanged(jdbc.update("delete from replenishment_request where id = :id and store_id = :storeId and version = :version", itemParams(item)));
+            sync.deleted(organization.currentStore().getId(), item.id(), Math.addExact(item.version(), 1));
         }
     }
 

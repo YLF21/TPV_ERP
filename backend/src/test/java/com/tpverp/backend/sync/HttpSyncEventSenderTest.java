@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 import com.tpverp.backend.licensing.LicenseSaasCredentialStore;
 import com.tpverp.backend.licensing.SaasLicenseIdentityResolver;
@@ -192,6 +193,59 @@ class HttpSyncEventSenderTest {
         }
     }
 
+    @Test
+    void replenishmentRequiresMatchingProjectedAcknowledgement() throws Exception {
+        var event = replenishmentEvent();
+        var received = new AtomicReference<JsonNode>();
+        HttpServer server = server(200, received, new AtomicReference<>(), request -> """
+                {"eventId":"%s","accepted":true,"projectionStatus":"PROJECTED"}
+                """.formatted(request.get("eventId").asText()));
+        try {
+            server.start();
+            var sender = new HttpSyncEventSender(
+                    URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
+                    mapper, HttpClient.newHttpClient());
+            sender.send(event);
+            assertThat(received.get().get("eventId").asText()).isEqualTo(event.getEventId().toString());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void replenishmentRejectsMismatchedAcknowledgement() throws Exception {
+        assertRejectedReplenishmentAck("""
+                {"eventId":"%s","accepted":true,"projectionStatus":"PROJECTED"}
+                """.formatted(UUID.randomUUID()));
+    }
+
+    @Test
+    void replenishmentRejectsIgnoredProjection() throws Exception {
+        assertRejectedReplenishmentAck("""
+                {"eventId":"%s","accepted":true,"projectionStatus":"IGNORED"}
+                """);
+    }
+
+    @Test
+    void replenishmentRejectsEmptyAcknowledgement() throws Exception {
+        assertRejectedReplenishmentAck("");
+    }
+
+    private void assertRejectedReplenishmentAck(String response) throws Exception {
+        var event = replenishmentEvent();
+        HttpServer server = server(200, new AtomicReference<>(), new AtomicReference<>(),
+                request -> response.contains("%s") ? response.formatted(request.get("eventId").asText()) : response);
+        try {
+            server.start();
+            var sender = new HttpSyncEventSender(
+                    URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
+                    mapper, HttpClient.newHttpClient());
+            assertThatThrownBy(() -> sender.send(event)).isInstanceOf(IllegalStateException.class);
+        } finally {
+            server.stop(0);
+        }
+    }
+
     private HttpServer server(int status, AtomicReference<JsonNode> received) throws Exception {
         return server(status, received, new AtomicReference<>());
     }
@@ -200,14 +254,31 @@ class HttpSyncEventSenderTest {
             int status,
             AtomicReference<JsonNode> received,
             AtomicReference<String> token) throws Exception {
+        return server(status, received, token, ignored -> "");
+    }
+
+    private HttpServer server(
+            int status,
+            AtomicReference<JsonNode> received,
+            AtomicReference<String> token,
+            Function<JsonNode, String> responseBody) throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/v1/sync/events", exchange -> {
-            received.set(mapper.readTree(exchange.getRequestBody()));
+            var request = mapper.readTree(exchange.getRequestBody());
+            received.set(request);
             token.set(exchange.getRequestHeaders().getFirst("X-TPV-Installation-Token"));
-            exchange.sendResponseHeaders(status, -1);
+            byte[] body = responseBody.apply(request).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(status, body.length == 0 ? -1 : body.length);
+            if (body.length > 0) exchange.getResponseBody().write(body);
             exchange.close();
         });
         return server;
+    }
+
+    private static SyncOutboxEvent replenishmentEvent() {
+        return new SyncOutboxEvent(UUID.randomUUID(), UUID.randomUUID(), null,
+                "REPLENISHMENT_REQUEST", UUID.randomUUID(), SyncOperation.CREAR,
+                Map.of("schemaVersion", 1), Instant.parse("2026-11-15T12:00:00Z"));
     }
 
     private static SyncOutboxEvent event() {

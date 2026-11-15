@@ -77,9 +77,17 @@ public class HttpSyncEventSender implements SyncEventSender {
             var request = builder
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload(event))))
                     .build();
-            var response = client.send(request, HttpResponse.BodyHandlers.discarding());
+            var response = client.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new IllegalStateException("SaaS respondio " + response.statusCode());
+            }
+            if ("REPLENISHMENT_REQUEST".equals(event.getEntityType())) {
+                var receipt = mapper.readTree(response.body());
+                if (receipt == null || !receipt.path("accepted").asBoolean(false)
+                        || !event.getEventId().toString().equals(receipt.path("eventId").asText())
+                        || !"PROJECTED".equals(receipt.path("projectionStatus").asText())) {
+                    throw new IllegalStateException("SaaS no ha confirmado el guardado de la reposicion");
+                }
             }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();

@@ -66,6 +66,37 @@ class SyncEventTest {
     }
 
     @Test
+    void replenishmentPayloadIsPurgedOnlyAfterMatchingClaimIsSent() {
+        Instant createdAt = Instant.parse("2026-11-15T10:00:00Z");
+        var event = new SyncOutboxEvent(UUID.randomUUID(), UUID.randomUUID(), null,
+                "REPLENISHMENT_REQUEST", UUID.randomUUID(), SyncOperation.CREAR,
+                Map.of("reason", "Reposición", "revision", 0), createdAt);
+        UUID claim = UUID.randomUUID();
+
+        assertThat(event.getPayload()).containsEntry("reason", "Reposición");
+        event.claim(claim, createdAt.plusSeconds(1));
+        assertThat(event.getPayload()).containsEntry("reason", "Reposición");
+        assertThat(event.markSent(UUID.randomUUID(), createdAt.plusSeconds(2))).isFalse();
+        assertThat(event.getPayload()).containsEntry("reason", "Reposición");
+        assertThat(event.markSent(claim, createdAt.plusSeconds(2))).isTrue();
+        assertThat(event.getStatus()).isEqualTo(SyncOutboxStatus.ENVIADO);
+        assertThat(event.getPayload()).isEmpty();
+    }
+
+    @Test
+    void legacyPayloadRemainsAvailableAfterSent() {
+        Instant createdAt = Instant.parse("2026-11-15T10:00:00Z");
+        var event = new SyncOutboxEvent(UUID.randomUUID(), UUID.randomUUID(), null,
+                "DOCUMENTO", UUID.randomUUID(), SyncOperation.CONFIRMAR,
+                Map.of("numero", "T-1"), createdAt);
+        UUID claim = UUID.randomUUID();
+        event.claim(claim, createdAt.plusSeconds(1));
+
+        assertThat(event.markSent(claim, createdAt.plusSeconds(2))).isTrue();
+        assertThat(event.getPayload()).containsEntry("numero", "T-1");
+    }
+
+    @Test
     void inboxMarcaProcesadoConResultado() {
         UUID eventId = UUID.randomUUID();
         UUID companyId = UUID.randomUUID();
