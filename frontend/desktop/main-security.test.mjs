@@ -83,6 +83,8 @@ describe("desktop navigation security", () => {
   });
 
   it("keeps secondary IPC access limited to the channels they need", () => {
+    expect(source).toContain('exportPreview.preparePdf(request), mainAndSalesWindows');
+    expect(source).toContain('exportPreview.printExport(request), mainAndSalesWindows');
     expect(source).toContain('registerIpc("tpv:hardware:get-config", () => readHardwareConfig(), mainAndSalesWindows)');
     expect(source).toContain('registerIpc("tpv:hardware:print-ticket", (_event, ticket, config) => printTicket(ticket, config), mainAndSalesDocument)');
     expect(source).toContain('exportTicketPdf(ticket, defaultFileName), mainAndSalesDocument');

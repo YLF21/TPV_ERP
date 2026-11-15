@@ -2,7 +2,8 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { previewExport } from "../export/previewExport";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildDocumentReports,
   buildReportColumnDefinitions,
@@ -1799,8 +1800,8 @@ describe("SalesReportScreen", () => {
     expect(screen.queryByText("Opciones de impresión")).not.toBeInTheDocument();
   });
 
-  it("exports Excel with F6 and PDF with F7", async () => {
-    const saveFile = vi.fn().mockResolvedValue({ ok: true });
+  it.each(["venta", "gestion"] as const)("exports daily Excel and PDF with the same selected-date name in %s", async (app) => {
+    const saveFile = vi.mocked(previewExport);
     const previousDesktop = window.tpvDesktop;
     Object.defineProperty(window, "tpvDesktop", {
       configurable: true,
@@ -1832,28 +1833,155 @@ describe("SalesReportScreen", () => {
     });
 
     try {
-      render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+      render(<SalesActivityPanel app={app} mode="daily" locale="es" username="admin" token="token" terminalContext={terminalContext} request={request} />);
       await screen.findByText("EMPRESA");
+      fireEvent.change(screen.getByLabelText("Fecha de consulta"), { target: { value: "2026-01-05" } });
+      await waitFor(() => expect(request).toHaveBeenCalledWith(
+        "/sales-activity/daily?date=2026-01-05", { token: "token" }
+      ));
 
       fireEvent.keyDown(window, { key: "F6" });
       await waitFor(() => expect(fetchSpy).toHaveBeenCalledWith(
-        expect.stringContaining("/sales-activity/daily/excel?date="),
+        expect.stringContaining("/sales-activity/daily/excel?date=2026-01-05"),
         { headers: { Authorization: "Bearer token" } }
       ));
       await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(1));
+      expect(saveFile.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+        fileName: "Ventas_050126.xlsx", formattedWorkbook: true
+      }));
 
       fireEvent.keyDown(window, { key: "F7" });
       await waitFor(() => expect(request).toHaveBeenCalledWith(
-        expect.stringMatching(/^\/sales-activity\/daily\/render\?date=.*&format=A4$/),
+        "/sales-activity/daily/render?date=2026-01-05&format=A4",
         { token: "token" }
       ));
       await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(2));
       expect(saveFile.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
-        defaultFileName: expect.stringMatching(/^resumen-ventas-.*\.pdf$/)
+        fileName: "Ventas_050126.pdf", formattedWorkbook: false
       }));
     } finally {
       fetchSpy.mockRestore();
       Object.defineProperty(window, "tpvDesktop", { configurable: true, writable: true, value: previousDesktop });
+    }
+  });
+
+  it.each([
+    ["venta", "2026-08-16", "Documentos_de_ventas_160826"],
+    ["gestion", "2026-08-16", "Documentos_de_ventas_160826"],
+    ["venta", "2026-08-05", "Documentos_de_ventas_050826-160826"],
+    ["gestion", "2026-08-05", "Documentos_de_ventas_050826-160826"]
+  ] as const)("names document exports in %s from %s using the selected dates", async (app, from, fileName) => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      new Response(new Uint8Array([1, 2, 3]), { status: 200 })
+    );
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales-activity/filter-options") {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
+      }
+      if (path.startsWith("/sales-activity/documents/render")) {
+        return Promise.resolve({ renderedPdf: { contentType: "application/pdf", base64: window.btoa("pdf") } });
+      }
+      if (path.startsWith("/sales-activity/documents/by-day")) {
+        return Promise.resolve({
+          items: [], nextCursor: null, hasMore: false, ticketCount: 0, invoiceCount: 0,
+          total: "0.00", dateFrom: "2026-08-16", dateTo: "2026-08-16"
+        });
+      }
+      return Promise.resolve([]);
+    });
+
+    try {
+      render(<SalesActivityPanel app={app} mode="documents" locale="es" username="admin" token="token" terminalContext={terminalContext} request={request} />);
+      await screen.findByRole("button", { name: "Excel" });
+      await waitFor(() => expect(request).toHaveBeenCalledWith(
+        expect.stringMatching(/^\/sales-activity\/documents\/by-day\?/), { token: "token" }
+      ));
+      fireEvent.change(screen.getByLabelText("Desde"), { target: { value: from } });
+      await waitFor(() => expect(request).toHaveBeenCalledWith(
+        expect.stringContaining(`dateFrom=${from}&dateTo=2026-08-16`), { token: "token" }
+      ));
+      await waitFor(() => expect(screen.getByRole("button", { name: "Excel" })).toBeEnabled());
+      fireEvent.keyDown(window, { key: "F6" });
+      await waitFor(() => expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({
+        fileName: `${fileName}.xlsx`, formattedWorkbook: true
+      })));
+      await waitFor(() => expect(screen.getByRole("button", { name: "PDF" })).toBeEnabled());
+      fireEvent.keyDown(window, { key: "F7" });
+      await waitFor(() => expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({
+        fileName: `${fileName}.pdf`, formattedWorkbook: false
+      })));
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it.each([
+    ["venta", "salesReport.tickets", "2026-08-16", "Tickets_160826-160826"],
+    ["gestion", "salesReport.tickets", "2026-08-16", "Tickets_160826-160826"],
+    ["venta", "salesReport.tickets", "2026-08-05", "Tickets_050826-160826"],
+    ["gestion", "salesReport.tickets", "2026-08-05", "Tickets_050826-160826"],
+    ["venta", "salesReport.invoices", "2026-08-16", "Facturas_160826-160826"],
+    ["gestion", "salesReport.invoices", "2026-08-16", "Facturas_160826-160826"],
+    ["venta", "salesReport.invoices", "2026-08-05", "Facturas_050826-160826"],
+    ["gestion", "salesReport.invoices", "2026-08-05", "Facturas_050826-160826"],
+    ["venta", "salesReport.deliveryNotes", "2026-08-16", "Albaranes_160826-160826"],
+    ["gestion", "salesReport.deliveryNotes", "2026-08-16", "Albaranes_160826-160826"],
+    ["venta", "salesReport.deliveryNotes", "2026-08-05", "Albaranes_050826-160826"],
+    ["gestion", "salesReport.deliveryNotes", "2026-08-05", "Albaranes_050826-160826"],
+    ["venta", "salesReport.inputInvoices", "2026-08-16", "Facturas_de_compra_160826-160826"],
+    ["gestion", "salesReport.inputInvoices", "2026-08-16", "Facturas_de_compra_160826-160826"],
+    ["venta", "salesReport.inputInvoices", "2026-08-05", "Facturas_de_compra_050826-160826"],
+    ["gestion", "salesReport.inputInvoices", "2026-08-05", "Facturas_de_compra_050826-160826"],
+    ["venta", "salesReport.inputDeliveryNotes", "2026-08-16", "Albaranes_de_compra_160826-160826"],
+    ["gestion", "salesReport.inputDeliveryNotes", "2026-08-16", "Albaranes_de_compra_160826-160826"],
+    ["venta", "salesReport.inputDeliveryNotes", "2026-08-05", "Albaranes_de_compra_050826-160826"],
+    ["gestion", "salesReport.inputDeliveryNotes", "2026-08-05", "Albaranes_de_compra_050826-160826"]
+  ] as const)("previews the formatted workbook and PDF in %s for %s from %s", async (app, reportKey, from, fileName) => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      new Response(new Uint8Array([1, 2, 3]), { status: 200 })
+    );
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path.startsWith("/document-reports/date-options")) {
+        return Promise.resolve({ earliestDate: "2026-01-01", currentDate: "2026-08-16" });
+      }
+      if (path === "/warehouses") return Promise.resolve([]);
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+    try {
+      render(<SalesReportScreen app={app} locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} initialReport={reportKey} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+      await waitFor(() => expect(screen.getByLabelText("Desde")).toHaveValue("2026-08-16"));
+      fireEvent.change(screen.getByLabelText("Desde"), { target: { value: from } });
+      await waitFor(() => expect(request).toHaveBeenCalledWith(
+        expect.stringContaining(`dateFrom=${from}&dateTo=2026-08-16`), expect.objectContaining({ token: "token" })
+      ));
+      fireEvent.keyDown(window, { key: "F6" });
+      await waitFor(() => expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({
+        fileName: `${fileName}.xlsx`, formattedWorkbook: true
+      })));
+      const excelCall = fetchSpy.mock.calls.find(([url]) => String(url).endsWith("/sales-reports/export"));
+      const excelRequest = JSON.parse(excelCall?.[1]?.body as string);
+      expect(excelRequest.reportKey).toBe(reportKey);
+      expect(excelRequest.filters).toEqual(expect.objectContaining({ dateFrom: from, dateTo: "2026-08-16" }));
+      const party = isPurchaseDocumentReport(reportKey) ? "supplier" : "customer";
+      expect(excelRequest.columns).toEqual(expect.arrayContaining([
+        expect.objectContaining({ key: party }),
+        expect.objectContaining({ key: `${party}Name` }),
+        expect.objectContaining({ key: "total" })
+      ]));
+      await waitFor(() => expect(screen.getByRole("button", { name: "PDF" })).toBeEnabled());
+      fireEvent.keyDown(window, { key: "F7" });
+      await waitFor(() => expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({
+        fileName: `${fileName}.pdf`, formattedWorkbook: false
+      })));
+      const pdfCall = fetchSpy.mock.calls.find(([url]) => String(url).endsWith("/sales-reports/export-pdf"));
+      const pdfRequest = JSON.parse(pdfCall?.[1]?.body as string);
+      expect(pdfRequest.reportKey).toBe(excelRequest.reportKey);
+      expect(pdfRequest.filters).toEqual(excelRequest.filters);
+      expect(pdfRequest.search).toBe(excelRequest.search);
+      expect(pdfRequest.columns.map((column: { key: string }) => column.key))
+        .toEqual(excelRequest.columns.filter((column: { key: string }) => column.key !== "customerName").map((column: { key: string }) => column.key));
+    } finally {
+      fetchSpy.mockRestore();
     }
   });
 
@@ -1903,6 +2031,12 @@ describe("SalesReportScreen", () => {
         expect.stringMatching(/^\/sales-activity\/documents\?dateFrom=.*&dateTo=.*&limit=250$/),
         { token: "token" }
       ));
+      const preview = document.createElement("dialog");
+      preview.className = "export-preview-dialog"; preview.setAttribute("open", ""); document.body.append(preview);
+      fireEvent.keyDown(window, { key: "F5" });
+      expect(request).not.toHaveBeenCalledWith(expect.stringContaining("/sales-activity/documents/render"), expect.anything());
+      expect(printTicket).not.toHaveBeenCalled();
+      preview.remove();
       fireEvent.keyDown(window, { key: "F5" });
 
       await waitFor(() => expect(request).toHaveBeenCalledWith(
@@ -2323,7 +2457,7 @@ describe("SalesReportScreen", () => {
     expect(previewWindow.document.write).not.toHaveBeenCalled();
     expect(previewWindow.print).not.toHaveBeenCalled();
 
-    const saveFile = vi.fn().mockResolvedValue({ ok: true });
+    const saveFile = vi.mocked(previewExport);
     Object.defineProperty(window, "tpvDesktop", {
       configurable: true,
       value: { reports: { saveFile } }
@@ -2337,7 +2471,7 @@ describe("SalesReportScreen", () => {
       { headers: { Authorization: "Bearer token" } }
     ));
     await waitFor(() => expect(saveFile).toHaveBeenCalledWith(expect.objectContaining({
-      defaultFileName: "AV-001.xlsx"
+      fileName: "AV-001.xlsx"
     })));
     fetchSpy.mockRestore();
     createObjectUrl.mockRestore();
@@ -2449,6 +2583,11 @@ describe("SalesReportScreen", () => {
     fireEvent.click(cancelledTicketRow!);
     const printSelectedButton = screen.getByRole("button", { name: "Imprimir" });
     expect(printSelectedButton).toBeEnabled();
+    const preview = document.createElement("dialog");
+    preview.className = "export-preview-dialog"; preview.setAttribute("open", ""); document.body.append(preview);
+    fireEvent.keyDown(window, { key: "F5" });
+    expect(request).not.toHaveBeenCalledWith("/tickets/cancelled-ticket-1/cancellation-receipt", expect.anything());
+    preview.remove();
     fireEvent.click(printSelectedButton);
 
     await waitFor(() => expect(request).toHaveBeenCalledWith(
@@ -2787,3 +2926,6 @@ describe("SalesReportScreen", () => {
       .toEqual(["customerName", "date", "total"]);
   });
 });
+
+vi.mock("../export/previewExport", () => ({ previewExport: vi.fn().mockResolvedValue({ downloaded: true, printed: false, canceled: false }) }));
+beforeEach(() => vi.mocked(previewExport).mockClear());

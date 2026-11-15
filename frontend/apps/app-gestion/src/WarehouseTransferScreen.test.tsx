@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { previewExport } from "../../../packages/app-common/src/export/previewExport";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { WarehouseTransferScreen } from "./WarehouseTransferScreen";
 import * as api from "./warehouseOperationsApi";
@@ -294,8 +295,10 @@ it("exports the complete filtered list as PDF and Excel independently of loaded 
     await waitFor(() => expect(api.exportTransferList).toHaveBeenLastCalledWith(format,
       expect.objectContaining({ search: "TRA", sourceWarehouseId: "source", dateFrom: "2026-09-01" }), "es", "token"));
   }
-  await waitFor(() => expect(download).toHaveBeenCalledTimes(2));
-  await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2), { timeout: 2000 });
+  await waitFor(() => expect(previewExport).toHaveBeenCalledTimes(2));
+  expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({ fileName: "traspasos-almacen.pdf", locale: "es", formattedWorkbook: false }));
+  expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({ fileName: "traspasos-almacen.xlsx", locale: "es", formattedWorkbook: true }));
+  expect(download).not.toHaveBeenCalled();
 });
 
 it("routes F5/F6/F7 through transfer buttons and blocks shortcuts while exporting or editing", async () => {
@@ -407,3 +410,6 @@ it("keeps loaded rows on an incremental error and retries the same batch on scro
   await screen.findByRole("row", { name: /TRA-2/ });
   expect(vi.mocked(api.loadTransferDocuments).mock.calls.map((call) => call[0])).toEqual([0, 1, 1]);
 });
+
+vi.mock("../../../packages/app-common/src/export/previewExport", () => ({ previewExport: vi.fn().mockResolvedValue({ downloaded: true, printed: false, canceled: false }) }));
+beforeEach(() => vi.mocked(previewExport).mockClear());

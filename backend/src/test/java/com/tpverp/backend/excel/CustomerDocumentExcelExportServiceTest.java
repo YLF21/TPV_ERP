@@ -37,12 +37,10 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DateUtil;
 import org.apache.poi.ss.usermodel.FillPatternType;
 import org.apache.poi.ss.usermodel.HorizontalAlignment;
-import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.util.DefaultTempFileCreationStrategy;
 import org.apache.poi.xssf.usermodel.XSSFCell;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -81,7 +79,11 @@ class CustomerDocumentExcelExportServiceTest {
         var store = mock(Store.class);
         var company = mock(Company.class);
         when(store.getId()).thenReturn(storeId);
+        when(store.getCodigoTienda()).thenReturn("001");
+        when(store.getNombreEfectivo()).thenReturn("Tienda Central");
         when(company.getId()).thenReturn(companyId);
+        when(company.getRazonSocial()).thenReturn("Empresa Atlántica, S.L.");
+        when(company.getTaxId()).thenReturn("B12345678");
         when(organization.currentStore()).thenReturn(store);
         when(organization.currentCompany()).thenReturn(company);
         when(customers.findByIdAndCompanyId(customerId, companyId)).thenReturn(Optional.of(customer));
@@ -106,39 +108,48 @@ class CustomerDocumentExcelExportServiceTest {
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
             var sheet = workbook.getSheetAt(0);
             assertThat(sheet.getSheetName()).isEqualTo("客户单据");
-            assertThat(sheet.getLastRowNum()).isEqualTo(7);
-            assertText(sheet.getRow(0).getCell(1), "000042");
-            assertText(sheet.getRow(1).getCell(1), "00123456A");
-            assertText(sheet.getRow(2).getCell(1), "=HYPERLINK(\"cliente\")");
+            assertThat(sheet.getLastRowNum()).isEqualTo(11);
+            assertText(sheet.getRow(0).getCell(0), "客户单据");
+            assertText(sheet.getRow(1).getCell(1), "Empresa Atlántica, S.L. · B12345678");
+            assertText(sheet.getRow(2).getCell(1), "001 · Tienda Central");
+            assertText(sheet.getRow(3).getCell(1), "000042");
+            assertText(sheet.getRow(4).getCell(1), "00123456A");
+            assertText(sheet.getRow(5).getCell(1), "=HYPERLINK(\"cliente\")");
             assertThat(sheet.getMergedRegions()).extracting(region -> region.formatAsString())
-                    .contains("B1:G1", "B2:G2", "B3:G3");
-            assertText(sheet.getRow(3).getCell(0), "Filtros: Sin filtros");
-            assertText(sheet.getRow(4).getCell(0), "金额");
-            assertText(sheet.getRow(4).getCell(1), "Number");
-            assertThat(sheet.getRow(4).getCell(0).getCellStyle().getFillForegroundColor())
-                    .isEqualTo(IndexedColors.GREY_25_PERCENT.getIndex());
-            assertThat(sheet.getRow(4).getCell(0).getCellStyle().getFillPattern())
+                    .contains("A1:G1", "B4:G4", "B5:G5", "B6:G6");
+            assertText(sheet.getRow(6).getCell(0), "Filtros: Sin filtros");
+            assertText(sheet.getRow(8).getCell(0), "金额");
+            assertText(sheet.getRow(8).getCell(1), "Number");
+            assertNavy(sheet.getRow(0).getCell(0));
+            assertNavy(sheet.getRow(8).getCell(0));
+            assertThat(sheet.getRow(8).getCell(0).getCellStyle().getFillPattern())
                     .isEqualTo(FillPatternType.SOLID_FOREGROUND);
-            assertThat(sheet.getRow(4).getCell(0).getCellStyle().getFont().getColor())
-                    .isEqualTo(IndexedColors.BLACK.getIndex());
-            assertThat(sheet.getRow(5).getCell(0).getCellType()).isEqualTo(CellType.NUMERIC);
-            assertThat(sheet.getRow(5).getCell(0).getNumericCellValue()).isEqualTo(-12.35);
-            assertThat(sheet.getRow(5).getCell(0).getCellStyle().getAlignment()).isEqualTo(HorizontalAlignment.RIGHT);
-            assertText(sheet.getRow(5).getCell(1), first.number());
-            assertText(sheet.getRow(6).getCell(1), second.number());
-            assertThat(DateUtil.isCellDateFormatted(sheet.getRow(5).getCell(2))).isTrue();
-            assertThat(sheet.getRow(5).getCell(2).getLocalDateTimeCellValue().toLocalDate()).isEqualTo(first.date());
-            assertText(sheet.getRow(5).getCell(3), "Confirmado");
-            assertText(sheet.getRow(5).getCell(4), "小票");
-            assertText(sheet.getRow(5).getCell(5), "Caja 1");
-            assertText(sheet.getRow(5).getCell(6), "Vendedor");
-            assertFormulaTotal(sheet.getRow(7).getCell(0), "SUM(A6:A7)", "17.75");
-            assertThat(sheet.getRow(7).getCell(1).getStringCellValue()).isNotBlank();
-            assertThat(sheet.getRow(7).getCell(0).getCellStyle().getDataFormatString())
-                    .isEqualTo(sheet.getRow(5).getCell(0).getCellStyle().getDataFormatString());
-            assertTotalStyle(sheet.getRow(7).getCell(0));
-            assertThat(sheet.getPaneInformation().getHorizontalSplitPosition()).isEqualTo((short) 5);
-            assertThat(sheet.getCTWorksheet().getAutoFilter().getRef()).isEqualTo("A5:G7");
+            assertThat(sheet.getRow(8).getCell(0).getCellStyle().getFont().getXSSFColor().getRGB())
+                    .containsExactly((byte) 255, (byte) 255, (byte) 255);
+            assertThat(sheet.getRow(9).getCell(0).getCellType()).isEqualTo(CellType.NUMERIC);
+            assertThat(sheet.getRow(9).getCell(0).getNumericCellValue()).isEqualTo(-12.35);
+            assertThat(sheet.getRow(9).getCell(0).getCellStyle().getAlignment()).isEqualTo(HorizontalAlignment.RIGHT);
+            assertText(sheet.getRow(9).getCell(1), first.number());
+            assertText(sheet.getRow(10).getCell(1), second.number());
+            assertThat(DateUtil.isCellDateFormatted(sheet.getRow(9).getCell(2))).isTrue();
+            assertThat(sheet.getRow(9).getCell(2).getLocalDateTimeCellValue().toLocalDate()).isEqualTo(first.date());
+            assertText(sheet.getRow(9).getCell(3), "Confirmado");
+            assertText(sheet.getRow(9).getCell(4), "小票");
+            assertText(sheet.getRow(9).getCell(5), "Caja 1");
+            assertText(sheet.getRow(9).getCell(6), "Vendedor");
+            assertFormulaTotal(sheet.getRow(11).getCell(0), "SUM(A10:A11)", "17.75");
+            assertThat(sheet.getRow(11).getCell(1).getStringCellValue()).isNotBlank();
+            assertThat(sheet.getRow(11).getCell(0).getCellStyle().getDataFormatString())
+                    .isEqualTo(sheet.getRow(9).getCell(0).getCellStyle().getDataFormatString());
+            assertTotalStyle(sheet.getRow(11).getCell(0));
+            assertThat(sheet.getPaneInformation().getHorizontalSplitPosition()).isEqualTo((short) 9);
+            assertThat(sheet.getCTWorksheet().getAutoFilter().getRef()).isEqualTo("A9:G11");
+            assertThat(sheet.getRepeatingRows()).isEqualTo(new org.apache.poi.ss.util.CellRangeAddress(8, 8, -1, -1));
+            assertThat(sheet.getRow(9).getCell(1).getCellStyle().getWrapText()).isTrue();
+            assertThat(sheet.getRow(9).getCell(1).getCellStyle().getFillForegroundColorColor().getRGB())
+                    .containsExactly((byte) 255, (byte) 255, (byte) 255);
+            assertThat(sheet.getRow(10).getCell(1).getCellStyle().getFillForegroundColorColor().getRGB())
+                    .containsExactly((byte) 246, (byte) 249, (byte) 252);
         }
         var parameters = ArgumentCaptor.forClass(SqlParameterSource.class);
         var sql = ArgumentCaptor.forClass(String.class);
@@ -174,13 +185,13 @@ class CustomerDocumentExcelExportServiceTest {
 
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.export(request, authentication("TICKETS_READ"))))) {
             var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getLastRowNum()).isEqualTo(568);
-            assertText(sheet.getRow(5).getCell(0), "T-0");
-            assertText(sheet.getRow(505).getCell(0), "T-500");
-            assertText(sheet.getRow(567).getCell(0), "T-562");
-            assertFormulaTotal(sheet.getRow(568).getCell(1), "SUM(B6:B568)", "50.30");
-            assertThat(sheet.getCTWorksheet().getAutoFilter().getRef()).isEqualTo("A5:B568");
-            assertText(sheet.getRow(3).getCell(0),
+            assertThat(sheet.getLastRowNum()).isEqualTo(572);
+            assertText(sheet.getRow(9).getCell(0), "T-0");
+            assertText(sheet.getRow(509).getCell(0), "T-500");
+            assertText(sheet.getRow(571).getCell(0), "T-562");
+            assertFormulaTotal(sheet.getRow(572).getCell(1), "SUM(B10:B572)", "50.30");
+            assertThat(sheet.getCTWorksheet().getAutoFilter().getRef()).isEqualTo("A9:B572");
+            assertText(sheet.getRow(6).getCell(0),
                     "Filtros: Búsqueda: T-; Estado: Confirmado; Desde: 01/09/2026; Hasta: 30/09/2026");
         }
         verify(queries).findPage(storeId, customerId, EnumSet.of(CommercialDocumentType.TICKET), queryFilter, "next-page", 500);
@@ -267,23 +278,50 @@ class CustomerDocumentExcelExportServiceTest {
                 "date", "desc", List.of(), List.of(column("number", "Número")));
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.export(request, authentication("VENTA"))))) {
             var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getLastRowNum()).isEqualTo(5);
-            assertText(sheet.getRow(0).getCell(0), "Código del cliente");
-            assertText(sheet.getRow(0).getCell(1), "000042");
-            assertText(sheet.getRow(1).getCell(0), "NIF");
-            assertText(sheet.getRow(1).getCell(1), "00123456A");
-            assertText(sheet.getRow(2).getCell(0), "Nombre del cliente");
-            assertText(sheet.getRow(2).getCell(1), "Cliente de la ficha BD");
-            assertText(sheet.getRow(3).getCell(0), "Filtros: Sin filtros");
-            assertText(sheet.getRow(4).getCell(0), "Número");
-            assertThat(sheet.getRow(4).getLastCellNum()).isEqualTo((short) 1);
-            assertText(sheet.getRow(5).getCell(0), "Total documentos");
-            assertThat(sheet.getRow(5).getCell(1).getCellType()).isEqualTo(CellType.NUMERIC);
-            assertThat(sheet.getRow(5).getCell(1).getNumericCellValue()).isZero();
-            assertThat(sheet.getCTWorksheet().getAutoFilter().getRef()).isEqualTo("A5");
-            assertThat(sheet.getPaneInformation().getHorizontalSplitPosition()).isEqualTo((short) 5);
+            assertThat(sheet.getLastRowNum()).isEqualTo(9);
+            assertText(sheet.getRow(3).getCell(0), "Código del cliente");
+            assertText(sheet.getRow(3).getCell(1), "000042");
+            assertText(sheet.getRow(4).getCell(0), "NIF");
+            assertText(sheet.getRow(4).getCell(1), "00123456A");
+            assertText(sheet.getRow(5).getCell(0), "Nombre del cliente");
+            assertText(sheet.getRow(5).getCell(1), "Cliente de la ficha BD");
+            assertText(sheet.getRow(6).getCell(0), "Filtros: Sin filtros");
+            assertText(sheet.getRow(8).getCell(0), "Número");
+            assertThat(sheet.getRow(8).getLastCellNum()).isEqualTo((short) 1);
+            assertText(sheet.getRow(9).getCell(0), "Total documentos");
+            assertThat(sheet.getRow(9).getCell(1).getCellType()).isEqualTo(CellType.NUMERIC);
+            assertThat(sheet.getRow(9).getCell(1).getNumericCellValue()).isZero();
+            assertThat(sheet.getCTWorksheet().getAutoFilter().getRef()).isEqualTo("A9");
+            assertThat(sheet.getPaneInformation().getHorizontalSplitPosition()).isEqualTo((short) 9);
         }
         verifyNoInteractions(jdbc, queries);
+    }
+
+    @Test
+    void twoColumnMetadataAndFiltersGrowToShowLongValuesAndLineBreaks() throws Exception {
+        String companyName = "Empresa de distribución insular ".repeat(7).trim();
+        String customerName = "Cliente con razón social extensa ".repeat(7).trim() + "\nSegunda línea literal";
+        String search = "=SUM(1,2) " + "texto ".repeat(16);
+        when(organization.currentCompany().getRazonSocial()).thenReturn(companyName);
+        when(customer.getFiscalName()).thenReturn(customerName);
+        var filters = new CustomerDocumentExportRequest.Filters(search, null, null, null);
+        var request = request("tickets", filters, "date", "asc", null,
+                List.of(column("number", "Número"), column("total", "Total")));
+        when(queries.findPage(storeId, customerId, EnumSet.of(CommercialDocumentType.TICKET),
+                request.queryFilter(), null, 500))
+                .thenReturn(new CustomerDocumentReportQueryRepository.Page(List.of(), null, false));
+
+        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.export(request, authentication("VENTA"))))) {
+            var sheet = workbook.getSheetAt(0);
+            assertText(sheet.getRow(1).getCell(1), companyName + " · B12345678");
+            assertText(sheet.getRow(5).getCell(1), customerName);
+            assertText(sheet.getRow(6).getCell(0), "Filtros: Búsqueda: " + search.trim());
+            assertThat(sheet.getRow(1).getHeightInPoints()).isGreaterThan(27f);
+            assertThat(sheet.getRow(5).getHeightInPoints()).isGreaterThan(32f);
+            assertThat(sheet.getRow(6).getHeightInPoints()).isGreaterThan(32f);
+            assertThat(sheet.getRow(5).getHeightInPoints()).isLessThanOrEqualTo(409f);
+            assertThat(sheet.getRow(8).getLastCellNum()).isEqualTo((short) 2);
+        }
     }
 
     @Test
@@ -292,11 +330,11 @@ class CustomerDocumentExcelExportServiceTest {
 
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.export(request, authentication("VENTA"))))) {
             var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getLastRowNum()).isEqualTo(5);
-            assertThat(sheet.getRow(5).getCell(0).getCellType()).isEqualTo(CellType.NUMERIC);
-            assertThat(sheet.getRow(5).getCell(0).getNumericCellValue()).isZero();
-            assertText(sheet.getRow(5).getCell(1), "Total documentos");
-            assertTotalStyle(sheet.getRow(5).getCell(0));
+            assertThat(sheet.getLastRowNum()).isEqualTo(9);
+            assertThat(sheet.getRow(9).getCell(0).getCellType()).isEqualTo(CellType.NUMERIC);
+            assertThat(sheet.getRow(9).getCell(0).getNumericCellValue()).isZero();
+            assertText(sheet.getRow(9).getCell(1), "Total documentos");
+            assertTotalStyle(sheet.getRow(9).getCell(0));
         }
         verifyNoInteractions(jdbc, queries);
     }
@@ -312,10 +350,10 @@ class CustomerDocumentExcelExportServiceTest {
 
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.export(request, authentication("VENTA"))))) {
             var sheet = workbook.getSheetAt(0);
-            assertFormulaTotal(sheet.getRow(8).getCell(2), "SUM(C6:C8)", "0.20");
-            assertTotalStyle(sheet.getRow(8).getCell(2));
-            assertThat(sheet.getRow(7).getCell(2).getNumericCellValue()).isEqualTo(-0.10);
-            assertThat(sheet.getRow(8).getCell(0).getStringCellValue()).isEqualTo("Total documentos");
+            assertFormulaTotal(sheet.getRow(12).getCell(2), "SUM(C10:C12)", "0.20");
+            assertTotalStyle(sheet.getRow(12).getCell(2));
+            assertThat(sheet.getRow(11).getCell(2).getNumericCellValue()).isEqualTo(-0.10);
+            assertThat(sheet.getRow(12).getCell(0).getStringCellValue()).isEqualTo("Total documentos");
         }
     }
 
@@ -328,14 +366,14 @@ class CustomerDocumentExcelExportServiceTest {
 
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.export(request, authentication("VENTA"))))) {
             var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getRow(4).getLastCellNum()).isEqualTo((short) 3);
-            assertText(sheet.getRow(4).getCell(1), "Base");
-            assertText(sheet.getRow(8).getCell(0), "Total documentos");
-            var total = sheet.getRow(8).getCell(1);
+            assertThat(sheet.getRow(8).getLastCellNum()).isEqualTo((short) 3);
+            assertText(sheet.getRow(8).getCell(1), "Base");
+            assertText(sheet.getRow(12).getCell(0), "Total documentos");
+            var total = sheet.getRow(12).getCell(1);
             assertThat(total.getCellType()).isEqualTo(CellType.NUMERIC);
             assertThat(BigDecimal.valueOf(total.getNumericCellValue())).isEqualByComparingTo("-0.70");
             assertTotalStyle(total);
-            assertThat(sheet.getCTWorksheet().getAutoFilter().getRef()).isEqualTo("A5:C8");
+            assertThat(sheet.getCTWorksheet().getAutoFilter().getRef()).isEqualTo("A9:C12");
         }
     }
 
@@ -358,12 +396,14 @@ class CustomerDocumentExcelExportServiceTest {
 
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.export(request, authentication("VENTA"))))) {
             var sheet = workbook.getSheetAt(0);
-            assertText(sheet.getRow(0).getCell(0), codeLabel);
-            assertText(sheet.getRow(1).getCell(0), taxIdLabel);
-            assertText(sheet.getRow(2).getCell(0), nameLabel);
-            assertText(sheet.getRow(2).getCell(1), "+Cliente literal");
-            assertText(sheet.getRow(7).getCell(0), totalLabel);
-            assertFormulaTotal(sheet.getRow(7).getCell(1), "SUM(B6:B7)", "0.30");
+            assertText(sheet.getRow(1).getCell(0), codeLabel.startsWith("客户") ? "公司" : "Company");
+            assertText(sheet.getRow(2).getCell(0), codeLabel.startsWith("客户") ? "门店" : "Store");
+            assertText(sheet.getRow(3).getCell(0), codeLabel);
+            assertText(sheet.getRow(4).getCell(0), taxIdLabel);
+            assertText(sheet.getRow(5).getCell(0), nameLabel);
+            assertText(sheet.getRow(5).getCell(1), "+Cliente literal");
+            assertText(sheet.getRow(11).getCell(0), totalLabel);
+            assertFormulaTotal(sheet.getRow(11).getCell(1), "SUM(B10:B11)", "0.30");
         }
     }
 
@@ -393,11 +433,11 @@ class CustomerDocumentExcelExportServiceTest {
 
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.export(request, authentication("VENTA"))))) {
             var sheet = workbook.getSheetAt(0);
-            assertText(sheet.getRow(3).getCell(0), title + ": " + searchLabel + ": =SUM(1,2); "
+            assertText(sheet.getRow(6).getCell(0), title + ": " + searchLabel + ": =SUM(1,2); "
                     + statusLabel + ": " + confirmedLabel + "; " + fromLabel + ": 01/09/2026; "
                     + toLabel + ": 30/09/2026");
-            assertThat(sheet.getMergedRegions()).extracting(region -> region.formatAsString()).contains("A4:B4");
-            assertFormulaTotal(sheet.getRow(6).getCell(1), "SUM(B6:B6)", "0.25");
+            assertThat(sheet.getMergedRegions()).extracting(region -> region.formatAsString()).contains("A7:B7");
+            assertFormulaTotal(sheet.getRow(10).getCell(1), "SUM(B10:B10)", "0.25");
         }
     }
 
@@ -433,14 +473,14 @@ class CustomerDocumentExcelExportServiceTest {
 
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
             var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getLastRowNum()).isEqualTo(8);
-            assertText(sheet.getRow(2).getCell(1), "COMERCIAL ATLÁNTICO, S.L.");
-            assertThat(sheet.getRow(4).getLastCellNum()).isEqualTo((short) 9);
-            assertText(sheet.getRow(7).getCell(2), "Rectificativa");
-            assertThat(sheet.getRow(7).getCell(6).getNumericCellValue()).isEqualTo(-24.20);
-            assertFormulaTotal(sheet.getRow(8).getCell(6), "SUM(G6:G8)", "97.10");
+            assertThat(sheet.getLastRowNum()).isEqualTo(12);
+            assertText(sheet.getRow(5).getCell(1), "COMERCIAL ATLÁNTICO, S.L.");
+            assertThat(sheet.getRow(8).getLastCellNum()).isEqualTo((short) 9);
+            assertText(sheet.getRow(11).getCell(2), "Rectificativa");
+            assertThat(sheet.getRow(11).getCell(6).getNumericCellValue()).isEqualTo(-24.20);
+            assertFormulaTotal(sheet.getRow(12).getCell(6), "SUM(G10:G12)", "97.10");
         }
-        var preview = Path.of("target/customer-documents-export-preview.xlsx");
+        var preview = Path.of("target/third-party-design/customer-documents-export-preview.xlsx");
         Files.createDirectories(preview.getParent());
         Files.write(preview, bytes);
     }
@@ -487,12 +527,18 @@ class CustomerDocumentExcelExportServiceTest {
 
     private static void assertTotalStyle(XSSFCell cell) {
         var style = cell.getCellStyle();
-        assertThat(style.getFillForegroundColor()).isEqualTo(IndexedColors.GREY_25_PERCENT.getIndex());
+        assertNavy(cell);
         assertThat(style.getFillPattern()).isEqualTo(FillPatternType.SOLID_FOREGROUND);
-        assertThat(style.getFont().getColor()).isEqualTo(IndexedColors.BLACK.getIndex());
+        assertThat(style.getFont().getXSSFColor().getRGB()).containsExactly((byte) 255, (byte) 255, (byte) 255);
         assertThat(style.getFont().getBold()).isTrue();
-        assertThat(style.getBorderTop()).isNotEqualTo(BorderStyle.NONE);
+        assertThat(style.getFont().getFontHeightInPoints()).isBetween((short) 13, (short) 14);
         assertThat(style.getAlignment()).isEqualTo(HorizontalAlignment.RIGHT);
+    }
+
+    private static void assertNavy(XSSFCell cell) {
+        assertThat(cell.getCellStyle().getFillForegroundColorColor().getRGB())
+                .containsExactly((byte) 10, (byte) 47, (byte) 86);
+        assertThat(cell.getCellStyle().getFont().getFontName()).isEqualTo("Calibri");
     }
 
     private static List<UUID> ids(List<CustomerDocumentExcelExportService.ExportRow> rows) {

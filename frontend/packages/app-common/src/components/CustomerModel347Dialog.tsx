@@ -1,3 +1,4 @@
+import { previewExport } from "../export/previewExport";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -37,6 +38,7 @@ export function CustomerModel347Dialog({ customer, session, locale, onClose }: P
 
   useEffect(() => {
     function handleKey(event: KeyboardEvent) {
+      if (document.querySelector('.export-preview-dialog[open]')) return;
       if (event.key !== "Escape" || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
       event.preventDefault(); event.stopImmediatePropagation();
       if (!event.repeat) { requestRef.current?.abort(); onClose(); }
@@ -65,23 +67,9 @@ export function CustomerModel347Dialog({ customer, session, locale, onClose }: P
         .map((part) => part.trim().replace(/[<>:"/\\|?*\u0000-\u001f]+/g, "-")
           .replace(/\s+/g, " ").slice(0, 80).replace(/[. ]+$/, ""))
         .join("-") + ".pdf";
-      if (window.tpvDesktop?.reports) {
-        const bytes = new Uint8Array(await blob.arrayBuffer());
-        if (controller.signal.aborted) return;
-        const result = await window.tpvDesktop.reports.saveFile({
-          defaultFileName: fileName, filters: [{ name: "PDF", extensions: ["pdf"] }], bytes,
-        });
-        if (controller.signal.aborted) return;
-        if (!result.ok) throw new Error("model347_save_failed");
-        if (result.canceled) return;
-      } else {
-        const url = URL.createObjectURL(blob);
-        try {
-          const link = document.createElement("a");
-          link.href = url; link.download = fileName; link.click();
-        } finally { URL.revokeObjectURL(url); }
-      }
-      setSaved(true);
+      const result = await previewExport({ blob, fileName, locale });
+      if (controller.signal.aborted) return;
+      setSaved(result.downloaded);
     } catch (failure: unknown) {
       if (!controller.signal.aborted) setErrorKey(apiProblemCode(failure) === "SAAS_CUSTOMER_BINDING_REQUIRED"
         ? "customerDocuments.bindingRequired" : apiProblemCode(failure) === "SAAS_CUSTOMER_DOCUMENTS_CURRENCY_UNSUPPORTED"

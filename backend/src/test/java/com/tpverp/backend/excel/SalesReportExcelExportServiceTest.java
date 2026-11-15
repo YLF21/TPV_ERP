@@ -38,6 +38,8 @@ import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.shared.api.PagedResult;
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
@@ -49,11 +51,132 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.PrintSetup;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 class SalesReportExcelExportServiceTest {
+
+    @ParameterizedTest
+    @CsvSource({
+            "'date,ticket,total', false",
+            "'comment,customerName,terminal,total', true"
+    })
+    void ticketWorkbookChoosesPrintOrientationFromColumnWidth(String keys, boolean landscape) throws Exception {
+        var columns = java.util.Arrays.stream(keys.split(","))
+                .map(key -> new SalesReportExportRequest.Column(key, key)).toList();
+        var request = new SalesReportExportRequest("salesReport.tickets", null, "", columns);
+        byte[] result = TicketReportWorkbookLayout.write(request, List.of(), currentOrganization());
+        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(result))) {
+            assertThat(workbook.getSheetAt(0).getPrintSetup().getLandscape()).isEqualTo(landscape);
+            assertThat(workbook.getSheetAt(0).getPrintSetup().getPaperSize()).isEqualTo(PrintSetup.A4_PAPERSIZE);
+        }
+    }
+
+    @Test
+    void ticketWorkbookKeepsVisibleValuesAndUsesEffectiveTotalOnlyInSummary() throws Exception {
+        var ticketReports = mock(TicketReportService.class);
+        var first = mock(TicketReportView.class);
+        when(first.fecha()).thenReturn(LocalDate.of(2026, 7, 18));
+        when(first.estado()).thenReturn(DocumentStatus.CONFIRMADO);
+        when(first.numero()).thenReturn("T-001");
+        when(first.base()).thenReturn(new BigDecimal("10.00"));
+        when(first.total()).thenReturn(new BigDecimal("12.00"));
+        when(first.effectiveTotal()).thenReturn(new BigDecimal("8.88"));
+        when(first.comentarioInterno()).thenReturn("Línea de detalle\n".repeat(12));
+        var second = mock(TicketReportView.class);
+        when(second.fecha()).thenReturn(LocalDate.of(2026, 7, 19));
+        when(second.estado()).thenReturn(DocumentStatus.CONFIRMADO);
+        when(second.numero()).thenReturn("T-002");
+        when(second.base()).thenReturn(new BigDecimal("-1.00"));
+        when(second.total()).thenReturn(new BigDecimal("-1.11"));
+        when(second.effectiveTotal()).thenReturn(new BigDecimal("-1.11"));
+        var cancelled = mock(TicketReportView.class);
+        when(cancelled.fecha()).thenReturn(LocalDate.of(2026, 7, 19));
+        when(cancelled.estado()).thenReturn(DocumentStatus.ANULADO);
+        when(cancelled.numero()).thenReturn("T-003");
+        when(cancelled.base()).thenReturn(new BigDecimal("2.00"));
+        when(cancelled.total()).thenReturn(new BigDecimal("3.00"));
+        when(cancelled.effectiveTotal()).thenReturn(BigDecimal.ZERO);
+        when(ticketReports.list(any(), any(), any(), any()))
+                .thenReturn(new PagedResult<>(List.of(first, second, cancelled), null, false));
+        var service = new SalesReportExcelExportService(mock(DocumentService.class),
+                mock(DocumentReportService.class), mock(WarehouseInputReportService.class),
+                mock(WarehouseOutputService.class), mock(WarehouseRepository.class),
+                currentOrganization(), mock(DocumentAttributionResolver.class),
+                mock(AuditService.class), ticketReports);
+        var authentication = new UsernamePasswordAuthenticationToken("reader", "unused",
+                List.of(new SimpleGrantedAuthority("GESTION_VENTAS")));
+        var columns = List.of(new SalesReportExportRequest.Column("total", "Total"),
+                new SalesReportExportRequest.Column("ticket", "Ticket"),
+                new SalesReportExportRequest.Column("base", "Base"),
+                new SalesReportExportRequest.Column("comment", "Comentario"));
+        var request = new SalesReportExportRequest("salesReport.tickets",
+                new SalesReportExportRequest.Filters("2026-07-18", "2026-07-19", "", "", "", "", "", "", ""),
+                "", columns);
+        byte[] result = service.export(request, authentication);
+        var fixture = Path.of("target", "tickets-sales-design", "Tickets.xlsx");
+        Files.createDirectories(fixture.getParent());
+        Files.write(fixture, result);
+
+        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(result))) {
+            var sheet = workbook.getSheet("Tickets");
+            assertThat(sheet.getRow(0).getCell(0).getStringCellValue()).isEqualTo("INFORME DE TICKETS");
+            assertThat(sheet.getRow(1).getCell(0).getStringCellValue()).isEqualTo("Empresa");
+            assertThat(sheet.getRow(1).getCell(1).getStringCellValue()).isEqualTo("EMPRESA PRUEBAS SL");
+            assertThat(sheet.getRow(3).getCell(1).getStringCellValue()).contains("001", "TIENDA PRUEBAS 001");
+            assertThat(sheet.getRow(5).getCell(1).getStringCellValue()).isEqualTo("18/07/2026 - 19/07/2026");
+            assertThat(sheet.getRow(6).getCell(1).getStringCellValue()).matches("\\d{2}/\\d{2}/\\d{4} \\d{2}:\\d{2}");
+            assertThat(sheet.getRow(8).getCell(0).getStringCellValue()).isEqualTo("Total");
+            assertThat(sheet.getRow(9).getCell(0).getNumericCellValue()).isEqualTo(12.00);
+            assertThat(sheet.getRow(9).getCell(3).getStringCellValue()).contains("Línea de detalle\n");
+            assertThat(sheet.getRow(9).getHeightInPoints()).isGreaterThan(90f);
+            assertThat(sheet.getRow(10).getCell(0).getNumericCellValue()).isEqualTo(-1.11);
+            assertThat(sheet.getRow(11).getCell(0).getNumericCellValue()).isEqualTo(3.00);
+            assertThat(sheet.getRow(12).getCell(0).getNumericCellValue()).isEqualTo(7.77);
+            assertThat(sheet.getRow(12).getCell(1).getStringCellValue()).isEqualTo("TOTAL");
+            assertThat(sheet.getRow(12).getCell(2).getNumericCellValue()).isEqualTo(11.00);
+            assertThat(sheet.getRow(12).getCell(0).getCellStyle().getDataFormatString()).contains("€");
+            assertThat(workbook.getFontAt(sheet.getRow(12).getCell(0).getCellStyle().getFontIndex())
+                    .getFontHeightInPoints()).isEqualTo((short) 14);
+            assertThat(sheet.getPaneInformation().getHorizontalSplitPosition()).isEqualTo((short) 9);
+            assertThat(sheet.getRepeatingRows()).isEqualTo(new org.apache.poi.ss.util.CellRangeAddress(0, 8, -1, -1));
+            assertThat(sheet.getPrintSetup().getPaperSize()).isEqualTo(PrintSetup.A4_PAPERSIZE);
+            assertThat(sheet.getFooter().getCenter()).isEqualTo("Página &P de &N");
+        }
+        var hiddenAmountSearch = new SalesReportExportRequest("salesReport.tickets", request.filters(),
+                "8.88", columns);
+        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.export(hiddenAmountSearch, authentication)))) {
+            var sheet = workbook.getSheet("Tickets");
+            assertThat(sheet.getLastRowNum()).isEqualTo(9);
+            assertThat(sheet.getRow(9).getCell(0).getNumericCellValue()).isZero();
+        }
+    }
+
+    @Test
+    void ticketWorkbookHandlesOneSelectedColumnAndNoRows() throws Exception {
+        var reports = mock(TicketReportService.class);
+        when(reports.list(any(), any(), any(), any())).thenReturn(new PagedResult<>(List.of(), null, false));
+        var service = new SalesReportExcelExportService(mock(DocumentService.class),
+                mock(DocumentReportService.class), mock(WarehouseInputReportService.class),
+                mock(WarehouseOutputService.class), mock(WarehouseRepository.class),
+                currentOrganization(), mock(DocumentAttributionResolver.class),
+                mock(AuditService.class), reports);
+        var authentication = new UsernamePasswordAuthenticationToken("reader", "unused",
+                List.of(new SimpleGrantedAuthority("GESTION_VENTAS")));
+        var request = new SalesReportExportRequest("salesReport.tickets", null, "",
+                List.of(new SalesReportExportRequest.Column("total", "Total")));
+        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.export(request, authentication)))) {
+            var sheet = workbook.getSheet("Tickets");
+            assertThat(sheet.getRow(1).getCell(0).getStringCellValue())
+                    .isEqualTo("Empresa: EMPRESA PRUEBAS SL");
+            assertThat(sheet.getColumnWidth(0)).isGreaterThanOrEqualTo(36 * 256);
+            assertThat(sheet.getRow(8).getCell(0).getStringCellValue()).isEqualTo("Total");
+            assertThat(sheet.getRow(9).getCell(0).getNumericCellValue()).isZero();
+            assertThat(sheet.getRow(9).getCell(1).getStringCellValue()).isEqualTo("TOTAL");
+        }
+    }
 
     @Test
     void exportsEverySupportedReportWithItsCompleteColumnConfiguration() throws Exception {
@@ -122,7 +245,8 @@ class SalesReportExcelExportServiceTest {
             byte[] result = service.export(request, authentication);
 
             try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(result))) {
-                int headerRow = storeInformationReport(entry.getKey()) ? 8 : 0;
+                int headerRow = storeInformationReport(entry.getKey())
+                        || TicketReportWorkbookLayout.supports(entry.getKey()) ? 8 : 0;
                 assertThat(workbook.getSheetAt(0).getRow(headerRow).getLastCellNum())
                         .isEqualTo((short) columns.size());
             }
@@ -167,7 +291,7 @@ class SalesReportExcelExportServiceTest {
         byte[] result = service.export(request, authentication);
 
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(result))) {
-            var row = workbook.getSheetAt(0).getRow(1);
+            var row = workbook.getSheetAt(0).getRow(9);
             assertThat(row.getCell(0).getStringCellValue()).isEqualTo("FRV-001");
             assertThat(row.getCell(1).getStringCellValue()).isEqualTo("RECTIFICATIVA_VENTA");
             assertThat(row.getCell(2).getNumericCellValue()).isEqualTo(-12.10);
@@ -179,10 +303,46 @@ class SalesReportExcelExportServiceTest {
     }
 
     @Test
+    void commercialDocumentWorkbookUsesOwnTitleAndOriginalRowTotals() throws Exception {
+        for (String reportKey : List.of("salesReport.invoices", "salesReport.deliveryNotes")) {
+            String numberKey = "salesReport.invoices".equals(reportKey) ? "invoice" : "deliveryNote";
+            String title = "salesReport.invoices".equals(reportKey) ? "Facturas" : "Albaranes";
+            var columns = List.of(new SalesReportExportRequest.Column(numberKey, title),
+                    new SalesReportExportRequest.Column("total", "Importe"));
+            var request = new SalesReportExportRequest(reportKey, null, "", columns);
+            var first = new java.util.LinkedHashMap<String, Object>();
+            first.put(numberKey, "DOC-001");
+            first.put("total", new BigDecimal("12.10"));
+            var second = new java.util.LinkedHashMap<String, Object>();
+            second.put(numberKey, "DOC-002");
+            second.put("total", new BigDecimal("-2.15"));
+
+            byte[] bytes = TicketReportWorkbookLayout.write(request, List.of(first, second), currentOrganization());
+
+            try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
+                var sheet = workbook.getSheetAt(0);
+                assertThat(sheet.getSheetName()).isEqualTo(title);
+                assertThat(sheet.getRow(0).getCell(0).getStringCellValue())
+                        .isEqualTo("INFORME DE " + title.toUpperCase(java.util.Locale.ROOT));
+                assertThat(sheet.getRow(9).getCell(1).getNumericCellValue()).isEqualTo(12.10);
+                assertThat(sheet.getRow(10).getCell(1).getNumericCellValue()).isEqualTo(-2.15);
+                assertThat(sheet.getRow(11).getCell(1).getNumericCellValue()).isEqualTo(9.95);
+                assertThat(sheet.getRow(11).getCell(1).getCellStyle().getFontIndex())
+                        .isEqualTo(sheet.getRow(11).getCell(0).getCellStyle().getFontIndex());
+                var totalFont = workbook.getFontAt(sheet.getRow(11).getCell(1).getCellStyle().getFontIndex());
+                assertThat(totalFont.getFontName()).isEqualTo("Calibri");
+                assertThat(totalFont.getFontHeightInPoints()).isEqualTo((short) 14);
+                assertThat(totalFont.getBold()).isTrue();
+                assertThat(sheet.getPrintSetup().getPaperSize()).isEqualTo(PrintSetup.A4_PAPERSIZE);
+            }
+        }
+    }
+
+    @Test
     void exportsAllAuthoritativeRowsMatchingTheRequestedDateRange() throws Exception {
         var documents = mock(DocumentService.class);
         var ticketReports = mock(TicketReportService.class);
-        var organization = mock(CurrentOrganization.class);
+        var organization = currentOrganization();
         var attributions = mock(DocumentAttributionResolver.class);
         var authentication = new UsernamePasswordAuthenticationToken(
                 "manager", "token", List.of(new SimpleGrantedAuthority("GESTION_VENTAS")));
@@ -230,9 +390,9 @@ class SalesReportExcelExportServiceTest {
 
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(result))) {
             var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getLastRowNum()).isEqualTo(1);
-            assertThat(sheet.getRow(1).getCell(0).getStringCellValue()).isEqualTo("18/07/2026");
-            assertThat(sheet.getRow(1).getCell(1).getStringCellValue()).isEqualTo("CAJA 02");
+            assertThat(sheet.getLastRowNum()).isEqualTo(10);
+            assertThat(sheet.getRow(9).getCell(0).getStringCellValue()).isEqualTo("18/07/2026");
+            assertThat(sheet.getRow(9).getCell(1).getStringCellValue()).isEqualTo("CAJA 02");
         }
     }
 
@@ -307,7 +467,7 @@ class SalesReportExcelExportServiceTest {
 
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
             var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getLastRowNum()).isEqualTo(9);
+            assertThat(sheet.getLastRowNum()).isEqualTo(10);
             var row = sheet.getRow(9);
             assertThat(row.getCell(0).getStringCellValue()).isEqualTo("ENT-002");
             assertThat(row.getCell(1).getStringCellValue()).isEqualTo("P-000001");
@@ -321,6 +481,19 @@ class SalesReportExcelExportServiceTest {
             assertThat(row.getCell(8).getNumericCellValue()).isEqualTo(0.05);
             assertThat(new DataFormatter().formatCellValue(row.getCell(8))).contains("5", "%").doesNotContain("500");
             assertThat(row.getCell(9).getNumericCellValue()).isEqualTo(99.99);
+            if (!"salesReport.inputWarehouse".equals(reportKey)) {
+                assertThat(sheet.getSheetName()).isEqualTo("salesReport.inputInvoices".equals(reportKey)
+                        ? "Facturas de compra" : "Albaranes de compra");
+                assertThat(sheet.getRow(0).getCell(0).getStringCellValue())
+                        .isEqualTo("INFORME DE " + sheet.getSheetName().toUpperCase(Locale.ROOT));
+                assertThat(sheet.getColumnWidth(2)).isEqualTo(36 * 256);
+                assertThat(sheet.getRow(10).getCell(0).getStringCellValue()).isEqualTo("TOTAL");
+                assertThat(sheet.getRow(10).getCell(7).getNumericCellValue()).isEqualTo(105.25);
+                assertThat(sheet.getRow(10).getCell(9).getNumericCellValue()).isEqualTo(99.99);
+                assertThat(sheet.getRow(10).getCell(8).getStringCellValue()).isBlank();
+                assertThat(workbook.getFontAt(sheet.getRow(10).getCell(9).getCellStyle().getFontIndex())
+                        .getFontHeightInPoints()).isEqualTo((short) 14);
+            }
         }
         verify(inputs).listPage(type, 200, null, from, to, authentication);
         verify(inputs).listPage(type, 200, "next", from, to, authentication);
@@ -361,7 +534,7 @@ class SalesReportExcelExportServiceTest {
                         .isEqualTo(expectedText.get(index).replace('.', ','));
                 styleIndexes.add(cell.getCellStyle().getIndex());
             }
-            assertThat(styleIndexes).hasSize(2);
+            assertThat(styleIndexes).hasSize(4);
         }
         try (var pdf = org.apache.pdfbox.Loader.loadPDF(
                 new SalesReportPdfExportService(service).export(request, authentication))) {
@@ -434,7 +607,7 @@ class SalesReportExcelExportServiceTest {
                 List.of(new SimpleGrantedAuthority("GESTION_CUENTAS")));
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.export(request, authentication)))) {
             var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getLastRowNum()).isEqualTo(9);
+            assertThat(sheet.getLastRowNum()).isEqualTo(10);
             assertThat(sheet.getRow(9).getCell(0).getStringCellValue()).isEqualTo(included);
             assertThat(sheet.getRow(9).getCell(1).getStringCellValue()).isEqualTo(expectedStatus.name());
         }
@@ -483,16 +656,15 @@ class SalesReportExcelExportServiceTest {
 
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(result))) {
             var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getRow(0).getCell(0).getStringCellValue()).isEqualTo("Empresa");
-            assertThat(sheet.getRow(0).getCell(1).getStringCellValue()).isEqualTo("EMPRESA PRUEBAS SL");
-            assertThat(sheet.getRow(2).getCell(0).getStringCellValue()).isEqualTo("Tienda");
-            assertThat(sheet.getRow(2).getCell(1).getStringCellValue()).isEqualTo("001");
-            assertThat(sheet.getRow(3).getCell(1).getStringCellValue()).isEqualTo("TIENDA PRUEBAS 001");
-            assertThat(sheet.getRow(4).getCell(1).getStringCellValue()).isEqualTo("EUR");
+            assertThat(sheet.getRow(0).getCell(0).getStringCellValue()).isEqualTo("INFORME DE "
+                    + ("salesReport.inputWarehouse".equals(reportKey) ? "ENTRADAS" : "SALIDAS") + " DE ALMACÉN");
+            assertThat(sheet.getRow(1).getCell(1).getStringCellValue()).isEqualTo("EMPRESA PRUEBAS SL");
+            assertThat(sheet.getRow(3).getCell(1).getStringCellValue()).isEqualTo("001 - TIENDA PRUEBAS 001");
             var row = sheet.getRow(9);
             assertThat(row.getCell(0).getStringCellValue()).isEqualTo(expectedWarehouse);
             assertThat(row.getCell(1).getNumericCellValue()).isEqualTo(expectedTotal);
             assertThat(row.getCell(1).getCellStyle().getDataFormatString()).contains("€");
+            assertThat(sheet.getRow(10).getCell(1).getNumericCellValue()).isEqualTo(expectedTotal);
         }
     }
 

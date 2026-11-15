@@ -3,6 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
+import { previewExport } from "../export/previewExport";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { AppKind, LocaleCode, UserSession } from "../types";
 import { SalesReportScreen } from "./SalesReportScreen";
@@ -11,6 +12,7 @@ vi.mock("../api/client", async () => ({
   ...await vi.importActual<typeof import("../api/client")>("../api/client"),
   apiRequest: vi.fn(),
 }));
+vi.mock("../export/previewExport", () => ({ previewExport: vi.fn().mockResolvedValue({ downloaded: true, printed: false, canceled: false }) }));
 
 const terminalContext = { storeName: "Tienda", terminalCode: "01" };
 const session: UserSession = {
@@ -139,14 +141,12 @@ describe("Commercial report document actions", () => {
   it.each(["invoices", "deliveryNotes"] as const)("exports the selected %s document through the individual endpoint", async (report) => {
     const { rows, request } = await mountReport({ report });
     const selected = documentFixture(report, 2);
-    const saveFile = vi.fn().mockResolvedValue({ ok: true });
-    Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { reports: { saveFile } } });
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
       new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
     fireEvent.click(rows()[1]);
     fireEvent.click(within(openMenu()).getByRole("menuitem", { name: "Exportar Excel" }));
-    await waitFor(() => expect(saveFile).toHaveBeenCalledWith(
-      expect.objectContaining({ defaultFileName: `${selected.numero}.xlsx` })));
+    await waitFor(() => expect(previewExport).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ fileName: `${selected.numero}.xlsx`, blob: expect.any(Blob) })));
     expect(fetchSpy).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(`/excel/documents/${selected.id}/export`), {
       headers: { Authorization: "Bearer token" },
     });

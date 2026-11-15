@@ -1,3 +1,4 @@
+import { previewExport } from "../../../packages/app-common/src/export/previewExport";
 import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
 import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import { AdjustmentProductSearch } from "./AdjustmentProductSearch";
@@ -127,12 +128,7 @@ export function WarehouseOperationsScreen({ session, mode, t, locale = "es" }: P
     setError("");
     try {
       const file = await exportStockCount(selectedCount.id, format, token);
-      const url = URL.createObjectURL(file);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `inventario-${selectedCount.id}.${format}`;
-      anchor.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await previewExport({ blob: file, fileName: `inventario-${selectedCount.id}.${format}`, locale, formattedWorkbook: format === "xlsx" });
     } catch (cause) { setError(errorMessage(cause, t("warehouse.count.exportError"))); }
   }
 

@@ -14,6 +14,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Tag;
@@ -178,7 +179,8 @@ class StockPageOrderRepositoryPostgreSqlTest {
             try (var workbook = new XSSFWorkbook(Files.newInputStream(file.path()))) {
                 var exportedCodes = new ArrayList<String>();
                 var sheet = workbook.getSheetAt(0);
-                for (int row = 1; row <= sheet.getLastRowNum(); row++) {
+                var dataRange = CellRangeAddress.valueOf(sheet.getCTWorksheet().getAutoFilter().getRef());
+                for (int row = dataRange.getFirstRow() + 1; row <= dataRange.getLastRow(); row++) {
                     exportedCodes.add(sheet.getRow(row).getCell(0).getStringCellValue());
                 }
                 var expectedCodes = loaded.stream().map(id -> id.equals(missingId) ? "-"

@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 import org.apache.pdfbox.Loader;
@@ -28,9 +30,11 @@ class ReplenishmentExportServiceTest {
     @Test void excelPreservesTextAndNumericTypesAcrossLocales() throws Exception {
         for (String locale : List.of("es", "en", "zh")) {
             byte[] bytes = service.export("xlsx", locale, List.of(item(0)));
+            if (locale.equals("zh")) save("replenishment.xlsx", bytes);
             try (var book = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
-                var row = book.getSheetAt(0).getRow(1);
-                assertThat(book.getSheetAt(0).getRow(0).getLastCellNum()).isEqualTo((short) 13);
+                var sheet = book.getSheetAt(0);
+                var row = sheet.getRow(sheet.getPaneInformation().getHorizontalSplitPosition());
+                assertThat(sheet.getRow(0).getLastCellNum()).isEqualTo((short) 13);
                 assertThat(row.getCell(1).getCellType()).isEqualTo(CellType.STRING);
                 assertThat(row.getCell(1).getStringCellValue()).isEqualTo("=COD-0");
                 assertThat(row.getCell(2).getStringCellValue()).isEqualTo("0012345678905");
@@ -48,18 +52,21 @@ class ReplenishmentExportServiceTest {
         assertThat(ReplenishmentExportService.class.getResource("/fonts/NotoSansSC-VF.ttf")).isNotNull();
         var items = java.util.stream.IntStream.range(0, 85).mapToObj(this::item).toList();
         byte[] bytes = service.export("pdf", "zh", items);
+        save("replenishment.pdf", bytes);
         try (var pdf = Loader.loadPDF(bytes)) {
             assertThat(pdf.getNumberOfPages()).isGreaterThan(1);
             var text = new PDFTextStripper().getText(pdf);
             assertThat(text).contains("绿茶", "=COD-0", "=COD-84", "补货申请", "仓库");
             assertThat(text.split("补货申请", -1).length - 1).isEqualTo(pdf.getNumberOfPages());
+            assertThat(pdf.getPage(0).getMediaBox().getWidth()).isEqualTo(org.apache.pdfbox.pdmodel.common.PDRectangle.A4.getHeight());
         }
     }
 
     @Test void validatesFormatAndProducesEmptyReport() throws Exception {
         assertThatThrownBy(() -> service.export("csv", "es", List.of())).isInstanceOf(IllegalArgumentException.class);
         try (var book = new XSSFWorkbook(new ByteArrayInputStream(service.export("xlsx", "es", List.of())))) {
-            assertThat(book.getSheetAt(0).getLastRowNum()).isZero();
+            var sheet = book.getSheetAt(0);
+            assertThat(sheet.getLastRowNum()).isEqualTo(sheet.getPaneInformation().getHorizontalSplitPosition() - 1);
         }
         try (var pdf = Loader.loadPDF(service.export("pdf", "es", List.of()))) {
             assertThat(pdf.getNumberOfPages()).isEqualTo(1);
@@ -74,10 +81,17 @@ class ReplenishmentExportServiceTest {
                 source.familyId(), source.familyName(), source.subfamilyId(), source.subfamilyName(),
                 "PENDING", null);
         try (var book = new XSSFWorkbook(new ByteArrayInputStream(service.export("xlsx", "en", List.of(hidden))))) {
-            var row = book.getSheetAt(0).getRow(1);
+            var sheet = book.getSheetAt(0);
+            var row = sheet.getRow(sheet.getPaneInformation().getHorizontalSplitPosition());
             assertThat(row.getCell(7).getCellType()).isEqualTo(CellType.STRING);
             assertThat(row.getCell(7).getStringCellValue()).isEmpty();
             assertThat(row.getCell(11).getStringCellValue()).isEqualTo("Pending");
         }
+    }
+
+    private static void save(String name, byte[] bytes) throws Exception {
+        Path directory = Path.of("target", "warehouse-design");
+        Files.createDirectories(directory);
+        Files.write(directory.resolve(name), bytes);
     }
 }

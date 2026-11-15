@@ -5,6 +5,7 @@ import type { KeyboardEvent } from "react";
 import { CalendarBlank, CaretDown, FilePdf, FileXls } from "@phosphor-icons/react";
 import { apiRequest } from "../api/client";
 import { apiBaseUrl } from "../api/runtime";
+import { previewExport } from "../export/previewExport";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { AppKind, LocaleCode } from "../types";
 import { ErpListFilterPanel } from "./ErpListFilterPanel";
@@ -374,13 +375,8 @@ export function StockSalesHistoryPanel({
         bytes = Uint8Array.from(window.atob(rendered.renderedPdf.base64), (character) => character.charCodeAt(0));
         fileName = rendered.fileName || fileName;
       } else bytes = new Uint8Array(await response.arrayBuffer());
-      if (window.tpvDesktop?.reports) {
-        const saved = await window.tpvDesktop.reports.saveFile({
-          defaultFileName: fileName, filters: [{ name: extension === "xlsx" ? "Excel" : "PDF", extensions: [extension] }], bytes,
-        });
-        if (!saved.ok) throw new Error(saved.message);
-      } else downloadBytes(bytes, fileName, extension === "xlsx"
-        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf");
+      await previewExport({ blob: new Blob([bytes.slice().buffer as ArrayBuffer], { type: extension === "xlsx"
+        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf" }), fileName, locale });
     } catch {
       setExportError("stock.history.exportError");
     } finally { setExportBusy(false); }
@@ -576,17 +572,6 @@ function formatHistoryAmount(value: string, currency: string, locale: LocaleCode
   }
   // Historical SaaS values may have a wider scale; display them without rounding away received precision.
   return `${formatSaasHistoryDecimal(normalized, locale, 2)} ${currency}`;
-}
-
-function downloadBytes(bytes: Uint8Array, fileName: string, type: string) {
-  const copy = new Uint8Array(bytes.length);
-  copy.set(bytes);
-  const url = URL.createObjectURL(new Blob([copy.buffer], { type }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 function formatOccurredAt(value: string, formatter: Intl.DateTimeFormat) {

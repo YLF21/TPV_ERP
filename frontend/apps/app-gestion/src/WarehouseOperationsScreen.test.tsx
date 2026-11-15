@@ -2,6 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { previewExport } from "../../../packages/app-common/src/export/previewExport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserSession } from "../../../packages/app-common/src/types";
 import { apiRequest } from "../../../packages/app-common/src/api/client";
@@ -235,6 +236,8 @@ describe("WarehouseOperationsScreen", () => {
       fireEvent.keyDown(window, { key: "F7" });
       await waitFor(() => expect(api.exportStockCount).toHaveBeenCalledWith("count-1", "xlsx", "token"));
       await waitFor(() => expect(api.exportStockCount).toHaveBeenCalledWith("count-1", "pdf", "token"));
+      expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({ fileName: "inventario-count-1.xlsx", formattedWorkbook: true }));
+      expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({ fileName: "inventario-count-1.pdf", formattedWorkbook: false }));
       expect(api.createStockCount).not.toHaveBeenCalled();
       expect(api.confirmStockCount).not.toHaveBeenCalled();
     } finally {
@@ -442,3 +445,6 @@ describe("WarehouseOperationsScreen", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("warehouse.count.lineAdded");
   });
 });
+
+vi.mock("../../../packages/app-common/src/export/previewExport", () => ({ previewExport: vi.fn().mockResolvedValue({ downloaded: true, printed: false, canceled: false }) }));
+beforeEach(() => vi.mocked(previewExport).mockClear());

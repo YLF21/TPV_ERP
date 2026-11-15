@@ -47,10 +47,10 @@ describe("Gestión directory export actions", () => {
     await waitForReadyExportShortcut("F6");
 
     fireEvent.keyDown(document.body, { key: "F6" });
-    await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("xlsx", expect.anything(), expect.stringMatching(/\.xlsx$/)));
+    await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("xlsx", expect.objectContaining({ storeName: "Test" }), expect.stringMatching(/\.xlsx$/), "es"));
     await waitForReadyExportShortcut("F7");
     fireEvent.keyDown(document.body, { key: "F7" });
-    await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("pdf", expect.anything(), expect.stringMatching(/\.pdf$/)));
+    await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("pdf", expect.objectContaining({ storeName: "Test" }), expect.stringMatching(/\.pdf$/), "es"));
     expect(screen.queryByRole("dialog", { name: "Añadir producto" })).not.toBeInTheDocument();
     expect(vi.mocked(apiRequest).mock.calls.some(([path]) => path.startsWith("/stock/exports"))).toBe(false);
 
@@ -84,11 +84,11 @@ describe("Gestión directory export actions", () => {
     expect(screen.getByRole("button", { name: /F7/ })).toHaveAttribute("aria-keyshortcuts", "F7");
     await waitForReadyExportShortcut("F7");
     fireEvent.keyDown(window, { key: "F7" });
-    await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("pdf", expect.anything(), expect.stringMatching(/\.pdf$/)));
+    await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("pdf", expect.anything(), expect.stringMatching(/\.pdf$/), "es"));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await waitForReadyExportShortcut("F6");
     fireEvent.keyDown(window, { key: "F6" });
-    await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("xlsx", expect.anything(), expect.stringMatching(/\.xlsx$/)));
+    await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("xlsx", expect.anything(), expect.stringMatching(/\.xlsx$/), "es"));
     await waitForReadyExportShortcut("F7");
     fireEvent.keyDown(window, { key: "F5" });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -102,7 +102,7 @@ describe("Gestión directory export actions", () => {
     fireEvent.keyDown(window, { key: "F5" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     fireEvent.keyDown(window, { key: "F6" });
-    await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("xlsx", expect.anything(), expect.any(String)));
+    await waitFor(() => expect(savePartyDirectoryExport).toHaveBeenCalledWith("xlsx", expect.anything(), expect.any(String), "es"));
   });
 
   it("ignores new and export shortcuts while a record dialog is open", async () => {

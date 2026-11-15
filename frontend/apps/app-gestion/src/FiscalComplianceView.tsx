@@ -1,3 +1,4 @@
+import { previewExport } from "../../../packages/app-common/src/export/previewExport";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { DialogDismissButton } from "../../../packages/app-common/src/components/DialogDismissButton";
 import { useTableRowArrowFocus } from "../../../packages/app-common/src/components/useTableRowArrowFocus";
@@ -430,7 +431,7 @@ export function FiscalComplianceView({
           {responsibleDeclaration.fileName && <span>{responsibleDeclaration.fileName}</span>}
           {responsibleDeclaration.issuedAt && <span>{formatVerifactuDateTime(responsibleDeclaration.issuedAt, locale, fiscalTimezone)}</span>}
           {responsibleDeclaration.sha256 && <ComplianceHashValue value={responsibleDeclaration.sha256} t={t} />}
-          {responsibleDeclaration.downloadUrl && responsibleDeclaration.status === "AVAILABLE" && <button type="button" className="gestion-module-action" onClick={() => void downloadResponsibleDeclaration(responsibleDeclaration.downloadUrl!, responsibleDeclaration.fileName ?? undefined, token).catch(() => setResponsibleDeclarationDownloadError(true))}>{t("verifactu.compliance.declarationDownload")}</button>}
+          {responsibleDeclaration.downloadUrl && responsibleDeclaration.status === "AVAILABLE" && <button type="button" className="gestion-module-action" onClick={() => void downloadResponsibleDeclaration(responsibleDeclaration.downloadUrl!, responsibleDeclaration.fileName ?? undefined, token, locale).catch(() => setResponsibleDeclarationDownloadError(true))}>{t("verifactu.compliance.declarationDownload")}</button>}
         </div>}
         {responsibleDeclarationDownloadError && <p className="gestion-verifactu-message error" role="alert">{t("verifactu.compliance.declarationDownloadError")}</p>}
       </section>}
@@ -786,7 +787,7 @@ function responsibleDeclarationStatusLabel(status: string, t: VerifactuTranslato
   return translated === key ? humanizeVerifactuValue(status) : translated;
 }
 
-export async function downloadResponsibleDeclaration(url: string, fileName: string | undefined, token?: string) {
+export async function downloadResponsibleDeclaration(url: string, fileName: string | undefined, token?: string, locale?: LocaleCode) {
   const target = new URL(url, window.location.origin);
   if (target.origin !== window.location.origin) throw new Error("external_declaration_url");
   const response = await fetch(target.toString(), { headers: token ? { Authorization: `Bearer ${token}` } : {} });
@@ -795,12 +796,7 @@ export async function downloadResponsibleDeclaration(url: string, fileName: stri
   if (contentLength > 64 * 1024 * 1024) throw new Error("responsible_declaration_too_large");
   const blob = await response.blob();
   if (blob.size > 64 * 1024 * 1024) throw new Error("responsible_declaration_too_large");
-  const href = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = href;
-  link.download = fileName || "declaracion-responsable.pdf";
-  link.click();
-  URL.revokeObjectURL(href);
+  await previewExport({ blob, fileName: fileName || "declaracion-responsable.pdf", locale });
 }
 
 function eventColumnLabel(column: FiscalEventColumn, t: VerifactuTranslator) {

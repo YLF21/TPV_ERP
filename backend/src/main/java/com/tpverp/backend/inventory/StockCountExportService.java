@@ -1,68 +1,73 @@
 package com.tpverp.backend.inventory;
 
+import com.tpverp.backend.catalog.WarehouseRepository;
+import com.tpverp.backend.organization.CurrentOrganization;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.PDPage;
-import org.apache.pdfbox.pdmodel.PDPageContentStream;
-import org.apache.pdfbox.pdmodel.common.PDRectangle;
-import org.apache.pdfbox.pdmodel.font.PDType1Font;
-import org.apache.pdfbox.pdmodel.font.PDType0Font;
-import org.apache.pdfbox.pdmodel.font.PDFont;
-import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.poi.ss.usermodel.CellStyle;
-import org.apache.poi.ss.usermodel.FillPatternType;
-import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
 public class StockCountExportService {
     private final StockCountService counts;
+    private final CurrentOrganization organization;
+    private final WarehouseRepository warehouses;
 
-    public StockCountExportService(StockCountService counts) { this.counts = counts; }
+    @Autowired
+    public StockCountExportService(StockCountService counts, CurrentOrganization organization,
+            WarehouseRepository warehouses) {
+        this.counts = counts;
+        this.organization = organization;
+        this.warehouses = warehouses;
+    }
+
+    public StockCountExportService(StockCountService counts) { this(counts, null, null); }
 
     public byte[] excel(UUID id) {
         var count = counts.get(id);
+        String locale = locale();
+        var headers = headers(locale);
         try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
             var sheet = workbook.createSheet("Inventario");
-            var header = style(workbook, IndexedColors.GREY_25_PERCENT, true);
-            var less = style(workbook, IndexedColors.ROSE, false);
-            var equal = style(workbook, IndexedColors.LIGHT_GREEN, false);
-            var more = style(workbook, IndexedColors.LIGHT_YELLOW, false);
-            var title = sheet.createRow(0);
-            title.createCell(0).setCellValue("INVENTARIO");
-            sheet.createRow(1).createCell(0).setCellValue("Documento: " + count.number());
-            sheet.createRow(2).createCell(0).setCellValue("Estado: " + count.status());
-            var labels = List.of("Código", "Código de barras", "Producto", "Antes", "Después", "Diferencia");
-            var heading = sheet.createRow(4);
-            for (int column = 0; column < labels.size(); column++) {
-                var cell = heading.createCell(column);
-                cell.setCellValue(labels.get(column));
-                cell.setCellStyle(header);
-            }
-            int rowNumber = 5;
+            var layout = WarehouseExportLayout.workbook(workbook, sheet,
+                    WarehouseExportLayout.tr(locale, "INVENTARIO", "STOCK COUNT", "库存盘点"),
+                    metadata(count, locale), headers, new int[] {18, 24, 48, 17, 17, 17}, locale);
+            CellStyle less = accent(workbook, layout.number(false), (byte) 204, (byte) 41, (byte) 41);
+            CellStyle more = accent(workbook, layout.number(false), (byte) 140, (byte) 102, (byte) 0);
+            CellStyle equal = accent(workbook, layout.number(false), (byte) 25, (byte) 115, (byte) 51);
+            CellStyle lessStripe = accent(workbook, layout.number(true), (byte) 204, (byte) 41, (byte) 41);
+            CellStyle moreStripe = accent(workbook, layout.number(true), (byte) 140, (byte) 102, (byte) 0);
+            CellStyle equalStripe = accent(workbook, layout.number(true), (byte) 25, (byte) 115, (byte) 51);
+            int rowNumber = layout.headerRow() + 1;
             for (var line : count.lines()) {
                 var row = sheet.createRow(rowNumber++);
-                row.createCell(0).setCellValue(safe(line.productCode()));
-                row.createCell(1).setCellValue(safe(line.productBarcode()));
-                row.createCell(2).setCellValue(safe(line.productName()));
-                row.createCell(3).setCellValue(line.expectedQuantity().doubleValue());
-                var counted = row.createCell(4);
-                if (line.countedQuantity() != null) counted.setCellValue(line.countedQuantity().doubleValue());
-                var delta = row.createCell(5);
-                if (line.difference() != null) {
-                    delta.setCellValue(line.difference().doubleValue());
-                    delta.setCellStyle(line.difference().signum() < 0 ? less : line.difference().signum() > 0 ? more : equal);
+                boolean stripe = (rowNumber - layout.headerRow()) % 2 == 0;
+                for (int column = 0; column < 3; column++) {
+                    String value = switch (column) {
+                        case 0 -> line.productCode();
+                        case 1 -> line.productBarcode();
+                        default -> line.productName();
+                    };
+                    var cell = row.createCell(column);
+                    cell.setCellValue(safe(value));
+                    cell.setCellStyle(layout.text(stripe));
                 }
+                numeric(row, 3, line.expectedQuantity(), layout.number(stripe));
+                numeric(row, 4, line.countedQuantity(), layout.number(stripe));
+                numeric(row, 5, line.difference(), line.difference() == null ? layout.number(stripe)
+                        : line.difference().signum() < 0 ? (stripe ? lessStripe : less)
+                        : line.difference().signum() > 0 ? (stripe ? moreStripe : more)
+                        : (stripe ? equalStripe : equal));
+                WarehouseExportLayout.bodyRow(row, layout, rowNumber - layout.headerRow() - 2);
             }
-            for (int column = 0; column < labels.size(); column++) sheet.setColumnWidth(column, column == 2 ? 11000 : 5300);
-            sheet.createFreezePane(0, 5);
+            WarehouseExportLayout.autoFilter(sheet, layout.headerRow(), rowNumber - 1, headers.size());
             workbook.write(output);
             return output.toByteArray();
         } catch (IOException exception) { throw new IllegalStateException("No se pudo exportar el inventario", exception); }
@@ -70,105 +75,67 @@ public class StockCountExportService {
 
     public byte[] pdf(UUID id) {
         var count = counts.get(id);
-        try (var document = new PDDocument(); var output = new ByteArrayOutputStream()) {
-            PDFont embedded = multilingualFont(document);
-            PDFont normal = embedded == null ? new PDType1Font(Standard14Fonts.FontName.HELVETICA) : embedded;
-            PDFont bold = embedded == null ? new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD) : embedded;
-            PDPageContentStream content = null;
-            float y = 0;
-            try {
-                for (int index = -1; index < count.lines().size(); index++) {
-                    if (content == null || y < 45) {
-                        if (content != null) content.close();
-                        var page = new PDPage(new PDRectangle(PDRectangle.A4.getHeight(), PDRectangle.A4.getWidth()));
-                        document.addPage(page);
-                        content = new PDPageContentStream(document, page);
-                        y = page.getMediaBox().getHeight() - 38;
-                        drawText(content, bold, 15, 36, y, "INVENTARIO");
-                        y -= 21;
-                        drawText(content, normal, 8, 36, y, "Documento: " + count.number() + "   Estado: " + count.status());
-                        y -= 25;
-                        drawRow(content, bold, y, List.of("Código", "Barras", "Producto", "Antes", "Después", "Diferencia"), 0);
-                        y -= 20;
-                    }
-                    if (index < 0) continue;
-                    var line = count.lines().get(index);
-                    drawRow(content, normal, y, List.of(safe(line.productCode()), safe(line.productBarcode()),
-                            safe(line.productName()), number(line.expectedQuantity()), number(line.countedQuantity()),
-                            number(line.difference())), line.difference() == null ? 0 : line.difference().signum());
-                    y -= 20;
-                }
-            } finally { if (content != null) content.close(); }
-            document.save(output);
-            return output.toByteArray();
+        String locale = locale();
+        var rows = count.lines().stream().map(line -> new WarehouseExportLayout.PdfRow(List.of(
+                safe(line.productCode()), safe(line.productBarcode()), safe(line.productName()),
+                number(line.expectedQuantity()), number(line.countedQuantity()), number(line.difference())),
+                5, line.difference() == null ? 0 : line.difference().signum())).toList();
+        try {
+            return WarehouseExportLayout.pdf(new WarehouseExportLayout.PdfSpec(
+                    WarehouseExportLayout.tr(locale, "INVENTARIO", "STOCK COUNT", "库存盘点"),
+                    locale, metadata(count, locale), headers(locale),
+                    new float[] {100, 110, 240, 75, 75, 75}, rows));
         } catch (IOException exception) { throw new IllegalStateException("No se pudo exportar el inventario", exception); }
     }
 
-    private static CellStyle style(XSSFWorkbook book, IndexedColors fill, boolean bold) {
+    private List<WarehouseExportLayout.MetadataField> metadata(StockCountView count, String locale) {
+        var values = new ArrayList<WarehouseExportLayout.MetadataField>();
+        if (organization != null) {
+            values.addAll(WarehouseExportLayout.organizationMetadata(organization.currentStore(),
+                    organization.currentCompany(), locale, count.createdAt()));
+            if (warehouses != null) warehouses.findById(count.warehouseId()).ifPresent(warehouse ->
+                    values.add(new WarehouseExportLayout.MetadataField(
+                            WarehouseExportLayout.tr(locale, "Almacén", "Warehouse", "仓库"), warehouse.getName())));
+        }
+        values.add(new WarehouseExportLayout.MetadataField(
+                WarehouseExportLayout.tr(locale, "Documento", "Document", "单据"), count.number()));
+        values.add(new WarehouseExportLayout.MetadataField(
+                WarehouseExportLayout.tr(locale, "Estado", "Status", "状态"), Objects.toString(count.status(), "")));
+        if (count.documentDate() != null) values.add(new WarehouseExportLayout.MetadataField(
+                WarehouseExportLayout.tr(locale, "Fecha", "Date", "日期"), count.documentDate().toString()));
+        if (count.notes() != null && !count.notes().isBlank()) values.add(new WarehouseExportLayout.MetadataField(
+                WarehouseExportLayout.tr(locale, "Notas", "Notes", "备注"), count.notes()));
+        return values;
+    }
+
+    private String locale() { return organization == null ? "es" : organization.currentStore().getLocale(); }
+
+    private static List<String> headers(String locale) {
+        return List.of(WarehouseExportLayout.tr(locale, "Código", "Code", "编码"),
+                WarehouseExportLayout.tr(locale, "Código de barras", "Barcode", "条码"),
+                WarehouseExportLayout.tr(locale, "Producto", "Product", "商品"),
+                WarehouseExportLayout.tr(locale, "Antes", "Before", "盘点前"),
+                WarehouseExportLayout.tr(locale, "Después", "After", "盘点后"),
+                WarehouseExportLayout.tr(locale, "Diferencia", "Difference", "差异"));
+    }
+
+    private static void numeric(org.apache.poi.ss.usermodel.Row row, int column, BigDecimal value, CellStyle style) {
+        var cell = row.createCell(column);
+        if (value != null) cell.setCellValue(value.doubleValue());
+        cell.setCellStyle(style);
+    }
+
+    private static CellStyle accent(XSSFWorkbook book, CellStyle base, byte red, byte green, byte blue) {
         var style = book.createCellStyle();
-        style.setFillForegroundColor(fill.getIndex());
-        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        style.cloneStyleFrom(base);
         var font = book.createFont();
-        font.setBold(bold);
+        font.setFontName("Calibri");
+        font.setFontHeightInPoints((short) 10);
+        font.setColor(new org.apache.poi.xssf.usermodel.XSSFColor(new byte[] {red, green, blue}, null));
         style.setFont(font);
         return style;
     }
 
-    private static void drawRow(PDPageContentStream content, PDFont font, float y, List<String> values, int sign)
-            throws IOException {
-        float[] widths = {100, 110, 235, 75, 75, 75};
-        float x = 36;
-        for (int i = 0; i < values.size(); i++) {
-            if (i == 5) {
-                if (sign < 0) content.setNonStrokingColor(.8f, .16f, .16f);
-                else if (sign > 0) content.setNonStrokingColor(.55f, .4f, 0f);
-                else content.setNonStrokingColor(.1f, .45f, .2f);
-            } else content.setNonStrokingColor(0f, 0f, 0f);
-            drawText(content, font, 8, x + 2, y, fit(values.get(i), i == 2 ? 42 : 18));
-            x += widths[i];
-        }
-        content.setStrokingColor(.75f, .75f, .75f);
-        content.moveTo(36, y - 5);
-        content.lineTo(x, y - 5);
-        content.stroke();
-    }
-
-    private static void drawText(PDPageContentStream content, PDFont font, int size, float x, float y, String value)
-            throws IOException {
-        content.beginText();
-        content.setFont(font, size);
-        content.newLineAtOffset(x, y);
-        content.showText(printable(font, value));
-        content.endText();
-    }
-
-    private static String fit(String value, int limit) { return value.length() <= limit ? value : value.substring(0, limit - 1) + "…"; }
-    private static String printable(PDFont font, String value) throws IOException {
-        if (font instanceof PDType1Font) return value.replaceAll("[^\\x20-\\x7E\\xA1-\\xFF]", "?");
-        try { font.getStringWidth(value); return value; }
-        catch (IllegalArgumentException exception) {
-            var result = new StringBuilder();
-            value.codePoints().forEach(point -> {
-                var character = new String(Character.toChars(point));
-                try { font.getStringWidth(character); result.append(character); }
-                catch (IOException | IllegalArgumentException ignored) { result.append('?'); }
-            });
-            return result.toString();
-        }
-    }
-    private static PDFont multilingualFont(PDDocument document) {
-        var windows = System.getenv("WINDIR");
-        var candidates = List.of(
-                Path.of(windows == null ? "C:/Windows" : windows, "Fonts", "NotoSansSC-VF.ttf"),
-                Path.of("/usr/share/fonts/truetype/noto/NotoSansSC-Regular.ttf"));
-        for (var candidate : candidates) {
-            if (!Files.isRegularFile(candidate)) continue;
-            try (var input = Files.newInputStream(candidate)) {
-                return PDType0Font.load(document, input, true);
-            } catch (IOException ignored) { /* The standard PDF font remains available. */ }
-        }
-        return null;
-    }
     private static String safe(String value) { return value == null ? "" : value; }
     private static String number(BigDecimal value) { return value == null ? "" : value.stripTrailingZeros().toPlainString(); }
 }

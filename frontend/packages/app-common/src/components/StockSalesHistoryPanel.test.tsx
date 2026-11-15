@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { previewExport } from "../export/previewExport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
 import type { SaasSalesHistoryItem, SaasSalesHistoryResponse } from "../api/stockSalesHistory";
@@ -65,9 +66,9 @@ function deferredResponse() {
   return { promise, resolve, reject };
 }
 function installExportMock(pdf = false) {
-  const saveFile = vi.fn().mockResolvedValue({ ok: true });
+  const saveFile = vi.mocked(previewExport);
   window.tpvDesktop = { closeApplication: vi.fn(), reports: {
-    saveFile, exportPdf: vi.fn(), exportTablePdf: vi.fn(), print: vi.fn(),
+    saveFile: vi.fn(), exportPdf: vi.fn(), exportTablePdf: vi.fn(), print: vi.fn(), preparePdf: vi.fn(), printExport: vi.fn(),
   } };
   const fetchMock = vi.fn().mockResolvedValue({ ok: true,
     arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
@@ -608,3 +609,6 @@ describe("StockSalesHistoryPanel", () => {
   });
 
 });
+
+vi.mock("../export/previewExport", () => ({ previewExport: vi.fn().mockResolvedValue({ downloaded: true, printed: false, canceled: false }) }));
+beforeEach(() => vi.mocked(previewExport).mockClear());

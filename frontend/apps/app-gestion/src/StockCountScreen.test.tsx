@@ -2,6 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { previewExport } from "../../../packages/app-common/src/export/previewExport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserSession } from "../../../packages/app-common/src/types";
 import { apiRequest } from "../../../packages/app-common/src/api/client";
@@ -190,10 +191,12 @@ describe("StockCountScreen", () => {
     expect(api.loadStockCount).not.toHaveBeenCalled();
     fireEvent.keyDown(window, { key: "F6" });
     await waitFor(() => expect(api.exportStockCount).toHaveBeenCalledWith("inventory-1", "xlsx", "token"));
-    await waitFor(() => expect(download).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({ fileName: "INV-2026-000001.xlsx", formattedWorkbook: true })));
+    expect(download).not.toHaveBeenCalled();
     fireEvent.keyDown(window, { key: "F7" });
     await waitFor(() => expect(api.exportStockCount).toHaveBeenCalledWith("inventory-1", "pdf", "token"));
-    await waitFor(() => expect(download).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({ fileName: "INV-2026-000001.pdf", formattedWorkbook: false })));
+    expect(download).not.toHaveBeenCalled();
     fireEvent.keyDown(window, { key: "F5" });
     const editor = await screen.findByRole("dialog", { name: "Documento de inventario" });
     fireEvent.keyDown(window, { key: "F6" });
@@ -257,3 +260,6 @@ describe("StockCountScreen", () => {
     await waitFor(() => expect(within(dock).getByRole("button", { name: "Hoy" })).toBeEnabled());
   });
 });
+
+vi.mock("../../../packages/app-common/src/export/previewExport", () => ({ previewExport: vi.fn().mockResolvedValue({ downloaded: true, printed: false, canceled: false }) }));
+beforeEach(() => vi.mocked(previewExport).mockClear());

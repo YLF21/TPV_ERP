@@ -1,3 +1,4 @@
+import { previewExport } from "../../../packages/app-common/src/export/previewExport";
 import { sortTableRows, useTableSortPreference } from "../../../packages/app-common/src/components/tableSorting";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -247,10 +248,7 @@ export function WarehouseTransferScreen({ session, t, createOnMount = false, loc
     try {
       const file = await exportTransferList(format, { status: compactListFilter(statusFilter), search: searchInput.trim(),
         sourceWarehouseId: compactListFilter(sourceFilter), targetWarehouseId: compactListFilter(targetFilter), dateFrom, dateTo }, locale, token);
-      const url = URL.createObjectURL(file);
-      const link = document.createElement("a");
-      link.href = url; link.download = `traspasos-almacen.${format}`; link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await previewExport({ blob: file, fileName: `traspasos-almacen.${format}`, locale, formattedWorkbook: format === "xlsx" });
     } catch { setError(t("warehouse.report.exportError")); }
     finally { exportBusy.current = false; setExporting(false); }
   }

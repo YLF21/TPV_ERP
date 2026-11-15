@@ -532,6 +532,15 @@ html[data-app="gestion"] .gestion-warehouse-screen .gestion-warehouse-toolbar {
   font-size: 9px;
 }
 
+@layer gestion-accents {
+  html[data-app="gestion"] .gestion-warehouse-screen:is(.inventory-screen, .gestion-warehouse-transfer-screen)
+    :is(.gestion-warehouse-title-actions > button, .erp-list-filter-actions > button, .erp-list-filter-toggle),
+  html[data-app="gestion"] .gestion-warehouse-screen:is(.inventory-screen, .gestion-warehouse-transfer-screen)
+    :is(.gestion-warehouse-title-actions > button, .erp-list-filter-actions > button) > span {
+    font-weight: 700 !important;
+  }
+}
+
 .gestion-warehouse-screen .gestion-warehouse-toolbar > button > span {
   display: inline-flex;
   align-items: center;

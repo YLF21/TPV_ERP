@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
+import { previewExport } from "../../../packages/app-common/src/export/previewExport";
 import { apiRequest } from "../../../packages/app-common/src/api/client";
 import { ErpSelect } from "../../../packages/app-common/src/components/ErpSelect";
 import { WindowCloseButton } from "../../../packages/app-common/src/components/WindowCloseButton";
@@ -130,7 +131,9 @@ export function StockCountDocumentWindow({ initial, warehouses, session, locale,
   }
   async function exportFile(format: "pdf" | "xlsx", print = false) {
     const value = readOnly ? document! : await save();
-    const blob = await exportStockCount(value.id, format, token); const url = URL.createObjectURL(blob);
+    const blob = await exportStockCount(value.id, format, token);
+    if (!print) { await previewExport({ blob, fileName: `${value.number || "inventario"}.${format}`, locale, formattedWorkbook: format === "xlsx" }); return; }
+    const url = URL.createObjectURL(blob);
     const link = globalThis.document.createElement("a"); link.href = url; link.download = `${value.number || "inventario"}.${format}`;
     if (print) { link.target = "_blank"; link.removeAttribute("download"); }
     link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 60000);

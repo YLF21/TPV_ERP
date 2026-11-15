@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SalesReportScreen, formatReportDisplayValue } from "./SalesReportScreen";
 import { createTranslator } from "../i18n/LocalizedMessages";
+import { previewExport } from "../export/previewExport";
 import { printWarehouseA4Document } from "../warehouse/warehouseDocumentPrinting";
 import type { Permission } from "../types";
 
@@ -19,6 +20,7 @@ vi.mock("../warehouse/warehouseDocumentPrinting", async () => ({
   ...await vi.importActual<typeof import("../warehouse/warehouseDocumentPrinting")>("../warehouse/warehouseDocumentPrinting"),
   printWarehouseA4Document: vi.fn().mockResolvedValue({ ok: true })
 }));
+vi.mock("../export/previewExport", () => ({ previewExport: vi.fn().mockResolvedValue({ downloaded: true, printed: false, canceled: false }) }));
 
 const today = "2026-09-11";
 const empty = { items: [], hasMore: false, nextCursor: null };
@@ -133,14 +135,12 @@ describe("current warehouse purchase reports", () => {
   });
 
   it("exports a selected input through its scoped individual endpoint", async () => {
-    const saveFile = vi.fn().mockResolvedValue({ ok: true });
-    Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { reports: { saveFile } } });
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new Uint8Array([1]), { status: 200 }));
     mount(); const dialog = await openInvoice();
     fireEvent.click(within(dialog).getByRole("button", { name: "Exportar Excel" }));
-    await waitFor(() => expect(saveFile).toHaveBeenCalled());
+    await waitFor(() => expect(previewExport).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ fileName: "FE-001.xlsx", blob: expect.any(Blob) })));
     expect(fetchSpy.mock.calls[0][0]).toMatch(/\/excel\/warehouse-inputs\/input-invoice\/export$/);
-    expect(saveFile.mock.calls[0][0]).toMatchObject({ defaultFileName: "FE-001.xlsx" });
   });
 
   it.each([true, false])("requires Jasper for input printing (available: %s)", async (available) => {

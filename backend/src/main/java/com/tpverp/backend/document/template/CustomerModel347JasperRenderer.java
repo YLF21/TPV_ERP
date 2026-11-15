@@ -57,6 +57,11 @@ public class CustomerModel347JasperRenderer {
         parameters.put("SCOPE", labels.scope());
         parameters.put("NOTICE", labels.notice());
         parameters.put("PAGE_LABEL", labels.page());
+        parameters.put("PAGE_OF", switch (labels.numberLocale().getLanguage()) {
+            case "en" -> " of ";
+            case "zh" -> " / ";
+            default -> " de ";
+        });
         parameters.replaceAll((key, value) -> styledText((String) value));
 
         var rows = new ArrayList<Map<String, ?>>();

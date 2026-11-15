@@ -5,11 +5,13 @@ import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { AppKind, UserSession } from "../types";
 import { StockScreen } from "./StockScreen";
+import { previewExport } from "../export/previewExport";
 import { writeStoredTableLayout } from "./tableLayoutPreferences";
 
 vi.mock("../api/client", async (importOriginal) => ({
   ...await importOriginal<typeof import("../api/client")>(), apiRequest: vi.fn()
 }));
+vi.mock("../export/previewExport", () => ({ previewExport: vi.fn() }));
 
 const warehouseId = "11111111-1111-4111-8111-111111111111";
 const session: UserSession = {
@@ -19,7 +21,7 @@ const documentViews = ["stock.current", "stock.topSales", "stock.offers", "stock
 type DocumentView = typeof documentViews[number];
 const apps = ["venta", "gestion"] as const;
 
-const saveFile = vi.fn().mockResolvedValue({ ok: true });
+const preview = vi.mocked(previewExport);
 const fetchFile = vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), {
   status: 200,
   headers: { "Content-Disposition": "attachment; filename=stock.pdf" }
@@ -34,8 +36,16 @@ function exportButton(shortcut: "F6" | "F7") {
   return document.querySelector<HTMLButtonElement>(`.stock-export-button[aria-keyshortcuts="${shortcut}"]`);
 }
 
-async function renderScreen(app: AppKind, initialView: DocumentView | "stock.promotions" | "stock.bulkEdit" = "stock.current") {
-  const result = render(<StockScreen app={app} initialView={initialView} locale="es" session={session}
+function pdfDialog() {
+  return screen.getByRole("dialog", { name: "Columnas del PDF" });
+}
+
+function confirmPdfColumns() {
+  fireEvent.click(within(pdfDialog()).getByRole("button", { name: "Exportar PDF" }));
+}
+
+async function renderScreen(app: AppKind, initialView: DocumentView | "stock.promotions" | "stock.bulkEdit" = "stock.current", userSession = session) {
+  const result = render(<StockScreen app={app} initialView={initialView} locale="es" session={userSession}
     terminalContext={{ storeName: "Test", terminalCode: "TEST" }} allowSafeRetirement
     onBack={vi.fn()} onLocaleChange={vi.fn()} />);
   if (initialView === "stock.bulkEdit") await screen.findByRole("button", { name: "Nuevo F5" });
@@ -46,12 +56,11 @@ async function renderScreen(app: AppKind, initialView: DocumentView | "stock.pro
 
 beforeEach(() => {
   localStorage.clear();
-  saveFile.mockReset().mockResolvedValue({ ok: true });
+  preview.mockReset().mockResolvedValue({ downloaded: true, printed: false, canceled: false });
   fetchFile.mockReset().mockImplementation(async () => new Response(new Uint8Array([1, 2, 3]), {
     status: 200, headers: { "Content-Disposition": "attachment; filename=stock.pdf" }
   }));
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
-  Object.defineProperty(window, "tpvDesktop", { configurable: true, value: { reports: { saveFile } } });
   vi.stubGlobal("fetch", fetchFile);
   vi.mocked(apiRequest).mockReset().mockImplementation(async (path) => {
     if (path.startsWith("/stock/page")) return {
@@ -87,14 +96,14 @@ describe("StockScreen document exports", () => {
       expect(exportButton("F6")).not.toBeNull();
       expect(document.querySelector(".stock-document-screen")).not.toBeNull();
       fireEvent.click(exportButton("F7")!);
+      expect(exportPosts()).toHaveLength(0);
+      confirmPdfColumns();
       await waitFor(() => expect(exportPosts()).toHaveLength(1));
       expect(exportPosts()[0][0]).toBe("/stock/exports/pdf");
       const pdfBody = exportPosts()[0][1]!.body;
-      await waitFor(() => expect(saveFile).toHaveBeenCalledOnce());
-      expect(saveFile).toHaveBeenCalledWith(expect.objectContaining({
-        defaultFileName: "stock.pdf", filters: [{ name: "PDF", extensions: ["pdf"] }],
-        bytes: new Uint8Array([1, 2, 3])
-      }));
+      await waitFor(() => expect(preview).toHaveBeenCalledOnce());
+      expect(preview).toHaveBeenCalledWith(expect.objectContaining({ fileName: "stock.pdf", locale: "es", blob: expect.any(Blob) }));
+      expect(Array.from(new Uint8Array(await (preview.mock.calls[0][0].blob as Blob).arrayBuffer()))).toEqual([1, 2, 3]);
       expect(fetchFile).toHaveBeenCalledWith(expect.stringContaining("/stock/exports/job-1/file"),
         expect.objectContaining({ headers: { Authorization: "Bearer test-token" } }));
       await waitFor(() => expect(exportButton("F6")).toHaveProperty("disabled", false));
@@ -102,6 +111,10 @@ describe("StockScreen document exports", () => {
       await waitFor(() => expect(exportPosts()).toHaveLength(2));
       expect(exportPosts()[1][0]).toBe("/stock/exports");
       expect(exportPosts()[1][1]!.body).toEqual(pdfBody);
+      await waitFor(() => expect(preview).toHaveBeenCalledTimes(2));
+      expect(preview.mock.calls[1][0]).toEqual(expect.objectContaining({
+        formattedWorkbook: true
+      }));
       expect(pdfBody).toMatchObject({ language: "es" });
       expect(pdfBody).not.toHaveProperty("promotionId");
     }
@@ -123,6 +136,7 @@ describe("StockScreen document exports", () => {
     expect(within(filter).queryByRole("button", { name: t("salesReport.filter.apply") })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: t("stock.column.name") }));
     fireEvent.click(exportButton("F7")!);
+    confirmPdfColumns();
     await waitFor(() => expect(exportPosts()).toHaveLength(1));
     const body = exportPosts()[0][1]!.body as Record<string, unknown>;
     expect(body).toMatchObject({ view: "", search: "Café", productType: "UNIT",
@@ -134,11 +148,56 @@ describe("StockScreen document exports", () => {
   it("sends selected top-sales dates and sort with the PDF request", async () => {
     await renderScreen("venta", "stock.topSales");
     fireEvent.click(exportButton("F7")!);
+    confirmPdfColumns();
     await waitFor(() => expect(exportPosts()).toHaveLength(1));
     const body = exportPosts()[0][1]!.body as Record<string, unknown>;
     expect(body).toMatchObject({ view: "top_sales", sortBy: "ranking", sortDirection: "asc" });
     expect(body.dateFrom).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(body.dateTo).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("cancels the PDF chooser without requesting an export and restores focus", async () => {
+    await renderScreen("venta");
+    exportButton("F7")!.focus();
+    fireEvent.keyDown(window, { key: "F7" });
+    expect(pdfDialog()).not.toBeNull();
+    expect(exportPosts()).toHaveLength(0);
+    fireEvent.keyDown(pdfDialog(), { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Columnas del PDF" })).toBeNull();
+    expect(exportPosts()).toHaveLength(0);
+    expect(document.activeElement).toBe(exportButton("F7"));
+  });
+
+  it("requires one column and exports only chosen attributes in table order, including hidden choices", async () => {
+    writeStoredTableLayout("venta", session.username, "stock.current", [
+      { key: "salePrice", width: 90, visible: true },
+      { key: "name", width: 220, visible: true },
+      { key: "code", width: 100, visible: false }
+    ]);
+    await renderScreen("venta");
+    fireEvent.click(exportButton("F7")!);
+    const chooser = pdfDialog();
+    expect((within(chooser).getByRole("checkbox", { name: "Código" }) as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(within(chooser).getByRole("button", { name: "Desmarcar todas" }));
+    expect((within(chooser).getByRole("button", { name: "Exportar PDF" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(exportPosts()).toHaveLength(0);
+    fireEvent.click(within(chooser).getByRole("checkbox", { name: "Nombre" }));
+    fireEvent.click(within(chooser).getByRole("checkbox", { name: "Código" }));
+    confirmPdfColumns();
+    await waitFor(() => expect(exportPosts()).toHaveLength(1));
+    const body = exportPosts()[0][1]!.body as { columns: { key: string }[] };
+    expect(body.columns.map(column => column.key)).toEqual(["name", "code"]);
+  });
+
+  it("does not offer purchase-sensitive attributes to a user without product management", async () => {
+    const purchaseLabel = createTranslator("es")("stock.column.purchasePrice");
+    await renderScreen("venta", "stock.current", { ...session, permissions: ["STOCK_READ"] });
+    fireEvent.click(exportButton("F7")!);
+    expect(within(pdfDialog()).queryByRole("checkbox", { name: purchaseLabel })).toBeNull();
+    confirmPdfColumns();
+    await waitFor(() => expect(exportPosts()).toHaveLength(1));
+    const body = exportPosts()[0][1]!.body as { columns: { key: string }[] };
+    expect(body.columns.some(column => column.key === "purchasePrice")).toBe(false);
   });
 
   it("keeps F7 inside product detail for editing and F9 available in management", async () => {
@@ -176,11 +235,12 @@ describe("StockScreen document exports", () => {
 
   it("uses a PDF fallback name and never reports success after a canceled save", async () => {
     fetchFile.mockImplementationOnce(async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
-    saveFile.mockResolvedValueOnce({ ok: true, canceled: true });
+    preview.mockResolvedValueOnce({ downloaded: false, printed: false, canceled: true });
     await renderScreen("venta");
     fireEvent.click(exportButton("F7")!);
-    await waitFor(() => expect(saveFile).toHaveBeenCalledOnce());
-    expect((saveFile.mock.calls[0][0] as { defaultFileName: string }).defaultFileName).toMatch(/\.pdf$/);
+    confirmPdfColumns();
+    await waitFor(() => expect(preview).toHaveBeenCalledOnce());
+    expect(preview.mock.calls[0][0].fileName).toMatch(/\.pdf$/);
     await waitFor(() => expect(document.querySelector(".stock-export-notice.success")).toBeNull());
   });
 
@@ -193,7 +253,8 @@ describe("StockScreen document exports", () => {
     });
     await renderScreen("venta");
     fireEvent.click(exportButton("F7")!);
+    confirmPdfColumns();
     expect((await screen.findByRole("alert")).textContent).toContain("PDF fallido");
-    expect(saveFile).not.toHaveBeenCalled();
+    expect(preview).not.toHaveBeenCalled();
   });
 });

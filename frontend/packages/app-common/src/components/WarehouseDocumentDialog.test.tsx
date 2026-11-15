@@ -3,6 +3,7 @@
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { StrictMode } from "react";
+import { previewExport } from "../export/previewExport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiRequest } from "../api/client";
 import type { HardwareBridge } from "../hardware/hardware";
@@ -139,13 +140,39 @@ describe("WarehouseDocumentDialog", () => {
     fireEvent.keyDown(search, { key: "F6", repeat: true });
     expect(download).not.toHaveBeenCalled();
     fireEvent.keyDown(search, { key: "F6" });
-    await waitFor(() => expect(download).toHaveBeenCalledOnce());
-    expect(createObjectURL).toHaveBeenCalledOnce();
+    await waitFor(() => expect(previewExport).toHaveBeenCalledOnce());
+    expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({
+      fileName: mode === "transfer" ? "SAL-2026-000001.xlsx" : expect.stringMatching(/\.xlsx$/),
+      locale: "es", blob: expect.any(Blob), formattedWorkbook: true
+    }));
+    expect(download).not.toHaveBeenCalled();
+    expect(createObjectURL).not.toHaveBeenCalled();
     expect(view.container.querySelectorAll("tr[data-line-index]")).toHaveLength(1);
     expect(save).not.toHaveBeenCalled();
     expect(confirm).not.toHaveBeenCalled();
-    if (mode === "transfer") expect(apiRequest).toHaveBeenCalledWith("/warehouse-transfers/export.xlsx",
+    expect(apiRequest).toHaveBeenCalledWith(mode === "transfer" ? "/warehouse-transfers/export.xlsx" : `/warehouse-draft-export/${mode}.xlsx`,
       expect.objectContaining({ method: "POST", responseType: "blob" }));
+    if (mode === "input") expect(apiRequest).toHaveBeenCalledWith("/warehouse-draft-export/input.xlsx",
+      expect.objectContaining({ body: expect.objectContaining({ inputDocumentType: "ENTRADA_ALMACEN" }) }));
+  });
+
+  it("sends visible unsaved and invalid output rows to the draft workbook", async () => {
+    vi.mocked(apiRequest).mockResolvedValue(new Blob(["export"]) as never);
+    const save = vi.fn();
+    const view = render(<WarehouseDocumentDialog app="gestion" mode="output" open token="token"
+      products={products} warehouses={warehouses} customers={customers} suppliers={suppliers}
+      document={{ ...existingDocument, lines: [
+        { productId: "product-1", quantity: 2.5 },
+        { productId: "missing", productCode: "UNKNOWN", productName: "Sin catálogo", quantity: 0 }
+      ] }} persistence={{ save, confirm: vi.fn() }} onClose={vi.fn()} onConfirmed={vi.fn()} />);
+    fireEvent.keyDown(view.getByRole("textbox", { name: "Buscar producto" }), { key: "F6" });
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/warehouse-draft-export/output.xlsx", expect.objectContaining({
+      body: expect.objectContaining({ lines: [
+        expect.objectContaining({ row: 1, code: "A001", quantity: 2.5, validationStatus: expect.any(String) }),
+        expect.objectContaining({ row: 2, code: "UNKNOWN", name: "Sin catálogo", quantity: 0, validationStatus: expect.any(String) })
+      ] })
+    })));
+    expect(save).not.toHaveBeenCalled();
   });
 
   it("opens the price list with Alt+P and keeps list navigation inside the selector", async () => {
@@ -1563,3 +1590,6 @@ describe("WarehouseDocumentDialog", () => {
     expect(hardware.printA4Document).not.toHaveBeenCalled();
   });
 });
+
+vi.mock("../export/previewExport", () => ({ previewExport: vi.fn().mockResolvedValue({ downloaded: true, printed: false, canceled: false }) }));
+beforeEach(() => vi.mocked(previewExport).mockClear());

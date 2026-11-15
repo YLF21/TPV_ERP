@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserSession } from "../../../packages/app-common/src/types";
 import { apiRequest } from "../../../packages/app-common/src/api/client";
+import { previewExport } from "../../../packages/app-common/src/export/previewExport";
 import { StockCountDocumentWindow } from "./StockCountDocumentWindow";
 import * as api from "./warehouseOperationsApi";
 
@@ -16,6 +17,7 @@ vi.mock("./warehouseOperationsApi", async (importOriginal) => ({
   ...await importOriginal<typeof import("./warehouseOperationsApi")>(),
   createStockCount: vi.fn(), saveStockCountDraft: vi.fn(), confirmStockCount: vi.fn(), loadStockCount: vi.fn(), exportStockCount: vi.fn()
 }));
+vi.mock("../../../packages/app-common/src/export/previewExport", () => ({ previewExport: vi.fn().mockResolvedValue({ downloaded: false, printed: false, canceled: true }) }));
 
 const session: UserSession = { username: "admin", displayName: "Admin", accessToken: "token", permissions: ["GESTION_ALMACEN"] };
 const warehouses: api.WarehouseOption[] = [{ id: "general", name: "GENERAL", active: true }];
@@ -55,6 +57,16 @@ describe("StockCountDocumentWindow", () => {
       ...draft, version: input.expectedVersion + 1,
       lines: input.lines.map((line) => ({ ...draft.lines.find((item) => item.productId === line.productId)!, ...line }))
     }));
+  });
+
+  it("previews a saved count with workbook styles only for Excel", async () => {
+    vi.mocked(api.exportStockCount).mockResolvedValue(new Blob(["report"]));
+    mount({ ...draft, status: "CONFIRMED" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "warehouse.count.exportExcel" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "warehouse.count.exportExcel" }));
+    await waitFor(() => expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({ fileName: "INV-2026-000001.xlsx", formattedWorkbook: true })));
+    fireEvent.click(screen.getByRole("button", { name: "warehouse.count.exportPdf" }));
+    await waitFor(() => expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({ fileName: "INV-2026-000001.pdf", formattedWorkbook: false })));
   });
 
   it("repeats only the product suggestion highlight while the arrow is held", async () => {

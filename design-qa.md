@@ -1,3 +1,56 @@
+# Vista previa de exportaciones PDF y Excel — 2026-11-13
+
+final result: passed
+
+## Referencia y evidencias
+
+- Referencia del usuario: `C:/Users/YLF/AppData/Local/Temp/codex-clipboard-77f2bcb5-3cc9-4ed9-a42b-7166a17e0f78.png`.
+- Captura PDF: `frontend/apps/app-gestion/output/export-preview-qa/pdf-preview.jpg`.
+- Captura Excel: `frontend/apps/app-gestion/output/export-preview-qa/excel-preview.jpg`.
+- Referencia y capturas comparadas a 1369 × 816 píxeles; viewport de implementación de 1369 × 816 píxeles CSS, densidad 1. Sin recortes ni reescalado del marco.
+- Estado PDF: primera página de un documento de cinco páginas, ajuste inicial con hoja de 794 px, sin descarga automática. Estado Excel: segunda hoja de un libro de dos hojas, texto literal y códigos con ceros conservados.
+- Verificación con el componente real servido por Vite; datos ficticios, sin escrituras de negocio. La plantilla del documento de prueba es el renderizador existente de directorios, no una reproducción del contenido comercial de la referencia.
+
+## Comparación visual
+
+- Composición: ventana casi completa, fondo gris, papel blanco centrado con sombra, barra oscura flotante y pie blanco con Descargar e Imprimir a la derecha. Botón de idioma omitido según la solicitud. Se añade cabecera con nombre de archivo y cierre accesible.
+- Tipografía: Arial y fuentes del propio PDF; controles de 13 px y cabecera de 14 px, conservando la densidad de escritorio del ERP. Sin cambios tipográficos en los documentos originales. Truncado del nombre de archivo disponible con texto completo en tooltip.
+- Espaciado: marco lateral de 12 px, papel centrado, controles permanentes fuera del área desplazable. Navegación, zoom y botones inferiores permanecen visibles.
+- Colores: fondo gris claro, barra azul gris oscuro, descarga azul e impresión turquesa. El pequeño ajuste respecto al azul más brillante de la referencia es intencionado para integrarlo en esPOS.
+- Activos: PDF renderizado por PDF.js, iconos de la biblioteca Phosphor existente; sin logos, imágenes ni ilustraciones inventadas. Canvas ajustado a densidad de pantalla y límites de memoria.
+- Texto: ES/EN/ZH, sin selector de idioma adicional. Excel muestra datos de solo lectura y selección de hoja; conserva el archivo original al descargar.
+- Se comparó la vista completa y se inspeccionaron dentro de ella el papel, la barra y el pie; no hizo falta recortar imágenes para valorar estas regiones.
+
+## Historial de comprobación y correcciones
+
+1. P2: modal inicial de 1100 px y ajuste que ampliaba la hoja demasiado. Corregidos el ancho casi completo y el ajuste PDF a 794 px. Evidencia final: `pdf-preview.jpg`.
+2. P2: Excel corto se ampliaba al 250 %. Ajuste limitado al 100 % con reducción en ventanas estrechas. Evidencia final: `excel-preview.jpg`.
+3. P1 funcional: la impresión nativa del plugin PDF no conservaba las cinco páginas. Sustituida únicamente la nueva ruta de impresión del visor por páginas renderizadas con PDF.js, con dimensiones y saltos de página. Electron volvió a generar cinco páginas A4; última página inspeccionada con la línea 300 y el total, sin páginas en blanco. Evidencia: `printed-pages.pdf`, `printed-last-page.png` y `verify-result.json` en la misma carpeta de QA. Esta última comprobación usó printToPDF como destino de prueba, sin impresión física.
+4. P1 de teclado: los listeners capture de ventanas padres podían reaccionar antes que el visor. Añadida guardia del visor abierto en los cinco listeners afectados y pruebas de Escape/F5. Las rutas físicas de impresión permanecen iguales.
+5. Se detectó que el servidor de la aplicación empaquetada no declaraba MIME JavaScript para `.mjs`. Corregido y cubierto con prueba del worker PDF bajo `nosniff`.
+
+## Validación
+
+- Navegador: PDF de cinco páginas, última página, zoom, descarga con SHA-256 idéntico al original, Excel de dos hojas, página 3 con fila 123, caracteres ES/ZH y ceros iniciales, Escape y devolución del foco. Consola sin errores en la comprobación final.
+- UI compartida: ocho pruebas de apertura sin descargar/imprimir, cancelación, bytes originales, hojas/páginas, zoom, error recuperable, todas las páginas al imprimir y cancelación durante preparación.
+- Callers: 513 pruebas focalizadas aprobadas inicialmente; las cuatro suites modificadas después para el teclado volvieron a pasar con 299 pruebas. PDF manual, directorios y etiquetas: 43 pruebas aprobadas.
+- Escritorio: 62 pruebas de IPC, preparación, impresión explícita y rutas Ticket 80 aprobadas; prueba adicional del servidor para `.mjs` aprobada.
+- Compilaciones de producción y presupuestos de bundles comprobados; sin cambios en los límites. Worker y visor se cargan bajo demanda.
+- Aplicaciones reiniciadas desde `codex/exportaciones-pdf-excel-20261112`; backend saludable, instalación licenciada y SaaS conectado.
+- Incidencia de prueba: se envió por error un trabajo con datos ficticios a la impresora predeterminada y se retiró de la cola. La posterior validación de contenido no utilizó impresoras físicas.
+
+## Límites y cierre
+
+No quedan hallazgos P0/P1/P2 abiertos. Las descargas conservan PDF/XLSX/CSV originales. La impresión desde el visor rasteriza el PDF a 150 dpi; el Excel muestra sus valores, sin reproducir todos los estilos nativos de Excel. Los archivos grandes que superan los límites de previsualización siguen disponibles para descargar. Se verificaron las rutas mediante pruebas y muestras controladas, sin generar exportaciones reales desde cada pantalla ni realizar operaciones de venta.
+
+- [x] Vista previa antes de exportar, sin botón de idioma.
+- [x] Descarga e impresión por acción explícita.
+- [x] Navegación, zoom, hojas, cierre y foco.
+- [x] Impresión Ticket 80 sin cambios de ruta.
+- [x] Pruebas, compilación y evidencia visual.
+
+---
+
 # Márgenes equilibrados del cierre de Convertir ticket a factura
 
 final result: passed
@@ -1108,3 +1161,245 @@ final result: passed
 - Compilación de Gestión, presupuestos y git diff --check correctos; se reutilizan las comprobaciones funcionales anteriores.
 
 final result: passed
+
+## Ventas diarias: Excel y PDF compartidos — 2026-11-14
+
+- Ventas y Gestión utilizan el mismo generador y el nombre `Ventas_DDMMAA`, basado en la fecha seleccionada, para XLSX y PDF. El endpoint Excel devuelve el mismo nombre en Content-Disposition.
+- Excel: cabecera de empresa/tienda/fecha, columnas de concepto, operaciones e importe, secciones azul marino y verde azulado, filas alternas y totales destacados. Importes y fecha se conservan como valores numéricos. Cabeceras congeladas y repetidas al imprimir, área A4 vertical ajustada al ancho.
+- PDF A4: cabecera en cada página, secciones y totales diferenciados, importes alineados y número de página. Los grupos conservan juntos sus datos cuando caben en una página, incluidos usuarios con nombres largos.
+- La vista previa del XLSX diario lee colores, formatos, combinaciones horizontales y dimensiones del archivo generado. El formato es opcional y se activa solo en esta exportación. La descarga mantiene el Blob original; la impresión HTML respeta colores y A4 vertical.
+- Se mantienen valores autoritativos, permisos y ocultación de fondo inicial/efectivo esperado cuando son nulos. Ticket 80 y los generadores de documentos de ventas conservan su comportamiento.
+- Validación: 15 pruebas backend focales (Excel, Jasper, controller y permisos HTTP); 66 de SalesReportScreen (incluido mismo nombre/fecha en ambas apps) y 11 del visor. Compilaciones TypeScript/Vite de Ventas/Gestión/PDA y presupuestos correctos; continúa el aviso anterior de CSS de Ventas dentro del límite.
+- Revisión visual de archivos reales generados con datos ficticios: día con importes, devoluciones negativas, día vacío y PDF de 13 páginas con usuario largo. XLSX renderizado con Artifact Tool y visor real comprobado en navegador. Captura: `frontend/apps/app-gestion/output/export-preview-qa/daily-excel-preview.jpg`. Fixtures: `backend/target/daily-sales-design/`. Impresión física bloqueada en el harness de revisión.
+- Backend recargado desde esta rama con salud UP y `saasConnected=true`; ventanas de Ventas y Gestión abiertas y respondiendo.
+
+final result: passed
+## Ventas diarias: mayor énfasis del total — 2026-11-14
+
+- Total de ventas de tienda y de cada usuario: etiqueta e importe en negrita de 14 pt en XLSX y PDF A4. Filas ampliadas a 32 pt en Excel y bandas de 38 pt en PDF; otros subtotales conservan su diseño.
+- Se comprueba en el PDF generado el uso real de Helvetica-Bold a 14 pt; XLSX y PDF revisados visualmente sin recortes. Pasan las 3 pruebas existentes de Excel y las 6 de Jasper, incluida paginación y Ticket 80. Se reutilizan las validaciones de frontend sin cambios.
+- Backend recargado para aplicar los generadores actualizados.
+
+final result: passed
+## Documentos de ventas: mayor énfasis del total — 2026-11-14
+
+- Aplicado a Por día y Por documento de Ventas/Gestión: fila TOTALES del XLSX en negrita de 14 pt y altura 32 pt, con recuentos e importe numéricos; etiqueta e importe del resumen PDF A4 en Helvetica-Bold de 14 pt y banda de 38 pt.
+- Vista previa XLSX habilitada con formato para Documentos de ventas. Lee la orientación de pageSetup y conserva impresión horizontal; ventas diarias continúa en vertical. Cabeceras usan los mismos colores RGB para mantener su representación en el visor.
+- Validación: 9 pruebas backend y 79 de frontend focales correctas; compilaciones de Ventas/Gestión y presupuestos correctos. Se mantiene el aviso previo de CSS de Ventas dentro del límite. Revisión visual de los cuatro archivos generados en `backend/target/documents-sales-design/`; fuente PDF real comprobada y celda vacía original verificada directamente en OOXML (el renderizador auxiliar mostraba su índice de cadena).
+- Generadores recargados en el backend. Ticket 80 y reglas de cálculo sin cambios.
+
+final result: passed
+
+## Documentos de ventas: filas completas, Calibri y nombre — 2026-11-14
+
+- XLSX/PDF de Ventas y Gestión: `Documentos_de_ventas_DDMMAA` para un día y `Documentos_de_ventas_DDMMAA-DDMMAA` para un intervalo, según las fechas seleccionadas. El endpoint Excel devuelve el mismo nombre.
+- Vista Excel continua con carga progresiva al desplazarse, ajuste de texto y altura de fila suficiente. Conserva el ancho del papel y el zoom inicial del 100 %, con numeración compacta. Calibri en la vista previa, su impresión HTML y los estilos del XLSX de documentos. La impresión conserva todas las filas aunque no se hayan recorrido en pantalla; PDF mantiene su paginación.
+- Validación: 70 pruebas de SalesReportScreen, 13 del visor y 6 backend de Excel/controller correctas. Compilaciones de Ventas/Gestión, presupuestos y diff check correctos; continúa el aviso previo de CSS de Ventas dentro del límite.
+- Visor real comprobado con XLSX generado y hoja sintética de 351 filas: desplazamiento hasta la última fila, texto largo completo y fuente Calibri. Captura: `frontend/apps/app-gestion/output/export-preview-qa/documents-calibri-full-width.jpg`. Datos ficticios e impresión física desactivada en el harness.
+- Backend recargado desde la rama activa, salud UP y `saasConnected=true`; Ventas y Gestión abiertas y respondiendo. Sin cambios en Ticket 80 ni reglas de cálculo.
+
+final result: passed
+
+## Documentos de ventas: cabecera de tienda y detalle en dos filas — 2026-11-14
+
+- Contador de filas con ancho fijo de 56 px, sin absorber el espacio sobrante de la tabla. Comprobado en el visor real y con métricas de Calibri: cinco cifras ocupan 30 px dentro de los 39 px útiles. Las columnas conservan sus proporciones y el papel mantiene su ancho.
+- XLSX Por documento y Por día: título y cabecera con empresa, NIF, código/nombre de tienda, dirección y periodo. Cabecera congelada y repetida al imprimir; rango de impresión ajustado al contenido. Totales numéricos y estilos anteriores conservados.
+- PDF A4 Por documento: fecha/hora en primera fila; documentos, usuario, pagos, estado e importe en segunda fila. El detalle dispone de 415 pt y crece con el texto; separador flotante y registros juntos al paginar. Por día, Ticket 80 y cálculos conservan su comportamiento.
+- Validación: 13 pruebas del visor y compilaciones Ventas/Gestión correctas; presupuestos dentro de los límites con el aviso previo de CSS de Ventas. Siete pruebas Jasper correctas, incluida nueva regresión de detalles largos en varias páginas. Cabeceras y totales XLSX comprobados en ambas agrupaciones.
+- Revisión visual de XLSX generados y las dos páginas del PDF largo con datos ficticios, sin recortes ni solapamientos. Captura del visor: `frontend/apps/app-gestion/output/export-preview-qa/documents-store-header.jpg`. Fixtures en `backend/target/documents-sales-design/`.
+
+final result: passed
+
+## Exportaciones: zoom con Ctrl y cabecera/pie de documentos — 2026-11-14
+
+- Ctrl + rueda amplía/reduce solo el documento en PDF, Excel y vista HTML. Se conserva el desplazamiento sin Ctrl, los límites de zoom 25–250 % y los controles anteriores. Listener no pasivo para impedir el zoom global; cubre también el iframe HTML y se retira al cerrar.
+- El selector de hoja permanece oculto para libros de una sola hoja y visible cuando hay varias.
+- PDF A4 de Documentos de ventas: cabecera repetida con título navy, empresa/tienda/periodo/emisión alineados y separador teal. Pie Página X de Y en todas las páginas, incluida una página independiente de total; detalles y cálculos conservados.
+- Validación: 16 pruebas del visor (rueda con/sin Ctrl, límites y limpieza en los tres formatos), 8 pruebas Jasper, compilaciones Ventas/Gestión y presupuestos correctos; continúa el aviso previo del CSS de Ventas dentro del límite.
+- PDF largo y página independiente de total renderizados con Poppler y revisados visualmente: `backend/target/documents-sales-design/Documentos_cabecera-pie-first.png` y `Documentos_pagina_solo_total.png`. Sin recortes ni solapamientos; Ticket 80 conservado.
+
+final result: passed
+
+## Documentos de ventas: margen en cabecera de tabla — 2026-11-14
+
+- Añadido padding horizontal de 8 pt a «Concepto / documentos» e «Importe / detalle», conservando fondo, alineación y dimensiones de columnas.
+- Ocho pruebas Jasper correctas; cabecera renderizada y revisada en `backend/target/documents-sales-design/Documentos_cabecera_margen.png`, sin recortes. Se reutilizan las validaciones de frontend al no cambiar su código.
+
+final result: passed
+
+## Documentos de ventas: filas alineadas con la cabecera — 2026-11-14
+
+- Mismo padding horizontal de 8 pt en fecha/hora, detalle, recuentos e importes de Por documento y Por día; importe del total alineado con la columna. Se conservan dimensiones, ajuste de texto y separadores.
+- Ocho pruebas Jasper correctas; revisadas ambas agrupaciones y el documento largo paginado sin recortes ni solapamientos. Capturas: `backend/target/documents-sales-design/Documentos_filas_alineadas.png`, `Documentos_dia_filas_alineadas.png` y `Documentos_margenes_multipagina.png`.
+
+final result: passed
+
+## Tickets: diseño de exportaciones Excel y PDF — 2026-11-14
+
+- Compartido por Ventas y Gestión: XLSX Calibri con título navy, cabecera de empresa/NIF/tienda/dirección/periodo/emisión, filas ajustadas al texto y total numérico de 14 pt en negrita. Cabecera congelada/repetida, A4 y pie de impresión Página X de Y. Vista previa con formato; conserva las columnas y el orden seleccionados.
+- PDF A4 vertical con cabecera de tienda repetida, tabla con padding horizontal de 8 pt, fecha/hora en primera línea y datos etiquetados en un área amplia de detalle. Importe a la derecha, total en Helvetica-Bold de 14 pt y Página X de Y en todas las páginas. Ajuste por palabras, continuación de registros excepcionalmente largos y fuente alternativa para chino.
+- El total usa effectiveTotal del servicio existente sobre las filas filtradas; los importes individuales conservan total. Los demás acumulados conservan los valores de pantalla. El importe efectivo se guarda fuera del mapa para no alterar búsquedas. Sin cambios en permisos, filtros, auditoría ni impresión física Ticket 80.
+- Validación: 16 pruebas Excel, 7 PDF y 5 TicketReportService correctas; 72 pruebas SalesReportScreen y compilaciones Ventas/Gestión correctas. Presupuestos dentro de límites, con el aviso previo de CSS de Ventas. Se reutilizan las 16 pruebas anteriores del visor, cuyo código no cambia.
+- Revisión visual de XLSX y PDF generados, documento de dos páginas, hoja vacía y registro largo de siete páginas. Acentos, chino, saltos de línea, tabulaciones, total efectivo y columnas reordenadas comprobados. Visor real: cabecera, ancho completo, fin del texto largo, totales, selector de hoja oculto y PDF cargado correctamente. Datos ficticios; fixtures en backend/target/tickets-sales-design/ y harness local ignorado en frontend/apps/app-gestion/output/export-preview-qa/tickets.html.
+- Backend recargado desde la rama activa para probar los generadores.
+
+final result: passed
+
+## Tickets: orientación A4 automática — 2026-11-14
+
+- PDF: se mide el ancho real de fecha/hora y detalle con sus fuentes actuales. Si excede el área de A4 vertical, todo el documento usa A4 horizontal; las filas cortas conservan vertical aunque ocupen varias páginas. Se amplían el detalle y la cabecera al ancho disponible, manteniendo fuente, márgenes, total y pie.
+- Excel: orientación de impresión calculada por la anchura de las columnas y los márgenes de página, reemplazando el umbral fijo de cinco columnas. Conserva el tamaño A4 y la paginación vertical.
+- El bloque de resumen permanece junto al total cuando cabe completo en una página, evitando el título huérfano al pasar a horizontal.
+- Validación: 18 pruebas Excel y 9 PDF correctas. Revisión visual de PDF compacto vertical, campos densos horizontal, varias páginas y página final de total; 40 filas cortas mantienen A4 vertical. Capturas en backend/target/tickets-sales-design/Tickets-horizontal.png, Tickets-horizontal-total.png y Tickets-vertical.png. Visor e impresión ya usan las dimensiones del PDF; no cambian sus fuentes ni código frontend y se reutilizan las comprobaciones anteriores.
+- Backend recargado desde la rama activa para probar las nuevas exportaciones.
+
+final result: passed
+
+## Tickets en tabla y cabecera de tienda solo al inicio — 2026-11-14
+
+- PDF Tickets: una columna por campo seleccionado y una fila por ticket, manteniendo orden, etiquetas e importes. Tabla con cabecera navy, padding 8 pt, filas alternas, importes a derecha, texto ajustado y total alineado de 14 pt. La orientación A4 se decide por la anchura de las columnas; se prioriza el espacio de fechas y números al comprimir una tabla ancha. Las filas de altura normal permanecen juntas y las superiores a una página continúan sin perder texto.
+- Tickets y Documentos de ventas (Por documento y Por día): título, tienda y metadata solo en la primera página. Las siguientes aprovechan el espacio desde arriba y repiten los títulos de columnas donde hay tabla. Todas conservan Página X de Y, incluida la página exclusiva de total. En Jasper el bloque visual pasa de pageHeader a title; Ticket 80 conserva su plantilla.
+- Validación: 11 pruebas PDF Tickets y 8 Jasper correctas. Se comprueban columnas por sus coordenadas, orden seleccionado, total efectivo frente a importe visible, todas las 15 columnas dentro de página, texto largo y caracteres chinos, hoja vacía, cabecera de tienda ausente desde página 2 y tabla desde la parte superior. Sin cambios en frontend, Excel ni cálculos: se reutilizan las comprobaciones anteriores.
+- Revisión visual de las primeras páginas, páginas posteriores y total aislado con Poppler. Capturas: backend/target/tickets-sales-design/Tickets-tabla-normal.png, Tickets-tabla-completa.png, Tickets-tabla-pagina2.png y Tickets-tabla-vacia.png; backend/target/documents-sales-design/Documentos-cabecera-primera.png, Documentos-segunda-sin-cabecera.png y Documentos-total-sin-cabecera.png.
+- Backend recargado desde la rama activa para probar los generadores.
+
+final result: passed
+
+## Facturas y Albaranes: mismo diseño de exportaciones que Tickets — 2026-11-14
+
+- Ambos informes de ventas reutilizan el diseño XLSX y PDF de Tickets, con títulos y hojas propios. Excel Calibri, cabecera de tienda, filas completas y total de 14 pt en negrita; PDF en tabla con márgenes, orientación A4 automática, cabecera de tienda solo en la primera página y paginado. Se conservan las columnas seleccionadas y los importes originales de Facturas/Albaranes.
+- Ventas y Gestión abren Excel con formato en el visor. Nombres en ambas extensiones: Facturas_DDMMAA-DDMMAA y Albaranes_DDMMAA-DDMMAA, incluidos períodos de un día; la API usa los mismos nombres.
+- Validación: 82 pruebas frontend y 43 backend correctas; compilaciones de Ventas/Gestión y presupuestos correctos (aviso previo de CSS de Ventas). Se mantienen las pruebas de Tickets, permisos, filtros y rectificativas. El visor compartido y la impresión Ticket 80 no cambian.
+- Revisión visual de los PDF de cuatro páginas y vacíos: primera página, continuación y total final, sin recortes. Muestras XLSX/PDF y capturas en backend/target/commercial-sales-design/.
+
+final result: passed
+
+## Facturas y Albaranes de compra — 2026-11-14
+
+- Mismo diseño compartido en XLSX/PDF, con títulos y hojas de compra, columnas de proveedor, cabecera de tienda solo en la primera página del PDF y total destacado. En tablas de compra anchas se reserva espacio para encabezados e identificadores completos; los textos largos se ajustan dentro de la fila. Nombres Facturas_de_compra_DDMMAA-DDMMAA y Albaranes_de_compra_DDMMAA-DDMMAA en ambas aplicaciones y API.
+- Descuento global conserva su valor porcentual (10,25 puntos se guardan como 0,1025 con formato porcentual), cantidades decimales sin formato monetario y totales monetarios de los valores originales. El visor XLSX y su impresión muestran porcentajes enteros/fraccionarios correctamente. Se conservan permisos, filtros, paginación de lectura y el informe genérico de entrada de almacén.
+- Validación: 90 pruebas de pantalla, 17 del visor, 19 Excel, 16 del controlador y 13 PDF correctas. Compilaciones Ventas/Gestión y presupuestos correctos, con el aviso de CSS previo. Revisión visual de PDF con once columnas, seis páginas y vacío; fixtures y capturas en backend/target/purchase-sales-design/.
+
+final result: passed
+
+## Stock actual: diseño de exportaciones Excel y PDF — 2026-11-14
+
+- Ventas y Gestión comparten XLSX Calibri, título y datos de empresa/tienda/almacenes, filas alternas completas, cabecera congelada y totales de existencias de 14 pt en negrita. Nombre Stock_DDMMAA en ambas extensiones, con fecha de la tienda. La vista previa mantiene anchos y precisión de tres decimales de cantidades y precios unitarios.
+- PDF en tabla con padding de 8 pt, cifras alineadas, cabecera de tienda solo en la primera página, encabezados de columna repetidos y pie Página X de Y. Papel adaptado al ancho (A4 vertical/horizontal, A3, A2 o A1 horizontal); Excel usa hasta A2 y el visor respeta A3/A2 al imprimir. Los informes vacíos muestran Sin datos.
+- Se conservan filtros, columnas, autorización de tienda/propietario, permisos sobre precios de compra, procesamiento SXSSF/SAX y retención de 24 horas. Los totales suman únicamente existencias, sin sumar precios, impuestos ni límites de stock. Otras vistas de Stock y Ticket 80 conservan su comportamiento.
+- Validación: 44 pruebas de pantalla/nombres, 21 del visor y 46 backend correctas; compilaciones Ventas/Gestión y presupuestos correctos, con el aviso previo de CSS de Ventas. Revisión de integridad sin defectos pendientes. git diff --check correcto.
+- Revisión visual de PDF vacío, A4 de nueve páginas y tabla de 25 columnas en cuatro páginas; cabecera inicial, continuación y total final sin recortes. Moneda, enteros, fracciones, caracteres chinos y texto multilínea comprobados. Muestras XLSX/PDF y capturas en backend/target/stock-export-design/.
+- Backend recargado desde la rama activa: health UP, saasConnected true; Ventas 5173 y Gestión 5174 responden HTTP 200.
+
+final result: passed
+
+## Stock: cinco vistas y grupos de columnas A4 — 2026-11-14
+
+- Se amplía el diseño a Top ventas, Ofertas, Precio de socio y Sin descuento. La decisión confirmada sustituye el papel A3/A2/A1 de la entrega anterior: las tablas anchas se dividen en grupos A4 con Código y Nombre repetidos. XLSX contiene una hoja por grupo; PDF recorre esas mismas hojas, numera todas las páginas de forma continua y muestra los datos de tienda solo en la primera página global.
+- Las tablas estrechas conservan las columnas seleccionadas y su orden. Las anchas mantienen el orden del resto de campos y añaden Código/Nombre si hace falta. Se conserva SXSSF/SAX y una única lectura de datos, con contador y acumulados por registro original. Top ventas conserva ranking y filas producto/almacén; muestra período y etiqueta Registros, y suma solo unidades, stock e importe seleccionados.
+- Metadatos por tienda y selección efectiva: Top ventas muestra la intersección entre almacén principal y filtros múltiples, con texto localizado si no coinciden, sin cambiar la consulta ni relajar validaciones. PROMOTIONS mantiene su ruta anterior. Nombres Stock_DDMMAA, Top_ventas_DDMMAA, Ofertas_DDMMAA, Precio_de_socio_DDMMAA y Sin_descuento_DDMMAA en PDF/XLSX.
+- Vista previa con formato en las cinco vistas de Ventas/Gestión. La impresión de Excel respeta A4 y orientación por hoja, y los encabezados de impresión declarados en el libro se repiten en cada página; el selector aparece cuando existen varios grupos/hojas.
+- Validación: 66 pruebas frontend, 44 de servicio, 10 PDF, 3 de contrato y 9 de integración PostgreSQL correctas (132 en total). Integración ejecutada en un contenedor PostgreSQL efímero aislado, retirado al finalizar. Compilaciones Ventas/Gestión, presupuestos y git diff --check correctos; revisión de integridad sin defectos pendientes.
+- QA: tabla de 25 columnas y 180 filas dividida en cuatro grupos A4, 52 páginas PDF y cuatro hojas Excel. Revisadas primera página, continuación, segundo grupo y total final, además de PDF Top ventas vacío. Libro real verificado con Calibri, Código/Nombre y las 180 filas por hoja. Muestras y capturas en backend/target/stock-export-design/stock-a4-*.png y los XLSX/PDF del mismo directorio.
+- Backend recargado desde la rama activa: health UP, saasConnected true; Ventas 5173 y Gestión 5174 responden HTTP 200.
+
+final result: passed
+
+## Facturas y albaranes de entrada: formato y nombres en la pantalla de almacén — 2026-11-14
+
+- Corregida la ruta WarehouseOperationsPanel: el generador ya entregaba el XLSX con diseño, pero esta pantalla abría el visor sin formattedWorkbook y construía nombres técnicos inputInvoices/inputDeliveryNotes. Ahora activa el formato en Excel de FACTURA_ENTRADA y ALBARAN_ENTRADA, mostrando cabecera, colores, combinaciones, cantidades e importes del libro.
+- PDF y XLSX usan Facturas_de_compra y Albaranes_de_compra, coherentes con SalesReportScreen y el backend; añaden _DDMMAA-DDMMAA si las dos fechas están seleccionadas, incluido un período de un día. Sin filtro completo se conserva el nombre descriptivo sin fechas inventadas.
+- Se conserva el comportamiento de entradas/salidas genéricas de almacén, filtros, permisos y Ticket 80. Sin cambios en generadores, cálculos ni backend.
+- Validación: 56 pruebas de panel, filtros y atajos correctas entre las pasadas dirigidas; cubren ambos documentos, XLSX/PDF, período vacío, día y rango, proveedor/almacén, permisos y rutas genéricas. Compilaciones Ventas/Gestión, presupuestos y git diff --check correctos. La herramienta de escritorio no ofreció una ventana esPOS para comprobación visual en esta pasada; se reutilizan las verificaciones existentes del visor y del XLSX generado.
+
+final result: passed
+
+## Exportaciones PDF: retirar línea verde sobre las tablas — 2026-11-14
+
+- Retirada la línea horizontal verde de DOCUMENTOS_VENTAS_A4 y RESUMEN_VENTAS_DIA_A4 y del generador compartido TicketReportPdfRenderer, utilizado por Tickets, Facturas y Albaranes de venta y compra. La búsqueda de los demás generadores no encontró otras líneas de este tipo sobre las cabeceras.
+- Se conserva el espaciado, las tablas, los totales, los acentos verticales del resumen diario, los Excel y las plantillas Ticket 80.
+- Validación: 21 pruebas correctas (SalesActivityJasperRendererTest y SalesReportPdfExportServiceTest), incluidos informes vacíos, multipágina y Ticket 80; git diff --check correcto. Revisión visual de Documentos de ventas, Ventas diarias, Tickets y Facturas de compra con la línea eliminada. Capturas header-no-green.png en los directorios de fixtures correspondientes bajo backend/target/.
+
+final result: passed
+
+## Productos/Stock: Excel en una hoja y PDF con atributos seleccionables — 2026-11-14
+
+- Excel conserva todas las columnas solicitadas y las filas en una única hoja del libro, también en Top ventas, Ofertas, Precio de socio y Sin descuento. Sustituye la división anterior en varias hojas; conserva filtros, orden, permisos y sumas.
+- PDF abre un selector compartido por Ventas y Gestión. Parte de las columnas visibles, permite elegir otras autorizadas, exige al menos una y respeta su orden. Cancelar no inicia exportación; foco, Escape y F7 comprobados. Traducciones ES/EN/ZH.
+- PDF A4 horizontal con páginas de continuación de izquierda a derecha para cada bloque de filas. No añade ni repite Código/Nombre. Una altura común por fila y cabecera mantiene los bordes y textos alineados en las páginas contiguas. Las celdas más altas que una página se continúan sin truncamiento. Cabecera de tienda solo en la primera página; sus continuaciones reservan el mismo espacio superior. Pie con bloque, posición horizontal y número global de página.
+- Validación final: 22 pruebas frontend, 49 de servicio, 3 de controlador y 11 PDF correctas (85 en total). Se prueban 205 filas por vista más allá de la ventana SXSSF, una hoja y todos los atributos, sumas, permisos, orden, coordenadas Y iguales entre páginas, contenido vacío, CJK y texto que excede una página. Ambas compilaciones desktop y presupuestos correctos; permanece el aviso previo de CSS Ventas 457821/460000. Revisión estática del alcance sin defectos pendientes tras corregir la sobrecarga de fuentes.
+- QA visual: horizontal-continuation-alignment.pdf (8 páginas) y current-stock-25-columns.pdf (180 filas/25 columnas, 39 páginas), capturas products-alignment y products-horizontal bajo backend/target/stock-export-design. Comprobadas continuación horizontal, alineación y ausencia de columnas repetidas. Se reforzó y repitió la prueba de celda extrema con 3500 repeticiones: el texto empieza en página 4 y su final se conserva en página 8 sin repetir identificadores. La herramienta de escritorio devolvió un inventario incompatible al intentar abrir la ventana de esPOS; el diálogo se validó mediante sus pruebas de interacción, sin afirmar comprobación visual en la aplicación.
+- Backend recargado desde la rama activa: health UP, saasConnected true; Ventas y Gestión responden HTTP 200.
+
+final result: passed
+
+## Promociones: estilo de documentos en Excel — 2026-11-14
+
+- Promoción seleccionada y todas las promociones activas utilizan el libro compartido: cabecera de empresa/tienda, título e identificación del alcance, Calibri, cabecera azul, filas alternas y totales destacados. Una única hoja contiene todos los atributos y registros solicitados. Se conservan nombres de archivo, fecha de elegibilidad de promociones, consultas, orden y permisos.
+- El visor de Ventas y Gestión activa formattedWorkbook para ambas exportaciones, también mediante F6. Se reutilizan las opciones existentes de exportación de Promociones.
+- Validación: 55 pruebas de servicio, 3 de controlador, 11 PDF de regresión y 4 frontend correctas (73). Ambas compilaciones desktop, presupuestos y git diff --check correctos, con el aviso previo de CSS de Ventas. Seis libros reales SELECTED/ACTIVE en ES/EN/ZH comprobados con POI y openpyxl: hoja única, datos de tienda, alcance, Calibri, cabeceras, total 2,25 y precio 1,675 preservados. Fixtures en backend/target/promotions-export-design/.
+
+final result: passed
+
+## Promociones: nombres y fechas de exportación — 2026-11-14
+
+- Promoción seleccionada: Nombre de promoción_DDMMAA-DDMMAA.xlsx, utilizando fecha_inicio/fecha_fin de la promoción autorizada por tienda/empresa. Sin fin: Nombre_DDMMAA-Sin_fin.xlsx, según confirmación del usuario. El trabajo captura nombre y período al crearse para mantenerlos estables durante la exportación.
+- Todas las activas: Promociones_DDMMAA.xlsx con el día de exportación en la zona horaria de la tienda. Los nombres son iguales en ES/EN/ZH; se conservan mayúsculas, espacios, acentos y Unicode, adaptando caracteres inválidos de archivo y limitando la longitud del nombre. Los filtros y la fecha usada para determinar promociones activas conservan su comportamiento anterior.
+- Ventas y Gestión incorporan las fechas seleccionadas en el contexto del exportador para que el nombre de respaldo coincida cuando no haya Content-Disposition. Se conservan el diseño y el contenido del libro.
+- Validación: 58 pruebas de servicio, 3 de controlador y 38 frontend correctas (99). Casos de período cerrado, un día, sin fin, captura estable, caracteres especiales, idiomas y ambas rutas de exportación. Ambas compilaciones desktop, presupuestos y git diff --check correctos; aviso previo de CSS Ventas sin cambios.
+
+final result: passed
+
+
+## Almacén: estilo de documentos y exportación XLSX del borrador — 2026-11-15
+
+- Entradas/salidas de almacén, traspasos, inventarios y reposición adoptan el estilo compartido: Excel de una hoja con Calibri, título y cabeceras azul marino, datos de empresa/tienda, texto ajustado, filas alternas y totales existentes destacados. Las siete rutas de vista previa Excel activan formattedWorkbook.
+- PDF en tabla A4 vertical/horizontal, márgenes de 8 puntos en cabecera y datos, cabecera de tienda solo al principio, cabeceras de tabla repetidas y pie Página X de Y. Sin línea verde. Los textos largos continúan, con ajuste por palabras y fuente CJK de respaldo sin alterar la tipografía latina de todo el informe.
+- La ficha de entradas/salidas genera XLSX real en lugar de CSV, según confirmación. Exporta el borrador visible con las cinco columnas originales, conservando filas inválidas/sin guardar, códigos como texto y cantidades numéricas. El endpoint no persiste documentos y mantiene los permisos de compras frente a almacén.
+- Se mantienen consultas, filtros, cálculos, descuentos, ámbito de tienda y nombres de archivo; la ficha cambia únicamente la extensión CSV por XLSX. La impresión directa Ticket80 no se modifica.
+- Validación backend: 80 pruebas correctas en 10 clases; tras el ajuste final del renderizador se repiten las 31 pruebas afectadas con éxito. Frontend: lote inicial de 154 pruebas en siete archivos y 72 pruebas del diálogo repetidas tras convertir CSV a XLSX, todas correctas. Compilaciones desktop de Ventas/Gestión y presupuestos correctos; permanece el aviso anterior de CSS Ventas 457821/460000.
+- Revisión de integridad/permisos: corregidos límites de texto importado demasiado restrictivos, altura de celdas multilínea y símbolo de moneda añadido indebidamente. Se conserva texto inválido de más de 600 caracteres, porcentajes y precisión; los formatos de traspasos/reposición siguen sin forzar EUR.
+- QA de archivos reales bajo backend/target/warehouse-design: Entradas/Salidas de almacén (vacío y multipágina), traspasos, inventario, reposición, documento individual y texto multilínea/CJK. POI/openpyxl confirman una hoja y Calibri; PDFs renderizados con Poppler y revisados en primera página/continuación. La vista previa en la aplicación se valida mediante pruebas de interacción; no se afirma comprobación visual nativa.
+
+- Backend recargado desde codex/exportaciones-pdf-excel-20261112: health UP y saasConnected true; Ventas 5173 y Gestión 5174 responden HTTP 200.
+
+final result: passed
+
+## Terceros: estilo común de PDF y Excel — 2026-11-15
+
+- Listados de Clientes, Proveedores y Socios: título y cabeceras azul marino, datos de empresa/tienda, filas alternas, texto ajustado y totales destacados. Excel en una hoja con Calibri, alturas adaptadas, filtros y cabecera inmovilizada; vista previa con formato. PDF A4 vertical/horizontal según columnas, márgenes internos, cabecera de empresa solo al principio y pie Página X de Y. La marca partyDirectory limita el cambio del renderizador a estos informes.
+- Documentos del cliente: mismo diseño XLSX en la ruta local y la consulta SaaS; cabecera identifica el ámbito de todas las tiendas cuando procede. Se preservan selección de documentos, filtros, permisos, paginación de consulta, streaming SXSSF, precisión y totales separados por moneda. Alturas de metadatos y filtros ajustadas también al exportar solo dos columnas.
+- Modelo 347: estilo azul, tabla con filas alternas, total anual destacado con negrita real en PDF y paginado localizado. Se conservan los importes, signos, trimestres, alcance y aviso informativo. Sin cambios en la impresión Ticket80 ni nuevas rutas de exportación.
+- Validación: 108 pruebas backend correctas en ocho clases (las 28 afectadas por los últimos ajustes repetidas con éxito); 124 pruebas frontend/desktop correctas. Compilaciones desktop y presupuestos correctos; permanece el aviso previo de CSS Ventas 457821/460000. Revisión de integridad sin defectos pendientes y git diff --check correcto.
+- Archivos reales: libros de Clientes/Proveedores/Socios y documentos de cliente comprobados con openpyxl/POI; PDF de Clientes generado por Electron con 80 filas y 14 páginas, cabecera de tabla y paginado en todas, datos de empresa solo en la primera, primer y último registro conservados. Modelo 347 ES/ZH, texto largo y multipágina verificados; revisión visual con Poppler. Fixtures en frontend/apps/app-gestion/output/third-party-design y backend/target/third-party-design.
+- Las ventanas nativas no se comprobaron visualmente: interacciones cubiertas por pruebas y generación PDF verificada en una instancia Electron aislada. Es necesario volver a abrir esPOS Gestión para cargar los módulos del generador PDF en su proceso principal.
+- Backend recargado desde la rama activa: health UP, saasConnected true; Ventas 5173 y Gestión 5174 responden HTTP 200. Ventanas Electron actuales conservadas.
+
+final result: passed
+
+## Terceros: nombres de exportación — 2026-11-15
+
+- Directorios de Clientes, Proveedores y Socios: Clientes_DDMMAA, Proveedores_DDMMAA y Socios_DDMMAA, con extensión .xlsx o .pdf. Fecha local capturada al iniciar la exportación; nombres iguales en ES/EN/ZH. Se conservan diseño, filtros y datos.
+- Validación: 18 pruebas existentes de exportación correctas, TypeScript de Gestión sin errores y git diff --check correcto. Vite de Gestión sirve el cambio actualizado; no requiere reinicio del backend ni del generador Electron.
+
+final result: passed
+
+## Terceros: fecha de impresión — 2026-11-15
+
+- PDF y Excel de Clientes, Proveedores y Socios muestran Fecha de impresión junto a empresa/tienda. Incluye fecha y hora local capturadas al iniciar la exportación, compartiendo el instante usado por el nombre del archivo. Etiquetas ES/EN/ZH; misma información en la alternativa HTML del navegador.
+- Validación: 21 pruebas existentes de ventanas/exportación/renderizador correctas y TypeScript Gestión sin errores. La prueba XLSX verifica la nueva fila y el desplazamiento correcto de filtros, panel inmovilizado, totales y cabecera de impresión. Cuatro PDF reales generados en Electron verifican fecha solo en primera página, incluido el informe de 14 páginas; revisión visual de Clientes correcta. git diff --check correcto.
+- Para cargar el metadato en el generador PDF del proceso Electron ya abierto, volver a abrir Gestión. No se reinicia el backend.
+
+final result: passed
+
+## Comprobación de publicación — 2026-11-15
+
+- Compilación final de todos los workspaces frontend correcta (`npm run build`) y presupuestos correctos; permanece el aviso de CSS Ventas 457821/460000.
+- Revisiones finales acotadas de Electron/visor y backend/exportaciones sin hallazgos P1/P2 confirmados. Se reutilizan las pruebas focalizadas y la evidencia visual anteriores, sin imprimir físicamente ni modificar datos de negocio.
+- Base verificada: backend/main = HEAD 0d035076 antes del commit. Preparados únicamente los 111 archivos de código, pruebas, plantillas y QA del alcance de exportaciones. git diff --cached --check correcto.
+
+## PR #318: adaptación de contratos de exportación en CI — 2026-11-15
+
+- Siete suites frontend todavía esperaban descarga directa mediante saveFile. Ahora verifican previewExport y el resultado explícito del visor, manteniendo filtros, selección, ausencia de escrituras, desmontaje y temporizadores; cubren cancelación de Excel/PDF.
+- Las pruebas de exportación con múltiples filtros y de documentos de cliente con PostgreSQL se ajustan a las nuevas cabeceras, rangos de datos y fórmulas; el mock de tienda declara su zona horaria. Se conservan las comprobaciones de precisión, importes negativos y aislamiento de cliente/tienda.
+- Validación local: 110 pruebas frontend, 10 de filtros de exportación y 37 de repositorio PostgreSQL correctas. PostgreSQL 17.6 temporal aislado, eliminado tras validar; sin acceso a datos de negocio. TypeScript Ventas/Gestión y git diff --check correctos. Sin cambios de producción en esta corrección.

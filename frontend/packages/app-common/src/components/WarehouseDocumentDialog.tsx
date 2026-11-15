@@ -1,3 +1,4 @@
+import { previewExport } from "../export/previewExport";
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import { useTableInitialFocus } from "./useTableInitialFocus";
 import { useTableArrowRepeat } from "./useTableArrowRepeat";
@@ -1445,39 +1446,36 @@ export function WarehouseDocumentDialog({
             status: documentStatus === "BORRADOR" ? "DRAFT" : documentStatus === "CONFIRMADA" ? "CONFIRMED" : "CANCELLED",
             locale }
         });
-        const link = globalThis.document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = `${documentNumber || "traspaso"}.xlsx`;
-        link.click();
-        URL.revokeObjectURL(link.href);
-        setStatus(t("warehouseDocument.status.exported"));
+        const result = await previewExport({ blob, fileName: `${documentNumber || "traspaso"}.xlsx`, locale, formattedWorkbook: true });
+        setStatus(result.downloaded ? t("warehouseDocument.status.exported") : "");
       } catch {
         setStatus(t("warehouse.report.exportError"));
       } finally { setExporting(false); }
       return;
     }
-    const csv = [
-      [
-        t("sharedExcel.column.row"),
-        t("sharedExcel.column.code"),
-        t("warehouseDocument.column.name"),
-        t("warehouseDocument.quantity"),
-        t("sharedExcel.column.status")
-      ].join(";"),
-      ...lines.map((line, index) => [
-        index + 1,
-        csvCell(importProducts.find((product) => product.id === line.productId)?.code ?? line.importedProduct),
-        csvCell(line.productName ?? line.productLabel),
-        line.quantity,
-        line.valid ? t("warehouseDocument.import.correct") : t(line.errorKey)
-      ].join(";"))
-    ].join("\n");
-    const link = globalThis.document.createElement("a");
-    link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    link.download = `${documentTypeLabel.toLowerCase().replace(/\s+/g, "-")}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
-    setStatus(t("warehouseDocument.status.exported"));
+    setExporting(true);
+    try {
+      const blob = await apiRequest<Blob>(`/warehouse-draft-export/${mode}.xlsx`, {
+        token, method: "POST", responseType: "blob",
+        body: {
+          locale, inputDocumentType: mode === "input" ? documentType : null,
+          documentType: documentTypeLabel, number: documentNumber,
+          status: warehouseDocumentStatusLabel(documentStatus, t), date,
+          warehouse: warehouses.find((warehouse) => warehouse.id === warehouseId)?.name ?? "",
+          lines: lines.map((line, index) => ({
+            row: index + 1,
+            code: importProducts.find((product) => product.id === line.productId)?.code ?? line.importedProduct,
+            name: line.productName ?? line.productLabel,
+            quantity: Number.isFinite(line.quantity) ? line.quantity : null,
+            validationStatus: line.valid ? t("warehouseDocument.import.correct") : t(line.errorKey)
+          }))
+        }
+      });
+      const result = await previewExport({ blob,
+        fileName: `${documentTypeLabel.toLowerCase().replace(/\s+/g, "-")}.xlsx`, locale, formattedWorkbook: true });
+      setStatus(result.downloaded ? t("warehouseDocument.status.exported") : "");
+    } catch { setStatus(t("warehouse.report.exportError")); }
+    finally { setExporting(false); }
   }
 
   function updateLine(index: number, productId: string, quantity: number) {
@@ -2488,12 +2486,6 @@ function warehouseDocumentStatusLabel(status: string, t: (key: string) => string
   const translated = t(key);
   return translated === key ? status : translated;
 }
-
-function csvCell(value: unknown) {
-  const text = String(value ?? "");
-  return /[;"\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
 
 function normalizeExcelOption(value: string) {
   return value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "_").toUpperCase();

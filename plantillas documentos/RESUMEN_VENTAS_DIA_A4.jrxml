@@ -1,34 +1,76 @@
-<!-- Integrated, immutable sales report template. -->
-<jasperReport name="resumen_ventas_dia_a4" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="3a2e9314-4bca-4c23-9092-31905df9f624">
+<!-- Daily sales, A4. The data and totals are supplied by SalesActivityJasperRenderer. -->
+<jasperReport name="resumen_ventas_dia_a4" language="java" pageWidth="595" pageHeight="842" columnWidth="547" leftMargin="24" rightMargin="24" topMargin="24" bottomMargin="24" uuid="3a2e9314-4bca-4c23-9092-31905df9f624">
   <query language="jsonql"><![CDATA[lines]]></query>
   <field name="lineType" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="lineType"/></field>
   <field name="label" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="label"/></field>
   <field name="value" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="value"/></field>
-  <field name="title" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.title"/></field>
   <field name="companyName" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.companyName"/></field>
   <field name="storeCode" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.storeCode"/></field>
   <field name="dataPeriod" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.dataPeriod"/></field>
   <field name="printedAt" class="java.lang.String"><property name="net.sf.jasperreports.jsonql.field.expression" value="$.printedAt"/></field>
-  <title height="92">
-    <element kind="textField" uuid="9955aecd-81cf-47e6-b880-0ed35b49201e" x="0" y="0" width="555" height="25" fontName="SansSerif" fontSize="16" bold="true"><expression><![CDATA[$F{title}]]></expression></element>
-    <element kind="textField" uuid="c94cb04b-d7ee-453a-b6af-01b98dfab01e" x="0" y="30" width="355" height="18" fontName="SansSerif" fontSize="10" bold="true"><expression><![CDATA[$F{companyName}]]></expression></element>
-    <element kind="staticText" uuid="b0c23a89-f4f1-44c2-b95b-0b245d44ad2a" x="375" y="30" width="70" height="18" fontName="SansSerif" fontSize="9" bold="true"><text><![CDATA[ID tienda:]]></text></element>
-    <element kind="textField" uuid="40c98132-5ef1-4819-9b27-2fd77e242258" x="445" y="30" width="110" height="18" fontName="SansSerif" fontSize="9"><expression><![CDATA[$F{storeCode}]]></expression></element>
-    <element kind="staticText" uuid="a1761019-69d2-434e-ac26-e66bd4b6651c" x="0" y="54" width="95" height="16" fontName="SansSerif" fontSize="8" bold="true"><text><![CDATA[Fecha consulta:]]></text></element>
-    <element kind="textField" uuid="97021458-a7e0-48dc-91de-bc159bd3b241" x="95" y="54" width="160" height="16" fontName="SansSerif" fontSize="8"><expression><![CDATA[$F{dataPeriod}]]></expression></element>
-    <element kind="staticText" uuid="c1e22dc4-51ee-441e-b6fe-8e587742a4af" x="300" y="54" width="105" height="16" fontName="SansSerif" fontSize="8" bold="true"><text><![CDATA[Fecha impresión:]]></text></element>
-    <element kind="textField" uuid="8c67532c-2f66-485a-af82-da0282734dad" x="405" y="54" width="150" height="16" fontName="SansSerif" fontSize="8"><expression><![CDATA[$F{printedAt}]]></expression></element>
-    <element kind="line" uuid="71bcfc5f-0ef4-40f2-b619-e69929841503" x="0" y="82" width="555" height="1" forecolor="#0A2F56"/>
-  </title>
-  <columnHeader height="20">
-    <element kind="staticText" uuid="5df777d4-03f4-4f3a-a67d-dfdc20e5c726" x="0" y="0" width="415" height="20" backcolor="#0A2F56" forecolor="#FFFFFF" mode="Opaque" fontName="SansSerif" fontSize="9" bold="true" vTextAlign="Middle"><text><![CDATA[Concepto]]></text></element>
-    <element kind="staticText" uuid="2e638aa9-e9b1-4445-9280-487d0eefc61d" x="415" y="0" width="140" height="20" backcolor="#0A2F56" forecolor="#FFFFFF" mode="Opaque" fontName="SansSerif" fontSize="9" bold="true" hTextAlign="Right" vTextAlign="Middle"><text><![CDATA[Importe / cantidad]]></text></element>
+  <field name="sectionKey" class="java.lang.Integer"><property name="net.sf.jasperreports.jsonql.field.expression" value="sectionKey"/></field>
+  <group name="dailySection" minHeightToStartNewPage="65" keepTogether="true">
+    <expression><![CDATA[$F{sectionKey}]]></expression>
+    <groupHeader>
+      <band height="33" splitType="Prevent">
+        <element kind="rectangle" uuid="b545458d-99de-4cc7-a9dc-6a407f05c5db" x="0" y="5" width="547" height="27" backcolor="#0A2F56" mode="Opaque" stretchType="ContainerHeight"><pen lineWidth="0"/></element>
+        <element kind="textField" uuid="20b19f79-5557-41e2-a95a-779a92818544" x="12" y="9" width="523" height="19" forecolor="#FFFFFF" fontName="SansSerif" fontSize="9" bold="true" textAdjust="StretchHeight"><expression><![CDATA[$F{label}]]></expression></element>
+      </band>
+    </groupHeader>
+  </group>
+  <pageHeader height="96">
+    <element kind="rectangle" uuid="fce0e83b-03eb-4582-b01e-f086600240d0" x="0" y="0" width="547" height="42" backcolor="#0A2F56" mode="Opaque"><pen lineWidth="0"/></element>
+    <element kind="staticText" uuid="f8244e89-441d-4447-a481-6cc426b7599b" x="14" y="7" width="440" height="27" forecolor="#FFFFFF" fontName="SansSerif" fontSize="16" bold="true" vTextAlign="Middle"><text><![CDATA[VENTAS DIARIAS]]></text></element>
+    <element kind="staticText" uuid="84c910d6-a9c7-4b97-9dda-5843e53d1272" x="14" y="49" width="68" height="15" forecolor="#51687D" fontName="SansSerif" fontSize="8" bold="true"><text><![CDATA[EMPRESA]]></text></element>
+    <element kind="textField" uuid="5235e9ce-0fdf-463b-9abf-5f9c9153139f" x="83" y="47" width="264" height="19" forecolor="#0A2F56" fontName="SansSerif" fontSize="9" bold="true" textAdjust="ScaleFont"><expression><![CDATA[$F{companyName}]]></expression></element>
+    <element kind="staticText" uuid="5a70159b-b916-4eb8-906f-7d725ac70811" x="359" y="49" width="55" height="15" forecolor="#51687D" fontName="SansSerif" fontSize="8" bold="true"><text><![CDATA[TIENDA]]></text></element>
+    <element kind="textField" uuid="a6672e41-b2ee-4b23-b53c-88bac72bfec5" x="414" y="47" width="133" height="19" forecolor="#0A2F56" fontName="SansSerif" fontSize="9" bold="true"><expression><![CDATA[$F{storeCode}]]></expression></element>
+    <element kind="staticText" uuid="35b7ac85-35a3-4d24-8144-467a5f08d78b" x="14" y="70" width="68" height="16" forecolor="#51687D" fontName="SansSerif" fontSize="8" bold="true"><text><![CDATA[FECHA]]></text></element>
+    <element kind="textField" uuid="4026964a-6db3-4deb-8cde-0ea571237b22" x="83" y="68" width="190" height="18" forecolor="#0A2F56" fontName="SansSerif" fontSize="9"><expression><![CDATA[$F{dataPeriod}]]></expression></element>
+    <element kind="staticText" uuid="2e7d4c51-d4aa-4da9-a2ec-59b97f3c586a" x="359" y="70" width="58" height="16" forecolor="#51687D" fontName="SansSerif" fontSize="8" bold="true"><text><![CDATA[EMITIDO]]></text></element>
+    <element kind="textField" uuid="78349563-04b0-45f0-bd71-13974fb1a375" x="414" y="68" width="133" height="18" forecolor="#0A2F56" fontName="SansSerif" fontSize="8"><expression><![CDATA[$F{printedAt}]]></expression></element>
+  </pageHeader>
+  <columnHeader height="25">
+    <element kind="rectangle" uuid="adf36ca4-0c84-4f36-9a39-92b77ec3530e" x="0" y="0" width="547" height="24" backcolor="#EAF1F7" mode="Opaque"><pen lineWidth="0"/></element>
+    <element kind="staticText" uuid="d7476321-d38f-46fc-a59d-a6d7f72a5787" x="12" y="4" width="363" height="17" forecolor="#0A2F56" fontName="SansSerif" fontSize="8" bold="true"><text><![CDATA[CONCEPTO / OPERACIONES]]></text></element>
+    <element kind="staticText" uuid="2e638aa9-e9b1-4445-9280-487d0eefc61d" x="393" y="4" width="142" height="17" forecolor="#0A2F56" fontName="SansSerif" fontSize="8" bold="true" hTextAlign="Right"><text><![CDATA[IMPORTE / CANTIDAD]]></text></element>
   </columnHeader>
   <detail>
-    <band height="26" splitType="Stretch">
-      <element kind="textField" uuid="270a4dd9-2265-486b-a89b-70ac03a318ee" x="0" y="2" width="180" height="20" fontName="SansSerif" fontSize="8.5" bold="true" textAdjust="StretchHeight" blankWhenNull="true"><expression><![CDATA[$F{label}]]></expression></element>
-      <element kind="textField" uuid="9562370b-6a40-4c04-8615-4108dd3c3ed8" x="185" y="2" width="370" height="20" fontName="SansSerif" fontSize="8.5" hTextAlign="Right" textAdjust="StretchHeight" blankWhenNull="true"><expression><![CDATA[$F{value}]]></expression></element>
-      <element kind="line" uuid="dd057dc4-58a9-4a16-b269-637716471482" x="0" y="25" width="555" height="1" forecolor="#D4DEE8"/>
+    <band height="25" splitType="Stretch">
+      <printWhenExpression><![CDATA["PAYMENT".equals($F{lineType})]]></printWhenExpression>
+      <element kind="textField" uuid="4f2602cb-0ddd-4493-ab60-ffcc536d101a" x="12" y="3" width="380" height="18" forecolor="#0A2F56" fontName="SansSerif" fontSize="9" textAdjust="StretchHeight"><expression><![CDATA[$F{label}]]></expression></element>
+      <element kind="textField" uuid="2b393092-cef2-49bd-b53e-258207fb005d" x="397" y="3" width="138" height="18" forecolor="#0A2F56" fontName="SansSerif" fontSize="9" hTextAlign="Right" textAdjust="StretchHeight"><expression><![CDATA[$F{value}]]></expression></element>
+      <element kind="line" uuid="5b6d627e-1950-42ce-8460-70aaeb7fa469" x="12" y="24" width="523" height="1" forecolor="#E3EAF0" positionType="Float"/>
+    </band>
+    <band height="31" splitType="Prevent">
+      <printWhenExpression><![CDATA["TOTAL".equals($F{lineType}) && !"TOTAL".equals($F{label})]]></printWhenExpression>
+      <element kind="rectangle" uuid="b27c91ee-65dc-41e9-bf29-31da44d13db1" x="0" y="2" width="547" height="27" backcolor="#EAF1F7" mode="Opaque" stretchType="ContainerHeight"><pen lineWidth="0"/></element>
+      <element kind="rectangle" uuid="7ba4fcd9-ecc9-4110-a124-bc3d4382d4f7" x="0" y="2" width="4" height="27" backcolor="#117C83" mode="Opaque" stretchType="ContainerHeight"><pen lineWidth="0"/></element>
+      <element kind="textField" uuid="38cfad68-d565-43cb-861a-696dd3abdfb9" x="12" y="6" width="380" height="19" forecolor="#0A2F56" fontName="SansSerif" fontSize="9" bold="true" textAdjust="StretchHeight"><expression><![CDATA[$F{label}]]></expression></element>
+      <element kind="textField" uuid="f79a44e5-9538-459a-82dd-b08c7840fd17" x="397" y="5" width="138" height="20" forecolor="#0A2F56" fontName="SansSerif" fontSize="10" bold="true" hTextAlign="Right"><expression><![CDATA[$F{value}]]></expression></element>
+    </band>
+    <band height="38" splitType="Prevent">
+      <printWhenExpression><![CDATA["TOTAL".equals($F{lineType}) && "TOTAL".equals($F{label})]]></printWhenExpression>
+      <element kind="rectangle" uuid="7fdc47a2-7f74-4790-a090-4be86ae432a4" x="0" y="2" width="547" height="34" backcolor="#EAF1F7" mode="Opaque" stretchType="ContainerHeight"><pen lineWidth="0"/></element>
+      <element kind="rectangle" uuid="ed629e21-dfed-490e-8cd8-2c671fceda62" x="0" y="2" width="4" height="34" backcolor="#117C83" mode="Opaque" stretchType="ContainerHeight"><pen lineWidth="0"/></element>
+      <element kind="textField" uuid="26120535-3dd0-4291-9b59-d6be7d97182b" x="12" y="8" width="380" height="22" forecolor="#0A2F56" fontName="SansSerif" fontSize="14" bold="true" pdfFontName="Helvetica-Bold" vTextAlign="Middle" textAdjust="StretchHeight"><expression><![CDATA[$F{label}]]></expression></element>
+      <element kind="textField" uuid="415f1741-3d6b-41e2-b68e-83a8d5d2c85d" x="397" y="8" width="138" height="22" forecolor="#0A2F56" fontName="SansSerif" fontSize="14" bold="true" pdfFontName="Helvetica-Bold" hTextAlign="Right" vTextAlign="Middle"><expression><![CDATA[$F{value}]]></expression></element>
+    </band>
+    <band height="22" splitType="Prevent">
+      <printWhenExpression><![CDATA["COUNT".equals($F{lineType})]]></printWhenExpression>
+      <element kind="textField" uuid="8037cd15-277a-48cf-bdd2-b36c4dce7580" x="12" y="2" width="380" height="17" forecolor="#51687D" fontName="SansSerif" fontSize="8.5"><expression><![CDATA[$F{label}]]></expression></element>
+      <element kind="textField" uuid="01aa66ef-0f77-4075-b6bd-99811874329d" x="397" y="2" width="138" height="17" forecolor="#0A2F56" fontName="SansSerif" fontSize="8.5" hTextAlign="Right"><expression><![CDATA[$F{value}]]></expression></element>
+    </band>
+    <band height="25" splitType="Prevent">
+      <printWhenExpression><![CDATA["CASH".equals($F{lineType})]]></printWhenExpression>
+      <element kind="textField" uuid="8d92bb71-254c-4208-94ba-c09a24ab119b" x="12" y="3" width="380" height="18" forecolor="#0A2F56" fontName="SansSerif" fontSize="9"><expression><![CDATA[$F{label}]]></expression></element>
+      <element kind="textField" uuid="8fc09cd0-7c95-492d-89a9-1e8a26e12a54" x="397" y="3" width="138" height="18" forecolor="#0A2F56" fontName="SansSerif" fontSize="9" hTextAlign="Right"><expression><![CDATA[$F{value}]]></expression></element>
+      <element kind="line" uuid="421cedb7-b4a9-4eab-8c19-ed513eeae98d" x="12" y="24" width="523" height="1" forecolor="#E3EAF0"/>
     </band>
   </detail>
+  <pageFooter height="27">
+    <element kind="line" uuid="42ec2a74-07a3-465d-b452-7130f0919f8b" x="0" y="2" width="547" height="1" forecolor="#D4DEE8"/>
+    <element kind="staticText" uuid="92881f91-5bbc-4764-bfe7-1422d90d4e27" x="430" y="8" width="58" height="15" forecolor="#51687D" fontName="SansSerif" fontSize="8" hTextAlign="Right"><text><![CDATA[Página]]></text></element>
+    <element kind="textField" uuid="846c6839-458e-473c-b758-12e6f7ab927d" x="493" y="8" width="42" height="15" forecolor="#0A2F56" fontName="SansSerif" fontSize="8" hTextAlign="Right"><expression><![CDATA[$V{PAGE_NUMBER}]]></expression></element>
+  </pageFooter>
 </jasperReport>

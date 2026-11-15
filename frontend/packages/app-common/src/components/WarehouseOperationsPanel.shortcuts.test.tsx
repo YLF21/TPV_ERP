@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
+import { previewExport } from "../export/previewExport";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { WarehouseOperationsPanel } from "./WarehouseOperationsPanel";
 import type { UserSession } from "../types";
@@ -12,6 +13,7 @@ vi.mock("../api/client", async () => ({
   ...await vi.importActual("../api/client"),
   apiRequest: vi.fn()
 }));
+vi.mock("../export/previewExport", () => ({ previewExport: vi.fn() }));
 
 const apiRequestMock = vi.mocked(apiRequest);
 const session: UserSession = {
@@ -20,10 +22,6 @@ const session: UserSession = {
   accessToken: "token",
   permissions: ["ADMIN"]
 };
-const createObjectURLMock = vi.fn(() => "blob:warehouse-report");
-const revokeObjectURLMock = vi.fn();
-const originalCreateObjectURL = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
-const originalRevokeObjectURL = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
 const t = (key: string) => key;
 
 function show(options: {
@@ -93,30 +91,22 @@ beforeEach(() => {
     if (String(path).startsWith("/sales-reports/")) return new Blob(["report"]);
     return [];
   });
-  createObjectURLMock.mockClear();
-  revokeObjectURLMock.mockClear();
-  Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURLMock });
-  Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURLMock });
-  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+  vi.mocked(previewExport).mockReset().mockResolvedValue({ downloaded: false, printed: false, canceled: true });
 });
 
 afterEach(() => {
   cleanup();
   localStorage.clear();
   vi.restoreAllMocks();
-  if (originalCreateObjectURL) Object.defineProperty(URL, "createObjectURL", originalCreateObjectURL);
-  else delete (URL as Partial<typeof URL>).createObjectURL;
-  if (originalRevokeObjectURL) Object.defineProperty(URL, "revokeObjectURL", originalRevokeObjectURL);
-  else delete (URL as Partial<typeof URL>).revokeObjectURL;
 });
 
 describe("WarehouseOperationsPanel warehouse shortcuts", () => {
   it.each([
-    ["ALBARAN_ENTRADA", "input", "salesReport.inputDeliveryNotes"],
-    ["FACTURA_ENTRADA", "input", "salesReport.inputInvoices"],
-    ["ENTRADA_ALMACEN", "input", "salesReport.inputWarehouse"],
-    [undefined, "output", "salesReport.warehouseOutputs"]
-  ] as const)("exports %s %s to Excel with F6 and PDF with F7", async (documentType, mode, reportKey) => {
+    ["ALBARAN_ENTRADA", "input", "salesReport.inputDeliveryNotes", "Albaranes_de_compra"],
+    ["FACTURA_ENTRADA", "input", "salesReport.inputInvoices", "Facturas_de_compra"],
+    ["ENTRADA_ALMACEN", "input", "salesReport.inputWarehouse", "entradas-almacen"],
+    [undefined, "output", "salesReport.warehouseOutputs", "salidas-almacen"]
+  ] as const)("exports %s %s to Excel with F6 and PDF with F7", async (documentType, mode, reportKey, fileName) => {
     show({ documentType, mode });
 
     fireEvent.keyDown(window, { key: "F6" });
@@ -142,7 +132,36 @@ describe("WarehouseOperationsPanel warehouse shortcuts", () => {
       })
     ]));
     await waitFor(() => expect(screen.getByRole("button", { name: "PDF" })).toBeEnabled());
-    expect(createObjectURLMock).toHaveBeenCalledTimes(2);
+    expect(previewExport).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      blob: expect.any(Blob), fileName: `${fileName}.xlsx`, formattedWorkbook: true
+    }));
+    expect(previewExport).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      blob: expect.any(Blob), fileName: `${fileName}.pdf`, formattedWorkbook: false
+    }));
+  });
+
+  it.each([
+    ["FACTURA_ENTRADA", "Facturas_de_compra", "2026-10-15", "151026-151026"],
+    ["ALBARAN_ENTRADA", "Albaranes_de_compra", "2026-10-15", "151026-151026"],
+    ["FACTURA_ENTRADA", "Facturas_de_compra", "2026-10-01", "011026-151026"],
+    ["ALBARAN_ENTRADA", "Albaranes_de_compra", "2026-10-01", "011026-151026"]
+  ] as const)("names %s as %s from %s", async (documentType, stem, from, period) => {
+    show({ documentType });
+    fireEvent.click(screen.getByRole("button", { name: "salesReport.filter" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Hoy" }));
+    if (from !== "2026-10-15") fireEvent.change(screen.getByLabelText("Desde"), { target: { value: from } });
+    for (const [button, extension] of [["Excel", "xlsx"], ["PDF", "pdf"]] as const) {
+      await waitFor(() => expect(screen.getByRole("button", { name: button })).toBeEnabled());
+      fireEvent.click(screen.getByRole("button", { name: button }));
+      await waitFor(() => expect(previewExport).toHaveBeenCalledWith(expect.objectContaining({
+        fileName: `${stem}_${period}.${extension}`, formattedWorkbook: extension === "xlsx"
+      })));
+    }
+    expect(reportCalls()).toHaveLength(2);
+    for (const [, options] of reportCalls()) expect(options?.body).toMatchObject({
+      filters: { dateFrom: from, dateTo: "2026-10-15" }
+    });
   });
 
   it.each([

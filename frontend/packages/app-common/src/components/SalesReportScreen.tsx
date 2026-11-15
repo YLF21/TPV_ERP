@@ -13,6 +13,7 @@ import { lazy, Suspense } from "react";
 import type { UIEvent } from "react";
 import { flushSync } from "react-dom";
 import { apiBaseUrl } from "../api/runtime";
+import { previewExport } from "../export/previewExport";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { formatEuroAmount, formatEuroUnitPrice, localeTag, parseMoneyValue } from "../money";
 import {
@@ -2306,6 +2307,7 @@ export function SalesReportScreen({
 
   useEffect(() => {
     function handleReportOutputShortcut(event: KeyboardEvent) {
+      if (document.querySelector('.export-preview-dialog[open]')) return;
       if (isSalesActivityReport) return;
       if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.repeat) return;
       if (event.key !== "F5" && event.key !== "F6" && event.key !== "F7") return;
@@ -2868,13 +2870,15 @@ export function SalesReportScreen({
         || row.output
         || "documento";
       const safeNumber = documentNumber.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-");
-      await saveExportBytes(
+      const result = await saveExportBytes(
         bytes,
         `${safeNumber || "documento"}.xlsx`,
         "xlsx",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       );
-      showFeedback(true);
+      if (result.downloaded) showFeedback(true);
+      else if (feedbackTarget === "preview") setDocumentPreviewPrintMessage("");
+      else setReportNotice(null);
     } catch {
       showFeedback(false);
     } finally {
@@ -2907,6 +2911,17 @@ export function SalesReportScreen({
   }
 
   function reportFileName(extension: "xlsx" | "pdf") {
+    const stem = selectedReport === "salesReport.tickets" ? "Tickets"
+      : selectedReport === "salesReport.invoices" ? "Facturas"
+      : selectedReport === "salesReport.deliveryNotes" ? "Albaranes"
+      : selectedReport === "salesReport.inputInvoices" ? "Facturas_de_compra"
+      : selectedReport === "salesReport.inputDeliveryNotes" ? "Albaranes_de_compra" : "";
+    if (stem) {
+      const stamp = (date: string) => `${date.slice(8, 10)}${date.slice(5, 7)}${date.slice(2, 4)}`;
+      const period = isValidReportDate(filters.dateFrom) && isValidReportDate(filters.dateTo)
+        ? `_${stamp(filters.dateFrom)}-${stamp(filters.dateTo)}` : "";
+      return `${stem}${period}.${extension}`;
+    }
     const label = t(selectedReport).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
     return `${label || "informe"}.${extension}`;
@@ -2943,27 +2958,11 @@ export function SalesReportScreen({
   async function saveExportBytes(
     bytes: Uint8Array,
     fileName: string,
-    extension: "xlsx" | "pdf",
-    mimeType: string
+    _extension: "xlsx" | "pdf",
+    mimeType: string,
+    formattedWorkbook = false
   ) {
-    if (window.tpvDesktop?.reports) {
-      const result = await window.tpvDesktop.reports.saveFile({
-        defaultFileName: fileName,
-        filters: [{
-          name: extension === "xlsx" ? "Excel" : "PDF",
-          extensions: [extension]
-        }],
-        bytes
-      });
-      if (!result.ok) throw new Error(result.message);
-      return;
-    }
-    const url = URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type: mimeType }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = fileName;
-    link.click();
-    URL.revokeObjectURL(url);
+    return previewExport({ blob: new Blob([bytes.slice().buffer as ArrayBuffer], { type: mimeType }), fileName, locale, formattedWorkbook });
   }
 
   async function exportExcelReport() {
@@ -2996,15 +2995,18 @@ export function SalesReportScreen({
       if (!reportMounted.current) return;
       const fileName = reportFileName("xlsx");
       setReportExportProgress(90);
-      await saveExportBytes(
+      const result = await saveExportBytes(
         bytes,
         fileName,
         "xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        selectedReport === "salesReport.tickets" || isCommercialDocumentReport || isPurchaseDocumentReport(selectedReport)
       );
       if (!reportMounted.current) return;
-      setReportExportProgress(100);
-      setReportNotice({ kind: "success", message: t("salesReport.exportExcelSuccess") });
+      if (result.downloaded) {
+        setReportExportProgress(100);
+        setReportNotice({ kind: "success", message: t("salesReport.exportExcelSuccess") });
+      } else setReportNotice(null);
     } catch (error) {
       if (!reportMounted.current) return;
       setReportNotice({
@@ -3043,10 +3045,12 @@ export function SalesReportScreen({
       setReportExportProgress(75);
       const bytes = new Uint8Array(await response.arrayBuffer());
       if (!reportMounted.current) return;
-      await saveExportBytes(bytes, reportFileName("pdf"), "pdf", "application/pdf");
+      const result = await saveExportBytes(bytes, reportFileName("pdf"), "pdf", "application/pdf");
       if (!reportMounted.current) return;
-      setReportExportProgress(100);
-      setReportNotice({ kind: "success", message: t("salesReport.exportPdfSuccess") });
+      if (result.downloaded) {
+        setReportExportProgress(100);
+        setReportNotice({ kind: "success", message: t("salesReport.exportPdfSuccess") });
+      } else setReportNotice(null);
     } catch (error) {
       if (!reportMounted.current) return;
       setReportNotice({

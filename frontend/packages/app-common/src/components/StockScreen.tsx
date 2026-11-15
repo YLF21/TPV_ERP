@@ -6,6 +6,8 @@ import { ShortcutButtonLabel } from "./ShortcutButtonLabel";
 import { WindowCloseButton } from "./WindowCloseButton";
 import { AppBrand } from "./AppBrand";
 import { DesktopHeaderContext } from "./DesktopHeaderContext";
+import { StockPdfColumnsDialog } from "./StockPdfColumnsDialog";
+import { previewExport } from "../export/previewExport";
 import { ReportDateRangeFilter, isValidReportDate, type ReportDateRange } from "./ReportDateRangeFilter";
 import { ErpListFilterPanel } from "./ErpListFilterPanel";
 import { WarehouseSearchFrame } from "./WarehouseSearchFrame";
@@ -2233,6 +2235,7 @@ export function StockScreen({
   const [defaultWarehouseId, setDefaultWarehouseId] = useState("");
   const [status, setStatus] = useState("stock.status.noData");
   const [stockExportBusy, setStockExportBusy] = useState(false);
+  const [pdfColumnsOpen, setPdfColumnsOpen] = useState(false);
   const [stockExportNotice, setStockExportNotice] = useState("");
   const [stockExportNoticeView, setStockExportNoticeView] = useState<StockViewKey | null>(null);
   const [stockExportNoticeKind, setStockExportNoticeKind] = useState<"info" | "success" | "error">("info");
@@ -3309,7 +3312,10 @@ export function StockScreen({
     return () => window.removeEventListener("keydown", handleDetailKey);
   }, [app, allowSafeRetirement, session.permissions, canManageProducts, detailProductCreation, detailRow, detailTab, productCreateOpen]);
 
-  stockExportShortcutRef.current = (format) => { void exportStockExcel("SELECTED", format); };
+  stockExportShortcutRef.current = (format) => {
+    if (format === "pdf") setPdfColumnsOpen(true);
+    else void exportStockExcel("SELECTED", format);
+  };
 
   useEffect(() => {
     function handleStockExportShortcut(event: globalThis.KeyboardEvent) {
@@ -4719,15 +4725,8 @@ export function StockScreen({
         content,
         classificationCodes
       );
-      const url = URL.createObjectURL(download.blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = download.fileName;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 0);
-      setBulkStatus(t("stock.bulkEdit.exported"));
+      const result = await previewExport({ blob: download.blob, fileName: download.fileName, locale });
+      setBulkStatus(result.downloaded ? t("stock.bulkEdit.exported") : "");
     } catch (error) {
       setBulkStatus(error instanceof Error ? error.message : t("stock.bulkEdit.exportError"));
     } finally {
@@ -7929,7 +7928,7 @@ export function StockScreen({
         {session.permissions.includes("ADMIN") && <button type="button" className="safe-retirement-open" aria-keyshortcuts="F9" disabled={!selectedStockRow || selectedStockRow.code === "0"} onClick={() => openProductRetirement(selectedStockRow)}><ShortcutButtonLabel label={t("safeManagement.action.retire")} shortcut="F9" /></button>}
       </>}
       <button type="button" className="stock-export-button" aria-keyshortcuts="F6" title={`${t("stock.exportExcel")} (F6)`} disabled={stockExportBusy || !session.accessToken} onClick={() => void exportStockExcel()}><span><FileXls size={16} weight="bold" aria-hidden="true" />{t("salesReport.excel")}</span>{" "}<kbd>{STOCK_EXPORT_SHORTCUT}</kbd></button>
-      <button type="button" className="stock-export-button stock-export-pdf-button" aria-keyshortcuts="F7" title={`${t("salesReport.exportPdf")} (F7)`} disabled={stockExportBusy || !session.accessToken} onClick={() => void exportStockExcel("SELECTED", "pdf")}><span><FilePdf size={16} weight="bold" aria-hidden="true" />{t("salesReport.pdf")}</span>{" "}<kbd>{STOCK_PDF_EXPORT_SHORTCUT}</kbd></button>
+      <button type="button" className="stock-export-button stock-export-pdf-button" aria-keyshortcuts="F7" title={`${t("salesReport.exportPdf")} (F7)`} disabled={stockExportBusy || !session.accessToken} onClick={() => setPdfColumnsOpen(true)}><span><FilePdf size={16} weight="bold" aria-hidden="true" />{t("salesReport.pdf")}</span>{" "}<kbd>{STOCK_PDF_EXPORT_SHORTCUT}</kbd></button>
     </div>;
     return (
       <button
@@ -7959,8 +7958,9 @@ export function StockScreen({
     );
   }
 
-  async function exportStockExcel(promotionScope: "SELECTED" | "ACTIVE" = "SELECTED", format: "xlsx" | "pdf" = "xlsx") {
+  async function exportStockExcel(promotionScope: "SELECTED" | "ACTIVE" = "SELECTED", format: "xlsx" | "pdf" = "xlsx", pdfColumnKeys?: string[]) {
     if (!session.accessToken || stockExportBusyRef.current || !isStockAsyncExportView(selectedView) || (format === "pdf" && !documentStock)) return;
+    if (format === "pdf" && (!pdfColumnKeys?.length || !pdfColumnKeys.some(key => selectedColumnSettings.some(column => column.key === key)))) return;
     const exportView = selectedView;
     const exportingPromotions = exportView === "stock.promotions";
     const exportContext = promotionExportContext;
@@ -7973,13 +7973,15 @@ export function StockScreen({
         { key: "promotionType", label: t("stock.column.promotionType") },
         { key: "promotionValidity", label: t("stock.column.promotionValidity") }
       ] : [])
-    ] : (documentStock ? visibleSelectedColumnSettings : selectedColumnSettings).map(column => ({
+    ] : (format === "pdf" ? selectedColumnSettings.filter(column => pdfColumnKeys?.includes(column.key))
+      : documentStock ? visibleSelectedColumnSettings : selectedColumnSettings).map(column => ({
       key: column.key,
       label: t(selectedColumnDefinitionByKey.get(column.key)?.labelKey ?? column.key)
     }));
     const exportSort = exportingPromotions ? exportContext?.sort : inventorySort;
     const fallbackFileName = stockExcelDefaultFileName(exportView, locale,
-      exportContext?.promotionName, exportingPromotions ? promotionScope : undefined).replace(/\.xlsx$/, `.${format}`);
+      exportContext?.promotionName, exportingPromotions ? promotionScope : undefined, new Date(),
+      exportContext?.promotionStartDate, exportContext?.promotionEndDate).replace(/\.xlsx$/, `.${format}`);
     const exportMessage = (suffix: "progress" | "success" | "error" | "unavailable") => t(`stock.${format === "pdf" ? "exportPdf" : "exportExcel"}.${suffix}`);
     stockExportBusyRef.current = true;
     setStockExportBusy(true);
@@ -8047,28 +8049,15 @@ export function StockScreen({
       if (!response.ok) throw new Error(exportMessage("error"));
       const bytes = new Uint8Array(await response.arrayBuffer());
       const fileName = stockBulkExportFileName(response.headers.get("Content-Disposition"), fallbackFileName);
-      if (window.tpvDesktop?.reports) {
-        const result = await window.tpvDesktop.reports.saveFile({
-          defaultFileName: fileName,
-          filters: [{ name: format === "pdf" ? "PDF" : "Excel", extensions: [format] }],
-          bytes
-        });
-        if (!result.ok) throw new Error(result.message);
-        if (result.canceled) {
-          setStockExportNotice("");
-          setStockExportNoticeView(null);
-          return;
-        }
-      } else {
-        const blobBytes = bytes.slice();
-        const url = URL.createObjectURL(new Blob([blobBytes.buffer as ArrayBuffer], {
+      const result = await previewExport({
+        blob: new Blob([bytes.slice().buffer as ArrayBuffer], {
           type: format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        }));
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = fileName;
-        link.click();
-        URL.revokeObjectURL(url);
+        }), fileName, locale, formattedWorkbook: format === "xlsx" && ["stock.current", "stock.topSales", "stock.offers", "stock.memberPrice", "stock.noDiscount", "stock.promotions"].includes(exportView)
+      });
+      if (!result.downloaded) {
+        setStockExportNotice("");
+        setStockExportNoticeView(null);
+        return;
       }
       setStockExportNoticeKind("success");
       setStockExportNotice(exportMessage("success")
@@ -8108,6 +8097,24 @@ export function StockScreen({
 
   return (
     <main className={`stock-screen work-screen${documentStockAppearance || bulkDocumentList ? " stock-document-screen" : ""}${app === "venta" ? " stock-screen--venta" : ""}${app === "gestion" && partyDirectory ? " gestion-party-screen" : ""}${selectedView === "stock.promotions" && !partyDirectory ? " stock-promotions-screen" : ""}${app === "gestion" && allowSafeRetirement ? " erp-management-screen" : ""}${embedded ? " gestion-embedded-module" : ""}${app !== "pda" ? " erp-classic-tables" : ""}`}>
+      {pdfColumnsOpen && documentStock && <StockPdfColumnsDialog
+        key={selectedView}
+        columns={selectedColumnSettings.map(column => ({
+          key: column.key,
+          label: t(selectedColumnDefinitionByKey.get(column.key)?.labelKey ?? column.key),
+          visible: column.visible
+        }))}
+        title={t("stock.exportPdf.columns.title")}
+        description={t("stock.exportPdf.columns.description")}
+        selectAllLabel={t("stock.exportPdf.columns.selectAll")}
+        clearLabel={t("stock.exportPdf.columns.clear")}
+        requiredLabel={t("stock.exportPdf.columns.required")}
+        cancelLabel={t("common.cancel")}
+        exportLabel={t("salesReport.exportPdf")}
+        closeLabel={t("common.close")}
+        onCancel={() => setPdfColumnsOpen(false)}
+        onExport={keys => { setPdfColumnsOpen(false); void exportStockExcel("SELECTED", "pdf", keys); }}
+      />}
       {!embedded && <SessionTopControls
         locale={locale}
         session={session}
@@ -8217,7 +8224,7 @@ export function StockScreen({
           )}
           {retirementNotice && <p className="product-create-status safe-management-notice" role="status">{retirementNotice}</p>}
           {partyDirectory ? (
-            <PartyDirectoryPanel key={partyDirectory} app={app} kind={partyDirectory} locale={locale} session={session} onOpenCustomerReceivables={onOpenCustomerReceivables} allowSafeRetirement={allowSafeRetirement} />
+            <PartyDirectoryPanel key={partyDirectory} app={app} kind={partyDirectory} locale={locale} session={session} terminalContext={terminalContext} onOpenCustomerReceivables={onOpenCustomerReceivables} allowSafeRetirement={allowSafeRetirement} />
           ) : selectedView === "stock.topSales" ? (
             <>
               <div className="stock-inventory-controls">

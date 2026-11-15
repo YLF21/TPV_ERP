@@ -102,6 +102,8 @@ export type StockPromotionGroup = {
 export type StockPromotionExportContext = {
   promotionId: string | null;
   promotionName: string;
+  promotionStartDate: string | null;
+  promotionEndDate: string | null;
   columns: { key: string; label: string }[];
   sort: TableSort | null;
 };
@@ -255,13 +257,15 @@ export function StockPromotionGroups({
     onExportContextChange?.({
       promotionId: selectedPromotion?.id ?? null,
       promotionName: selectedPromotion?.name ?? "",
+      promotionStartDate: selectedPromotion?.startDate ?? null,
+      promotionEndDate: selectedPromotion?.endDate ?? null,
       columns: exportColumns,
       sort: productTableSort.sort ? {
         ...productTableSort.sort,
         column: productTableSort.sort.column === "price" ? "salePrice" : productTableSort.sort.column
       } : null
     });
-  }, [selectedPromotion?.id, selectedPromotion?.name, exportColumnsKey,
+  }, [selectedPromotion?.id, selectedPromotion?.name, selectedPromotion?.startDate, selectedPromotion?.endDate, exportColumnsKey,
     productTableSort.sort?.column, productTableSort.sort?.direction, onExportContextChange]);
 
   useEffect(() => {

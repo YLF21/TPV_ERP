@@ -17,12 +17,16 @@ import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.junit.jupiter.api.Test;
 
 class SalesActivityExcelExportServiceTest {
@@ -38,6 +42,7 @@ class SalesActivityExcelExportServiceTest {
                 company, "001", "Tienda", address(), UUID.randomUUID().toString(),
                 "Atlantic/Canary", "EUR", "es-ES");
         when(organization.currentStore()).thenReturn(store);
+        when(organization.currentCompany()).thenReturn(company);
         when(reports.daily(REPORT_DATE)).thenReturn(new SalesDailySummaryView(
                 store.getId(), company.getRazonSocial(), store.getCodigoTienda(), REPORT_DATE,
                 new BigDecimal("25.00"),
@@ -47,23 +52,65 @@ class SalesActivityExcelExportServiceTest {
         when(reports.allDocuments(REPORT_DATE, REPORT_DATE)).thenReturn(List.of(
                 row("row-1", "T-001", "FV-001", "25.00"),
                 row("row-2", "", "FV-002", "75.00")));
+        when(reports.allDailyDocuments(REPORT_DATE, REPORT_DATE)).thenReturn(List.of(
+                new com.tpverp.backend.document.SalesActivityDailyRowView(
+                        REPORT_DATE, 1, 2, new BigDecimal("100.00"))));
         var service = new SalesActivityExcelExportService(
                 reports, organization, mock(AuditService.class));
 
         try (var daily = new XSSFWorkbook(new ByteArrayInputStream(service.daily(REPORT_DATE)))) {
             var sheet = daily.getSheet("Resumen diario");
             assertThat(sheet).isNotNull();
-            assertThat(sheet.getRow(6).getCell(0).getStringCellValue()).isEqualTo("Efectivo: (1)");
-            assertThat(sheet.getRow(7).getCell(0).getStringCellValue()).isEqualTo("Total");
-            assertThat(sheet.getRow(7).getCell(1).getNumericCellValue()).isEqualTo(25.0);
+            assertThat(findRow(sheet, "VENTAS DIARIAS")).isNotNull();
+            assertThat(findRow(sheet, "Efectivo").getCell(4).getNumericCellValue()).isEqualTo(1.0);
+            assertThat(findRow(sheet, "Efectivo").getCell(5).getNumericCellValue()).isEqualTo(25.0);
+            assertThat(findRow(sheet, "Total ventas netas").getCell(5).getNumericCellValue())
+                    .isEqualTo(25.0);
+            assertThat(findRow(sheet, "Ventas").getCell(4).getNumericCellValue()).isEqualTo(1.0);
+            assertThat(findRow(sheet, "Devoluciones").getCell(4).getNumericCellValue()).isZero();
+            assertThat(sheet.getPaneInformation().isFreezePane()).isTrue();
+            assertThat(sheet.getPaneInformation().getHorizontalSplitPosition()).isEqualTo((short) 6);
+            assertThat(sheet.getRepeatingRows()).isEqualTo(new CellRangeAddress(0, 5, -1, -1));
+            assertThat(findRow(sheet, "Fecha").getCell(1).getCellType()).isEqualTo(CellType.NUMERIC);
+            assertThat(findRow(sheet, "Fecha").getCell(1).getLocalDateTimeCellValue()
+                    .toLocalDate()).isEqualTo(REPORT_DATE);
+            assertThat(findRow(sheet, "Fecha").getCell(1).getCellStyle()
+                    .getDataFormatString()).isEqualTo("dd/MM/yyyy");
+            assertThat(sheet.isDisplayGridlines()).isFalse();
+            assertThat(sheet.getPrintSetup().getFitWidth()).isEqualTo((short) 1);
+            assertThat(daily.getPrintArea(daily.getSheetIndex(sheet))).contains("$A$1:$F$");
+            assertThat(sheet.getMergedRegions()).contains(new CellRangeAddress(0, 0, 0, 5));
+            assertThat(sheet.getMergedRegions()).contains(new CellRangeAddress(7, 7, 0, 3));
+            assertThat(findRow(sheet, "Total ventas netas").getCell(5).getCellStyle()
+                    .getDataFormatString()).contains("0.00");
         }
-        try (var documents = new XSSFWorkbook(new ByteArrayInputStream(
-                service.documents(REPORT_DATE, REPORT_DATE)))) {
+        var documentBytes = service.documents(REPORT_DATE, REPORT_DATE);
+        var fixtureDirectory = Path.of("target", "documents-sales-design");
+        Files.createDirectories(fixtureDirectory);
+        Files.write(fixtureDirectory.resolve("Documentos_por_documento.xlsx"), documentBytes);
+        Files.write(fixtureDirectory.resolve("Documentos_por_dia.xlsx"), service.documents(
+                REPORT_DATE, REPORT_DATE, com.tpverp.backend.document.SalesActivityPrintGrouping.DAY));
+        try (var documents = new XSSFWorkbook(new ByteArrayInputStream(documentBytes))) {
             var sheet = documents.getSheet("Documentos de ventas");
             assertThat(sheet).isNotNull();
-            assertThat(sheet.getRow(3).getCell(2).getNumericCellValue()).isEqualTo(1.0);
-            assertThat(sheet.getRow(3).getCell(3).getNumericCellValue()).isEqualTo(2.0);
-            assertThat(sheet.getRow(3).getCell(7).getNumericCellValue()).isEqualTo(100.0);
+            assertThat(findRow(sheet, "TOTALES").getCell(2).getNumericCellValue()).isEqualTo(1.0);
+            assertThat(findRow(sheet, "TOTALES").getCell(3).getNumericCellValue()).isEqualTo(2.0);
+            assertThat(findRow(sheet, "TOTALES").getCell(7).getNumericCellValue()).isEqualTo(100.0);
+            assertThat(findRow(sheet, "Empresa").getCell(1).getStringCellValue()).isEqualTo("EMPRESA PRUEBA");
+            assertThat(findRow(sheet, "NIF").getCell(1).getStringCellValue()).isEqualTo("B00000000");
+            assertThat(findRow(sheet, "Tienda").getCell(1).getStringCellValue()).isEqualTo("001 - Tienda");
+            assertThat(findRow(sheet, "Dirección").getCell(1).getStringCellValue())
+                    .contains("Calle 1", "35001", "Las Palmas");
+            assertThat(findRow(sheet, "Periodo").getCell(1).getStringCellValue()).isEqualTo("16/08/2026");
+            assertThat(sheet.getPaneInformation().getHorizontalSplitPosition()).isEqualTo((short) 8);
+            assertThat(sheet.getRepeatingRows()).isEqualTo(new CellRangeAddress(0, 7, -1, -1));
+        }
+        try (var documents = new XSSFWorkbook(Files.newInputStream(
+                fixtureDirectory.resolve("Documentos_por_dia.xlsx")))) {
+            var sheet = documents.getSheetAt(0);
+            assertThat(findRow(sheet, "Tienda").getCell(1).getStringCellValue()).isEqualTo("001 - Tienda");
+            assertThat(findRow(sheet, "TOTALES").getCell(3).getNumericCellValue()).isEqualTo(100.0);
+            assertThat(sheet.getMergedRegions()).contains(new CellRangeAddress(3, 3, 1, 3));
         }
     }
 
@@ -98,7 +145,72 @@ class SalesActivityExcelExportServiceTest {
             assertThat(labels).contains(
                     "COBROS, DEVOLUCIONES Y CAJA", "Cobros actuales", "Entradas", "Retiradas");
             assertThat(labels).doesNotContain("Efectivo", "Tarjeta", "Fondo inicial", "Efectivo esperado");
+            assertThat(findRow(sheet, "Cobros actuales").getCell(5).getNumericCellValue()).isZero();
+            assertThat(findRow(sheet, "Entradas").getCell(5).getNumericCellValue()).isZero();
+            assertThat(findRow(sheet, "Ventas").getCell(4).getCellType()).isEqualTo(CellType.NUMERIC);
+            assertThat(findRow(sheet, "Ventas").getCell(4).getNumericCellValue()).isZero();
         }
+    }
+
+    @Test
+    void writesDailyDesignFixtureWithUsersMethodsAndOperationalAmounts() throws Exception {
+        var service = new SalesActivityExcelExportService(mock(SalesActivityReportService.class),
+                mock(CurrentOrganization.class), mock(AuditService.class));
+        var date = LocalDate.of(2026, 11, 14);
+        var cash = new SalesDailySummaryView.PaymentTotalView(
+                SalesActivityPaymentMethod.EFECTIVO, 2, new BigDecimal("100.00"));
+        var card = new SalesDailySummaryView.PaymentTotalView(
+                SalesActivityPaymentMethod.TARJETA, 1, new BigDecimal("25.50"));
+        var user = new SalesDailySummaryView.UserSummaryView(UUID.randomUUID(),
+                "Caja Principal María del Carmen Rodríguez Fernández - Turno de tarde",
+                new BigDecimal("125.50"), List.of(cash, card),
+                new SalesDailySummaryView.ActivityCountsView(3, 1, 0, 1));
+        var operations = new DailyOperationsSupplement(
+                new BigDecimal("115.50"), new BigDecimal("10.00"),
+                new BigDecimal("30.00"),
+                new DailyPaymentBreakdownView(new BigDecimal("20.00"),
+                        new BigDecimal("10.00"), BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO),
+                new DailyPaymentBreakdownView(new BigDecimal("-5.00"),
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO),
+                new BigDecimal("140.50"), new BigDecimal("50.00"),
+                new BigDecimal("12.00"), new BigDecimal("-7.00"),
+                new BigDecimal("175.00"));
+        var summary = new SalesDailySummaryView(UUID.randomUUID(), "EMPRESA PRUEBA",
+                "001", date, new BigDecimal("125.50"), List.of(cash, card),
+                new SalesDailySummaryView.ActivityCountsView(3, 1, 0, 1),
+                List.of(user), operations, date);
+        var output = Path.of(System.getProperty("basedir", "backend"), "target",
+                "daily-sales-design", "Ventas_141126.xlsx");
+        Files.createDirectories(output.getParent());
+        Files.write(output, service.daily(summary));
+
+        try (var workbook = new XSSFWorkbook(Files.newInputStream(output))) {
+            var sheet = workbook.getSheet("Resumen diario");
+            assertThat(findRow(sheet, "Total cobros de deuda anterior").getCell(5)
+                    .getNumericCellValue()).isEqualTo(30.0);
+            assertThat(findRow(sheet, "Total devoluciones").getCell(5)
+                    .getNumericCellValue()).isEqualTo(-5.0);
+            assertThat(findRow(sheet, "Retiradas").getCell(5)
+                    .getNumericCellValue()).isEqualTo(-7.0);
+            assertThat(sheet.getMergedRegions()).anySatisfy(region -> {
+                var title = sheet.getRow(region.getFirstRow()).getCell(0).getStringCellValue();
+                assertThat(title).contains("Caja Principal María");
+                assertThat(region.getFirstColumn()).isZero();
+                assertThat(region.getLastColumn()).isEqualTo(5);
+            });
+        }
+    }
+
+    private static org.apache.poi.ss.usermodel.Row findRow(org.apache.poi.ss.usermodel.Sheet sheet,
+            String label) {
+        for (var row : sheet) {
+            var cell = row.getCell(0);
+            if (cell != null && cell.getCellType() == CellType.STRING
+                    && label.equals(cell.getStringCellValue())) return row;
+        }
+        return null;
     }
 
     private static SalesActivityDocumentRowView row(

@@ -4,7 +4,11 @@ import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultHardwareConfig } from "../hardware/hardware";
+import { previewPreparedPdf } from "../export/preparedPdfExport";
 import { SaleProductLabelDialog } from "./SaleProductLabelDialog";
+
+vi.mock("../export/preparedPdfExport", () => ({ previewPreparedPdf: vi.fn() }));
+const previewPreparedPdfMock = vi.mocked(previewPreparedPdf);
 
 const issuer = {
   name: "TPV ERP SL",
@@ -15,7 +19,43 @@ const issuer = {
 describe("SaleProductLabelDialog", () => {
   afterEach(() => {
     cleanup();
+    vi.resetAllMocks();
     Reflect.deleteProperty(window, "tpvDesktop");
+  });
+
+  it("previews label PDF and reports saved status only after download", async () => {
+    const onPrinted = vi.fn();
+    const printProductLabel = vi.fn();
+    previewPreparedPdfMock.mockResolvedValueOnce({ downloaded: false, printed: false, canceled: true })
+      .mockResolvedValueOnce({ downloaded: true, printed: false, canceled: false });
+    Reflect.set(window, "tpvDesktop", {
+      hardware: {
+        getHardwareConfig: vi.fn().mockResolvedValue(defaultHardwareConfig),
+        listPrinters: vi.fn().mockResolvedValue({ ok: true, printers: [] }),
+        saveHardwareConfig: vi.fn().mockResolvedValue({ ok: true }),
+        printProductLabel,
+      },
+    });
+    render(<SaleProductLabelDialog open locale="es" storeName="Tienda" issuer={issuer}
+      products={[{ id: "coffee", code: "CAF-001", barcode: "8435606744034", name: "Café", salePrice: 10 }]}
+      initialProductId="coffee" onClose={() => undefined} onPrinted={onPrinted} />);
+
+    const pdfButton = await screen.findByRole("button", { name: "Guardar PDF" });
+    await waitFor(() => expect(pdfButton).toBeEnabled());
+    fireEvent.click(pdfButton);
+    await waitFor(() => expect(previewPreparedPdfMock).toHaveBeenCalledTimes(1));
+    expect(previewPreparedPdfMock).toHaveBeenCalledWith("labels", expect.objectContaining({
+      version: 2, kind: "SEQUENTIAL", items: [expect.objectContaining({ id: "coffee", copies: 1 })],
+    }), "etiquetas-1.pdf", "es");
+    await waitFor(() => expect(pdfButton).toBeEnabled());
+    expect(screen.queryByText("PDF de etiquetas guardado")).not.toBeInTheDocument();
+    expect(onPrinted).not.toHaveBeenCalled();
+    expect(printProductLabel).not.toHaveBeenCalled();
+
+    fireEvent.click(pdfButton);
+    await waitFor(() => expect(onPrinted).toHaveBeenCalledWith(true));
+    expect(screen.getByRole("status")).toHaveTextContent("PDF de etiquetas guardado");
+    expect(printProductLabel).not.toHaveBeenCalled();
   });
 
   it("keeps rendering when Electron returns a legacy hardware configuration", async () => {

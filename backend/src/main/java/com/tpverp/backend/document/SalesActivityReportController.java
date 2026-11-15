@@ -5,6 +5,7 @@ import com.tpverp.backend.document.template.SalesActivityJasperRenderer;
 import com.tpverp.backend.excel.SalesActivityExcelExportService;
 import com.tpverp.backend.cash.CashPermissionService;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ContentDisposition;
@@ -91,7 +92,7 @@ public class SalesActivityReportController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             Authentication authentication) {
         var summary = daily(date, authentication);
-        return excel("resumen-ventas-" + date + ".xlsx", excel.daily(summary));
+        return excel("Ventas_" + date.format(DateTimeFormatter.ofPattern("ddMMyy")) + ".xlsx", excel.daily(summary));
     }
 
     @GetMapping("/documents/excel")
@@ -99,12 +100,12 @@ public class SalesActivityReportController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "DOCUMENT") SalesActivityPrintGrouping grouping) {
-        return excel("documentos-ventas-" + dateFrom + "-" + dateTo + ".xlsx",
+        return excel(documentsExcelFilename(dateFrom, dateTo),
                 excel.documents(dateFrom, dateTo, grouping));
     }
 
     public ResponseEntity<byte[]> documentsExcel(LocalDate dateFrom, LocalDate dateTo) {
-        return excel("documentos-ventas-" + dateFrom + "-" + dateTo + ".xlsx",
+        return excel(documentsExcelFilename(dateFrom, dateTo),
                 excel.documents(dateFrom, dateTo));
     }
 
@@ -131,6 +132,12 @@ public class SalesActivityReportController {
                         reports.allDocuments(dateFrom, dateTo), dateFrom, dateTo, grouping, format);
         return SalesActivityRenderedReportView.from(
                 rendered.pdf(), rendered.ticketRasterPng());
+    }
+
+    private static String documentsExcelFilename(LocalDate from, LocalDate to) {
+        var stamp = DateTimeFormatter.ofPattern("ddMMyy");
+        return "Documentos_de_ventas_" + from.format(stamp)
+                + (from.equals(to) ? "" : "-" + to.format(stamp)) + ".xlsx";
     }
 
     private static ResponseEntity<byte[]> excel(String filename, byte[] bytes) {
