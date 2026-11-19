@@ -80,7 +80,7 @@ describe("BackupManagementScreen", () => {
     render(<BackupManagementScreen session={session} locale="es" t={createTranslator("es")} />);
     const row = await screen.findByRole("row", { name: /12/ });
     expect(row).toHaveTextContent("En curso");
-    expect(tick).toBeTypeOf("function");
+    await waitFor(() => expect(tick).toBeTypeOf("function"));
     await act(async () => { tick?.(); });
     await waitFor(() => expect(row).toHaveTextContent("Correcta"));
     expect(screen.queryByText("Cargando")).not.toBeInTheDocument();
