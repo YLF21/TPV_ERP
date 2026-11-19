@@ -67,10 +67,23 @@ describe("sales document period chips", () => {
   });
 
   it("applies a custom period automatically and clears the applied range", async () => {
-    mount(); await waitFor(() => expect(screen.getByRole("button", { name: "Hoy" })).toBeEnabled());
-    fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-07-01" } });
-    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-07-02" } });
+    const request = fixture();
+    mount(request);
+    const from = screen.getByLabelText("Desde");
+    const to = screen.getByLabelText("Hasta");
+    await waitFor(() => {
+      expect(from).toHaveValue(today);
+      expect(to).toHaveValue(today);
+    });
+    fireEvent.change(from, { target: { value: "2026-07-01" } });
+    await waitFor(() => expect(request).toHaveBeenLastCalledWith(
+      `/sales-activity/documents/by-day?dateFrom=2026-07-01&dateTo=${today}&limit=250`, { token: "test" }
+    ));
+    fireEvent.change(to, { target: { value: "2026-07-02" } });
     expect(await screen.findByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("1/7/2026 — 2/7/2026");
+    await waitFor(() => expect(request).toHaveBeenLastCalledWith(
+      "/sales-activity/documents/by-day?dateFrom=2026-07-01&dateTo=2026-07-02&limit=250", { token: "test" }
+    ));
     fireEvent.click(screen.getByRole("button", { name: "Ayer" }));
     expect(await screen.findByRole("group", { name: "Filtros aplicados" })).toHaveTextContent("21/9/2026");
     fireEvent.click(screen.getByRole("button", { name: "Limpiar todos" }));
