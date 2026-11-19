@@ -4,7 +4,7 @@ import { api } from "../../lib/api";
 import { canInvoiceBePaid, isCurrentSelection, outstandingAmount, settleWithConcurrency, validateFiscalDecision } from "../../lib/frontend-runtime.mjs";
 import type { BillingInvoice, BillingSummary, Credentials, InvoiceFiscalDetail, LicenseSummary, PaymentReconciliation, PlanUsage, TaxRegime } from "../../lib/types";
 import { useI18n } from "../../i18n/index";
-import { normalizeSearch, formatDate, formatCurrency, billingStatusLabel, toLocalInput, addDays, parseAmount, errorMessage, isPositiveAmount, formatMoney, formatQuantity } from "../../shared/lib";
+import { normalizeSearch, formatDate, formatCurrency, billingStatusLabel, toUtcInput, utcInputToInstant, addDays, parseAmount, errorMessage, isPositiveAmount, formatMoney, formatQuantity } from "../../shared/lib";
 import { usePagination, EmptyState, Input, StatusPill, PaginationControls, Metric, SectionHeader, RetryError } from "../../shared/ui";
 import { Notice } from "../../shared/types";
 
@@ -76,15 +76,15 @@ export function BillingView({
     concept: "",
     amount: "",
     currency: "EUR",
-    issuedAt: toLocalInput(new Date()),
-    dueAt: toLocalInput(addDays(new Date(), 30))
+    issuedAt: toUtcInput(new Date()),
+    dueAt: toUtcInput(addDays(new Date(), 30))
   });
   const [paymentForm, setPaymentForm] = useState({ invoiceId: "", amount: "", method: "TRANSFERENCIA", reference: "" });
   const [planUsage, setPlanUsage] = useState<PlanUsage | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
   const [reconciliations, setReconciliations] = useState<PaymentReconciliation[]>([]);
   const [reconciliationError, setReconciliationError] = useState<string | null>(null);
-  const [reconciliationForm, setReconciliationForm] = useState({ provider: "MANUAL_BANK", externalReference: "", amount: "", currency: "EUR", bookedAt: toLocalInput(new Date()), notes: "" });
+  const [reconciliationForm, setReconciliationForm] = useState({ provider: "MANUAL_BANK", externalReference: "", amount: "", currency: "EUR", bookedAt: toUtcInput(new Date()), notes: "" });
   const [fiscalInvoiceId, setFiscalInvoiceId] = useState("");
   const [fiscalDetail, setFiscalDetail] = useState<InvoiceFiscalDetail | null>(null);
   const [fiscalStates, setFiscalStates] = useState<Record<string, InvoiceFiscalDetail | null>>({});
@@ -222,8 +222,8 @@ export function BillingView({
     try {
       await api.createBillingInvoice(credentials, requestedCompanyId, {
         ...invoiceForm,
-        issuedAt: new Date(invoiceForm.issuedAt).toISOString(),
-        dueAt: new Date(invoiceForm.dueAt).toISOString()
+        issuedAt: utcInputToInstant(invoiceForm.issuedAt),
+        dueAt: utcInputToInstant(invoiceForm.dueAt)
       });
       if (!isCurrent()) return;
       setInvoiceForm({
@@ -231,8 +231,8 @@ export function BillingView({
         concept: "",
         amount: "",
         currency: "EUR",
-        issuedAt: toLocalInput(new Date()),
-        dueAt: toLocalInput(addDays(new Date(), 30))
+        issuedAt: toUtcInput(new Date()),
+        dueAt: toUtcInput(addDays(new Date(), 30))
       });
       await loadInvoices(requestedCompanyId);
       if (!isCurrent()) return;
@@ -311,10 +311,10 @@ export function BillingView({
         provider: reconciliationForm.provider,
         currency: reconciliationForm.currency.toUpperCase(),
         externalReference: reconciliationForm.externalReference.trim(),
-        bookedAt: new Date(reconciliationForm.bookedAt).toISOString()
+        bookedAt: utcInputToInstant(reconciliationForm.bookedAt)
       });
       if (operationContext !== billingContextId.current || !isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current)) return;
-      setReconciliationForm({ provider: "MANUAL_BANK", externalReference: "", amount: "", currency: "EUR", bookedAt: toLocalInput(new Date()), notes: "" });
+      setReconciliationForm({ provider: "MANUAL_BANK", externalReference: "", amount: "", currency: "EUR", bookedAt: toUtcInput(new Date()), notes: "" });
       await loadBillingExtras(requestedCompanyId);
       onNotice({ type: "success", text: t("reconciliationCreated") });
     } catch (error) { if (operationContext === billingContextId.current && isCurrentSelection(requestedCompanyId, selectedBillingCompanyRef.current)) onNotice({ type: "error", text: errorMessage(error) }); }

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { emptySummary, summaryPath } from "./summary-fixture.mjs";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -49,6 +50,8 @@ async function setup(viewer = false, initialCompany = original) {
     calls.push({ path, method, body });
     const json = value => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     if (path === "/api/v1/auth/admin/login") return json({ username: viewer ? "CONTACT_VIEWER" : "CONTACT_DEMO", accessToken: "synthetic-token", mode: "admin", expiresAt: "2099-01-01T00:00:00Z", passwordChangeRequired: false });
+    if (path === summaryPath + "/options") return json({ companies: [], stores: [] });
+    if (path === summaryPath) return json(emptySummary);
     if (path === "/api/v1/admin/me") return json({ username: viewer ? "CONTACT_VIEWER" : "CONTACT_DEMO", permissions: viewer ? ["VIEW_ADMIN_DATA"] : ["VIEW_ADMIN_DATA", "ADD_COMPANY", "EDIT_COMPANY_DATA"] });
     if (path === "/api/v1/admin/companies") {
       if (method === "POST") {

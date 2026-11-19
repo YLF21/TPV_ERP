@@ -19,7 +19,7 @@
 .app-shell {
   display: grid;
   grid-template-columns: 238px minmax(0, 1fr);
-  grid-template-rows: 38px minmax(0, 1fr);
+  grid-template-rows: 46px minmax(0, 1fr);
   height: 100vh;
   background: var(--bg);
 }
@@ -28,14 +28,16 @@
   grid-column: 1 / -1;
   grid-row: 1;
   z-index: 20;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
   min-width: 0;
-  border-bottom: 1px solid #a8b2bc;
-  padding: 0 10px;
-  color: #182330;
-  background: #f4f4f4;
+  border-bottom: 1px solid #aeb9c8;
+  padding: 8px 10px 7px;
+  color: #102033;
+  background: #e8edf6;
+  font-family: Arial, "Microsoft YaHei UI", sans-serif;
   font-size: 13px;
 }
 
@@ -44,76 +46,125 @@
   display: flex;
   align-items: center;
   min-width: 0;
-  gap: 14px;
+  gap: 8px;
 }
 
-.system-product strong,
-.system-session strong {
-  color: #0a2b55;
-  font-weight: 900;
+.system-wordmark {
+  flex: 0 0 auto;
+  width: 94px;
+  height: 30px;
+  padding: 1px 3px;
+  border: 1px solid #9fb3c8;
+  border-radius: 6px;
+  background: #fff;
+  object-fit: contain;
 }
 
-.system-product span,
-.system-session span {
+.account-password-trigger > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.system-session > strong {
-  color: #176b2f;
+.app-system-bar > .saas-login-clock {
+  justify-self: center;
+  width: 240px;
+  min-width: 240px;
+  height: 30px;
+  border: 1px solid #aeb9c8;
+  border-radius: 3px;
+  padding: 0 14px;
+  background: #fff;
+  color: #102033;
+  font-size: 13px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.system-session {
+  justify-self: end;
 }
 
 .system-session .language-selector-floating {
   display: block;
 }
 
-.system-session .language-selector-floating .language-trigger {
-  width: 50px;
-  min-width: 50px;
+.system-session .language-selector-floating .language-trigger,
+.system-session .account-password-trigger,
+.system-session .session-logout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 56px;
+  min-width: 56px;
   height: 30px;
   min-height: 30px;
-  border: 1px solid #9ea8b2;
-  border-radius: 0;
-  background: #ffffff;
+  padding: 0 8px;
+  border: 1px solid #aeb9c8;
+  border-radius: 3px;
+  background: #fff;
+  color: #102033;
   box-shadow: none;
+  font: inherit;
+  font-weight: 700;
 }
 
-.system-session .language-selector-floating .language-trigger:hover {
-  border: 1px solid #627181;
-  background: #f5f7f8;
+.system-session .language-selector-floating .language-trigger:hover,
+.system-session .language-selector-floating .language-trigger[aria-expanded="true"],
+.system-session .account-password-trigger:hover,
+.system-session .account-password[open] > summary,
+.system-session .session-logout:hover {
+  border-color: #0065fe;
+  background: #fff;
   box-shadow: none;
   transform: none;
+}
+
+.system-session :is(button, summary):focus-visible {
+  outline: 3px solid #0065fe;
+  outline-offset: 2px;
+}
+
+.system-session .account-password-trigger {
+  width: auto;
+  max-width: 148px;
+  gap: 6px;
+  list-style: none;
+}
+
+.system-session .account-password-trigger::-webkit-details-marker {
+  display: none;
+}
+
+.system-session .account-password-trigger svg {
+  flex: 0 0 auto;
 }
 
 .system-session .language-selector-floating .language-globe {
   width: 19px;
   height: 19px;
+  object-fit: contain;
 }
 
 .system-session .language-selector-floating .language-menu {
   top: calc(100% + 4px);
-  border: 1px solid #9ea8b2;
-  border-radius: 0;
+  right: 0;
+  border: 1px solid #aeb9c8;
+  border-radius: 3px;
   padding: 4px;
   background: #ffffff;
   box-shadow: 0 8px 22px rgba(7, 37, 79, 0.16);
   backdrop-filter: none;
 }
 
-.session-logout {
-  min-height: 30px;
-  border: 1px solid #9ea8b2;
-  border-radius: 0;
-  padding: 4px 12px;
-  color: #1b2733;
-  background: #f7f7f7;
-  font-weight: 750;
+.system-session .language-menu button.active {
+  color: #fff;
+  background: #0065fe;
 }
 
-.session-logout:hover {
-  border-color: #627181;
-  background: #ffffff;
+.system-session .session-logout {
+  color: #c43d3d;
 }
 
 .app-header {
@@ -737,12 +788,20 @@ pre {
     top: 0;
     grid-column: 1;
     grid-row: 1;
-    min-height: 42px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: 30px 30px;
+    min-height: 82px;
+    gap: 6px 12px;
   }
 
-  .system-product span,
-  .system-session span {
-    display: none;
+  .app-system-bar > .saas-login-clock {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .system-session {
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .app-header {

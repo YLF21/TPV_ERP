@@ -1,0 +1,76 @@
+export const summaryPath = "/api/v1/admin/summary";
+export const summaryAsOf = "2026-07-01T00:34:56Z";
+
+export const emptySummary = {
+  asOf: summaryAsOf,
+  period: { from: "2026-06-02", to: "2026-07-01", days: 30 },
+  newCompanies: 0, newStores: 0, newLicenses: 0,
+  catalogue: { stores: 0, coveredStores: 0, products: null, activeProducts: null },
+  periodActivity: { documents: 0, eligibleDocuments: 0, cancelledDocuments: 0, saleDocuments: 0, returnDocuments: 0, stores: 0, licenses: 0, syncEvents: 0, syncErrors: 0, stockMovementEvents: 0, currencies: [] },
+  daily: [],
+  companies: 0,
+  stores: { total: 0, active: 0 },
+  licenses: { total: 0, valid: 0, expired: 0, blocked: 0 },
+  installations: 0,
+  events: {
+    total: 0,
+    byType: [],
+    byStatus: ["RECEIVED", "PROJECTED", "IGNORED", "ERROR"].map(key => ({ key, count: 0 })),
+    firstReceivedAt: null,
+    lastReceivedAt: null,
+  },
+  documents: {
+    total: 0,
+    byType: [],
+    byStatus: [],
+    amounts: [],
+    storesWithDocuments: 0,
+    incompleteDocuments: 0,
+    unknownRelationships: 0,
+    observedProductReferences: 0,
+  },
+  recentLicenses: [],
+};
+
+export const accumulatedSummary = {
+  ...emptySummary,
+  newCompanies: 1, newStores: 2, newLicenses: 4,
+  catalogue: { stores: 9, coveredStores: 6, products: 762, activeProducts: 741 },
+  periodActivity: { ...emptySummary.periodActivity, saleDocuments: 27, returnDocuments: 2, syncEvents: 120, syncErrors: 6,
+    currencies: [{ currency: "EUR", documents: 27, amount: "270.00", averageAmount: "10.00", amountPerDay: "9.00" }] },
+  daily: [{ date: "2026-06-02", syncEvents: 120, currencies: [{ currency: "EUR", documents: 27, amount: "270.00", averageAmount: "10.00", amountPerDay: "270.00" }] }],
+  companies: 3,
+  stores: { total: 9, active: 7 },
+  licenses: { total: 9, valid: 7, expired: 1, blocked: 1 },
+  installations: 14,
+  events: {
+    total: 523,
+    byType: [{ key: "DOCUMENTO", count: 320 }, { key: "STOCK_MOVEMENT", count: 203 }],
+    byStatus: [
+      { key: "RECEIVED", count: 11 }, { key: "PROJECTED", count: 500 },
+      { key: "IGNORED", count: 9 }, { key: "ERROR", count: 3 },
+    ],
+    firstReceivedAt: "2026-05-10T23:58:00Z",
+    lastReceivedAt: "2026-06-30T23:59:00Z",
+  },
+  documents: {
+    total: 225,
+    byType: [{ key: "TICKET", count: 201 }, { key: "FACTURA_VENTA", count: 23 }, { key: "RECTIFICATIVA_VENTA", count: 1 }],
+    byStatus: [{ key: "CONFIRMADO", count: 221 }, { key: "ANULADO", count: 4 }],
+    amounts: [{ currency: "EUR", documents: 195, amount: "198.75" }, { currency: "USD", documents: 13, amount: "-15.25" }],
+    storesWithDocuments: 6,
+    incompleteDocuments: 17,
+    unknownRelationships: 0,
+    observedProductReferences: 58,
+  },
+  recentLicenses: Array.from({ length: 8 }, (_, index) => ({
+    id: `summary-license-${index + 1}`,
+    reference: `LIC-RESUMEN-${index + 1}`,
+    companyName: "Empresa de resumen",
+    storeName: index < 2 ? null : "Tienda de resumen",
+    storeCount: index === 0 ? 0 : index === 1 ? 3 : 1,
+    status: "VALIDA",
+    createdAt: `2026-06-${30 - index}T23:59:00Z`,
+    validUntil: "2099-07-01T00:00:00Z",
+  })),
+};

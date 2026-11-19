@@ -1,3 +1,4 @@
+import { parseUtcDateOnly } from "../../lib/utc-date-time.mjs";
 import { findSpanishProvince } from "../../shared/provinces/spanish-provinces.mjs";
 
 export function emptyCompanyFilters() {
@@ -28,22 +29,13 @@ export function companyProvinceFilterValue(value) {
   return findSpanishProvince(value)?.code ?? `raw:${value}`;
 }
 
-function localDay(value) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(`${value}T00:00:00`);
-  return Number.isFinite(date.getTime()) && date.getFullYear() === year
-    && date.getMonth() + 1 === month && date.getDate() === day ? date : null;
-}
-
-/** Millisecond bounds use browser-local calendar days, including 23/25-hour DST days. */
+/** Bounds match the UTC dates shown in the company creation column. */
 export function companyDateRange(from, to) {
-  const start = from ? localDay(from) : null;
-  const end = to ? localDay(to) : null;
+  const start = from ? parseUtcDateOnly(from) : null;
+  const end = to ? parseUtcDateOnly(to) : null;
   if ((from && !start) || (to && !end) || (start && end && start > end)) return null;
   if (end) {
-    end.setDate(end.getDate() + 1);
-    end.setHours(0, 0, 0, 0);
+    end.setUTCDate(end.getUTCDate() + 1);
   }
   return { from: start?.getTime() ?? null, toExclusive: end?.getTime() ?? null };
 }

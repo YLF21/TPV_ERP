@@ -1,6 +1,7 @@
 package com.tpverp.backend.sync;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tpverp.backend.inventory.InventorySnapshotCapture;
 import com.tpverp.backend.licensing.LicenseSaasCredentialStore;
 import com.tpverp.backend.licensing.SaasLicenseIdentityResolver;
 import java.net.URI;
@@ -81,12 +82,16 @@ public class HttpSyncEventSender implements SyncEventSender {
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new IllegalStateException("SaaS respondio " + response.statusCode());
             }
-            if ("REPLENISHMENT_REQUEST".equals(event.getEntityType())) {
+            boolean replenishment = "REPLENISHMENT_REQUEST".equals(event.getEntityType());
+            if (replenishment || InventorySnapshotCapture.ENTITY_TYPE.equals(event.getEntityType())) {
                 var receipt = mapper.readTree(response.body());
                 if (receipt == null || !receipt.path("accepted").asBoolean(false)
+                        || (!replenishment && !receipt.path("accepted").isBoolean())
                         || !event.getEventId().toString().equals(receipt.path("eventId").asText())
                         || !"PROJECTED".equals(receipt.path("projectionStatus").asText())) {
-                    throw new IllegalStateException("SaaS no ha confirmado el guardado de la reposicion");
+                    throw new IllegalStateException(replenishment
+                            ? "SaaS no ha confirmado el guardado de la reposicion"
+                            : "SaaS no ha confirmado el guardado de la captura de existencias");
                 }
             }
         } catch (InterruptedException exception) {

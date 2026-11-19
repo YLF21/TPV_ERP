@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { emptySummary, summaryPath } from "./summary-fixture.mjs";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -70,12 +71,15 @@ try {
     calls.push({ path, method });
     const json = value => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     if (path === "/api/v1/auth/admin/login") return json({ username: "COMPANY_FILTERS_DEMO", accessToken: "synthetic-token", mode: "admin", expiresAt: "2099-01-01T00:00:00Z", passwordChangeRequired: false });
+    if (path === summaryPath + "/options") return json({ companies: [], stores: [] });
+    if (path === summaryPath) return json(emptySummary);
     if (path === "/api/v1/admin/me") return json({ username: "COMPANY_FILTERS_DEMO", permissions: ["VIEW_ADMIN_DATA", "ADD_COMPANY", "EDIT_COMPANY_DATA"] });
     if (path === "/api/v1/admin/licenses") return json(companies.slice(0, 2).map(company => ({ ...company, licenseReference: `LIC-${company.companyId}`, status: "VALIDA", validUntil: "2099-01-01T00:00:00Z", maxWindows: 1, maxPda: 0 })));
     if (path === "/api/v1/admin/installations") return json([{ installationId: "installation-a", installationReference: "INST-FILTER-DEMO", companyId: "company-a", storeId: "store-a",
       licenseReference: "LIC-company-a", linkedAt: "2026-09-20T10:00:00Z", lastValidatedAt: "2026-09-21T10:00:00Z", lastSyncAt: "2026-09-21T11:00:00Z", active: true,
       appVersion: "synthetic", operatingSystem: "Test", terminalName: "Terminal sintético", lastIp: null, revokedAt: null, revokedBy: null, revocationReason: null, version: 1 }]);
     if (path === "/api/v1/admin/companies") return json(companies);
+    if (path === "/api/v1/admin/billing-summary") return json({ totalCompanies: companies.length, paidCompanies: 0, pendingCompanies: 0, overdueCompanies: 0, renewalsNext30Days: 0, monthlyRecurringRevenue: "0.00", companies: [] });
     if (/\/companies\/[^/]+\/profile$/.test(path) && method === "GET") {
       const selected = companies.find(item => item.companyId === path.split("/")[5]); assert.ok(selected); return json(selected);
     }
@@ -88,7 +92,7 @@ try {
   await page.locator('input[autocomplete="username"]').fill("COMPANY_FILTERS_DEMO");
   await page.locator('input[autocomplete="current-password"]').fill("synthetic-password");
   await page.locator('form button[type="submit"]').click();
-  await nav(page, "Estado de clientes");
+  await nav(page, "Facturacion");
   await page.getByLabel("Buscar empresa, licencia, NIF o tienda", { exact: true }).fill("NO-CUSTOMER-MATCHES");
   await nav(page, "Empresas");
   const table = page.getByRole("table", { name: "Empresas", exact: true });
@@ -159,7 +163,7 @@ try {
   await chip("Contacto").click();
   assert.equal(await panel.getByRole("button", { name: /^Quitar filtro / }).count(), 8);
   await more.click(); assert.equal(await panel.getByLabel("Contacto", { exact: true }).inputValue(), "");
-  await panel.getByRole("button", { name: "Fecha de alta", exact: true }).click();
+  await panel.getByRole("button", { name: "Fecha de alta (UTC)", exact: true }).click();
   for (const { width, height } of [{ width: 1366, height: 768 }, { width: 1280, height: 720 }]) {
     await page.setViewportSize({ width, height });
     const geometry = await panel.locator(".company-table-region .saas-data-table-scroll").evaluate(element => ({
@@ -170,26 +174,26 @@ try {
       `Expanded filters, dates and eight chips must retain at least one full data row at ${width}x${height}: ${JSON.stringify(geometry)}`);
   }
   await page.setViewportSize({ width: 1600, height: 1000 });
-  await panel.getByRole("button", { name: "Fecha de alta", exact: true }).click();
+  await panel.getByRole("button", { name: "Fecha de alta (UTC)", exact: true }).click();
   await clear.click();
   for (const [label] of secondary) assert.equal(await panel.getByLabel(label, { exact: true }).inputValue(), "");
   await more.click();
   console.log("Company filters E2E: secondary contact/address filters, second-owner name/DNI search, first-owner table and complete untouched owner profile passed.");
 
-  await panel.getByRole("button", { name: "Fecha de alta", exact: true }).click();
+  await panel.getByRole("button", { name: "Fecha de alta (UTC)", exact: true }).click();
   await calendarDate(page, "Desde", 20);
   await assertRows(["company-a", "company-c"]);
   await calendarDate(page, "Hasta", 20);
   await assertRows(["company-a"]);
-  await chip("Fecha de alta").waitFor();
-  await panel.getByRole("button", { name: "Fecha de alta", exact: true }).click();
+  await chip("Fecha de alta (UTC)").waitFor();
+  await panel.getByRole("button", { name: "Fecha de alta (UTC)", exact: true }).click();
   assert.equal(await panel.getByLabel("Desde", { exact: true }).count(), 0);
   await assertRows(["company-a"]);
-  await chip("Fecha de alta").click(); assert.equal((await rowIds()).length, companies.length);
-  await panel.getByRole("button", { name: "Fecha de alta", exact: true }).click();
+  await chip("Fecha de alta (UTC)").click(); assert.equal((await rowIds()).length, companies.length);
+  await panel.getByRole("button", { name: "Fecha de alta (UTC)", exact: true }).click();
   assert.equal(await panel.getByLabel("Desde", { exact: true }).inputValue(), "");
   assert.equal(await panel.getByLabel("Hasta", { exact: true }).inputValue(), "");
-  await panel.getByRole("button", { name: "Fecha de alta", exact: true }).click();
+  await panel.getByRole("button", { name: "Fecha de alta (UTC)", exact: true }).click();
   console.log("Company filters E2E: shared date-picker open/bounded range, inclusive endpoints and one chip clearing both dates passed.");
 
   await query.fill("ZZZ"); await province.selectOption("35");

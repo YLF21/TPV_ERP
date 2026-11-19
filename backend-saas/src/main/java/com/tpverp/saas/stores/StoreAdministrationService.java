@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -39,6 +40,10 @@ public class StoreAdministrationService {
                     or exists(select 1 from saas_pairing_code p where p.store_id=s.id)
                     or exists(select 1 from saas_installation i where i.store_id=s.id)) tax_regime_locked
             from saas_store s join saas_company c on c.id=s.company_id
+            """;
+    private static final String COMMERCIAL_CONFIGURATION_COMPLETE = """
+            (s.commercial_profile is not null and s.service_price is not null
+             and s.billing_period is not null and s.valid_until is not null)
             """;
     private final SaasStoreRepository stores;
     private final SaasCompanyRepository companies;
@@ -64,12 +69,25 @@ public class StoreAdministrationService {
     @Transactional(readOnly = true)
     public Page<StoreRow> list(UUID companyId, String query, Boolean active, int page, int size,
             String sortBy, String sortDirection) {
+        return list(companyId, query, active, null, page, size, sortBy, sortDirection);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<StoreRow> list(UUID companyId, String query, Boolean active, String commercialConfiguration,
+            int page, int size, String sortBy, String sortDirection) {
         validatePage(page, size);
         String order = sortOrder(sortBy, sortDirection);
         var params = new LinkedHashMap<String, Object>();
         var where = new StringBuilder(" where 1=1");
         if (companyId != null) { where.append(" and s.company_id=:companyId"); params.put("companyId", companyId); }
         if (active != null) { where.append(" and s.active=:active"); params.put("active", active); }
+        if (commercialConfiguration != null && !commercialConfiguration.isBlank()) {
+            where.append(switch (commercialConfiguration) {
+                case "pending" -> " and not " + COMMERCIAL_CONFIGURATION_COMPLETE;
+                case "complete" -> " and " + COMMERCIAL_CONFIGURATION_COMPLETE;
+                default -> throw badRequest("Configuración comercial no válida");
+            });
+        }
         String q = searchPattern(query);
         if (q != null) {
             where.append(" and (s.internal_code ilike :q or s.code ilike :q or s.name ilike :q or c.name ilike :q or c.tax_id ilike :q)");
@@ -247,9 +265,14 @@ public class StoreAdministrationService {
 
     @Transactional(readOnly = true)
     public StoreRow get(UUID id) {
-        return jdbc.query(SELECT + " where s.id=?", (rs, n) -> row(rs), id).stream().findFirst()
-                .orElseThrow(() -> missing("Tienda no encontrada"));
+        return find(id).orElseThrow(() -> missing("Tienda no encontrada"));
     }
+
+    @Transactional(readOnly = true)
+    public Optional<StoreRow> find(UUID id) {
+        return jdbc.query(SELECT + " where s.id=?", (rs, n) -> row(rs), id).stream().findFirst();
+    }
+
     private void lockCompanyForStore(UUID id) {
         var companyId = jdbc.query("select company_id from saas_store where id=?", (rs, n) -> rs.getObject(1, UUID.class), id)
                 .stream().findFirst().orElseThrow(() -> missing("Tienda no encontrada"));

@@ -1,4 +1,8 @@
-.saas-license-dialog .compact-form-grid { margin: 14px 0 20px; padding: 14px; border: 1px solid #c4d2df; background: #fff; }
+.saas-license-dialog .compact-form-grid { margin: 8px 0 20px; padding: 14px; border: 1px solid #c4d2df; background: #fff; }
+.saas-license-renewal > h4 { margin: 14px 0 0; width: fit-content; }
+.saas-license-heading-actions, .saas-license-shortcuts { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+.saas-license-shortcuts button[aria-pressed="true"] { background: #dcebf7; border-color: #3a6c95; color: #1f4d74; }
+.saas-license-renew { white-space: nowrap; }
 .saas-license-dialog .table-wrap { max-height: 30vh; }
 .saas-license-table-hint { margin: 6px 0 10px; color: #536b83; font-size: 12px; }
 .saas-license-table-region[aria-busy="true"] .saas-data-table tbody { opacity: .55; }

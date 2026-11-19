@@ -221,9 +221,19 @@ class InventoryServiceTest {
                 .containsEntry("almacenId", warehouse.getId().toString())
                 .containsEntry("usuarioId", userId.toString())
                 .containsEntry("tipo", "AJUSTE")
-                .containsEntry("cantidad", new BigDecimal("-3"))
+                .containsEntry("cantidad", "-3")
                 .containsEntry("motivo", "ROTURA")
                 .containsEntry("creadoEn", "2026-06-08T12:00:00Z");
+    }
+
+    @Test
+    void movementPublishesExactDecimalThroughUntypedJsonTransport() {
+        var movement = StockMovement.adjustment(UUID.randomUUID(), UUID.randomUUID(), userId,
+                new BigDecimal("-9999999999999999.125"), "ROTURA", Instant.now());
+        new StockMovementSyncPublisher(syncOutbox).enqueue(companyId, storeId, movement);
+        var command = org.mockito.ArgumentCaptor.forClass(SyncOutboundEventCommand.class);
+        verify(syncOutbox).enqueue(command.capture());
+        assertThat(command.getValue().payload()).containsEntry("cantidad", "-9999999999999999.125");
     }
 
     @Test

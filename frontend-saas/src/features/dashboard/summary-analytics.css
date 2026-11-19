@@ -1,0 +1,89 @@
+.summary-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 124px), 1fr));
+  align-items: end;
+  gap: 8px;
+}
+
+.summary-filter-grid label {
+  min-width: 0;
+  color: var(--nav);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.summary-filter-grid .control-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.summary-filter-grid .control-input,
+.summary-filter-actions .primary-button,
+.summary-filter-actions .small-button {
+  min-height: 32px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.summary-filter-wide {
+  grid-column: 1 / -1;
+}
+
+.summary-filter-actions,
+.saas-summary-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.summary-filter-actions {
+  margin-top: 8px;
+}
+
+.saas-summary-heading a.small-button {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  white-space: normal;
+}
+
+.saas-summary-metrics .saas-summary-metric-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.saas-summary-metrics .saas-summary-metric-link span,
+.saas-summary-table-link {
+  color: var(--nav);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.saas-summary-metrics .saas-summary-metric-link:hover,
+.saas-summary-metrics .saas-summary-metric-link:focus-visible {
+  background: #eaf1f9;
+}
+
+.saas-summary-metrics .saas-summary-metric-link:focus-visible,
+.saas-summary-table-link:focus-visible {
+  outline: 2px solid var(--nav);
+  outline-offset: -2px;
+}
+
+.saas-summary-sales.is-empty {
+  align-self: start;
+}
+
+.saas-summary-sync-toggle {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 10px;
+}
+
+.saas-summary-sync-help {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 6px 0 0;
+}

@@ -1,6 +1,14 @@
 import { useI18n } from "../../i18n";
 const labels = {
   configuration: ["Configuración de licencia", "License configuration", "许可证配置"],
+  allLicenses: ["Todas las licencias", "All licenses", "所有许可证"],
+  expiredLicenses: ["Licencias caducadas", "Expired licenses", "已过期许可证"],
+  blockedLicenses: ["Licencias bloqueadas", "Blocked licenses", "已封锁许可证"],
+  expiryShortcuts: ["Vencimiento de licencias", "License expiry", "许可证到期"],
+  expiresIn7: ["Vencen en 7 días", "Expiring within 7 days", "7 天内到期"],
+  expiresIn30: ["Vencen en 30 días", "Expiring within 30 days", "30 天内到期"],
+  renew: ["Renovar", "Renew", "续期"],
+  renewal: ["Renovación", "Renewal", "续期"],
   close: ["Cerrar", "Close", "关闭"],
   generate: ["Generar código de activación", "Generate activation code", "生成激活码"],
   windows: ["Terminales Windows", "Windows terminals", "Windows 终端"],

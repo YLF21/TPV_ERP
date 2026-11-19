@@ -3,6 +3,7 @@ import { ApiError } from "../../lib/api";
 import type { Credentials } from "../../lib/types";
 import { workspaceApi, type InterventionAction, type TicketInterventionRequest, type TicketInterventionState } from "../../lib/workspace-api";
 import { formatDate } from "../../shared/lib";
+import { parseUtcDateTime, toUtcInput, utcInputToInstant } from "../../lib/utc-date-time.mjs";
 import { StatusPill } from "../../shared/ui";
 import { IncidentTimeline } from "./IncidentTimeline";
 import { repairSession, type InterventionDraft } from "./repair-session";
@@ -51,9 +52,9 @@ export function TicketInterventionsPanel({ credentials, ticketId, companyId, tic
     const saved = session.interventionDrafts.get(ticketId);
     if (saved) return saved;
     const initial: InterventionDraft = { note: pending?.action === "SAVE_DETAILS" ? "" : pending?.note ?? "", remoteId: pending?.teamViewerId ?? "",
-      assigneeUserId: pending?.assigneeUserId ?? "", visitAt: pending?.visitAt ? localDateTime(pending.visitAt) : "",
+      assigneeUserId: pending?.assigneeUserId ?? "", visitAt: pending?.visitAt ? toUtcInput(new Date(pending.visitAt)) : "",
       resolution: pending?.resolutionSummary ?? "", checks: pending?.verificationNotes ?? "", confirmedBy: pending?.confirmedBy ?? "",
-      nextReviewAt: pending?.nextReviewAt ? localDateTime(pending.nextReviewAt) : "", planningDirty: pending?.action === "SAVE_DETAILS", revisions: {} };
+      nextReviewAt: pending?.nextReviewAt ? toUtcInput(new Date(pending.nextReviewAt)) : "", planningDirty: pending?.action === "SAVE_DETAILS", revisions: {} };
     session.interventionDrafts.set(ticketId, initial); return initial;
   });
   const { note, remoteId, assigneeUserId, visitAt, resolution, checks, confirmedBy, nextReviewAt } = draft;
@@ -71,14 +72,14 @@ export function TicketInterventionsPanel({ credentials, ticketId, companyId, tic
       for (const [field, revision] of Object.entries(submitted.fields)) {
         if ((previous.revisions[field] ?? 0) === revision) {
           if (field === "assigneeUserId") next.assigneeUserId = nextState.assigneeUserId ?? "";
-          else if (field === "visitAt") next.visitAt = nextState.visitAt ? localDateTime(nextState.visitAt) : "";
+          else if (field === "visitAt") next.visitAt = nextState.visitAt ? toUtcInput(new Date(nextState.visitAt)) : "";
           else if (field in next && field !== "revisions" && field !== "planningDirty") (next as unknown as Record<string, unknown>)[field] = "";
         }
       }
       if (request?.action === "SAVE_DETAILS" && ["assigneeUserId", "visitAt"].every(field => (previous.revisions[field] ?? 0) === submitted.fields[field as keyof InterventionDraft])) next.planningDirty = false;
       session.interventionSubmissions.delete(request!.requestId);
     }
-    if (!next.planningDirty) { next.assigneeUserId = nextState.assigneeUserId ?? ""; next.visitAt = nextState.visitAt ? localDateTime(nextState.visitAt) : ""; }
+    if (!next.planningDirty) { next.assigneeUserId = nextState.assigneeUserId ?? ""; next.visitAt = nextState.visitAt ? toUtcInput(new Date(nextState.visitAt)) : ""; }
     session.interventionDrafts.set(ticketId, next);
     if (current()) setDraft(next);
   }
@@ -122,15 +123,15 @@ export function TicketInterventionsPanel({ credentials, ticketId, companyId, tic
     const id = action === "START_REMOTE" ? (existing?.teamViewerId ?? remoteId).trim() : "";
     if (Array.from(text).length < 5 || Array.from(text).length > 2000) { setMessage(f("noteRequired")); return; }
     if (id && !/^\d{6,15}$/.test(id)) { setMessage(f("invalidId")); return; }
-    if (!existing && action === "SAVE_DETAILS" && ((assigneeUserId && !state.assignees?.some(user => user.id === assigneeUserId)) || (visitAt && (!assigneeUserId || !Number.isFinite(new Date(visitAt).getTime()))))) { setMessage(f("planningRequired")); return; }
+    if (!existing && action === "SAVE_DETAILS" && ((assigneeUserId && !state.assignees?.some(user => user.id === assigneeUserId)) || (visitAt && (!assigneeUserId || !parseUtcDateTime(visitAt))))) { setMessage(f("planningRequired")); return; }
     if (!existing && action === "START_ONSITE" && !state.visitAt) { setMessage(f("visitRequired")); return; }
     if (!existing && ((action === "REQUEST_VERIFICATION" && Array.from(resolution.trim()).length < 5)
       || (action === "RESOLVE" && (Array.from(checks.trim()).length < 5 || Array.from(confirmedBy.trim()).length < 2)))) { setMessage(f("evidenceRequired")); return; }
-    if (!existing && waitingActions.includes(action) && (!nextReviewAt || !Number.isFinite(new Date(nextReviewAt).getTime()) || new Date(nextReviewAt).getTime() <= Date.now())) { setMessage(f("reviewRequired")); return; }
+    if (!existing && waitingActions.includes(action) && (!nextReviewAt || !parseUtcDateTime(nextReviewAt) || parseUtcDateTime(nextReviewAt)!.getTime() <= Date.now())) { setMessage(f("reviewRequired")); return; }
     const request = existing ?? { requestId: crypto.randomUUID(), expectedVersion: state.version, expectedTicketStatus: state.ticketStatus,
       action, note: text, teamViewerId: id || null,
-      ...(action === "SAVE_DETAILS" ? { assigneeUserId: assigneeUserId || null, visitAt: visitAt ? new Date(visitAt).toISOString() : null } : {}),
-      ...(waitingActions.includes(action) ? { nextReviewAt: new Date(nextReviewAt).toISOString() } : {}),
+      ...(action === "SAVE_DETAILS" ? { assigneeUserId: assigneeUserId || null, visitAt: visitAt ? utcInputToInstant(visitAt) : null } : {}),
+      ...(waitingActions.includes(action) ? { nextReviewAt: utcInputToInstant(nextReviewAt) } : {}),
       ...(action === "REQUEST_VERIFICATION" ? { resolutionSummary: resolution.trim() } : {}),
       ...(action === "RESOLVE" ? { verificationNotes: checks.trim(), confirmedBy: confirmedBy.trim() } : {}) };
     if (!existing) {
@@ -189,7 +190,7 @@ export function TicketInterventionsPanel({ credentials, ticketId, companyId, tic
         {state.status === "RESOLVED" ? <p>{state.assignee ?? "—"}{state.visitAt && <> · {formatDate(state.visitAt)}</>}</p> : <>
           <label>{f("assignee")}<select className="control-input" value={assigneeUserId} disabled={disabled || !!pending} onChange={e => edit("assigneeUserId", e.target.value)}><option value="">{f("unassigned")}</option>{state.assignees?.map(user => <option key={user.id} value={user.id}>{user.username}</option>)}{assigneeUserId && !state.assignees?.some(user => user.id === assigneeUserId) && <option value={assigneeUserId} disabled>{state.assignee ?? assigneeUserId}</option>}</select></label>
           {!state.assigneeUserId && state.assignee && <p className="field-hint">{f("legacyAssignee")}: {state.assignee}</p>}
-          <label>{f("visitAt")}<input className="control-input" type="datetime-local" value={visitAt} disabled={disabled || !!pending} onChange={e => edit("visitAt", e.target.value)} /></label>
+          <label>{f("visitAt")} (UTC)<input className="control-input" type="datetime-local" value={visitAt} disabled={disabled || !!pending} onChange={e => edit("visitAt", e.target.value)} /></label>
           <p className="field-hint">{f("visitHelp")}</p><button className="secondary-button" type="button" disabled={disabled || !!pending} onClick={() => void write("SAVE_DETAILS")}>{f("SAVE_DETAILS")}</button>
         </>}
       </div>
@@ -209,7 +210,7 @@ export function TicketInterventionsPanel({ credentials, ticketId, companyId, tic
           <label>{f("verificationNotes")}<textarea className="control-input" rows={3} maxLength={4000} value={checks} disabled={disabled || !!pending} onChange={e => edit("checks", e.target.value)} /></label>
           <label>{f("confirmedBy")}<input className="control-input" maxLength={120} value={confirmedBy} disabled={disabled || !!pending} onChange={e => edit("confirmedBy", e.target.value)} /></label>
         </>}
-        {state.status !== "RESOLVED" && <label>{f("nextReviewAt")}<input className="control-input" type="datetime-local" value={nextReviewAt} disabled={disabled || !!pending} onChange={e => edit("nextReviewAt", e.target.value)} /></label>}
+        {state.status !== "RESOLVED" && <label>{f("nextReviewAt")} (UTC)<input className="control-input" type="datetime-local" value={nextReviewAt} disabled={disabled || !!pending} onChange={e => edit("nextReviewAt", e.target.value)} /></label>}
         {state.nextReviewAt && <div className="intervention-wait-details">{waitReason && <p><strong>{f("waitReason")}: </strong>{waitReason}</p>}<strong>{f("reviewDate")}: {formatDate(state.nextReviewAt)}</strong>{state.resumeStatus && <span>{f("resumePhase")}: {f(state.resumeStatus)}</span>}</div>}
         <div className="intervention-actions">
           {pending ? <button className="primary-button" type="button" disabled={disabled} onClick={() => void write(pending.action)}>{f("retry")}</button>
@@ -226,9 +227,4 @@ export function TicketInterventionsPanel({ credentials, ticketId, companyId, tic
     </div>
     {state && <IncidentTimeline credentials={credentials} state={state} refreshVersion={refreshVersion + refresh} />}
   </section>;
-}
-
-function localDateTime(value: string) {
-  const date = new Date(value);
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0,16);
 }

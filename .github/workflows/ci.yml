@@ -415,6 +415,8 @@ jobs:
           echo $! > ../saas-backend-e2e.pid
       - name: Start SaaS frontend
         working-directory: frontend-saas
+        env:
+          VITE_SAAS_SUPERVISION_ENABLED: "true"
         run: |
           npm run dev -- --port 5175 > ../saas-frontend-e2e.log 2>&1 &
           echo $! > ../saas-frontend-e2e.pid

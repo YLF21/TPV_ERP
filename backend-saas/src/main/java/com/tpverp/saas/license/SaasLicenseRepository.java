@@ -11,6 +11,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface SaasLicenseRepository extends JpaRepository<SaasLicense, UUID> {
 
+    String EFFECTIVE_STATUS_SQL = "case when l.status='VALIDA' and l.valid_until<=:now then 'CADUCADA' else l.status end";
+
     Optional<SaasLicense> findByReference(String reference);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

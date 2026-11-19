@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { emptySummary, summaryPath } from "./summary-fixture.mjs";
 import { mkdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -54,7 +55,7 @@ async function nav(page, name) {
   await target.click();
 }
 const server = spawn(process.execPath, [fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)),
-  "--host", "127.0.0.1", "--port", "5197", "--strictPort", "--configLoader", "runner"], { cwd: root, stdio: "ignore", windowsHide: true });
+  "--host", "127.0.0.1", "--port", "5197", "--strictPort", "--configLoader", "runner"], { cwd: root, env: { ...process.env, VITE_SAAS_SUPERVISION_ENABLED: "true" }, stdio: "ignore", windowsHide: true });
 try {
   let started = false;
   for (let i = 0; i < 100; i++) {
@@ -68,9 +69,11 @@ try {
   page.on("pageerror", error => errors.push(error.message));
   await page.route("**/api/**", async route => {
     const req = route.request(); const url = new URL(req.url()); const path = decodeURIComponent(url.pathname);
-    calls.push({ path, method: req.method(), query: Object.fromEntries(url.searchParams) });
+    calls.push({ path, rawPath: url.pathname, method: req.method(), query: Object.fromEntries(url.searchParams) });
     const json = value => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     if (path === "/api/v1/auth/admin/login") return json({ username: "DIAGNOSTICS", accessToken: "synthetic-token", mode: "admin", expiresAt: "2099-01-01T00:00:00Z", passwordChangeRequired: false });
+    if (path === summaryPath + "/options") return json({ companies: [], stores: [] });
+    if (path === summaryPath) return json(emptySummary);
     if (path === "/api/v1/admin/me") return json({ username: "DIAGNOSTICS", permissions: ["VIEW_ADMIN_DATA"] });
     if (path === "/api/v1/admin/companies") return json([{ companyId, companyName: record.companyName, taxId: "B00000001" }, { companyId: companyB, companyName: "Otra empresa", taxId: "B00000002" }]);
     if (path === "/api/v1/admin/licenses") return json([]);
@@ -112,6 +115,7 @@ try {
   await page.locator(".saas-dashboard").waitFor();
   await nav(page, "Fallos de tiendas");
   await page.getByRole("cell", { name: /APPLICATION_ERROR/ }).first().waitFor();
+  assert.ok(calls.some(c => c.path.endsWith("supervision/failures") && c.query.activeStoresOnly === "true"));
   const captureDirectory = fileURLToPath(new URL("../../output/playwright/", import.meta.url));
   await mkdir(captureDirectory, { recursive: true });
   await page.screenshot({ path: captureDirectory + "/saas-failures-list.png", fullPage: true });
@@ -186,15 +190,29 @@ try {
   await page.screenshot({ path: `${output}/saas-failure-diagnostics.png`, fullPage: true });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "Diagnostics page does not overflow viewport");
   await page.getByRole("button", { name: "Limpiar filtros", exact: true }).click();
+  await page.getByLabel("Buscar nombre, código o referencia", { exact: true }).fill(legacy.internalCode);
+  await page.getByLabel(/^Origen/).selectOption("LOCAL_SYNC");
+  await page.getByLabel(/^Estado/).selectOption("OPEN");
+  const legacyList = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    const query = url.searchParams;
+    return url.pathname.endsWith("/supervision/failures")
+      && query.get("q") === legacy.internalCode && query.get("source") === "LOCAL_SYNC" && query.get("status") === "OPEN";
+  });
+  await page.getByRole("button", { name: "Aplicar filtros", exact: true }).click();
+  await legacyList;
   await page.getByRole("row").filter({ hasText: "SYNC_DELIVERY_FAILED" }).getByRole("button", { name: "Detalle", exact: true }).click();
   await detail.locator(".failure-technical summary").click();
   await detail.getByText(legacy.detail, { exact: true }).waitFor();
+  await detail.getByText(legacy.sourceId, { exact: true }).waitFor();
+  assert.ok(calls.some(c => c.rawPath.endsWith(`/supervision/failures/${encodeURIComponent(legacy.id)}`)));
   for (const label of ["Última recepción en SaaS", "Módulo", "Versión de la aplicación", "ID de seguimiento", "Tipo de excepción", "Ubicación del error"]) {
     const value = detail.locator("dt").filter({ hasText: new RegExp("^" + label + "$") }).locator("+ dd");
     assert.match(await value.innerText(), /^No comunicado/, "Missing legacy field: " + label);
   }
   assert.equal(await detail.getByRole("button", { name: "Copiar ID de seguimiento" }).count(), 0);
   await detail.getByRole("button", { name: "Cerrar detalle" }).click();
+  await page.getByRole("button", { name: "Limpiar filtros", exact: true }).click();
   await page.getByLabel("Buscar nombre, código o referencia", { exact: true }).fill("missing-trace-000");
   await page.getByRole("button", { name: "Aplicar filtros", exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll("tbody tr").length === 0 && document.querySelector(".empty-state"));

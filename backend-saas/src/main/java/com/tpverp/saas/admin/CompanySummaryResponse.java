@@ -11,4 +11,5 @@ public record CompanySummaryResponse(UUID companyId, String companyName, String 
         TaxpayerType taxpayerType, CommercialProfile commercialProfile,
         Map<String, String> companyAddress, Instant createdAt,
         String contactName, String contactEmail, String contactPhone,
-        String supportStatus, String notes, List<CompanyOwner> owners) { }
+        String supportStatus, String notes, List<CompanyOwner> owners,
+        long storeCount, long licenseCount) { }

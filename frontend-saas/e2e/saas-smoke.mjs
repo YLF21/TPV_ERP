@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { emptySummary, summaryPath } from "./summary-fixture.mjs";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -28,6 +29,7 @@ async function ensureFrontend() {
   const viteBin = fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url));
   devServer = spawn(process.execPath, [viteBin, "--host", "127.0.0.1", "--port", "5185", "--strictPort", "--configLoader", "runner"], {
     cwd: frontendRoot,
+    env: { ...process.env, VITE_SAAS_SUPERVISION_ENABLED: "true" },
     stdio: "ignore"
   });
   for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -67,7 +69,7 @@ try {
       await page.locator('input[autocomplete="current-password"]').waitFor({ state: "visible" });
       console.log("SaaS real-backend E2E passed: mandatory password gate.");
     } else {
-      assert.equal(await page.evaluate(() => location.hash), "#/dashboard");
+      assert.equal(await page.evaluate(() => location.hash.split("?")[0]), "#/dashboard");
       console.log("SaaS real-backend E2E passed: login and dashboard.");
     }
     await page.close();
@@ -110,6 +112,7 @@ try {
   let companySwitchStarted = false;
   let staleCompanyReloads = 0;
   let outboxFailureActive = true;
+  let fiscalPolicyReads = 0;
   await adminPage.route("**/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     const method = route.request().method();
@@ -117,7 +120,11 @@ try {
     if (path === "/api/v1/auth/admin/login") {
       await json({ username: "ADMIN_E2E", accessToken: "admin-token", mode: "admin", expiresAt: "2099-01-01T00:00:00Z", passwordChangeRequired: false });
     } else if (path === "/api/v1/admin/me") {
-      await json({ username: "ADMIN_E2E", permissions: ["MANAGE_BILLING", "MANAGE_OPERATIONS"] });
+      await json({ username: "ADMIN_E2E", permissions: ["VIEW_ADMIN_DATA", "MANAGE_BILLING", "MANAGE_OPERATIONS"] });
+    } else if (path === summaryPath + "/options") {
+      await json({ companies: [], stores: [] });
+    } else if (path === summaryPath) {
+      await json(emptySummary);
     } else if (path === "/api/v1/admin/licenses") {
       await json([
         { licenseReference: "LIC-E2E", companyId: "company-fiscal", companyName: "Fiscal E2E", taxId: "B00000000", taxpayerType: "SOCIEDAD", taxRegime: "IVA", commercialProfile: "MINORISTA", status: "VALIDA", validUntil: "2099-01-01T00:00:00Z", maxWindows: 1, maxPda: 0 },
@@ -160,6 +167,9 @@ try {
       await json({ companyId: "company-other", planName: "STANDARD", usage: {}, limits: {} });
     } else if (path === "/api/v1/admin/companies/company-other/reconciliations") {
       await json([]);
+    } else if (path === "/api/v1/admin/verifactu-activation-policies") {
+      fiscalPolicyReads++;
+      await json([]);
     } else if (path === "/api/v1/admin/outbox/failures") {
       await json({ items: outboxFailureActive ? [{ id: "outbox-1", channel: "SECURITY", subject: "SECURITY_ALERT", attempts: 3, error: "delivery failed", failedAt: "2026-09-08T10:00:00Z" }] : [], nextCursor: null });
     } else if (path === "/api/v1/admin/outbox/security/outbox-1/requeue" && method === "POST") {
@@ -189,7 +199,7 @@ try {
   await adminPage.waitForFunction(() => location.hash === "#/billing");
   assert.equal(await billingNavigation.getAttribute("aria-current"), "page");
   await adminPage.goBack();
-  await adminPage.waitForFunction(() => location.hash === "#/dashboard");
+  await adminPage.waitForFunction(() => location.hash.split("?")[0] === "#/dashboard");
   const adminLanguage = adminPage.locator(".system-session .language-trigger");
   await adminLanguage.click();
   await adminPage.keyboard.press("Escape");
@@ -240,6 +250,29 @@ try {
   console.log("SaaS E2E passed: company switch isolates an in-flight billing mutation.");
   const supervisionNavigation = adminPage.locator(".top-nav-list").getByRole("button", { name: "Supervisión", exact: true });
   if (await supervisionNavigation.getAttribute("aria-expanded") !== "true") await supervisionNavigation.click();
+  const supervisionGroup = adminPage.locator("#nav-group-system");
+  assert.deepEqual(await supervisionGroup.evaluate(element => {
+    const phases = [];
+    for (const child of element.children) {
+      if (child.classList.contains("nav-phase-title")) phases.push({ title: child.textContent.trim(), modules: [] });
+      if (child.tagName === "BUTTON") phases.at(-1).modules.push(child.textContent.trim());
+    }
+    return phases;
+  }), [
+    { title: "1. Revisar estado", modules: ["Estado de clientes"] },
+    { title: "2. Detectar fallos", modules: ["Fallos de tiendas"] },
+    { title: "3. Diagnosticar", modules: ["Sincronizacion", "Estado fiscal"] },
+    { title: "4. Recuperar entregas", modules: ["Recuperación de entregas"] },
+    { title: "5. Atender al cliente", modules: ["Soporte"] },
+  ]);
+  await Promise.all([
+    adminPage.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/admin/fiscal-status/companies"),
+    supervisionGroup.getByRole("button", { name: "Estado fiscal", exact: true }).click(),
+  ]);
+  await adminPage.waitForURL("**/#/fiscal");
+  assert.equal(await adminPage.locator(".verifactu-policy-section").count(), 0);
+  assert.equal(await adminPage.locator("main").getByRole("button", { name: "Actualizar politica", exact: true }).count(), 0);
+  assert.equal(fiscalPolicyReads, 0, "Fiscal supervision must be read-only and separate from policy configuration");
   await adminPage.getByRole("button", { name: "Recuperación de entregas" }).click();
   await adminPage.getByText("SECURITY_ALERT", { exact: true }).waitFor();
   await adminPage.getByRole("button", { name: "Reencolar" }).click();

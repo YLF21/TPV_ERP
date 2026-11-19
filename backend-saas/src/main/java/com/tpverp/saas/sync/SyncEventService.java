@@ -14,6 +14,7 @@ import com.tpverp.saas.customer.CustomerAddressBookService;
 import com.tpverp.saas.document.CommercialDocumentSyncProjector;
 import com.tpverp.saas.plan.PlanLimitService;
 import com.tpverp.saas.plan.PlanResource;
+import com.tpverp.saas.inventory.InventorySnapshotProjector;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -40,6 +41,12 @@ public class SyncEventService {
     private CommercialDocumentSyncProjector commercialDocumentSyncProjector;
     private com.tpverp.saas.supervision.StoreFailureProjector storeFailureProjector;
     private ReplenishmentRequestProjector replenishmentRequestProjector;
+    private InventorySnapshotProjector inventorySnapshotProjector;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setInventorySnapshotProjector(InventorySnapshotProjector projector) {
+        this.inventorySnapshotProjector = projector;
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     void setReplenishmentRequestProjector(ReplenishmentRequestProjector projector) {
@@ -144,7 +151,7 @@ public class SyncEventService {
             }
             if (sameEvent(existing, installation, request, payloadHash)) {
                 if (existing.getProjectionStatus() == SaasSyncEvent.ProjectionStatus.ERROR
-                        || ReplenishmentRequestProjector.ENTITY_TYPE.equals(request.entityType())
+                        || requiresProjectionReceipt(request.entityType())
                                 && existing.getProjectionStatus() == SaasSyncEvent.ProjectionStatus.IGNORED) {
                     project(existing, request, clock.instant());
                 }
@@ -192,6 +199,12 @@ public class SyncEventService {
     }
 
     private void projectEvent(SaasSyncEvent event, SyncEventRequest request, java.time.Instant projectedAt) {
+        if (InventorySnapshotProjector.ENTITY_TYPE.equals(request.entityType())) {
+            events.flush();
+            inventorySnapshotProjector.project(event, request, projectedAt);
+            event.markProjected(projectedAt);
+            return;
+        }
         if (replenishmentRequestProjector != null && replenishmentRequestProjector.supports(request.entityType())) {
             events.flush();
             replenishmentRequestProjector.project(event, request);
@@ -343,8 +356,11 @@ public class SyncEventService {
     }
     private static SyncEventReceipt receipt(SaasSyncEvent event) {
         return new SyncEventReceipt(event.getEventId(), true,
-                ReplenishmentRequestProjector.ENTITY_TYPE.equals(event.getEntityType())
+                requiresProjectionReceipt(event.getEntityType())
                         ? event.getProjectionStatus() : null);
+    }
+    private static boolean requiresProjectionReceipt(String type) {
+        return ReplenishmentRequestProjector.ENTITY_TYPE.equals(type) || InventorySnapshotProjector.ENTITY_TYPE.equals(type);
     }
     private record InstantHolder(java.time.Instant value) {
     }

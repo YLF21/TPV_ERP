@@ -4,4 +4,5 @@
 @import "./styles/dashboard.css";
 @import "./styles/navigation.css";
 @import "./styles/auth.css";
+@import "./styles/central-login.css";
 @import "./styles/modules.css";

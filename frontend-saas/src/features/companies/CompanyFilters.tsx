@@ -35,7 +35,7 @@ export function CompanyFilters({ filters, onChange, companies, count }: {
   const root = useRef<HTMLDivElement>(null);
   const id = useId();
   const update = (key: keyof Filters, value: string) => onChange({ ...filters, [key]: value });
-  const dateLabel = (date: string) => new Intl.DateTimeFormat(language, { dateStyle: "short" }).format(new Date(`${date}T00:00:00`));
+  const dateLabel = (date: string) => new Intl.DateTimeFormat(language, { dateStyle: "short", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
   const dateSummary = filters.dateFrom && filters.dateTo
     ? `${dateLabel(filters.dateFrom)} – ${dateLabel(filters.dateTo)}`
     : filters.dateFrom ? `${f("from")} ${dateLabel(filters.dateFrom)}`
@@ -59,7 +59,7 @@ export function CompanyFilters({ filters, onChange, companies, count }: {
     { key: "query", label: f("query"), value: filters.query.trim() },
     { key: "province", label: t("province"), value: provinces.get(filters.province) ?? "" },
     { key: "taxpayerType", label: t("type"), value: typeLabel(filters.taxpayerType) },
-    { key: "dateFrom", label: l("createdAt"), value: filters.dateFrom || filters.dateTo ? dateSummary : "", keys: ["dateFrom", "dateTo"] },
+    { key: "dateFrom", label: `${l("createdAt")} (UTC)`, value: filters.dateFrom || filters.dateTo ? dateSummary : "", keys: ["dateFrom", "dateTo"] },
     ...fields.map(field => ({ ...field, value: filters[field.key].trim() })),
   ];
   const chips = allChips.filter(chip => chip.value !== "");
@@ -83,8 +83,8 @@ export function CompanyFilters({ filters, onChange, companies, count }: {
       <label>{t("type")}<select className="control-input" aria-label={t("type")} value={filters.taxpayerType} onChange={event => update("taxpayerType", event.target.value)}>
         <option value="">{f("all")}</option><option value="SOCIEDAD">{l("society")}</option><option value="AUTONOMO">{l("selfEmployed")}</option>
       </select></label>
-      <div className="company-date-filter"><span id={`${id}-date-label`}>{l("createdAt")}</span>
-        <button className="control-input company-date-toggle" type="button" aria-label={l("createdAt")} aria-describedby={`${id}-date-summary`} aria-expanded={dates} aria-controls={`${id}-dates`} onClick={() => setDates(!dates)}>
+      <div className="company-date-filter"><span id={`${id}-date-label`}>{l("createdAt")} (UTC)</span>
+        <button className="control-input company-date-toggle" type="button" aria-label={`${l("createdAt")} (UTC)`} aria-describedby={`${id}-date-summary`} aria-expanded={dates} aria-controls={`${id}-dates`} onClick={() => setDates(!dates)}>
           <span id={`${id}-date-summary`}>{dateSummary}</span><span aria-hidden="true">▾</span>
         </button>
       </div>

@@ -162,6 +162,8 @@ export type CreateCompanyRequest = CompanyProfileRequest & {
 };
 
 export type CompanySummary = CompanyContactData & {
+  storeCount?: number;
+  licenseCount?: number;
   companyId: string;
   companyName: string;
   taxId: string;

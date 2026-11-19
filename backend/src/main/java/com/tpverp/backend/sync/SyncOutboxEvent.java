@@ -1,5 +1,6 @@
 package com.tpverp.backend.sync;
 
+import com.tpverp.backend.inventory.InventorySnapshotCapture;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -192,9 +193,16 @@ public class SyncOutboxEvent {
         this.claimedAt = null;
         this.claimToken = null;
         this.updatedAt = sentAt;
-        // Replenishment is a transient list, not a business audit ledger. Keep only
-        // delivery metadata once SaaS has acknowledged the persisted projection.
-        if ("REPLENISHMENT_REQUEST".equals(entityType)) this.payload = new LinkedHashMap<>();
+        // These feeds require SaaS to acknowledge durable projection before the worker marks them sent.
+        if ("REPLENISHMENT_REQUEST".equals(entityType)) {
+            this.payload = new LinkedHashMap<>();
+        } else if (InventorySnapshotCapture.ENTITY_TYPE.equals(entityType)) {
+            var manifest = new LinkedHashMap<>(payload);
+            manifest.remove("products");
+            manifest.remove("warehouses");
+            manifest.remove("balances");
+            this.payload = manifest;
+        }
         return true;
     }
 

@@ -1,0 +1,48 @@
+.analytics-tools { display:flex; flex-wrap:wrap; gap:8px; align-items:start; min-width:0; }
+.analytics-preferences { min-width:min(100%,220px); max-width:100%; flex:0 1 auto; border:1px solid var(--line); }
+.analytics-preferences[open] { flex:1 1 100%; order:2; }
+.analytics-preferences summary { min-height:32px; padding:7px 9px; color:var(--text); background:#f5f7fa; cursor:pointer; font-size:12px; font-weight:700; }
+.analytics-preferences summary:focus-visible { outline:2px solid #2e79b9; outline-offset:2px; }
+.analytics-preferences-body { display:grid; gap:8px; padding:8px; }
+.analytics-preferences-body p { margin:0; font-size:12px; color:var(--muted); }
+.analytics-saved-filters { display:flex; flex-wrap:wrap; gap:8px; align-items:end; }
+.analytics-saved-filters label { min-width:140px; flex:1; font-size:12px; }
+.analytics-columns { display:flex; gap:8px 16px; flex-wrap:wrap; min-width:0; border:1px solid var(--line); padding:8px; }
+.analytics-columns label { display:flex; align-items:center; gap:5px; font-size:12px; }
+.analytics-exports { display:flex; flex-wrap:wrap; gap:6px; margin-inline-start:auto; }
+.analytics-tools > [role="alert"] { flex-basis:100%; margin:0; overflow-wrap:anywhere; }
+.analytics-chart { margin:0; min-width:0; border:1px solid var(--line); background:white; padding:10px; }
+.analytics-chart figcaption { color:#12385f; background:#f5f7fa; border-bottom:1px solid var(--line); font-weight:700; font-size:13px; margin:-10px -10px 8px; padding:8px 10px; }
+.analytics-chart svg { width:100%; display:block; max-height:230px; }
+.analytics-chart svg text { font-size:10px; fill:#42556b; }
+.analytics-grid-line { stroke:#dae3ec; stroke-width:1; }
+.analytics-chart svg g:focus { outline:none; }
+.analytics-chart svg g:focus rect[fill="transparent"] { fill:#d8e9fb55; stroke:#2e79b9; }
+.analytics-chart-legend { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:12px; }
+.analytics-chart-legend span { display:inline-flex; align-items:center; gap:5px; }
+.analytics-chart-legend i { width:10px; height:10px; flex:none; }
+.analytics-chart-focus { min-height:17px; margin-top:5px; font-size:11px; color:var(--muted); }
+.analytics-charts { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,350px),1fr)); gap:10px; }
+.analytics-filter-tags { display:flex; gap:5px; flex-wrap:wrap; }
+.analytics-filter-tags button { font-size:11px; padding:3px 6px; }
+.analytics-table-scroll { max-height:560px; overflow:auto; }
+.analytics-table-scroll thead th { position:sticky; top:0; z-index:1; }
+.analytics-period-shortcuts { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:6px; align-items:end; padding-bottom:4px; }
+.analytics-period-shortcuts > label { min-width:180px; max-width:250px; }
+.analytics-period-shortcuts .small-button { min-height:32px; }
+.analytics-filter-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.analytics-pending { color:#815010; font-size:12px; }
+.analytics-preferences { min-width:110px; }
+.analytics-export-note { align-self:center; color:var(--muted); font-size:11px; }
+.reports-content { min-width:0; }
+.statistics-table .report-sticky { position:sticky; inset-inline-start:0; z-index:1; background:#fff; box-shadow:1px 0 var(--line); }
+.statistics-table thead .report-sticky { z-index:3; background:#edf2f7; }
+.statistics-table tfoot .report-sticky { background:#deebf8; }
+.statistics-table .report-sticky-actions { inset-inline-start:auto; inset-inline-end:0; box-shadow:-1px 0 var(--line); }
+.analytics-filter-disclosure { min-width:0; }
+.analytics-filter-overview { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:8px; padding:6px 8px; border:1px solid var(--line); background:#f5f7fa; }
+.analytics-applied-scope { display:grid; gap:3px; min-width:0; flex:1 1 230px; font-size:12px; color:var(--muted); overflow-wrap:anywhere; }
+.analytics-applied-scope strong { color:#12385f; font-size:12px; }
+.analytics-filter-disclosure > [hidden] { display:none; }
+.analytics-export-layout { display:flex; align-items:center; gap:5px; font-size:11px; }
+.analytics-export-layout .control-input { min-height:30px; padding:4px 6px; width:auto; }

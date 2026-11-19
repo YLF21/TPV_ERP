@@ -27,10 +27,11 @@ public class StoreWorkspaceController {
     @GetMapping("/stores")
     public Page<StoreRow> stores(@RequestParam(required = false) UUID companyId,
             @RequestParam(defaultValue = "") String q, @RequestParam(required = false) Boolean active,
+            @RequestParam(required = false) String commercialConfiguration,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "25") int size,
             @RequestParam(defaultValue = "companyName") String sortBy,
             @RequestParam(defaultValue = "ASC") String sortDirection) {
-        return stores.list(companyId, q, active, page, size, sortBy, sortDirection);
+        return stores.list(companyId, q, active, commercialConfiguration, page, size, sortBy, sortDirection);
     }
 
     @GetMapping("/stores/{storeId}")
@@ -60,6 +61,7 @@ public class StoreWorkspaceController {
 
     @GetMapping("/license-workspace")
     public Page<LicenseRow> licenses(@RequestParam(required = false) UUID companyId,
+            @RequestParam(required = false) UUID storeId,
             @RequestParam(defaultValue = "") String q, @RequestParam(required = false) String status,
             @RequestParam(required = false) Instant expiresBefore,
             @RequestParam(required = false) Boolean hasConnections,
@@ -67,7 +69,8 @@ public class StoreWorkspaceController {
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "25") int size,
             @RequestParam(defaultValue = "validUntil") String sortBy,
             @RequestParam(defaultValue = "ASC") String sortDirection) {
-        return licenses.list(companyId, q, status, expiresBefore, hasConnections, billingStatus, page, size, sortBy, sortDirection);
+        return licenses.list(companyId, storeId, q, status, expiresBefore, hasConnections,
+                billingStatus, page, size, sortBy, sortDirection);
     }
 
     @GetMapping("/license-workspace/activation-codes")

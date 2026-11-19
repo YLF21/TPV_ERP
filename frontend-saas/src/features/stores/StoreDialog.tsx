@@ -8,8 +8,9 @@ import { useWorkspaceLabels } from "../../i18n/workspace";
 import { AddressFields, Input } from "../../shared/ui";
 import { LoadState } from "../../shared/workspace-ui";
 import { WorkspaceDialog } from "../../shared/WorkspaceDialog";
-import { emptyFiscalAddress, errorMessage, formatDate, toLocalInput } from "../../shared/lib";
+import { emptyFiscalAddress, errorMessage, formatDate, toUtcInput, parseUtcDateTime } from "../../shared/lib";
 import { useStoreLabels } from "./labels";
+import { DirectoryLink } from "../../shared/DirectoryActions";
 
 type DialogProps = {
   store: StoreRow | "new"; credentials: Credentials; companies: CompanySummary[]; defaultCompanyId: string;
@@ -50,7 +51,7 @@ export function StoreDialog(props: DialogProps) {
 function StoreEditor({ editing, credentials, companies, defaultCompanyId, permissions, onClose, onSaved, onNotice, onBusy, onDialogNotice }: DialogProps & {
   editing: StoreRow | "new"; onBusy: (busy: boolean) => void; onDialogNotice: (notice: Notice | null) => void;
 }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const l = useWorkspaceLabels();
   const s = useStoreLabels();
   const canEdit = permissions.has(editing === "new" ? "ADD_COMPANY" : "EDIT_COMPANY_DATA");
@@ -63,9 +64,11 @@ function StoreEditor({ editing, credentials, companies, defaultCompanyId, permis
     companyId: editing.companyId, code: editing.code, name: editing.name, storeAddress: editing.storeAddress ?? emptyFiscalAddress(),
     timeZoneId: editing.timeZoneId, active: editing.active, taxRegime: editing.taxRegime, commercialProfile: editing.commercialProfile ?? "",
     servicePrice: editing.servicePrice ?? "", billingPeriod: editing.billingPeriod ?? "",
-    validUntil: editing.validUntil ? toLocalInput(new Date(editing.validUntil)) : "", maxWindows: editing.maxWindows, maxPda: editing.maxPda,
+    validUntil: editing.validUntil ? toUtcInput(new Date(editing.validUntil)) : "", maxWindows: editing.maxWindows, maxPda: editing.maxPda,
   });
   const [busy, setBusy] = useState(false);
+  const initialForm = useRef(JSON.stringify(form));
+  const dirty = JSON.stringify(form) !== initialForm.current;
   const inFlight = useRef(false);
   const mounted = useRef(false);
   const token = useRef(credentials.accessToken);
@@ -94,19 +97,24 @@ function StoreEditor({ editing, credentials, companies, defaultCompanyId, permis
   function save(event: FormEvent) {
     event.preventDefault();
     if (disabled || inFlight.current) return;
-    const parsedExpiry = new Date(form.validUntil);
+    const parsedExpiry = parseUtcDateTime(form.validUntil);
     const keepMissingExpiry = editing !== "new" && editing.validUntil == null && !form.validUntil;
-    if (!keepMissingExpiry && (!form.validUntil || Number.isNaN(parsedExpiry.getTime()))) {
+    if (!keepMissingExpiry && !parsedExpiry) {
       onDialogNotice({ type: "error", text: s("dateRequired") }); return;
     }
-    const unchangedExpiry = editing !== "new" && editing.validUntil && form.validUntil === toLocalInput(new Date(editing.validUntil));
-    const validUntil = keepMissingExpiry ? null : unchangedExpiry ? editing.validUntil : parsedExpiry.toISOString();
+    const unchangedExpiry = editing !== "new" && editing.validUntil && form.validUntil === toUtcInput(new Date(editing.validUntil));
+    const validUntil = keepMissingExpiry ? null : unchangedExpiry ? editing.validUntil : parsedExpiry!.toISOString();
     const { companyId, code, active, ...details } = form;
     const payload = { ...details, servicePrice: form.servicePrice.trim(), validUntil };
     void mutate(editing === "new" ? "/api/v1/admin/companies/" + encodeURIComponent(companyId) + "/stores" : "/api/v1/admin/stores/" + editing.id,
       editing === "new" ? "POST" : "PUT", editing === "new" ? { code, ...payload } : { ...payload, active });
   }
   return <>
+    {editing !== "new" && <div className="directory-related-links">
+      <DirectoryLink view="companies" parameters={{ companyId: editing.companyId }} disabled={busy || dirty}>{language === "zh" ? "查看企业" : language === "en" ? "View company" : "Ver empresa"}</DirectoryLink>
+      <DirectoryLink view="licenses" parameters={{ companyId: editing.companyId, storeId: editing.id, status: "" }} disabled={busy || dirty}>{language === "zh" ? "查看许可证" : language === "en" ? "View licenses" : "Ver licencias"}</DirectoryLink>
+      {dirty && <small>{language === "zh" ? "请先保存或取消更改。" : language === "en" ? "Save or cancel your changes before leaving." : "Guarda o cancela los cambios antes de salir."}</small>}
+    </div>}
     {editing !== "new" && <dl className="store-detail-summary">
       <div><dt>{l("internalCode")}</dt><dd>{editing.internalCode ?? l("codePending")}</dd></div>
       <div><dt>{l("status")}</dt><dd>{editing.active ? l("active") : l("inactive")}</dd></div>

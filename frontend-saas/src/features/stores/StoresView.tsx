@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useRemote } from "../../app/RefreshContext";
 import { api } from "../../lib/api";
 import type { StoreRow } from "../../lib/workspace-api";
@@ -10,6 +10,9 @@ import { LoadState } from "../../shared/workspace-ui";
 import { formatCurrency, formatDate } from "../../shared/lib";
 import type { Notice } from "../../shared/types";
 import { SaasDataTable, type DataColumn } from "../../shared/table/SaasDataTable";
+import { DirectoryExcelExport } from "../../shared/table/DirectoryExcelExport";
+import { DirectoryLink, DirectoryReturn } from "../../shared/DirectoryActions";
+import { useDirectoryPosition, useDirectoryState } from "../../shared/directory-navigation";
 import { DirectoryFilters, type DirectoryFilterChip } from "../../shared/filters/DirectoryFilters";
 import { CompanyPicker } from "../../shared/companies/CompanyPicker";
 import { useStoreLabels } from "./labels";
@@ -27,18 +30,25 @@ export function StoresView(props: StoresViewProps) {
 function StoresDirectory({ credentials, permissions, onNotice }: StoresViewProps) {
   const l = useWorkspaceLabels();
   const s = useStoreLabels();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const companiesState = useRemote(() => api.companies(credentials), [credentials.accessToken]);
   const previousCompanies = useRef<{ token: string; rows: CompanySummary[] } | null>(null);
   if (companiesState.data) previousCompanies.current = { token: credentials.accessToken, rows: companiesState.data };
   const companies = companiesState.data ?? (previousCompanies.current?.token === credentials.accessToken ? previousCompanies.current.rows : []);
-  const [companyFilter, setCompanyFilter] = useState({ id: "", name: "" });
+  const identity = credentials.accessToken + ":stores:";
+  useDirectoryPosition(credentials.accessToken);
+  const [companyFilter, setCompanyFilter] = useDirectoryState(identity + "company", () => ({ id: new URLSearchParams(window.location.hash.split("?")[1]).get("companyId") ?? "", name: "" }));
   const companyId = companyFilter.id;
-  const [q, setQ] = useState("");
-  const [active, setActive] = useState("");
-  const [sort, setSort] = useState({ key: "companyName", direction: "asc" as "asc" | "desc" });
-  const [editing, setEditing] = useState<StoreRow | "new" | null>(null);
-  const state = useStoreDirectory(credentials, { companyId, q, active, sortBy: sort.key, sortDirection: sort.direction === "asc" ? "ASC" : "DESC" });
+  const [q, setQ] = useDirectoryState(identity + "query", "");
+  const [active, setActive] = useDirectoryState(identity + "active", "");
+  const [commercialConfiguration, setCommercialConfiguration] = useDirectoryState(identity + "commercial", "");
+  const [sort, setSort] = useDirectoryState(identity + "sort", { key: "code", direction: "asc" as "asc" | "desc" });
+  const [editing, setEditing] = useDirectoryState<StoreRow | "new" | null>(identity + "editing", null);
+  const state = useStoreDirectory(credentials, { companyId, q, active, commercialConfiguration, sortBy: sort.key, sortDirection: sort.direction === "asc" ? "ASC" : "DESC" });
+  const commercialLabel = language === "zh" ? "商业配置" : language === "en" ? "Commercial configuration" : "Configuración comercial";
+  const pendingLabel = language === "zh" ? "待完善" : language === "en" ? "Pending" : "Pendiente";
+  const completeLabel = language === "zh" ? "完整" : language === "en" ? "Complete" : "Completa";
+  const licensesLabel = language === "zh" ? "查看许可证" : language === "en" ? "View licenses" : "Ver licencias";
   const tableScroll = useRef<HTMLDivElement>(null);
   const createButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -61,10 +71,11 @@ function StoresDirectory({ credentials, permissions, onNotice }: StoresViewProps
     return row ?? createButton.current ?? tableScroll.current?.querySelector<HTMLElement>("tbody tr, button") ?? null;
   }
   const columns: DataColumn<StoreRow, string>[] = [
+    { key: "code", label: s("localCodeColumn"), defaultWidth: 145, sortKey: "code", render: row => <strong>{row.code}</strong> },
+    { key: "name", label: l("store"), defaultWidth: 230, sortKey: "name", render: row => <strong>{row.name}</strong> },
     { key: "internalCode", label: l("internalCode"), defaultWidth: 175, sortKey: "internalCode", render: row => <strong>{row.internalCode ?? l("codePending")}</strong> },
-    { key: "companyName", label: l("company"), defaultWidth: 250, sortKey: "companyName", render: row => row.companyName },
-    { key: "code", label: s("localCodeColumn"), defaultWidth: 145, sortKey: "code", render: row => row.code },
-    { key: "name", label: l("store"), defaultWidth: 230, sortKey: "name", render: row => row.name },
+    { key: "companyName", label: l("company"), defaultWidth: 250, sortKey: "companyName", render: row => <DirectoryLink view="companies" parameters={{ companyId: row.companyId }}>{row.companyName}</DirectoryLink> },
+    { key: "licenses", label: language === "zh" ? "许可证" : language === "en" ? "Licenses" : "Licencias", defaultWidth: 130, render: row => <DirectoryLink view="licenses" parameters={{ companyId: row.companyId, storeId: row.id, status: "" }} label={`${licensesLabel}: ${row.name}`}>{licensesLabel}</DirectoryLink> },
     { key: "active", label: l("status"), defaultWidth: 105, sortKey: "active", render: row => row.active ? l("active") : l("inactive") },
     { key: "taxRegime", label: t("taxes"), defaultWidth: 120, sortKey: "taxRegime", render: row => row.taxRegime },
     { key: "commercialProfile", label: t("commercialProfile"), defaultWidth: 145, sortKey: "commercialProfile", render: row => row.commercialProfile === "MAYORISTA" ? s("wholesale") : row.commercialProfile === "MINORISTA" ? s("retail") : s("unconfigured") },
@@ -81,23 +92,33 @@ function StoresDirectory({ credentials, permissions, onNotice }: StoresViewProps
     ...(q.trim() ? [{ key: "q", label: l("search"), value: q.trim(), onRemove: () => setQ("") }] : []),
     ...(companyId ? [{ key: "companyId", label: l("company"), value: companyName, onRemove: () => setCompanyFilter({ id: "", name: "" }) }] : []),
     ...(active ? [{ key: "active", label: l("status"), value: active === "true" ? l("active") : l("inactive"), onRemove: () => setActive("") }] : []),
+    ...(commercialConfiguration ? [{ key: "commercialConfiguration", label: commercialLabel, value: commercialConfiguration === "pending" ? pendingLabel : completeLabel, onRemove: () => setCommercialConfiguration("") }] : []),
   ];
   return <section className="content-section table-workspace stores-workspace">
     <div className="stores-list-heading">
       <div><h2>{l("stores")}</h2><p className="stores-table-hint">{s("tableHint")}</p></div>
-      {permissions.has("ADD_COMPANY") && <button className="primary-button" ref={createButton} type="button" disabled={companiesState.loading || Boolean(companiesState.error) || companies.length === 0} onClick={() => setEditing("new")}>{l("create")}</button>}
+      <div className="directory-table-actions">
+        <DirectoryReturn />
+        <DirectoryExcelExport credentials={credentials} resource="stores" filters={{ companyId, q, active, commercialConfiguration }} sort={sort}
+          disabled={state.loading || Boolean(state.error)} />
+        {permissions.has("ADD_COMPANY") && <button className="primary-button" ref={createButton} type="button" disabled={companiesState.loading || Boolean(companiesState.error) || companies.length === 0} onClick={() => setEditing("new")}>{l("create")}</button>}
+      </div>
     </div>
-    <DirectoryFilters label={l("stores")} chips={chips} onClear={() => { setQ(""); setCompanyFilter({ id: "", name: "" }); setActive(""); }}
-      advanced={<label>{l("status")}<select className="control-input" aria-label={l("status")} value={active} onChange={event => setActive(event.target.value)}>
+    <DirectoryFilters label={l("stores")} chips={chips} onClear={() => { setQ(""); setCompanyFilter({ id: "", name: "" }); setActive(""); setCommercialConfiguration(""); }}
+      advanced={<><label>{l("status")}<select className="control-input" aria-label={l("status")} value={active} onChange={event => setActive(event.target.value)}>
         <option value="">{l("all")}</option><option value="true">{l("active")}</option><option value="false">{l("inactive")}</option>
-      </select></label>}>
+      </select></label></>}>
       <Input label={l("search")} value={q} onChange={setQ} />
       <CompanyPicker companies={companies} value={companyId} required={false} selectedLabel={companyName}
         onChange={id => setCompanyFilter({ id, name: companies.find(company => company.companyId === id)?.companyName ?? "" })} />
+      <label>{commercialLabel}<select className="control-input" aria-label={commercialLabel} value={commercialConfiguration} onChange={event => setCommercialConfiguration(event.target.value)}>
+        <option value="">{l("all")}</option><option value="pending">{pendingLabel}</option><option value="complete">{completeLabel}</option>
+      </select></label>
     </DirectoryFilters>
     <LoadState {...companiesState} />
     <div className="stores-table-region" aria-busy={state.loading}>
       <SaasDataTable username={credentials.username} tableKey="stores" label={l("stores")} columns={columns} rows={state.rows}
+        legacyColumnOrder={["internalCode", "companyName", "code", "name", "active", "taxRegime", "commercialProfile", "servicePrice", "billingPeriod", "validUntil", "maxWindows", "maxPda", "activeInstallations", "lastSyncAt"]}
         scrollRef={tableScroll} scrollClassName="stores-table-scroll" sort={sort}
         onSort={key => setSort(current => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))}
         onOpen={setEditing} disabled={editing !== null} />

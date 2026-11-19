@@ -5,7 +5,7 @@ import { isCurrentSelection } from "../../lib/frontend-runtime.mjs";
 import type { Credentials, InventoryMovement, InventoryStock, LicenseSummary, SalesDocument } from "../../lib/types";
 import { Notice } from "../../shared/types";
 import { useI18n } from "../../i18n/index";
-import { uniqueCompanies, toLocalInput, normalizeSearch, errorMessage, isRecoverableBackendDataError, isPositiveAmount, uniqueStrings, formatCurrency, formatDate, formatQuantity } from "../../shared/lib";
+import { uniqueCompanies, toUtcInput, utcInputToInstant, normalizeSearch, errorMessage, isRecoverableBackendDataError, isPositiveAmount, uniqueStrings, formatCurrency, formatDate, formatQuantity } from "../../shared/lib";
 import { SectionHeader, RetryError, Input, Select, EmptyState, StatusPill } from "../../shared/ui";
 
 export function OperationsView({
@@ -35,7 +35,7 @@ export function OperationsView({
     total: "0.00",
     currency: "EUR",
     status: "CONFIRMADA",
-    issuedAt: toLocalInput(new Date())
+    issuedAt: toUtcInput(new Date())
   });
   const [movementForm, setMovementForm] = useState({
     warehouseCode: "",
@@ -43,7 +43,7 @@ export function OperationsView({
     movementType: "ENTRADA",
     quantity: "1.00",
     reason: "",
-    movedAt: toLocalInput(new Date())
+    movedAt: toUtcInput(new Date())
   });
   const [busy, setBusy] = useState(false);
   const [operationsLoadError, setOperationsLoadError] = useState<string | null>(null);
@@ -117,9 +117,9 @@ export function OperationsView({
       await api.createSalesDocument(credentials, companyId, {
         ...saleForm,
         storeId: saleForm.storeId || null,
-        issuedAt: new Date(saleForm.issuedAt).toISOString()
+        issuedAt: utcInputToInstant(saleForm.issuedAt)
       });
-      setSaleForm({ storeId: "", documentNumber: "", customerCode: "", total: "0.00", currency: "EUR", status: "CONFIRMADA", issuedAt: toLocalInput(new Date()) });
+      setSaleForm({ storeId: "", documentNumber: "", customerCode: "", total: "0.00", currency: "EUR", status: "CONFIRMADA", issuedAt: toUtcInput(new Date()) });
       await loadOperations(companyId);
       onNotice({ type: "success", text: t("itemCreated") });
     } catch (error) {
@@ -144,9 +144,9 @@ export function OperationsView({
     try {
       await api.createInventoryMovement(credentials, companyId, {
         ...movementForm,
-        movedAt: new Date(movementForm.movedAt).toISOString()
+        movedAt: utcInputToInstant(movementForm.movedAt)
       });
-      setMovementForm({ warehouseCode: "", productSku: "", movementType: "ENTRADA", quantity: "1.00", reason: "", movedAt: toLocalInput(new Date()) });
+      setMovementForm({ warehouseCode: "", productSku: "", movementType: "ENTRADA", quantity: "1.00", reason: "", movedAt: toUtcInput(new Date()) });
       await loadOperations(companyId);
       onNotice({ type: "success", text: t("itemCreated") });
     } catch (error) {

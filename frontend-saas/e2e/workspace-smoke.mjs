@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { emptySummary, summaryPath } from "./summary-fixture.mjs";
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -13,7 +14,6 @@ const companyWithoutLicense = "10000000-0000-4000-8000-000000000003";
 const storeA = "20000000-0000-4000-8000-000000000001";
 const storeB = "20000000-0000-4000-8000-000000000002";
 const storeWithoutLicense = "20000000-0000-4000-8000-000000000004";
-const installation = "30000000-0000-4000-8000-000000000001";
 const address = { linea1: "Calle Sintética 1", ciudad: "Las Palmas", codigoPostal: "35001", provincia: "Las Palmas", pais: "ES" };
 const licenses = [companyA, companyB].map((companyId, index) => ({ licenseReference: `LIC-DEMO-${index + 1}`, companyId,
   companyName: `Empresa de prueba ${index + 1}`, taxId: `B0000000${index}`, taxpayerType: "SOCIEDAD", taxRegime: "IVA",
@@ -53,16 +53,14 @@ async function setup(permissions = allPermissions) {
     internalCode: "3500004", name: "Tienda sin licencia", taxRegimeLocked: false, installations: 0, activeInstallations: 0, lastSyncAt: null });
   let memberships = [{ companyId: companyA, companyName: licenses[0].companyName, roleName: "VIEWER", companyPrivileges: [],
     stores: [{ storeId: storeA, code: "001", name: stores[0].name, internalCode: "3500001", active: true }] }];
-  const failure = { id: "LOCAL_SYNC:40000000-0000-4000-8000-000000000001", source: "LOCAL_SYNC", sourceId: "50000000-0000-4000-8000-000000000001",
-    companyId: companyA, companyName: licenses[0].companyName, storeId: storeA, storeName: stores[0].name, internalCode: "3500001",
-    installationId: installation, installationReference: "INST-DEMO-1", status: "OPEN", severity: "WARNING", code: "SYNC_DELIVERY_FAILED",
-    detail: "Synthetic store delivery failure", firstSeenAt: "2026-09-19T10:00:00Z", lastSeenAt: "2026-09-20T10:00:00Z", occurrences: 3, central: false, storeActive: true };
   await page.route("**/api/**", async route => {
     const request = route.request(); const url = new URL(request.url()); const path = decodeURIComponent(url.pathname); const method = request.method();
     const body = request.postData() ? JSON.parse(request.postData()) : null;
     calls.push({ path, method, query: Object.fromEntries(url.searchParams), body });
     const json = value => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     if (path === "/api/v1/auth/admin/login") return json({ username: "WORKSPACE_DEMO", accessToken: "synthetic-admin-token", mode: "admin", expiresAt: "2099-01-01T00:00:00Z", passwordChangeRequired: false });
+    if (path === summaryPath + "/options") return json({ companies: [], stores: [] });
+    if (path === summaryPath) return json(emptySummary);
     if (path === "/api/v1/admin/me") return json({ username: "WORKSPACE_DEMO", permissions });
     if (path === "/api/v1/admin/licenses") return json(licenses);
     if (path === "/api/v1/admin/companies") return companiesFail
@@ -118,8 +116,6 @@ async function setup(permissions = allPermissions) {
       }
       return json(tenantUsers.filter(user => user.companyId === selectedCompany));
     }
-    if (path === "/api/v1/admin/supervision/failures") return json({ items: [failure], nextCursor: null, hasMore: false, size: 1 });
-    if (path === `/api/v1/admin/supervision/failures/${failure.id}`) return json(failure);
     if (method !== "GET") throw new Error(`Unexpected workspace mutation: ${method} ${path}`);
     return json([]);
   });
@@ -173,15 +169,14 @@ try {
   await assertLogoutInsideViewport(page);
   console.log("Workspace E2E: logout fits and remains clickable at 1600px and 1280px.");
   await nav(page, "Tiendas");
-  await page.getByRole("cell", { name: "3500001", exact: true }).waitFor();
-  const firstStore = page.getByRole("row").filter({ has: page.getByRole("cell", { name: "3500001", exact: true }) });
+  const firstStoreCode = page.getByRole("cell", { name: "3500001", exact: true });
   const storeDialog = page.locator("dialog.saas-store-dialog");
-  await firstStore.dblclick();
+  await firstStoreCode.dblclick();
   await page.getByRole("form", { name: "Editar" }).getByLabel("Nombre", { exact: true }).fill("Tienda editada");
   await page.getByRole("button", { name: "Guardar", exact: true }).click();
   assert.equal((await latestCall(calls, c => c.method === "PUT" && c.path.endsWith(storeA))).body.name, "Tienda editada");
   await storeDialog.waitFor({ state: "hidden" });
-  await firstStore.dblclick();
+  await firstStoreCode.dblclick();
   await page.getByRole("form", { name: "Editar" }).getByLabel("Nombre", { exact: true }).fill("Unsaved activity regression");
   const savesBeforeActivity = calls.filter(c => c.method === "PUT" && c.path.endsWith(storeA)).length;
   await storeDialog.getByRole("button", { name: /Desactivar/i }).click();
@@ -189,7 +184,7 @@ try {
   await page.getByRole("form", { name: "Editar" }).waitFor({ state: "hidden" });
   assert.equal(calls.filter(c => c.method === "PUT" && c.path.endsWith(storeA)).length, savesBeforeActivity,
     "Changing activity must close the stale editor without saving its old active state");
-  await firstStore.dblclick();
+  await firstStoreCode.dblclick();
   await storeDialog.getByRole("button", { name: /^Activar$/i }).click();
   await storeDialog.waitFor({ state: "hidden" });
   await page.getByRole("button", { name: "Crear", exact: true }).click();
@@ -201,7 +196,7 @@ try {
   await createStore.getByLabel("Perfil comercial", { exact: true }).selectOption("MINORISTA");
   await createStore.getByLabel("Precio SaaS (EUR)", { exact: true }).fill("29.00");
   await createStore.getByLabel("Periodicidad", { exact: true }).selectOption("MONTHLY");
-  await createStore.getByLabel("Valida hasta", { exact: true }).click();
+  await createStore.getByLabel("Valida hasta (UTC)", { exact: true }).click();
   await page.locator(".date-time-popover").getByRole("button", { name: /Hoy|Today/ }).click();
   await page.locator(".date-time-popover .primary-button").click();
   for (const [label, value] of [["Direccion", address.linea1], ["Ciudad", address.ciudad], ["Codigo postal", address.codigoPostal], ["Pais", address.pais]]) {
@@ -213,7 +208,7 @@ try {
   console.log("Workspace E2E: seven-digit codes, store create/edit/activity and stale-editor closure passed.");
 
   await nav(page, "Licencias activas");
-  await page.getByRole("row").filter({ hasText: "LIC-DEMO-1" }).dblclick();
+  await page.getByRole("cell", { name: "LIC-DEMO-1", exact: true }).dblclick();
   const licenseDetail = page.getByRole("heading", { name: "LIC-DEMO-1", level: 3, exact: true });
   await licenseDetail.waitFor({ state: "visible" });
   await page.keyboard.press("Escape");
@@ -224,10 +219,12 @@ try {
   assert.equal(await licenseDetail.count(), 0, "A fresh filtered response must not reopen the previous license detail");
   await page.getByLabel(/^Estado/).selectOption("CADUCADA");
   await latestCall(calls, c => c.path.endsWith("license-workspace") && c.query.status === "CADUCADA");
-  await page.getByRole("search", { name: "Licencias activas", exact: true }).getByRole("button", { name: "+ Más filtros", exact: true }).click();
-  await page.getByLabel("Caduca antes de", { exact: true }).click();
-  await page.locator(".date-time-popover").getByRole("button", { name: /Hoy|Today/ }).click();
-  await page.locator(".date-time-popover .primary-button").click();
+  const licenseFilters = page.getByRole("search", { name: "Licencias caducadas", exact: true });
+  await licenseFilters.getByRole("button", { name: "+ Más filtros", exact: true }).click();
+  await licenseFilters.getByLabel("Caduca antes de (UTC)", { exact: true }).click();
+  const expiryCalendar = licenseFilters.getByRole("dialog", { name: "Caduca antes de (UTC)", exact: true });
+  await expiryCalendar.getByRole("button", { name: "Hoy", exact: true }).click();
+  await expiryCalendar.getByRole("button", { name: "Cerrar calendario", exact: true }).click();
   assert.ok((await latestCall(calls, c => c.path.endsWith("license-workspace") && c.query.expiresBefore)).query.expiresBefore.endsWith("Z"));
   await nav(page, "Crear licencia");
   await page.getByRole("combobox", { name: "Empresa", exact: true }).fill("Empresa de prueba 1");
@@ -293,22 +290,9 @@ try {
   assert.equal(await page.getByText("TPV-SYNTHETIC-DEMO", { exact: true }).count(), 0);
   console.log("Workspace E2E: explicit grants without a license, company-list retry, privilege dependency and no installation secret passed.");
 
-  await nav(page, "Fallos de tiendas");
-  await page.getByRole("cell", { name: "3500001", exact: false }).waitFor();
-  await latestCall(calls, c => c.path.endsWith("supervision/failures") && c.query.activeStoresOnly === "true");
-  await page.getByLabel("Buscar nombre, código o referencia", { exact: true }).fill("3500001");
-  await page.getByLabel(/^Origen/).selectOption("LOCAL_SYNC");
-  await page.getByLabel(/^Estado/).selectOption("OPEN");
-  await page.getByRole("button", { name: "Aplicar filtros", exact: true }).click();
-  await latestCall(calls, c => c.path.endsWith("supervision/failures") && c.query.q === "3500001" && c.query.source === "LOCAL_SYNC" && c.query.status === "OPEN");
-  await page.getByRole("button", { name: "Detalle", exact: true }).click();
-  await latestCall(calls, c => c.path.includes("supervision/failures/LOCAL_SYNC:"));
-  await page.locator("details.failure-technical summary").click();
-  await page.getByText("50000000-0000-4000-8000-000000000001", { exact: true }).waitFor();
   const screenshotDirectory = fileURLToPath(new URL("../../output/playwright/", import.meta.url));
   await mkdir(screenshotDirectory, { recursive: true });
   await page.screenshot({ path: `${screenshotDirectory}/saas-workspace.png`, fullPage: true });
-  console.log("Workspace E2E: received-failure server filters, encoded detail and synthetic screenshot passed.");
   await page.close();
 
   const viewer = await setup(["VIEW_ADMIN_DATA"]);
@@ -317,7 +301,7 @@ try {
   await nav(viewer.page, "Tiendas");
   await viewer.page.getByRole("cell", { name: "3500001", exact: true }).waitFor();
   assert.equal(await viewer.page.locator("main").getByRole("button", { name: /^(Crear|Editar|Desactivar|Activar)$/i }).count(), 0);
-  await viewer.page.locator(`tr[data-row-id="${storeA}"]`).dblclick();
+  await viewer.page.getByRole("cell", { name: "3500001", exact: true }).dblclick();
   const viewerStoreDialog = viewer.page.locator("dialog.saas-store-dialog");
   await viewerStoreDialog.getByLabel("Nombre", { exact: true }).waitFor();
   assert.equal(await viewerStoreDialog.getByLabel("Nombre", { exact: true }).isDisabled(), true);

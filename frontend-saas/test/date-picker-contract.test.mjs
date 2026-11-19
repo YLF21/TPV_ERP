@@ -15,7 +15,7 @@ test("every shared date and datetime input delegates to the large calendar", asy
   assert.match(app, /if \(type === "date" \|\| type === "datetime-local"\)/);
   assert.match(app, /dateOnly=\{type === "date"\}/);
   assert.match(app, /disabled=\{disabled\}/);
-  assert.match(app, /dateOnly \? toDateInput\(next\) : toLocalInput\(next\)/);
+  assert.match(app, /dateOnly \? toDateInput\(next\) : toUtcInput\(next\)/);
   assert.doesNotMatch(app, /<input[^>]+type="datetime-local"/);
   assert.doesNotMatch(app, /<input[^>]+type="date"/);
 });

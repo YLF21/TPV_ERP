@@ -1,0 +1,14 @@
+export function formatUtcDateTime(value: string | Date, locale: string, seconds?: boolean): string;
+export function formatSaasDate(value: string, locale: string): string;
+export function toUtcInput(date: Date): string;
+export function parseUtcDateTime(value: string): Date | null;
+export function utcInputToInstant(value: string): string;
+export function parseUtcDateOnly(value: string): Date | null;
+export function parsePickerDate(value: string, dateOnly: boolean): Date | null;
+export function toDateInput(date: Date): string;
+export function monthStart(date: Date): Date;
+export function addMonths(date: Date, amount: number): Date;
+export function calendarDays(month: Date): Date[];
+export function sameCalendarDay(left: Date, right: Date): boolean;
+export function addYears(date: Date, years: number): Date;
+export function addDays(date: Date, days: number): Date;

@@ -1,12 +1,16 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { SignOut } from "@phosphor-icons/react";
+import esposWordmark from "../assets/espos-wordmark.png";
+import languageIcon from "../assets/language.png";
 import { api, ApiError, setUnauthorizedHandler } from "../lib/api";
 import { isCurrentAuthRequest, isCurrentSessionRequest, shouldInvalidateSession } from "../lib/frontend-runtime.mjs";
 import type { AdminSession, Credentials, LoginCredentials, DashboardData, FiscalStatusAdmin } from "../lib/types";
 import { Language, readLanguage, localeFor, translate, I18nContext } from "../i18n/index";
 import { View, Notice, GlobalSearchCriterion } from "../shared/types";
 import { readViewFromLocation, buildGlobalSearchSuggestions, filterDashboardData, errorMessage, viewTitle } from "../shared/lib";
-import { RequiredPasswordChangeScreen, LoginScreen } from "../features/auth/AuthScreens";
+import { RequiredPasswordChangeScreen, LoginScreen, LoginClock } from "../features/auth/AuthScreens";
 import { navigation, navigationGroups } from "./navigation";
+import { availableView, isViewEnabled } from "./features";
 import { NavigationIcon } from "./NavigationIcon";
 import { AccountPassword } from "../shared/AccountPassword";
 import { RefreshContext } from "./RefreshContext";
@@ -27,6 +31,7 @@ import { CustomerHealthView } from "../features/health/CustomerHealthView";
 import { BillingView } from "../features/billing/BillingView";
 import { OutboxRecoveryView } from "../features/outbox/OutboxRecoveryView";
 import { ReportsView } from "../features/reports/ReportsView";
+import { ReportsWorkspace } from "../features/reports/ReportsWorkspace";
 import { AuditView } from "../features/audit/AuditView";
 import { DemoRequestsView } from "../features/marketing/DemoRequestsView";
 import { setActiveLocale } from "../i18n";
@@ -40,6 +45,7 @@ export default function App() {
   const [language, setLanguageState] = useState<Language>(() => readLanguage());
   setActiveLocale(localeFor(language));
   const [activeView, setActiveView] = useState<View>(() => readViewFromLocation());
+  const [licenseDirectoryTitle, setLicenseDirectoryTitle] = useState("");
   const [supportTarget, setSupportTarget] = useState<SupportTarget | null>(null);
   const [returnFailureKey, setReturnFailureKey] = useState<string | undefined>();
   useEffect(() => { setSupportTarget(null); setReturnFailureKey(undefined); }, [credentials]);
@@ -56,6 +62,7 @@ export default function App() {
   const [navigationQuery, setNavigationQuery] = useState("");
   const [expandedNavigationGroups, setExpandedNavigationGroups] = useState<Set<typeof navigationGroups[number]>>(() => new Set([navigation.find(item => item.view === readViewFromLocation())?.group ?? "home"]));
   const navigationSearchRef = useRef<HTMLInputElement | null>(null);
+  const navigationListRef = useRef<HTMLElement | null>(null);
   const refreshRequestId = useRef(0);
   const authRequestId = useRef(0);
   const credentialsRef = useRef<Credentials | null>(credentials);
@@ -75,7 +82,7 @@ export default function App() {
   );
   const l = workspaceLabels(language);
   const title = (view: View) => viewTitle(view, key => ["companies", "stores", "activeLicenses", "createLicense", "failures", "access", "integrations"].includes(key) ? l(key as Parameters<typeof l>[0]) : i18n.t(key));
-  const navigationItems = navigation.filter(item => !item.permission || session?.permissions.includes(item.permission)).map(item => ({ ...item, label: title(item.view) }));
+  const navigationItems = navigation.filter(item => isViewEnabled(item.view) && (!item.permission || session?.permissions.includes(item.permission))).map(item => ({ ...item, label: title(item.view) }));
   const activeNavigationItem = navigationItems.find(item => item.view === activeView);
   const visibleNavigationItems = navigationItems.filter(item => item.label.toLocaleLowerCase().includes(navigationQuery.trim().toLocaleLowerCase()));
   const searchSuggestions = useMemo(
@@ -96,6 +103,8 @@ export default function App() {
   function openSupport(target: SupportTarget) { navigate("support"); setSupportTarget(target); }
   function returnToFailure(key: string) { navigate("failures"); setReturnFailureKey(key); }
   function navigate(view: View) {
+    view = availableView(view);
+    if (view === activeView) return;
     setSupportTarget(null); setReturnFailureKey(undefined);
     setActiveView(view);
     revealNavigationGroup(view);
@@ -104,6 +113,8 @@ export default function App() {
   }
 
   useEffect(() => {
+    refreshRequestId.current += 1;
+    setLoading(false);
     revealNavigationGroup(activeView);
     setNotice(null);
   }, [activeView]);
@@ -114,6 +125,8 @@ export default function App() {
       if (!window.location.hash || /^#\/producto(?:\/|$)/.test(window.location.hash)) {
         window.history.replaceState({ entry: "login" }, "", "#/login");
       }
+      const requested = window.location.hash.split("?")[0].replace(/^#\/?/, "").split("/")[0];
+      if (!isViewEnabled(requested)) window.history.replaceState({ view: "dashboard" }, "", "#/dashboard");
       setActiveView(readViewFromLocation());
     };
     syncView();
@@ -150,9 +163,9 @@ export default function App() {
 
   useEffect(() => {
     function focusNavigation(event: KeyboardEvent) {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "k") {
+      if (navigationSearchRef.current && (event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "f") {
         event.preventDefault();
-        navigationSearchRef.current?.focus();
+        navigationSearchRef.current.focus();
       }
     }
     window.addEventListener("keydown", focusNavigation);
@@ -163,9 +176,9 @@ export default function App() {
       if (window.location.hash === "#/login") {
         window.history.replaceState({ view: activeView }, "", `#/${activeView}`);
       }
-      void refresh(credentials);
+      if (!session || (activeView !== "dashboard" && activeView !== "demo-requests" && activeView !== "reports" && !data)) void refresh(credentials);
     }
-  }, [credentials]);
+  }, [credentials, activeView]);
 
   async function refresh(activeCredentials = credentials): Promise<boolean> {
     if (!activeCredentials) return false;
@@ -183,6 +196,11 @@ export default function App() {
         if (!isCurrent()) return false;
         setSession(nextSession);
         setRefreshVersion(v => v + 1);
+        // These independent modules must not wait for legacy dashboard data.
+        if (activeView === "dashboard" || activeView === "demo-requests" || activeView === "reports") {
+          setNotice(null);
+          return true;
+        }
         const [dashboard, stores] = await Promise.all([
           api.dashboard(activeCredentials),
           api.fiscalStatus(activeCredentials).catch(() => [] as FiscalStatusAdmin[])
@@ -327,33 +345,46 @@ export default function App() {
     <div className={`app-shell${["companies", "stores", "licenses"].includes(activeView) ? " app-shell--table-workspace" : ""}`}>
       <header className="app-system-bar">
         <div className="system-product">
-          <strong>esPOS SAAS</strong>
-          <span>{l("shellDescription")} · {i18n.t("saasVersion")} {appVersion}</span>
+          <img className="system-wordmark" src={esposWordmark} alt="esPOS" width={94} height={30} draggable={false} title={`${i18n.t("saasVersion")} ${appVersion}`} />
         </div>
+        <LoginClock language={language} />
         <div className="system-session">
-          <strong>{session?.username ?? credentials.username}</strong>
-          <LanguageSelector variant="floating" />
-          <AccountPassword credentials={credentials} onLogout={logout} />
-          <button className="session-logout" type="button" onClick={logout}>
-            {i18n.t("logout")}
+          <LanguageSelector variant="floating" iconSrc={languageIcon} />
+          <AccountPassword credentials={credentials} onLogout={logout} userLabel={session?.username ?? credentials.username} />
+          <button className="session-logout" type="button" onClick={logout} aria-label={i18n.t("logout")} title={i18n.t("logout")}>
+            <SignOut size={19} aria-hidden="true" />
           </button>
         </div>
       </header>
 
       <aside className="app-header" aria-label={i18n.t("mainNavigation")}>
         <div className="brand">
-          <div className="sidebar-brand-symbol" aria-hidden="true"><NavigationIcon view="dashboard" /></div>
-          <div>
-            <strong>esPOS SAAS</strong>
-            <span>{l("platform")}</span>
-          </div>
+          <strong>{i18n.t("centralServer")}</strong>
         </div>
         <div className="saas-nav-search">
           <svg className="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="6" /><path d="m15 15 5 5" /></svg>
-          <input ref={navigationSearchRef} type="search" value={navigationQuery} placeholder={l("searchModules")} aria-label={l("searchModules")} onChange={(event) => setNavigationQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { setNavigationQuery(""); event.currentTarget.blur(); } }} />
-          <kbd aria-hidden="true">Ctrl K</kbd>
+          <input ref={navigationSearchRef} type="search" value={navigationQuery} placeholder={l("searchModules")} aria-label={l("searchModules")} onChange={(event) => setNavigationQuery(event.target.value)} onKeyDown={(event) => {
+            if (event.key === "Escape") { setNavigationQuery(""); event.currentTarget.blur(); }
+            if (["Enter", "ArrowDown", "ArrowUp"].includes(event.key)) {
+              event.preventDefault();
+              const results = [...(navigationListRef.current?.querySelectorAll<HTMLButtonElement>(".nav-button") ?? [])].filter(button => button.getClientRects().length);
+              if (event.key === "Enter") results[0]?.click();
+              else (event.key === "ArrowUp" ? results.at(-1) : results[0])?.focus();
+            }
+          }} />
+          <kbd aria-hidden="true">Ctrl F</kbd>
         </div>
-        <nav className="nav-list top-nav-list" aria-label={i18n.t("mainNavigation")}>
+        <nav ref={navigationListRef} className="nav-list top-nav-list" aria-label={i18n.t("mainNavigation")} onKeyDown={event => {
+          if (!navigationQuery.trim() || !(event.target instanceof HTMLButtonElement)) return;
+          if (event.key === "Escape") { event.preventDefault(); setNavigationQuery(""); navigationSearchRef.current?.focus(); }
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            const results = [...event.currentTarget.querySelectorAll<HTMLButtonElement>(".nav-button")].filter(button => button.getClientRects().length);
+            const index = results.indexOf(event.target);
+            if (index < 0 || !results.length) return;
+            event.preventDefault();
+            results[(index + (event.key === "ArrowDown" ? 1 : results.length - 1)) % results.length]?.focus();
+          }
+        }}>
           {navigationGroups.map(group => {
             const items = visibleNavigationItems.filter(item => item.group === group);
             const expanded = Boolean(navigationQuery.trim()) || expandedNavigationGroups.has(group);
@@ -390,7 +421,7 @@ export default function App() {
         <header className="topbar">
           <div>
             <p className="eyebrow">{activeNavigationItem ? l(activeNavigationItem.phase ?? activeNavigationItem.group) : i18n.t("centralPanel")}</p>
-            <h1>{title(activeView)}</h1>
+            <h1>{activeView === "licenses" && licenseDirectoryTitle ? licenseDirectoryTitle : title(activeView)}</h1>
             {activeNavigationItem?.description && <p className="module-help">{l(activeNavigationItem.description)}</p>}
           </div>
           <button className="secondary-button" type="button" onClick={() => void refresh()} disabled={loading}>
@@ -465,7 +496,13 @@ export default function App() {
 
         {notice && <div className={`notice ${notice.type}`} role={notice.type === "error" ? "alert" : "status"} aria-live={notice.type === "error" ? "assertive" : "polite"}>{notice.text}</div>}
 
-        {activeView === "demo-requests" ? (
+        {activeView === "dashboard" ? (
+          session ? <Dashboard credentials={credentials} permissions={permissions} />
+            : <EmptyState text={loading ? i18n.t("loadingSaas") : i18n.t("noLoadedData")} />
+        ) : activeView === "reports" ? (
+          session ? <ReportsWorkspace credentials={credentials} permissions={permissions} />
+            : <EmptyState text={loading ? i18n.t("loadingSaas") : i18n.t("noLoadedData")} />
+        ) : activeView === "demo-requests" ? (
           session ? <DemoRequestsView credentials={credentials} permissions={permissions} />
             : <EmptyState text={loading ? i18n.t("loadingSaas") : i18n.t("noLoadedData")} />
         ) : !visibleData ? (
@@ -473,11 +510,10 @@ export default function App() {
         ) : (
           <>
             {activeView === "stores" && <StoresView credentials={credentials} permissions={permissions} onNotice={setNotice} />}
-            {activeView === "licenses" && <LicenseWorkspace credentials={credentials} installations={data!.installations} permissions={permissions} onChanged={() => refresh()} />}
+            {activeView === "licenses" && <LicenseWorkspace credentials={credentials} installations={data!.installations} permissions={permissions} onChanged={() => refresh()} onTitleChange={setLicenseDirectoryTitle} />}
             {activeView === "create-license" && <CreateLicenseView credentials={credentials} permissions={permissions} onChanged={() => refresh()} />}
             {activeView === "failures" && <FailuresView credentials={credentials} licenses={data!.licenses} permissions={permissions} onNavigate={navigate} onNotice={setNotice} initialFailureKey={returnFailureKey} onOpenSupport={openSupport} />}
             {activeView === "access" && permissions.has("MANAGE_TENANT_USERS") && <TenantAccessEditor credentials={credentials} onNotice={setNotice} />}
-            {activeView === "dashboard" && <Dashboard data={data!} onNavigate={navigate} />}
             {activeView === "companies" && (
               <CompaniesView
                 credentials={credentials}
@@ -518,8 +554,8 @@ export default function App() {
             {activeView === "outbox" && (
               <OutboxRecoveryView credentials={credentials} permissions={permissions} onNotice={setNotice} />
             )}
-            {(activeView === "reports" || activeView === "integrations") && (
-              <ReportsView mode={activeView === "integrations" ? "integrations" : "reports"} credentials={credentials} licenses={data!.licenses} permissions={permissions} onNotice={setNotice} />
+            {activeView === "integrations" && (
+              <ReportsView mode="integrations" credentials={credentials} licenses={data!.licenses} permissions={permissions} onNotice={setNotice} />
             )}
             {activeView === "audit" && <AuditView audit={data!.audit} />}
           </>

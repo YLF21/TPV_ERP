@@ -1,10 +1,16 @@
-/** Convert local calendar days to an inclusive-start/exclusive-end API interval. */
+/** Convert UTC calendar days to an inclusive-start/exclusive-end API interval. */
 export function failureDateRange(from, to) {
   if (from && to && from > to) throw new RangeError("invalidDates");
-  const start = from ? new Date(`${from}T00:00:00`) : null;
-  const end = to ? new Date(`${to}T00:00:00`) : null;
-  if ((start && !Number.isFinite(start.getTime())) || (end && !Number.isFinite(end.getTime()))) throw new RangeError("invalidDates");
-  if (end) end.setDate(end.getDate() + 1);
+  const parseDay = value => {
+    if (!value) return null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new RangeError("invalidDates");
+    const date = new Date(`${value}T00:00:00Z`);
+    if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw new RangeError("invalidDates");
+    return date;
+  };
+  const start = parseDay(from);
+  const end = parseDay(to);
+  if (end) end.setUTCDate(end.getUTCDate() + 1);
   return { from: start?.toISOString() ?? "", to: end?.toISOString() ?? "" };
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import type { Credentials } from "../../lib/types";
 import { workspaceApi, type BackupRecoveryDescriptor, type BackupRecoveryInstallation, type BackupRecoveryState } from "../../lib/workspace-api";
+import { formatDate } from "../../shared/lib";
 import { useBackupRecoveryLabels } from "./backup-recovery-labels";
 import { parseDestinationRequest } from "./destination-request.mjs";
 import { recoveryNoticeKey } from "./backup-recovery-notices.mjs";
@@ -116,7 +117,7 @@ export function TicketBackupRecoveryPanel({ credentials, ticketId, companyId, ca
           setBackupId(item.backupId); setState(null); setRecoveryIdInput("");
           setSourceRetired(false); setExternalReview(false); createRequestId.current = crypto.randomUUID();
         }} />
-        #{item.sequenceNumber} · {new Date(item.capturedAt).toLocaleString()} · {(item.sizeBytes / 1048576).toFixed(1)} MB
+        #{item.sequenceNumber} · {formatDate(item.capturedAt)} · {(item.sizeBytes / 1048576).toFixed(1)} MB
       </label>)}
       </div>
     </div>}
@@ -157,7 +158,7 @@ export function TicketBackupRecoveryPanel({ credentials, ticketId, companyId, ca
       <p>{f("recoveryId")}: <span className="support-backup-recovery-id">{state.recoveryId}</span></p>
       <p>{f("authorizedBackup")}: {state.backupDescriptor ? `#${state.backupDescriptor.sequenceNumber} · ` : ""}{state.backupId}</p>
       <p>{f("sequenceFloor")}: {state.sequenceFloor}</p>
-      <p>{f("expiresAt")}: {new Date(state.expiresAt).toLocaleString()}</p>
+      <p>{f("expiresAt")}: {formatDate(state.expiresAt)}</p>
       {expired && <p className="support-technical-pending" role="alert">{f("expired")}</p>}
       {(state.warnings ?? []).length > 0 && <div className="support-technical-pending"><ul>
         {state.warnings.map(warning => <li key={warning}>{f(recoveryNoticeKey(warning, "warning"))}</li>)}
