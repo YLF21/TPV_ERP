@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { paginateRows } from "../lib/frontend-runtime.mjs";
 import type { FiscalAddress } from "../lib/types";
 import { useI18n, activeLocale, LANGUAGE_OPTIONS, Language } from "../i18n/index";
-import { parsePickerDate, monthStart, calendarDays, calendarWeekDays, toDateInput, toLocalInput, formatPickerDate, addMonths, sameCalendarDay } from "./lib";
+import { parsePickerDate, monthStart, calendarDays, calendarWeekDays, toDateInput, toUtcInput, formatPickerDate, addMonths, sameCalendarDay } from "./lib";
 import { ProvinceSelect } from "./provinces/ProvinceSelect";
 import { EuropeanCountrySelect } from "./countries/EuropeanCountrySelect";
 
@@ -158,27 +158,29 @@ export function DateTimePicker({ label, value, onChange, required, disabled, dat
 
   function selectDate(day: Date) {
     const time = selectedDate ?? new Date();
-    const next = new Date(day.getFullYear(), day.getMonth(), day.getDate(), time.getHours(), time.getMinutes());
-    onChange(dateOnly ? toDateInput(next) : toLocalInput(next));
+    const next = new Date(day);
+    next.setUTCHours(time.getUTCHours(), time.getUTCMinutes(), 0, 0);
+    onChange(dateOnly ? toDateInput(next) : toUtcInput(next));
   }
 
   function selectTime(time: string) {
     const [hours, minutes] = time.split(":").map(Number);
     const next = selectedDate ?? new Date();
-    next.setHours(hours, minutes, 0, 0);
-    onChange(toLocalInput(next));
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return;
+    next.setUTCHours(hours, minutes, 0, 0);
+    onChange(toUtcInput(next));
   }
 
   function selectToday() {
     const now = new Date();
     setVisibleMonth(monthStart(now));
-    onChange(dateOnly ? toDateInput(now) : toLocalInput(now));
+    onChange(dateOnly ? toDateInput(now) : toUtcInput(now));
   }
 
   return (
     <div className="date-time-picker" ref={containerRef}>
       <label>
-        {label}
+        {label}{!dateOnly && " (UTC)"}
         <input
           className="control-input date-time-trigger"
           value={formatPickerDate(value, dateOnly)}
@@ -195,7 +197,7 @@ export function DateTimePicker({ label, value, onChange, required, disabled, dat
         <div className="date-time-popover" role="dialog" aria-label={label}>
           <div className="date-time-calendar-header">
             <button type="button" onClick={() => setVisibleMonth(addMonths(visibleMonth, -1))} aria-label={t("previousMonth")}>‹</button>
-            <strong>{new Intl.DateTimeFormat(activeLocale, { month: "long", year: "numeric" }).format(visibleMonth)}</strong>
+            <strong>{new Intl.DateTimeFormat(activeLocale, { month: "long", year: "numeric", timeZone: "UTC" }).format(visibleMonth)}</strong>
             <button type="button" onClick={() => setVisibleMonth(addMonths(visibleMonth, 1))} aria-label={t("nextMonth")}>›</button>
           </div>
           <div className="date-time-weekdays" aria-hidden="true">
@@ -208,17 +210,17 @@ export function DateTimePicker({ label, value, onChange, required, disabled, dat
                 <button
                   type="button"
                   key={day.toISOString()}
-                  className={`${day.getMonth() === visibleMonth.getMonth() ? "" : "outside"} ${selected ? "selected" : ""} ${sameCalendarDay(day, new Date()) ? "today" : ""}`.trim()}
+                  className={`${day.getUTCMonth() === visibleMonth.getUTCMonth() ? "" : "outside"} ${selected ? "selected" : ""} ${sameCalendarDay(day, new Date()) ? "today" : ""}`.trim()}
                   aria-pressed={selected}
                   onClick={() => selectDate(day)}
                 >
-                  {day.getDate()}
+                  {day.getUTCDate()}
                 </button>
               );
             })}
           </div>
           <div className={`date-time-footer ${dateOnly ? "date-only" : ""}`}>
-            {!dateOnly && <label>{t("time")}<input type="time" value={value.slice(11, 16) || "00:00"} onChange={(event) => selectTime(event.target.value)} /></label>}
+            {!dateOnly && <label>{t("time")} (UTC)<input type="time" value={value.slice(11, 16) || "00:00"} onChange={(event) => selectTime(event.target.value)} /></label>}
             <div>
               <button type="button" className="secondary-button" onClick={selectToday}>{t("today")}</button>
               <button type="button" className="primary-button" onClick={() => setOpen(false)}>{t("closeCalendar")}</button>
@@ -311,7 +313,7 @@ export function Segmented({ value, options, onChange }: { value: string; options
   );
 }
 
-export function LanguageSelector({ variant = "sidebar" }: { variant?: "sidebar" | "floating" }) {
+export function LanguageSelector({ variant = "sidebar", iconSrc }: { variant?: "sidebar" | "floating"; iconSrc?: string }) {
   const { language, setLanguage, t } = useI18n();
   const [open, setOpen] = useState(false);
   const selectorRef = useRef<HTMLDivElement | null>(null);
@@ -338,14 +340,14 @@ export function LanguageSelector({ variant = "sidebar" }: { variant?: "sidebar" 
     <div ref={selectorRef} className={`language-selector language-selector-${variant}`}>
       {!isFloating && <span>{t("language")}</span>}
       <button className="language-trigger" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-haspopup="true" aria-controls={menuId} aria-label={t("language")}>
-        {isFloating ? (
+        {isFloating ? (iconSrc ? <img className="language-globe" src={iconSrc} alt="" draggable={false} /> : (
           <svg className="language-globe" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <circle cx="12" cy="12" r="9" />
             <path d="M3 12h18" />
             <path d="M12 3a13 13 0 0 1 0 18" />
             <path d="M12 3a13 13 0 0 0 0 18" />
           </svg>
-        ) : (
+        )) : (
           <>
             {current.label}
             <span aria-hidden="true">⌄</span>

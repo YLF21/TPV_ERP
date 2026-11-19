@@ -30,7 +30,7 @@ public class LicenseWorkspaceService {
             from saas_license l join saas_company c on c.id=l.company_id
             left join saas_company_operations o on o.company_id=c.id
             """;
-    private static final String EFFECTIVE_STATUS = "case when l.status='VALIDA' and l.valid_until<=:now then 'CADUCADA' else l.status end";
+    private static final String EFFECTIVE_STATUS = SaasLicenseRepository.EFFECTIVE_STATUS_SQL;
     private static final String SELECT = LINKS + "select l.*,c.name company_name,c.tax_id,o.billing_status,"
             + EFFECTIVE_STATUS + " effective_status," + """
             (select count(*) from saas_installation i where i.license_id=l.id and i.active) active_installations,
@@ -64,12 +64,35 @@ public class LicenseWorkspaceService {
     @Transactional(readOnly = true)
     public Page<LicenseRow> list(UUID companyId, String query, String status, Instant expiresBefore,
             Boolean hasConnections, String billingStatus, int page, int size, String sortBy, String sortDirection) {
+        return list(companyId, null, query, status, expiresBefore, hasConnections, billingStatus, page, size,
+                sortBy, sortDirection);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<LicenseRow> list(UUID companyId, UUID storeId, String query, String status, Instant expiresBefore,
+            Boolean hasConnections, String billingStatus, int page, int size, String sortBy, String sortDirection) {
+        return listAt(companyId, storeId, query, status, expiresBefore, hasConnections, billingStatus, page, size,
+                sortBy, sortDirection, clock.instant());
+    }
+
+    /** All pages of an export use the same instant for expiry and outstanding balances. */
+    @Transactional(readOnly = true)
+    public Page<LicenseRow> listAt(UUID companyId, UUID storeId, String query, String status, Instant expiresBefore,
+            Boolean hasConnections, String billingStatus, int page, int size, String sortBy, String sortDirection,
+            Instant asOf) {
         validatePage(page, size);
         String order = sortOrder(sortBy, sortDirection);
         var parameters = new LinkedHashMap<String, Object>();
-        parameters.put("now", Timestamp.from(clock.instant()));
+        parameters.put("now", Timestamp.from(asOf));
         var where = new StringBuilder(" where 1=1");
         if (companyId != null) { where.append(" and l.company_id=:companyId"); parameters.put("companyId", companyId); }
+        if (storeId != null) {
+            where.append("""
+                     and exists (select 1 from linked_stores ls join saas_store s on s.id=ls.store_id
+                                 where ls.license_id=l.id and s.company_id=l.company_id and s.id=:storeId)
+                    """);
+            parameters.put("storeId", storeId);
+        }
         if (status != null && !status.isBlank()) {
             String normalized = status.trim().toUpperCase(Locale.ROOT);
             validate(() -> LicenseSaasStatus.valueOf(normalized));
@@ -98,14 +121,15 @@ public class LicenseWorkspaceService {
         long total = jdbc.queryForObject(LINKS + "select count(*) " + BASE + where, parameters, Long.class);
         parameters.put("limit", size); parameters.put("offset", (long) page * size);
         var rows = readRows(where + " order by " + order + " nulls last,l.reference,l.id limit :limit offset :offset", parameters);
-        return new Page<>(enrich(rows), page, size, total, (int) Math.ceil((double) total / size));
+        return new Page<>(enrich(rows, asOf), page, size, total, (int) Math.ceil((double) total / size));
     }
 
     @Transactional(readOnly = true)
     public LicenseRow get(UUID licenseId) {
+        Instant now = clock.instant();
         var rows = readRows(" where l.id=:licenseId",
-                Map.of("licenseId", licenseId, "now", Timestamp.from(clock.instant())));
-        return enrich(rows).stream().findFirst().orElseThrow(() -> missing("Licencia no encontrada"));
+                Map.of("licenseId", licenseId, "now", Timestamp.from(now)));
+        return enrich(rows, now).stream().findFirst().orElseThrow(() -> missing("Licencia no encontrada"));
     }
 
     @Transactional(readOnly = true)
@@ -148,10 +172,10 @@ public class LicenseWorkspaceService {
                         instant(rs, "last_sync_at"), List.of(), "COMPANY", rs.getString("billing_status"), List.of()));
     }
 
-    private List<LicenseRow> enrich(List<LicenseRow> rows) {
+    private List<LicenseRow> enrich(List<LicenseRow> rows, Instant asOf) {
         if (rows.isEmpty()) return rows;
         var storeLinks = links(rows.stream().map(LicenseRow::id).toList());
-        var debts = debts(rows.stream().map(LicenseRow::companyId).distinct().toList());
+        var debts = debts(rows.stream().map(LicenseRow::companyId).distinct().toList(), asOf);
         return rows.stream().map(row -> new LicenseRow(row.id(), row.reference(), row.companyId(), row.companyName(), row.taxId(),
                 row.status(), row.validUntil(), row.maxWindows(), row.maxPda(), row.activeInstallations(), row.lastValidatedAt(), row.lastSyncAt(),
                 storeLinks.getOrDefault(row.id(), List.of()), row.billingScope(), row.companyBillingStatus(), debts.getOrDefault(row.companyId(), List.of()))).toList();
@@ -191,7 +215,7 @@ public class LicenseWorkspaceService {
         return result;
     }
 
-    private Map<UUID, List<CompanyDebt>> debts(List<UUID> companies) {
+    private Map<UUID, List<CompanyDebt>> debts(List<UUID> companies, Instant asOf) {
         var result = new HashMap<UUID, List<CompanyDebt>>();
         jdbc.query("""
                 with balances as (
@@ -204,7 +228,7 @@ public class LicenseWorkspaceService {
                 select company_id,currency,sum(outstanding) outstanding,
                        sum(case when due_at<:now then outstanding else 0 end) overdue
                 from balances group by company_id,currency order by currency
-                """, Map.of("companies", companies, "now", Timestamp.from(clock.instant())), rs -> {
+                """, Map.of("companies", companies, "now", Timestamp.from(asOf)), rs -> {
             result.computeIfAbsent(rs.getObject("company_id", UUID.class), ignored -> new ArrayList<>())
                     .add(new CompanyDebt(rs.getString("currency"), rs.getBigDecimal("outstanding"), rs.getBigDecimal("overdue")));
         });

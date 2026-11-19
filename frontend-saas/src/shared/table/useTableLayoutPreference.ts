@@ -2,20 +2,27 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { columnWidth, moveTableColumn, normalizeTableLayout, reorderTableColumns, tableLayoutKey, toggleTableColumn,
   type TableColumnDefinition, type TableColumnLayout } from "./table-layout.mjs";
 
-function readLayout<Key extends string>(identity: string, definitions: readonly TableColumnDefinition<Key>[]) {
-  try { return normalizeTableLayout(JSON.parse(localStorage.getItem(identity) ?? "null"), definitions); }
+function readLayout<Key extends string>(identity: string, definitions: readonly TableColumnDefinition<Key>[], legacyOrder?: readonly string[]) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(identity) ?? "null");
+    // Upgrade only the previous default order; retain an explicitly reordered user's layout.
+    if (Array.isArray(saved) && legacyOrder && JSON.stringify(saved.map(item => item?.key)) === JSON.stringify(legacyOrder)) {
+      return normalizeTableLayout(definitions.map(definition => saved.find(item => item.key === definition.key) ?? definition), definitions);
+    }
+    return normalizeTableLayout(saved, definitions);
+  }
   catch { return normalizeTableLayout(null, definitions); }
 }
 
 /** SaaS adapter of APP VENTA's user-scoped table preference pattern. */
-export function useTableLayoutPreference<Key extends string>(username: string, tableKey: string, definitions: readonly TableColumnDefinition<Key>[]) {
+export function useTableLayoutPreference<Key extends string>(username: string, tableKey: string, definitions: readonly TableColumnDefinition<Key>[], legacyOrder?: readonly string[]) {
   const identity = tableLayoutKey(username, tableKey);
   const definitionsRef = useRef(definitions); definitionsRef.current = definitions;
   const signature = JSON.stringify(definitions);
-  const [state, setState] = useState(() => ({ identity, layout: readLayout(identity, definitions) }));
+  const [state, setState] = useState(() => ({ identity, layout: readLayout(identity, definitions, legacyOrder) }));
   const stateRef = useRef(state); stateRef.current = state;
   useEffect(() => {
-    const next = { identity, layout: readLayout(identity, definitionsRef.current) };
+    const next = { identity, layout: readLayout(identity, definitionsRef.current, legacyOrder) };
     stateRef.current = next; setState(next);
   }, [identity, signature]);
   const update = useCallback((change: (layout: readonly TableColumnLayout<Key>[]) => readonly TableColumnLayout<Key>[]) => {
@@ -26,7 +33,7 @@ export function useTableLayoutPreference<Key extends string>(username: string, t
     try { localStorage.setItem(identity, JSON.stringify(layout)); } catch { /* Remains usable if browser storage is disabled. */ }
   }, [identity]);
   return {
-    layout: state.identity === identity ? state.layout : readLayout(identity, definitions),
+    layout: state.identity === identity ? state.layout : readLayout(identity, definitions, legacyOrder),
     reorderColumns: (from: Key, to: Key) => update(layout => reorderTableColumns(layout, from, to)),
     moveColumn: (key: Key, direction: -1 | 1) => update(layout => moveTableColumn(layout, key, direction)),
     toggleColumnVisibility: (key: Key) => update(layout => toggleTableColumn(layout, key)),

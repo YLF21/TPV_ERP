@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api, request } from "../../lib/api";
 import type { LicenseRow } from "../../lib/workspace-api";
 import type { Credentials, InstallationSummary } from "../../lib/types";
@@ -6,15 +6,15 @@ import type { Notice } from "../../shared/types";
 import { DateTimePicker, Input } from "../../shared/ui";
 import { InstallationsTable } from "../../shared/license-tables";
 import { LoadState } from "../../shared/workspace-ui";
-import { errorMessage, formatDate, formatCurrency, toLocalInput, licenseStatusPresentation, billingStatusLabel } from "../../shared/lib";
+import { errorMessage, formatDate, formatCurrency, toUtcInput, parseUtcDateTime, licenseStatusPresentation, billingStatusLabel } from "../../shared/lib";
 import { useI18n } from "../../i18n";
 import { useWorkspaceLabels } from "../../i18n/workspace";
 import { LicenseDialog } from "./LicenseDialog";
 import { useLicenseLabels } from "./license-labels";
 
-export function LicenseConfiguration({ credentials, license, installations, permissions, onChanged, onClose, restoreFocus }: {
-  credentials: Credentials; license: LicenseRow; installations: InstallationSummary[]; permissions: Set<string>;
-  onChanged: () => void; onClose: () => void; restoreFocus: () => HTMLElement | null;
+export function LicenseConfiguration({ credentials, licenseId, reference, installations, permissions, onChanged, onClose, restoreFocus, focusRenewal = false }: {
+  credentials: Credentials; licenseId: string; reference?: string; installations: InstallationSummary[]; permissions: Set<string>;
+  onChanged: () => void; onClose: () => void; restoreFocus: () => HTMLElement | null; focusRenewal?: boolean;
 }) {
   const { t } = useI18n(); const l = useWorkspaceLabels(); const own = useLicenseLabels();
   const [detail, setDetail] = useState<LicenseRow | null>(null);
@@ -24,8 +24,11 @@ export function LicenseConfiguration({ credentials, license, installations, perm
   const [pairing, setPairing] = useState<string | null>(null);
   const [revoked, setRevoked] = useState<Record<string, InstallationSummary>>({});
   const mounted = useRef(false); const writing = useRef(false); const generation = useRef(0); const syncDraft = useRef(true);
-  const activeContext = useRef({ token: credentials.accessToken, id: license.id });
-  activeContext.current = { token: credentials.accessToken, id: license.id };
+  const activeContext = useRef({ token: credentials.accessToken, id: licenseId });
+  activeContext.current = { token: credentials.accessToken, id: licenseId };
+  const renewalTitleId = useId();
+  const renewalTitle = useRef<HTMLHeadingElement>(null);
+  const renewalFocusPending = useRef(focusRenewal);
 
   // The editor has its own resource identity: a directory refresh must never
   // discard a draft or close a license that no longer matches the list filter.
@@ -34,23 +37,28 @@ export function LicenseConfiguration({ credentials, license, installations, perm
     if (resetDraft) syncDraft.current = true;
     setLoading(true); setError(null);
     const current = () => mounted.current && sequence === generation.current
-      && activeContext.current.token === credentials.accessToken && activeContext.current.id === license.id;
+      && activeContext.current.token === credentials.accessToken && activeContext.current.id === licenseId;
     try {
-      const fresh = await request<LicenseRow>(credentials, "/api/v1/admin/license-workspace/" + encodeURIComponent(license.id));
+      const fresh = await request<LicenseRow>(credentials, "/api/v1/admin/license-workspace/" + encodeURIComponent(licenseId));
       if (!current()) return;
       setDetail(fresh);
       if (syncDraft.current) {
-        setRenewal({ validUntil: toLocalInput(new Date(fresh.validUntil)), maxWindows: fresh.maxWindows, maxPda: fresh.maxPda });
+        setRenewal({ validUntil: toUtcInput(new Date(fresh.validUntil)), maxWindows: fresh.maxWindows, maxPda: fresh.maxPda });
         syncDraft.current = false;
       }
     } catch (failure) { if (current()) setError(errorMessage(failure)); }
     finally { if (current()) setLoading(false); }
-  }, [credentials.accessToken, license.id]);
+  }, [credentials.accessToken, licenseId]);
   useEffect(() => {
     mounted.current = true; void loadDetail(true);
     return () => { mounted.current = false; generation.current++; };
   }, [loadDetail]);
   const unavailable = busy || loading || error !== null || detail === null;
+  useEffect(() => {
+    if (unavailable || !renewalFocusPending.current || !renewalTitle.current) return;
+    renewalFocusPending.current = false;
+    renewalTitle.current.focus();
+  }, [unavailable]);
 
   async function mutate(permission: string, operation: () => Promise<unknown>, resetDraft = false) {
     if (unavailable || writing.current || !permissions.has(permission)) return;
@@ -68,9 +76,9 @@ export function LicenseConfiguration({ credentials, license, installations, perm
   function renew(event: FormEvent) {
     event.preventDefault();
     if (unavailable || !detail || !permissions.has("RENEW_LICENSE")) return;
-    const parsed = new Date(renewal.validUntil);
-    if (!renewal.validUntil || Number.isNaN(parsed.getTime())) { setNotice({ type: "error", text: own("dateRequired") }); return; }
-    const validUntil = renewal.validUntil === toLocalInput(new Date(detail.validUntil)) ? detail.validUntil : parsed.toISOString();
+    const parsed = parseUtcDateTime(renewal.validUntil);
+    if (!parsed) { setNotice({ type: "error", text: own("dateRequired") }); return; }
+    const validUntil = renewal.validUntil === toUtcInput(new Date(detail.validUntil)) ? detail.validUntil : parsed.toISOString();
     void mutate("RENEW_LICENSE", () => api.renewLicense(credentials, detail.reference, { ...renewal, validUntil }), true);
   }
   async function action(kind: "block" | "unblock" | "pairing") {
@@ -97,7 +105,7 @@ export function LicenseConfiguration({ credentials, license, installations, perm
       }
     });
   }
-  return <LicenseDialog reference={detail?.reference ?? license.reference} busy={busy} onClose={onClose} restoreFocus={restoreFocus}>
+  return <LicenseDialog reference={detail?.reference ?? reference ?? t("license")} busy={busy} onClose={onClose} restoreFocus={restoreFocus}>
     {notice && <div className={"notice " + notice.type} role={notice.type === "error" ? "alert" : "status"}>{notice.text}</div>}
     <LoadState loading={loading} error={error} reload={() => void loadDetail()} />
     {detail && <>
@@ -114,12 +122,15 @@ export function LicenseConfiguration({ credentials, license, installations, perm
         {permissions.has("UNBLOCK_LICENSE") && detail.status === "BLOQUEADA_MANUAL" && <button disabled={unavailable} onClick={() => void action("unblock")}>{t("unblock")}</button>}
         {permissions.has("REGENERATE_PAIRING_CODE") && <button disabled={unavailable} onClick={() => void action("pairing")}>{t("generateCode")}</button>}
       </div>
-      {permissions.has("RENEW_LICENSE") ? <form onSubmit={renew} className="compact-form-grid">
-        <DateTimePicker label={l("expiry")} value={renewal.validUntil} onChange={validUntil => setRenewal({ ...renewal, validUntil })} required disabled={unavailable} />
-        <Input label={own("windows")} type="number" min={1} value={String(renewal.maxWindows)} onChange={value => setRenewal({ ...renewal, maxWindows: Number(value) })} required disabled={unavailable} />
-        <Input label={own("pda")} type="number" min={0} value={String(renewal.maxPda)} onChange={value => setRenewal({ ...renewal, maxPda: Number(value) })} required disabled={unavailable} />
-        <button type="submit" disabled={unavailable}>{l("save")}</button>
-      </form> : <p>{l("expiry")}: {formatDate(detail.validUntil)} · Windows: {detail.maxWindows} · PDA: {detail.maxPda}</p>}
+      {permissions.has("RENEW_LICENSE") ? <section className="saas-license-renewal" aria-labelledby={renewalTitleId}>
+        <h4 id={renewalTitleId} ref={renewalTitle} tabIndex={-1}>{own("renewal")}</h4>
+        <form onSubmit={renew} className="compact-form-grid" aria-labelledby={renewalTitleId}>
+          <DateTimePicker label={l("expiry")} value={renewal.validUntil} onChange={validUntil => setRenewal({ ...renewal, validUntil })} required disabled={unavailable} />
+          <Input label={own("windows")} type="number" min={1} value={String(renewal.maxWindows)} onChange={value => setRenewal({ ...renewal, maxWindows: Number(value) })} required disabled={unavailable} />
+          <Input label={own("pda")} type="number" min={0} value={String(renewal.maxPda)} onChange={value => setRenewal({ ...renewal, maxPda: Number(value) })} required disabled={unavailable} />
+          <button type="submit" disabled={unavailable}>{l("save")}</button>
+        </form>
+      </section> : <p>{l("expiry")}: {formatDate(detail.validUntil)} · Windows: {detail.maxWindows} · PDA: {detail.maxPda}</p>}
       <InstallationsTable canRevoke={permissions.has("REVOKE_INSTALLATION")} busy={unavailable ? "pending" : null} onRevoke={revoke}
         installations={installations.filter(installation => installation.licenseReference === detail.reference)
           .map(installation => {

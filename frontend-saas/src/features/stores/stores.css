@@ -4,7 +4,8 @@
 .stores-list-heading h2 { margin-bottom: 4px; }
 .stores-list-heading > button { flex-shrink: 0; }
 .stores-table-hint { margin: 0 0 12px; color: #536b83; font-size: 13px; }
-.stores-workspace .directory-filter-main { grid-template-columns: minmax(200px, 2fr) minmax(180px, 1fr) auto; }
+.stores-workspace .directory-filter-main { grid-template-columns: minmax(180px, 1.5fr) minmax(150px, 1fr) minmax(160px, 1fr) auto; }
+@media (max-width: 1100px) { .stores-workspace .directory-filter-main { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 .stores-table-region { display: flex; flex-direction: column; flex: 1; min-height: 180px; }
 @media (max-width: 700px) { .stores-workspace .directory-filter-main { grid-template-columns: 1fr; } .stores-list-heading { flex-wrap: wrap; } }
 .stores-table-scroll { flex: 1; min-height: 0; max-height: none; overflow: auto; overscroll-behavior: contain; scroll-padding-top: 36px; }

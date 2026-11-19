@@ -47,7 +47,7 @@ const labels = {
   VERIFICATION_FAILED: ["No funciona: volver a diagnóstico","Not working: return to diagnosis","未恢复：返回诊断"],
   REQUEST_VERIFICATION: ["Pasar a comprobación","Request verification","进入验证"],
   SAVE_DETAILS: ["Guardar planificación","Save schedule","保存计划"],
-  visitHelp: ["Hora local del navegador. Guarda la planificación antes de iniciar la visita.","Browser local time. Save the schedule before starting the visit.","使用浏览器当地时间，请先保存计划再开始现场处理。"],
+  visitHelp: ["Hora UTC. Guarda la planificación antes de iniciar la visita.","UTC time. Save the schedule before starting the visit.","使用 UTC 时间，请先保存计划再开始现场处理。"],
   visitAt: ["Fecha y hora de visita","Visit date and time","上门日期和时间"],
   assignee: ["Responsable asignado","Assigned owner","指定负责人"],
   planning: ["Responsable y planificación","Owner and scheduling","负责人和计划"],

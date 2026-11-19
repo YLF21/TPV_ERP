@@ -4,6 +4,9 @@ import { formatCurrency as formatCurrencyValue, formatQuantity as formatQuantity
 import type { DashboardData, LicenseSummary, SyncEventView, TaxpayerType, FiscalAddress, FiscalStatusAdmin } from "../lib/types";
 import { SaasAdminRoleName, View, LicenseWorkspaceSection, GlobalSearchCriterion, GlobalSearchSuggestion } from "./types";
 import { activeLocale, TRANSLATIONS } from "../i18n/index";
+import { availableView } from "../app/features";
+import { formatSaasDate, parsePickerDate, sameCalendarDay } from "../lib/utc-date-time.mjs";
+export { toUtcInput, parseUtcDateTime, utcInputToInstant, parsePickerDate, toDateInput, monthStart, addMonths, calendarDays, sameCalendarDay, addYears, addDays } from "../lib/utc-date-time.mjs";
 
 export const SAAS_ADMIN_ROLES: Array<{ value: SaasAdminRoleName; label: string; description: string }> = [
   { value: "ADMIN", label: "ADMIN", description: "Gestion completa del SaaS" },
@@ -49,8 +52,8 @@ export function licenseStatusPresentation(
 export const VALID_VIEWS: View[] = ["dashboard", "companies", "stores", "create-license", "failures", "access", "integrations", "licenses", "sync", "fiscal", "fiscal-policy", "users", "audit", "support", "health", "billing", "outbox", "reports", "demo-requests"];
 
 export function readViewFromLocation(): View {
-  const candidate = window.location.hash.replace(/^#\/?/, "").split("/")[0] as View;
-  return VALID_VIEWS.includes(candidate) ? candidate : "dashboard";
+  const candidate = window.location.hash.split("?")[0].replace(/^#\/?/, "").split("/")[0] as View;
+  return VALID_VIEWS.includes(candidate) ? availableView(candidate) : "dashboard";
 }
 
 export function readLicenseWorkspaceSection(): LicenseWorkspaceSection {
@@ -348,9 +351,7 @@ export function hoursSince(value: string) {
 }
 
 export function isToday(value: string) {
-  const date = new Date(value);
-  const now = new Date();
-  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+  return sameCalendarDay(new Date(value), new Date());
 }
 
 export function latestDate(values: string[]) {
@@ -380,89 +381,23 @@ export function stringPayload(value: unknown) {
 }
 
 export function formatDate(value: string) {
-  return new Intl.DateTimeFormat(activeLocale, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZoneName: "short"
-  }).format(new Date(value));
-}
-
-export function toLocalInput(date: Date) {
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-}
-
-export function parseLocalDateTime(value: string) {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-export function parsePickerDate(value: string, dateOnly: boolean) {
-  if (dateOnly) {
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-    return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : null;
-  }
-  return parseLocalDateTime(value);
+  return formatSaasDate(value, activeLocale);
 }
 
 export function formatPickerDate(value: string, dateOnly: boolean) {
   const date = parsePickerDate(value, dateOnly);
   if (!date) return "";
-  return new Intl.DateTimeFormat(activeLocale, dateOnly
-    ? { dateStyle: "medium" }
-    : { dateStyle: "medium", timeStyle: "short" }).format(date);
-}
-
-export function toDateInput(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-export function monthStart(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-export function addMonths(date: Date, amount: number) {
-  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
-}
-
-export function calendarDays(month: Date) {
-  const mondayOffset = (month.getDay() + 6) % 7;
-  const first = new Date(month.getFullYear(), month.getMonth(), 1 - mondayOffset);
-  return Array.from({ length: 42 }, (_, index) =>
-    new Date(first.getFullYear(), first.getMonth(), first.getDate() + index));
+  const formatted = new Intl.DateTimeFormat(activeLocale, dateOnly
+    ? { dateStyle: "medium", timeZone: "UTC" }
+    : { dateStyle: "medium", timeStyle: "short", timeZone: "UTC", hour12: false }).format(date);
+  return dateOnly ? formatted : `${formatted} UTC`;
 }
 
 export function calendarWeekDays() {
-  const monday = new Date(2026, 0, 5);
   return Array.from({ length: 7 }, (_, index) =>
-    new Intl.DateTimeFormat(activeLocale, { weekday: "short" })
-      .format(new Date(2026, 0, monday.getDate() + index))
+    new Intl.DateTimeFormat(activeLocale, { weekday: "short", timeZone: "UTC" })
+      .format(new Date(Date.UTC(2026, 0, 5 + index)))
       .replace(".", ""));
-}
-
-export function sameCalendarDay(left: Date, right: Date) {
-  return left.getFullYear() === right.getFullYear()
-    && left.getMonth() === right.getMonth()
-    && left.getDate() === right.getDate();
-}
-
-export function addYears(date: Date, years: number) {
-  const next = new Date(date);
-  next.setFullYear(next.getFullYear() + years);
-  return next;
-}
-
-export function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
 }
 
 export async function copyText(text: string) {

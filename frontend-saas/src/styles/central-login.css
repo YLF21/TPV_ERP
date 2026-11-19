@@ -1,0 +1,327 @@
+/* Central-server entry uses the established Venta / Gestion desktop login style. */
+.login-page.saas-central-login {
+  display: flex;
+  justify-content: flex-start;
+  min-width: 320px;
+  height: 100dvh;
+  min-height: 0;
+  overflow: auto;
+  padding: 88px 24px 46px;
+  background: #e8edf6;
+  color: #222;
+  font-family: Arial, "Microsoft YaHei UI", sans-serif;
+}
+
+.saas-central-login .saas-login-topbar {
+  position: absolute;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  height: 46px;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+}
+
+.saas-central-login .saas-login-brand-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.saas-central-login .saas-login-wordmark {
+  flex: 0 0 auto;
+  width: 94px;
+  height: 30px;
+  padding: 1px 3px;
+  border: 1px solid #9fb3c8;
+  border-radius: 6px;
+  background: #fff;
+  object-fit: contain;
+}
+
+.saas-central-login .saas-login-clock {
+  justify-self: center;
+  width: 240px;
+  min-width: 240px;
+  height: 30px;
+  border: 1px solid #aeb9c8;
+  border-radius: 3px;
+  padding: 0 14px;
+  background: #fff;
+  color: #102033;
+  font-size: 13px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.saas-central-login .saas-login-tools {
+  justify-self: end;
+  margin-left: 0;
+}
+
+.saas-central-login .saas-login-tools .language-trigger {
+  width: 56px;
+  min-width: 56px;
+  height: 30px;
+  min-height: 30px;
+  border: 1px solid #aeb9c8;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.saas-central-login .saas-login-tools .language-globe {
+  object-fit: contain;
+}
+
+.saas-central-login .saas-login-tools .language-trigger:hover,
+.saas-central-login .saas-login-tools .language-trigger[aria-expanded="true"] {
+  border-color: #0065fe;
+  background: #fff;
+}
+
+.saas-central-login .language-menu button.active {
+  background: #0065fe;
+  color: #fff;
+}
+
+.saas-central-login .saas-login-entry {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 24px;
+  width: 570px;
+  max-width: 100%;
+  margin-block: auto;
+}
+
+.saas-central-login .saas-login-identity {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.saas-central-login .saas-login-identity img {
+  object-fit: contain;
+}
+
+.saas-central-login .saas-login-identity h1 {
+  margin: 0;
+  color: #000;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.saas-central-login .login-panel {
+  position: static;
+  width: 100%;
+  margin: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 16px;
+  padding: 28px 50px 36px;
+  background: #fff;
+  box-shadow: -14px -4px 20px rgba(0, 0, 0, 0.3);
+  transform: none;
+}
+
+.saas-central-login .login-panel-heading {
+  min-height: 0;
+  margin: 0 0 24px;
+  padding: 0;
+  background: transparent;
+  color: #000;
+  text-align: center;
+}
+
+.saas-central-login .login-panel-heading h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.saas-central-login .stack-form {
+  gap: 24px;
+}
+
+.saas-central-login .saas-login-field {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.saas-central-login .stack-form label {
+  padding-left: 10px;
+  color: #222;
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 30px;
+}
+
+.saas-central-login .saas-login-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 64px;
+  padding: 0 12px;
+  border: 2px solid #efefef;
+  border-radius: 6px;
+  color: #808080;
+  background: #fff;
+}
+
+.saas-central-login .saas-login-input-wrap > svg {
+  flex: 0 0 auto;
+}
+
+.saas-central-login .saas-login-input-wrap:focus-within {
+  border-color: #0065fe;
+}
+
+.saas-central-login .saas-login-input-wrap input,
+.saas-central-login .saas-login-input-wrap input:focus {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+  color: #222;
+  font-size: 26px;
+  font-weight: 400;
+}
+
+.saas-central-login .saas-login-input-wrap input::placeholder {
+  color: #808080;
+  opacity: 1;
+}
+
+.saas-central-login .saas-login-password-toggle {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #808080;
+}
+
+.saas-central-login .saas-login-password-toggle:hover {
+  background: #f3f6fb;
+}
+
+.saas-central-login .stack-form .primary-button {
+  height: 96px;
+  min-height: 96px;
+  border: 0;
+  border-radius: 6px;
+  background: #0065fe;
+  color: #fff;
+  font-size: 26px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.saas-central-login .stack-form .primary-button:hover:not(:disabled) {
+  background: #0058df;
+}
+
+.saas-central-login :is(button, a):focus-visible {
+  outline: 3px solid #0065fe;
+  outline-offset: 3px;
+}
+
+.saas-central-login .saas-login-version {
+  margin: 0;
+}
+
+@media (max-height: 850px), (max-width: 600px) {
+  .saas-central-login .saas-login-entry {
+    width: 460px;
+    gap: 16px;
+  }
+
+  .saas-central-login .saas-login-identity img {
+    width: 146px;
+    height: 47px;
+  }
+
+  .saas-central-login .saas-login-identity h1 {
+    font-size: 24px;
+  }
+
+  .saas-central-login .login-panel {
+    padding: 24px 32px;
+    border-radius: 12px;
+  }
+
+  .saas-central-login .login-panel-heading {
+    margin-bottom: 20px;
+  }
+
+  .saas-central-login .login-panel-heading h2 {
+    font-size: 17px;
+  }
+
+  .saas-central-login .stack-form {
+    gap: 20px;
+  }
+
+  .saas-central-login .stack-form label,
+  .saas-central-login .saas-login-input-wrap input {
+    font-size: 22px;
+  }
+
+  .saas-central-login .saas-login-input-wrap {
+    height: 58px;
+  }
+
+  .saas-central-login .stack-form .primary-button {
+    height: 70px;
+    min-height: 70px;
+    font-size: 22px;
+  }
+}
+
+@media (max-width: 640px) {
+  .login-page.saas-central-login {
+    padding-top: 104px;
+  }
+
+  .saas-central-login .saas-login-topbar {
+    grid-template-columns: minmax(0, 1fr) 56px;
+    grid-template-rows: 30px 30px;
+    height: 82px;
+    gap: 6px 12px;
+  }
+
+  .saas-central-login .saas-login-clock {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .saas-central-login .saas-login-tools {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-page.saas-central-login {
+    padding: 104px 20px 28px;
+  }
+
+  .saas-central-login .login-panel {
+    padding: 24px 20px;
+  }
+}

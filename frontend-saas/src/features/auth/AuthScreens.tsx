@@ -1,11 +1,13 @@
 import { FormEvent, useEffect, useState } from "react";
-
-
+import { Eye, EyeSlash, LockKey, User } from "@phosphor-icons/react";
+import esposWordmark from "../../assets/espos-wordmark.png";
+import languageIcon from "../../assets/language.png";
 import type { LoginCredentials } from "../../lib/types";
 import { Notice } from "../../shared/types";
 import { useI18n, Language } from "../../i18n/index";
 import { LanguageSelector } from "../../shared/ui";
 import { appVersion } from "../../lib/appVersion";
+import { formatUtcDateTime } from "../../lib/utc-date-time.mjs";
 
 export function LoginScreen({
   onLogin,
@@ -23,6 +25,7 @@ export function LoginScreen({
   const { t, language } = useI18n();
   const [username, setUsername] = useState("ADMIN");
   const [password, setPassword] = useState("");
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [mode] = useState<"login" | "request" | "confirm">("login");
   const [recoveryToken, setRecoveryToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -36,46 +39,67 @@ export function LoginScreen({
   }
 
   return (
-    <main className="login-page">
+    <main className="login-page saas-central-login">
       <header className="saas-login-topbar">
-        <strong className="saas-login-brand">esPOS SAAS</strong>
-        <span className="saas-login-context">{t("centralAdministration")}</span>
-        <span className="saas-login-terminal">{t("internalPortal")}</span>
+        <div className="saas-login-brand-context">
+          <img className="saas-login-wordmark" src={esposWordmark} alt="esPOS" width={94} height={30} draggable={false} />
+        </div>
+        <LoginClock language={language} />
         <div className="saas-login-tools">
-          <LanguageSelector variant="floating" />
-          <LoginClock language={language} />
+          <LanguageSelector variant="floating" iconSrc={languageIcon} />
         </div>
       </header>
 
-      <section className="login-panel" aria-label={t("adminAccess")}>
-        <header className="login-panel-heading">
-          <strong>esPOS SAAS</strong>
-          <span>{t("internalPortal")}</span>
-        </header>
-        {notice && <div className={`notice ${notice.type}`} role={notice.type === "error" ? "alert" : "status"} aria-live={notice.type === "error" ? "assertive" : "polite"}>{notice.text}</div>}
-        <form className="stack-form" onSubmit={submit}>
-          <label>
-            <span>{t("username")}</span>
-            <input
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              autoComplete="username"
-              placeholder={t("username")}
-              autoFocus
-              required
-            />
-          </label>
-          {mode === "login" && <label><span>{t("password")}</span><input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" placeholder={t("password")} required /></label>}
-          {mode === "confirm" && <>
-            <label><span>{t("recoveryToken")}</span><input value={recoveryToken} onChange={(event) => setRecoveryToken(event.target.value)} autoComplete="one-time-code" required minLength={32} /></label>
-            <label><span>{t("newPassword")}</span><input value={newPassword} onChange={(event) => setNewPassword(event.target.value)} type="password" autoComplete="new-password" required minLength={4} /></label>
-            <label><span>{t("confirmPassword")}</span><input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} type="password" autoComplete="new-password" required minLength={4} /></label>
-          </>}
-          <button className="primary-button" type="submit" disabled={loading}>{mode === "login" ? t("enter") : mode === "request" ? t("recoveryRequest") : t("recoveryConfirm")}</button>
-        </form>
-        <p><a href="./tienda.html">{t("clientPortal")} →</a></p>
+      <div className="saas-login-entry">
+        <div className="saas-login-identity">
+          <h1>{t("centralServer")}</h1>
+          <img src={esposWordmark} alt="esPOS" width={200} height={64} draggable={false} />
+        </div>
+        <section className="login-panel" aria-labelledby="central-login-title">
+          <header className="login-panel-heading">
+            <h2 id="central-login-title">{t("adminAccess")}</h2>
+          </header>
+          {notice && <div className={`notice ${notice.type}`} role={notice.type === "error" ? "alert" : "status"} aria-live={notice.type === "error" ? "assertive" : "polite"}>{notice.text}</div>}
+          <form className="stack-form" onSubmit={submit}>
+            <div className="saas-login-field">
+              <label htmlFor="central-login-username">{t("username")}</label>
+              <div className="saas-login-input-wrap">
+                <User size={30} weight="fill" aria-hidden="true" />
+                <input
+                  id="central-login-username"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  autoComplete="username"
+                  placeholder={t("username")}
+                  autoFocus
+                  required
+                />
+              </div>
+            </div>
+            {mode === "login" && <div className="saas-login-field">
+              <label htmlFor="central-login-password">{t("loginPassword")}</label>
+              <div className="saas-login-input-wrap">
+                <LockKey size={30} weight="fill" aria-hidden="true" />
+                <input id="central-login-password" value={password} onChange={(event) => setPassword(event.target.value)} type={passwordVisible ? "text" : "password"} autoComplete="current-password" placeholder="****" required />
+                <button className="saas-login-password-toggle" type="button"
+                  aria-label={t(passwordVisible ? "hidePassword" : "showPassword")}
+                  aria-pressed={passwordVisible} aria-controls="central-login-password"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => setPasswordVisible((visible) => !visible)}>
+                  {passwordVisible ? <EyeSlash size={30} aria-hidden="true" /> : <Eye size={30} aria-hidden="true" />}
+                </button>
+              </div>
+            </div>}
+            {mode === "confirm" && <>
+              <label><span>{t("recoveryToken")}</span><input value={recoveryToken} onChange={(event) => setRecoveryToken(event.target.value)} autoComplete="one-time-code" required minLength={32} /></label>
+              <label><span>{t("newPassword")}</span><input value={newPassword} onChange={(event) => setNewPassword(event.target.value)} type="password" autoComplete="new-password" required minLength={4} /></label>
+              <label><span>{t("confirmPassword")}</span><input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} type="password" autoComplete="new-password" required minLength={4} /></label>
+            </>}
+            <button className="primary-button" type="submit" disabled={loading}>{mode === "login" ? t("enter") : mode === "request" ? t("recoveryRequest") : t("recoveryConfirm")}</button>
+          </form>
+        </section>
         <p className="saas-login-version">{t("saasVersion")} {appVersion}</p>
-      </section>
+      </div>
     </main>
   );
 }
@@ -111,14 +135,7 @@ export function LoginClock({ language }: { language: Language }) {
   const locale = language === "zh" ? "zh-CN" : language === "en" ? "en-GB" : "es-ES";
   return (
     <time className="saas-login-clock" dateTime={now.toISOString()}>
-      {new Intl.DateTimeFormat(locale, {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit"
-      }).format(now)}
+      {formatUtcDateTime(now, locale, true)}
     </time>
   );
 }

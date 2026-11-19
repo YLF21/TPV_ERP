@@ -95,11 +95,8 @@
   .app-shell { grid-template-columns: 258px minmax(0, 1fr); }
 }
 .app-header { background: #09294d; border-right-color: #153b61; }
-.app-header .brand { display: flex; align-items: center; gap: 12px; padding: 20px 18px; border-bottom-color: #ffffff14; }
+.app-header .brand { display: flex; align-items: center; justify-content: center; text-align: center; gap: 12px; padding: 20px 18px; border-bottom-color: #ffffff14; }
 .app-header .brand strong { font-size: 19px; letter-spacing: .03em; }
-.app-header .brand span { margin-top: 6px; color: #afc4dc; font-weight: 500; font-size: 12px; }
-.sidebar-brand-symbol { display: grid; place-items: center; flex: 0 0 36px; height: 36px; border: 1px solid #7eaedd55; border-radius: 8px; color: #c8e2ff; background: #163a60; }
-.sidebar-brand-symbol svg { width: 20px; height: 20px; }
 .saas-nav-search { padding: 14px 12px; border-bottom: 0; background: transparent; }
 .saas-nav-search input { height: 38px; padding: 0 47px 0 32px; border: 1px solid #7297bd50; border-radius: 6px; background: #123559; font-size: 11px; }
 .sidebar-search-icon { position: absolute; top: 25px; left: 22px; width: 16px; height: 16px; color: #a9bfd7; pointer-events: none; }

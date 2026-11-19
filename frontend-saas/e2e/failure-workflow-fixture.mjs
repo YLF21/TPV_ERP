@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { emptySummary, summaryPath } from "./summary-fixture.mjs";
 const companyId = "10000000-0000-4000-8000-000000000001";
 const ticketId = "60000000-0000-4000-8000-000000000001";
 const assignees = [{ id: "80000000-0000-4000-8000-000000000001", username: "REPAIRS" }, { id: "80000000-0000-4000-8000-000000000002", username: "Ana García" }];
@@ -21,6 +22,8 @@ export async function setup(browser, errors, base, permissions = allPermissions,
     const json = value => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     if (path === "/api/v1/auth/admin/login") return json({ username: "REPAIRS", accessToken: "synthetic-token", mode: "admin", expiresAt: "2099-01-01T00:00:00Z", passwordChangeRequired: false });
     if (path === "/api/v1/auth/logout") return route.fulfill({ status: 204 });
+    if (path === summaryPath + "/options") return json({ companies: [], stores: [] });
+    if (path === summaryPath) return json(emptySummary);
     if (path === "/api/v1/admin/me") return json({ username: "REPAIRS", permissions });
     if (path === "/api/v1/admin/companies") return json(state.companies);
     if (path === "/api/v1/admin/licenses") return json(includeLicenses ? [{ licenseReference: "LIC-SUPPORT", companyId, companyName: sync.companyName, taxId: "B00000001", taxpayerType: "SOCIEDAD", taxRegime: "IVA", commercialProfile: "MINORISTA", status: "VALIDA", validUntil: "2099-01-01T00:00:00Z", maxWindows: 1, maxPda: 0 }] : []);

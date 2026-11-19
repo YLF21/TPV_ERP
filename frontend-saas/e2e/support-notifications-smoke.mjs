@@ -5,7 +5,7 @@ import { chromium } from "playwright";
 import { setup, companyId } from "./failure-workflow-fixture.mjs";
 
 const base = "http://127.0.0.1:5197/";
-const server = spawn(process.execPath, [fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)), "--host", "127.0.0.1", "--port", "5197", "--strictPort", "--configLoader", "runner"], { cwd: fileURLToPath(new URL("..", import.meta.url)), stdio: "ignore", windowsHide: true });
+const server = spawn(process.execPath, [fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)), "--host", "127.0.0.1", "--port", "5197", "--strictPort", "--configLoader", "runner"], { cwd: fileURLToPath(new URL("..", import.meta.url)), env: { ...process.env, VITE_SAAS_SUPERVISION_ENABLED: "true" }, stdio: "ignore", windowsHide: true });
 let browser;
 try {
   for (let attempt = 0; attempt < 100; attempt++) {

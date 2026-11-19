@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { emptySummary, summaryPath } from "./summary-fixture.mjs";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { mkdir } from "node:fs/promises";
@@ -64,6 +65,8 @@ async function setup(loginResponses, { adminPermissions = permissions } = {}) {
     }
     if ([passwordChange, logout].includes(path) && call.method === "POST") return route.fulfill({ status: 204 });
     if (call.method === "GET") {
+      if (path === summaryPath + "/options") return json({ companies: [], stores: [] });
+    if (path === summaryPath) return json(emptySummary);
       if (path === "/api/v1/admin/me") return json({ username: "INTERNAL_E2E", permissions: adminPermissions });
       if (path === "/api/v1/admin/sync/sales-summary") return json({ documentCount: 0, total: "0.00" });
       if (path === "/api/v1/admin/reports/advanced") return json({ companies: 0, invoices: 0, invoicedTotal: "0.00", paidTotal: "0.00", salesDocuments: 0, salesTotal: "0.00", inventoryMovements: 0, integrations: 0, activeIntegrations: 0 });
@@ -166,7 +169,7 @@ try {
   const ownFields = account.locator('input[autocomplete="new-password"]');
   await ownFields.nth(0).fill(nextPassword);
   await ownFields.nth(1).fill(nextPassword);
-  await account.getByRole("button").click();
+  await account.locator('button[type="submit"]').click();
   await internal.page.locator('.login-panel input[autocomplete="current-password"]').waitFor();
   assert.equal(await internal.page.locator(".app-shell, .tenant-shell").count(), 0);
   assert.deepEqual(internal.calls.find(call => call.path === passwordChange).body, { currentPassword: initialPassword, newPassword: nextPassword });
@@ -209,7 +212,7 @@ async function captureNavigation(page) {
     assert.equal(await sidebar.locator('.nav-group-toggle[aria-expanded="true"]').count(), 1);
     assert.equal(await toggle("Inicio").getAttribute("aria-expanded"), "true");
     assert.equal(await sidebar.getByRole("button", { name: "Auditoria", exact: true }).count(), 0);
-    await page.keyboard.press("Control+k");
+    await page.keyboard.press("Control+f");
     const search = page.locator('.saas-nav-search input');
     assert.equal(await search.evaluate(element => element === document.activeElement), true);
     await search.fill("Facturacion");
@@ -219,12 +222,12 @@ async function captureNavigation(page) {
     assert.equal(await sidebar.locator('.nav-group-toggle[aria-expanded="true"]').count(), 1);
     assert.equal(await toggle("Inicio").getAttribute("aria-expanded"), "true");
     // An external route change must reveal its section, including after manual collapse.
-    await page.evaluate(() => { location.hash = "#/fiscal"; });
-    await page.locator('.topbar h1').filter({ hasText: /^Estado fiscal$/ }).waitFor();
-    assert.equal(await toggle("Supervisión").getAttribute("aria-expanded"), "true");
+    await page.evaluate(() => { location.hash = "#/fiscal-policy"; });
+    await page.locator('.topbar h1').filter({ hasText: /^Activacion global de VeriFactu$/ }).waitFor();
+    assert.equal(await toggle("Configuración técnica").getAttribute("aria-expanded"), "true");
     assert.equal(await toggle("Inicio").getAttribute("aria-expanded"), "true", "External routes must preserve other open sections");
-    assert.equal(await sidebar.getByRole("button", { name: "Estado fiscal", exact: true }).getAttribute("aria-current"), "page");
-    await sidebar.getByRole("button", { name: "Estado fiscal", exact: true }).scrollIntoViewIfNeeded();
+    assert.equal(await sidebar.getByRole("button", { name: "Activacion global de VeriFactu", exact: true }).getAttribute("aria-current"), "page");
+    await sidebar.getByRole("button", { name: "Activacion global de VeriFactu", exact: true }).scrollIntoViewIfNeeded();
     await page.mouse.move(width - 40, 150);
     await page.screenshot({ path: screenshotDirectory + "/saas-internal-navigation-" + width + ".png", animations: "disabled" });
   }
@@ -242,22 +245,7 @@ async function assertNavigation(page, calls) {
   assert.equal(await ownCompany.getByRole("button", { name: /^Facturaci[oó]n$/ }).count(), 1);
   assert.equal(await clients.getByRole("button", { name: /^(Maestros|Operaciones|Facturaci[oó]n)$/ }).count(), 0);
   assert.equal(await sidebar.getByRole("button", { name: /^(Maestros|Operaciones)$/ }).count(), 0);
-  if (await supervision.locator(".nav-group-toggle").getAttribute("aria-expanded") !== "true") await supervision.locator(".nav-group-toggle").click();
-  assert.deepEqual(await supervision.locator(".nav-phase-title").allTextContents(), ["1. Revisar estado", "2. Detectar fallos", "3. Diagnosticar", "4. Recuperar entregas", "5. Atender al cliente"]);
-  assert.deepEqual(await supervision.evaluate(element => {
-    const phases = [];
-    for (const child of element.querySelector(".nav-group-items").children) {
-      if (child.classList.contains("nav-phase-title")) phases.push({ title: child.textContent.trim(), modules: [] });
-      if (child.tagName === "BUTTON") phases.at(-1).modules.push(child.textContent.trim());
-    }
-    return phases;
-  }), [
-    { title: "1. Revisar estado", modules: ["Estado de clientes"] },
-    { title: "2. Detectar fallos", modules: ["Fallos de tiendas"] },
-    { title: "3. Diagnosticar", modules: ["Sincronizacion", "Estado fiscal"] },
-    { title: "4. Recuperar entregas", modules: ["Recuperación de entregas"] },
-    { title: "5. Atender al cliente", modules: ["Soporte"] },
-  ]);
+  assert.equal(await supervision.count(), 0);
   if (await ownCompany.locator(".nav-group-toggle").getAttribute("aria-expanded") !== "true") await ownCompany.locator(".nav-group-toggle").click();
   await Promise.all([
     page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/admin/billing-summary"),
@@ -266,15 +254,7 @@ async function assertNavigation(page, calls) {
   await page.waitForFunction(() => location.hash === "#/billing");
   assert.equal(await page.locator(".topbar .eyebrow").textContent(), "Mi empresa");
   assert.ok(await page.locator(".module-help").isVisible());
-  if (await supervision.locator(".nav-group-toggle").getAttribute("aria-expanded") !== "true") await supervision.locator(".nav-group-toggle").click();
-  await Promise.all([
-    page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/admin/fiscal-status/companies"),
-    supervision.getByRole("button", { name: "Estado fiscal", exact: true }).click(),
-  ]);
-  await page.waitForFunction(() => location.hash === "#/fiscal");
-  assert.equal(await page.locator(".verifactu-policy-section").count(), 0, "Fiscal supervision must remain read only and separate from policy configuration");
   assert.equal(calls.some(call => call.path === "/api/v1/admin/verifactu-activation-policies"), false);
-  assert.equal(await page.locator("main").getByRole("button", { name: "Actualizar politica", exact: true }).count(), 0);
   await technical.locator(".nav-group-toggle").click();
   await technical.getByRole("button", { name: "Activacion global de VeriFactu", exact: true }).click();
   await page.waitForFunction(() => location.hash === "#/fiscal-policy");

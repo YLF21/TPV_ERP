@@ -7,23 +7,25 @@ import { readDictionary } from "../test-support/source-helpers.mjs";
 
 function inZone(zone, script) {
   const module = new URL("../src/features/marketing/demo-follow-up.mjs", import.meta.url).href;
-  return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `import { toLocalActionDate, actionDateToInstant } from ${JSON.stringify(module)}; ${script}`], { env: { ...process.env, TZ: zone }, encoding: "utf8" }));
+  return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `import { toUtcActionDate, actionDateToInstant } from ${JSON.stringify(module)}; ${script}`], { env: { ...process.env, TZ: zone }, encoding: "utf8" }));
 }
 
-test("follow-up uses the operator's civil time, including summer and winter offsets", () => {
-  assert.deepEqual(inZone("Europe/Madrid", `console.log(JSON.stringify([
-    toLocalActionDate('2026-01-15T10:30:19.123Z'), toLocalActionDate('2026-07-15T10:30:19.123Z'),
-    actionDateToInstant('2026-01-15T11:30'), actionDateToInstant('2026-07-15T12:30'),
-    toLocalActionDate(null), actionDateToInstant('')
-  ]));`), ["2026-01-15T11:30", "2026-07-15T12:30", "2026-01-15T10:30:00.000Z", "2026-07-15T10:30:00.000Z", "", null]);
-  assert.deepEqual(inZone("Asia/Shanghai", `console.log(JSON.stringify([toLocalActionDate('2026-10-27T16:15:00Z'), actionDateToInstant('2026-10-28T00:15')]));`), ["2026-10-28T00:15", "2026-10-27T16:15:00.000Z"]);
+test("follow-up uses UTC regardless of operator timezone and daylight-saving offsets", () => {
+  const script = `console.log(JSON.stringify([
+    toUtcActionDate('2026-01-15T10:30:19.123Z'), toUtcActionDate('2026-07-15T10:30:19.123Z'),
+    actionDateToInstant('2026-01-15T10:30'), actionDateToInstant('2026-07-15T10:30'),
+    toUtcActionDate(null), actionDateToInstant('')
+  ]));`;
+  const expected = ["2026-01-15T10:30", "2026-07-15T10:30", "2026-01-15T10:30:00.000Z", "2026-07-15T10:30:00.000Z", "", null];
+  for (const zone of ["UTC", "Europe/Madrid", "Asia/Shanghai"]) assert.deepEqual(inZone(zone, script), expected);
 });
 
-test("follow-up rejects invalid calendar dates, missing time and skipped DST times", () => {
-  const badDates = ["2026-02-30T10:30", "2026-03-29T02:30", "2026-13-01T10:30", "2026-01-01", "not a date", "2026-01-01T24:30", "2026-01-01T11:30Z"];
+test("follow-up rejects invalid calendar dates and accepts times skipped by a local DST transition", () => {
+  const badDates = ["2026-02-30T10:30", "2026-13-01T10:30", "2026-01-01", "not a date", "2026-01-01T24:30", "2026-01-01T11:30Z"];
   const result = inZone("Europe/Madrid", `console.log(JSON.stringify(${JSON.stringify(badDates)}.map(value => { try { actionDateToInstant(value); return false; } catch(error) { return error instanceof RangeError; } })));`);
   assert.ok(result.every(Boolean));
-  assert.equal(inZone("Europe/Madrid", `console.log(JSON.stringify(actionDateToInstant('2028-02-29T09:00')));`), "2028-02-29T08:00:00.000Z");
+  assert.equal(inZone("Europe/Madrid", `console.log(JSON.stringify(actionDateToInstant('2028-02-29T09:00')));`), "2028-02-29T09:00:00.000Z");
+  assert.equal(inZone("Europe/Madrid", `console.log(JSON.stringify(actionDateToInstant('2026-03-29T02:30')));`), "2026-03-29T02:30:00.000Z");
 });
 
 test("overdue means a past dated action on an open request, not a closed or undated lead", () => {
@@ -65,7 +67,7 @@ test("follow-up keeps server authority, session isolation and unsaved drafts", a
   assert.match(view, /preserveDraftOnReload\.current = dirty/);
   assert.match(view, /if \(dirty\).*demoFollowUpDirty/);
   assert.match(view, /draft\.nextActionAt === baseline\.nextActionAt \? selected\.nextActionAt/,
-    "Preserve server seconds and repeated-hour offset when only changing the assignee or note");
+    "Preserve server seconds when only changing the assignee or note");
   assert.match(view, /canManage && detailReady/);
   assert.match(view, /<details className="demo-follow-up-notes"/);
   assert.match(view, /maxLength=\{500\}/);

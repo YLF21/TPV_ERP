@@ -7,13 +7,14 @@ import "./table-layout.css";
 export type DataColumn<Row, Key extends string> = TableColumnDefinition<Key> & {
   label: string; render: (row: Row) => ReactNode; sortKey?: string; align?: "left" | "right";
 };
-export function SaasDataTable<Row extends { id: string }, Key extends string>({ username, tableKey, label, columns, rows, sort, onSort, onOpen, disabled = false, scrollRef, scrollClassName = "" }: {
+export function SaasDataTable<Row extends { id: string }, Key extends string>({ username, tableKey, label, columns, rows, sort, onSort, onOpen, disabled = false, scrollRef, scrollClassName = "", legacyColumnOrder }: {
   username: string; tableKey: string; label: string; columns: readonly DataColumn<Row, Key>[]; rows: readonly Row[];
   sort: { key: string; direction: "asc" | "desc" }; onSort: (key: string) => void; onOpen: (row: Row) => void; disabled?: boolean;
   scrollRef?: Ref<HTMLDivElement>; scrollClassName?: string;
+  legacyColumnOrder?: readonly string[];
 }) {
   const definitions = columns.map(({ key, defaultWidth, defaultVisible, minWidth }) => ({ key, defaultWidth, defaultVisible, minWidth }));
-  const layout = useTableLayoutPreference(username, tableKey, definitions);
+  const layout = useTableLayoutPreference(username, tableKey, definitions, legacyColumnOrder);
   const visible = layout.layout.filter(column => column.visible);
   const byKey = new Map(columns.map(column => [column.key, column]));
   const [selectedId, select] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export function SaasDataTable<Row extends { id: string }, Key extends string>({ 
       options={options} onReorder={layout.reorderColumns} onMove={layout.moveColumn} onResize={layout.resizeColumn} onToggle={layout.toggleColumnVisibility} onReset={layout.reset} />; })}</tr></thead>
     <tbody>{rows.map((row, index) => <tr key={row.id} data-row-id={row.id} aria-selected={selected === row.id} tabIndex={selected === row.id ? 0 : -1}
       ref={element => { if (element) rowRefs.current.set(row.id, element); else rowRefs.current.delete(row.id); }}
-      onClick={() => select(row.id)} onDoubleClick={event => { if (!disabled) { event.currentTarget.focus({ preventScroll: true }); onOpen(row); } }}
+      onFocusCapture={() => select(row.id)} onClick={() => select(row.id)} onDoubleClick={event => { if (!disabled && !(event.target as HTMLElement).closest("a,button,input,select")) { event.currentTarget.focus({ preventScroll: true }); onOpen(row); } }}
       onKeyDown={event => {
         if (event.target !== event.currentTarget) return;
         if (event.key === "Enter") { event.preventDefault(); if (!disabled) onOpen(row); }

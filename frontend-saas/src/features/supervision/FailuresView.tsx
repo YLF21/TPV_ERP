@@ -124,8 +124,8 @@ export function FailuresView({ credentials, licenses, onNotice, onNavigate, perm
       <div className="failure-filter-extra">
       <Input label={f("installation")} value={draft.installationId} maxLength={36} onChange={installationId => setDraft({ ...draft, installationId })} />
       <label>{l("source")}<select className="control-input" value={draft.source} onChange={event => setDraft({ ...draft, source: event.target.value })}><option value="">{l("all")}</option>{FAILURE_SOURCES.map(source => <option key={source} value={source}>{f(source)}</option>)}</select></label>
-      <Input label={l("from")} type="date" value={draft.from} onChange={from => setDraft({ ...draft, from })} />
-      <Input label={l("to")} type="date" value={draft.to} onChange={to => setDraft({ ...draft, to })} />
+      <Input label={`${l("from")} (UTC)`} type="date" value={draft.from} onChange={from => setDraft({ ...draft, from })} />
+      <Input label={`${l("to")} (UTC)`} type="date" value={draft.to} onChange={to => setDraft({ ...draft, to })} />
       </div>
       <div className="failure-filter-footer">
       <label className="failure-active-toggle"><input type="checkbox" checked={draft.activeStoresOnly} onChange={event => { setDraft({ ...draft, activeStoresOnly: event.target.checked, storeId: "" }); setStoreSearch(""); }} />{l("activeStores")}</label>

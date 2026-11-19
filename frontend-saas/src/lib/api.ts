@@ -65,6 +65,7 @@ import type {
 import { extractApiErrorMessage } from "./problem-detail.mjs";
 import { demoRequestPagePath } from "../features/marketing/demo-request-query.mjs";
 import { RequestDeadlineError, withinRequestDeadline } from "./request-deadline.mjs";
+import type { AdminSummary } from "../features/dashboard/types";
 
 const API_BASE = import.meta.env.VITE_SAAS_API_BASE_URL ?? "";
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -171,18 +172,25 @@ export async function request<T>(credentials: Credentials, path: string, options
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }
 
-export async function requestBinary(credentials: Credentials, path: string): Promise<Blob> {
-  const response = await fetchWithTimeout(`${API_BASE}${path}`, {
-    method: "GET",
+export async function requestBinary(credentials: Credentials, path: string, options: {
+  method?: "GET" | "POST"; body?: unknown; signal?: AbortSignal;
+} = {}): Promise<Blob> {
+  return fetchWithTimeout(`${API_BASE}${path}`, {
+    method: options.method ?? "GET",
     cache: "no-store",
+    signal: options.signal,
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
     headers: { Authorization: authHeader(credentials),
-      ...(credentials.companyId ? { "X-TPV-Company-Id": credentials.companyId } : {}) }
-  }, REQUEST_TIMEOUT_MS, async value => value);
-  if (!response.ok) {
-    if (response.status === 401) unauthorizedHandler?.(credentials);
-    throw new ApiError(response.status, response.statusText || "No se pudo descargar el archivo autorizado");
-  }
-  return response.blob();
+      ...(credentials.companyId ? { "X-TPV-Company-Id": credentials.companyId } : {}),
+      ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}) }
+  }, 60_000, async response => {
+    if (!response.ok) {
+      if (response.status === 401) unauthorizedHandler?.(credentials);
+      const text = await response.text();
+      throw new ApiError(response.status, extractApiErrorMessage(text) || response.statusText || "No se pudo descargar el archivo autorizado");
+    }
+    return response.blob();
+  });
 }
 
 // The inbox keeps its deadline active through JSON/error body consumption.
@@ -242,6 +250,10 @@ export const api = {
       method: "POST",
       headers: { Authorization: authHeader(credentials) }
     });
+  },
+
+  summary(credentials: Credentials, query = "") {
+    return request<AdminSummary>(credentials, "/api/v1/admin/summary" + (query ? `?${query}` : ""));
   },
 
   dashboard(credentials: Credentials): Promise<DashboardData> {

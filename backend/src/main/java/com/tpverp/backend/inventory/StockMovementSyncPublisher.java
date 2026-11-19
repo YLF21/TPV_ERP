@@ -37,7 +37,7 @@ public class StockMovementSyncPublisher {
         payload.put("salidaAlmacenId", nullableUuid(movement.getWarehouseOutputId()));
         payload.put("entradaAlmacenId", nullableUuid(movement.getWarehouseInputId()));
         payload.put("tipo", movement.getType().name());
-        payload.put("cantidad", movement.getQuantity());
+        payload.put("cantidad", movement.getQuantity().toPlainString());
         payload.put("motivo", movement.getReason());
         payload.put("compensacionDeId", nullableUuid(movement.getCompensationOfId()));
         payload.put("transferenciaId", nullableUuid(movement.getTransferId()));

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { emptySummary, summaryPath } from "./summary-fixture.mjs";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -84,6 +85,8 @@ async function setup({ permissions = allPermissions, username = "CREATE_LICENSE_
     const query = Object.fromEntries(url.searchParams); calls.push({ path, method, query, body });
     const json = value => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     if (path === "/api/v1/auth/admin/login") return json({ username, accessToken: "synthetic-token", mode: "admin", expiresAt: "2099-01-01T00:00:00Z", passwordChangeRequired: false });
+    if (path === summaryPath + "/options") return json({ companies: [], stores: [] });
+    if (path === summaryPath) return json(emptySummary);
     if (path === "/api/v1/admin/me") return json({ username, permissions });
     if (path === "/api/v1/admin/licenses") return failDashboard ? jsonError(route, "Synthetic dashboard unavailable") : json([]);
     if (path === "/api/v1/admin/installations") return json([]);

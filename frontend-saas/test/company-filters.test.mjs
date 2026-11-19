@@ -107,18 +107,18 @@ test("date intervals accept open bounds and reject inverted or impossible calend
   ]) assert.equal(matches({ dateFrom: "2026-09-20", dateTo: "2026-09-20" }, { ...company, createdAt: new Date(createdAt).toISOString() }), expected);
 });
 
-test("local-day filtering remains inclusive across both DST changes and UTC date differences", () => {
+test("UTC-day filtering remains identical across browser zones and both DST changes", () => {
   const moduleUrl = new URL("../src/features/companies/company-filters.mjs", import.meta.url).href;
-  for (const zone of ["Atlantic/Canary", "Europe/Madrid", "America/New_York"]) {
+  for (const zone of ["Atlantic/Canary", "Europe/Madrid", "America/New_York", "Asia/Shanghai"]) {
     const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
       import assert from "node:assert/strict";
       import { companyDateRange, emptyCompanyFilters, matchesCompanyFilters } from ${JSON.stringify(moduleUrl)};
       const days = process.env.TZ === "America/New_York" ? ["2026-03-08", "2026-11-01"] : ["2026-03-29", "2026-10-25"];
       for (const [index, day] of days.entries()) {
         const interval = companyDateRange(day, day);
-        assert.equal((interval.toExclusive - interval.from) / 3600000, index === 0 ? 23 : 25);
-        assert.equal(new Date(interval.from).getHours(), 0);
-        assert.equal(new Date(interval.toExclusive).getHours(), 0);
+        assert.equal((interval.toExclusive - interval.from) / 3600000, 24);
+        assert.equal(new Date(interval.from).getUTCHours(), 0);
+        assert.equal(new Date(interval.toExclusive).getUTCHours(), 0);
         const filters = { ...emptyCompanyFilters(), dateFrom: day, dateTo: day };
         for (const [timestamp, expected] of [[interval.from - 1, false], [interval.from, true], [interval.toExclusive - 1, true], [interval.toExclusive, false]]) {
           assert.equal(matchesCompanyFilters({ createdAt: new Date(timestamp).toISOString() }, filters), expected);
@@ -126,7 +126,7 @@ test("local-day filtering remains inclusive across both DST changes and UTC date
       }
       const filters = { ...emptyCompanyFilters(), dateFrom: "2026-09-20", dateTo: "2026-09-20" };
       for (const hour of [0, 12, 23]) {
-        const local = new Date(2026, 8, 20, hour, 30).toISOString();
+        const local = new Date(Date.UTC(2026, 8, 20, hour, 30)).toISOString();
         assert.equal(matchesCompanyFilters({ createdAt: local }, filters), true);
       }
     `], { encoding: "utf8", env: { ...process.env, TZ: zone } });

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { emptySummary, summaryPath } from "./summary-fixture.mjs";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -66,6 +67,8 @@ try {
     calls.push({ path, method, body, params });
     const json = value => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     if (path === "/api/v1/auth/admin/login") return json({ username: "STORES_SCROLL_DEMO", accessToken: "synthetic-token", mode: "admin", passwordChangeRequired: false, expiresAt: "2099-01-01T00:00:00Z" });
+    if (path === summaryPath + "/options") return json({ companies: [], stores: [] });
+    if (path === summaryPath) return json(emptySummary);
     if (path === "/api/v1/admin/me") return json({ username: "STORES_SCROLL_DEMO", permissions });
     if (path === "/api/v1/admin/companies") return json(companies);
     if (path === "/api/v1/admin/licenses") {
@@ -248,8 +251,9 @@ try {
   await scroll.evaluate(element => { element.scrollTop = 0; element.scrollLeft = 0; });
   const headers = () => table.locator("thead th").evaluateAll(elements => elements.map(element => element.dataset.columnKey));
   const statusHeading = table.locator('th[data-column-key="active"]');
+  const statusIndex = (await headers()).indexOf("active");
   await statusHeading.focus(); await page.keyboard.press("Control+ArrowLeft");
-  assert.ok((await headers()).indexOf("active") < (await headers()).indexOf("name"));
+  assert.equal((await headers()).indexOf("active"), statusIndex - 1);
   await table.getByRole("button", { name: "Opciones de columna Estado", exact: true }).click();
   await page.getByRole("menuitemcheckbox", { name: "Impuestos", exact: true }).click();
   await page.keyboard.press("Escape");
@@ -258,7 +262,7 @@ try {
   await statusHeading.getByRole("button", { name: "Cambiar ancho de Estado", exact: true }).focus(); await page.keyboard.press("ArrowRight");
   const resizedWidth = (await statusHeading.boundingBox()).width;
   assert.ok(resizedWidth > originalWidth);
-  await table.locator('th[data-column-key="name"]').dragTo(table.locator('th[data-column-key="internalCode"]'));
+  await table.locator('th[data-column-key="name"]').dragTo(table.locator('th[data-column-key="code"]'));
   assert.equal((await headers())[0], "name");
   const savedHeaders = await headers();
   await page.reload();
@@ -359,7 +363,7 @@ try {
   // The store directory must not wait for dashboard completion.
   await refreshedDirectory;
   stores[0].name = "Tienda pareja ficha actual";
-  await rows.first().dblclick();
+  await rows.first().locator('td[data-column-key="name"]').dblclick();
   await modal.locator(".retry-error").waitFor();
   assert.equal(await modal.getByRole("form").count(), 0, "A profile failure must not expose a form based on stale table data");
   failProfile = false;
@@ -404,7 +408,7 @@ try {
   permissions.splice(0, permissions.length, "VIEW_ADMIN_DATA");
   await Promise.all([page.waitForResponse(response => response.url().endsWith("/api/v1/admin/me")), page.getByRole("button", { name: "Actualizar", exact: true }).click()]);
   await waitRows(2); assert.equal(await create.count(), 0);
-  await rows.first().dblclick(); await editForm.waitFor();
+  await rows.first().locator('td[data-column-key="name"]').dblclick(); await editForm.waitFor();
   assert.equal(await editForm.getByLabel("Nombre", { exact: true }).isDisabled(), true);
   assert.equal(await editForm.getByLabel("Perfil comercial", { exact: true }).isDisabled(), true);
   assert.equal(await modal.getByRole("button", { name: /^(Guardar|Activar|Desactivar)$/ }).count(), 0);
@@ -454,7 +458,7 @@ async function assertWithin(locator, viewport) {
 }
 async function verifyModalForm(page, modal, form, viewport) {
   await form.waitFor();
-  const expiry = form.getByLabel("Valida hasta", { exact: true });
+  const expiry = form.getByLabel("Valida hasta (UTC)", { exact: true });
   await expiry.click();
   const calendar = form.getByRole("dialog", { name: "Valida hasta", exact: true });
   await calendar.waitFor();

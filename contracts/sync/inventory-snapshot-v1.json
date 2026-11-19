@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "b0c59c04-3b6e-4052-b790-cb01cf13de4c",
+  "sourceInstallationId": "21400be4-624e-4ce5-a418-362a330ba68e",
+  "capturedAt": "2026-01-01T10:00:00.123456Z",
+  "chunkIndex": 0,
+  "chunkCount": 1,
+  "productCount": 1,
+  "warehouseCount": 1,
+  "balanceCount": 1,
+  "products": [
+    {"productId": "beb8b102-9c02-4796-95c4-cf0d01e066c8", "code": "CAFE", "name": "Café",
+     "barcode": "731010", "secondaryBarcode": null, "active": true, "productType": "WEIGHT",
+     "familyId": null, "familyName": null, "subfamilyId": null, "subfamilyName": null}
+  ],
+  "warehouses": [
+    {"warehouseId": "12b9dc65-f43e-49fe-9c1e-3fcba4f57db9", "name": "Principal", "active": true, "defaultWarehouse": true}
+  ],
+  "balances": [
+    {"productId": "beb8b102-9c02-4796-95c4-cf0d01e066c8", "warehouseId": "12b9dc65-f43e-49fe-9c1e-3fcba4f57db9", "quantity": "9999999999999999.125"}
+  ]
+}

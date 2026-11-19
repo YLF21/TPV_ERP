@@ -17,6 +17,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import com.tpverp.backend.licensing.LicenseSaasCredentialStore;
 import com.tpverp.backend.licensing.SaasLicenseIdentityResolver;
 
@@ -193,9 +195,10 @@ class HttpSyncEventSenderTest {
         }
     }
 
-    @Test
-    void replenishmentRequiresMatchingProjectedAcknowledgement() throws Exception {
-        var event = replenishmentEvent();
+    @ParameterizedTest
+    @ValueSource(strings = {"REPLENISHMENT_REQUEST", "INVENTORY_SNAPSHOT"})
+    void snapshotsRequireMatchingProjectedAcknowledgement(String entityType) throws Exception {
+        var event = snapshotEvent(entityType);
         var received = new AtomicReference<JsonNode>();
         HttpServer server = server(200, received, new AtomicReference<>(), request -> """
                 {"eventId":"%s","accepted":true,"projectionStatus":"PROJECTED"}
@@ -212,27 +215,44 @@ class HttpSyncEventSenderTest {
         }
     }
 
-    @Test
-    void replenishmentRejectsMismatchedAcknowledgement() throws Exception {
-        assertRejectedReplenishmentAck("""
+    @ParameterizedTest
+    @ValueSource(strings = {"REPLENISHMENT_REQUEST", "INVENTORY_SNAPSHOT"})
+    void snapshotsRejectMismatchedAcknowledgement(String entityType) throws Exception {
+        assertRejectedSnapshotAck(entityType, """
                 {"eventId":"%s","accepted":true,"projectionStatus":"PROJECTED"}
                 """.formatted(UUID.randomUUID()));
     }
 
-    @Test
-    void replenishmentRejectsIgnoredProjection() throws Exception {
-        assertRejectedReplenishmentAck("""
+    @ParameterizedTest
+    @ValueSource(strings = {"REPLENISHMENT_REQUEST", "INVENTORY_SNAPSHOT"})
+    void snapshotsRejectIgnoredProjection(String entityType) throws Exception {
+        assertRejectedSnapshotAck(entityType, """
                 {"eventId":"%s","accepted":true,"projectionStatus":"IGNORED"}
                 """);
     }
 
-    @Test
-    void replenishmentRejectsEmptyAcknowledgement() throws Exception {
-        assertRejectedReplenishmentAck("");
+    @ParameterizedTest
+    @ValueSource(strings = {"REPLENISHMENT_REQUEST", "INVENTORY_SNAPSHOT"})
+    void snapshotsRejectEmptyAcknowledgement(String entityType) throws Exception {
+        assertRejectedSnapshotAck(entityType, "");
     }
 
-    private void assertRejectedReplenishmentAck(String response) throws Exception {
-        var event = replenishmentEvent();
+    @Test
+    void inventorySnapshotRejectsAnUnacceptedProjection() throws Exception {
+        assertRejectedSnapshotAck("INVENTORY_SNAPSHOT", """
+                {"eventId":"%s","accepted":false,"projectionStatus":"PROJECTED"}
+                """);
+    }
+
+    @Test
+    void inventorySnapshotRejectsAnAcknowledgementWithAStringAcceptedFlag() throws Exception {
+        assertRejectedSnapshotAck("INVENTORY_SNAPSHOT", """
+                {"eventId":"%s","accepted":"true","projectionStatus":"PROJECTED"}
+                """);
+    }
+
+    private void assertRejectedSnapshotAck(String entityType, String response) throws Exception {
+        var event = snapshotEvent(entityType);
         HttpServer server = server(200, new AtomicReference<>(), new AtomicReference<>(),
                 request -> response.contains("%s") ? response.formatted(request.get("eventId").asText()) : response);
         try {
@@ -275,9 +295,9 @@ class HttpSyncEventSenderTest {
         return server;
     }
 
-    private static SyncOutboxEvent replenishmentEvent() {
+    private static SyncOutboxEvent snapshotEvent(String entityType) {
         return new SyncOutboxEvent(UUID.randomUUID(), UUID.randomUUID(), null,
-                "REPLENISHMENT_REQUEST", UUID.randomUUID(), SyncOperation.CREAR,
+                entityType, UUID.randomUUID(), SyncOperation.ACTUALIZAR,
                 Map.of("schemaVersion", 1), Instant.parse("2026-11-15T12:00:00Z"));
     }
 

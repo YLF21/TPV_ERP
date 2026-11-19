@@ -14,8 +14,7 @@ test("internal portal uses the admin login and retains tenant contracts only for
   assert.match(types, /mode: "admin" \| "tenant"/);
   assert.match(api, /publicPost<LoginResponse>\("\/api\/v1\/auth\/admin\/login", credentials\)/);
   assert.match(app, /mode: authenticated\.mode/);
-  // Navigation normalization may run inside the admin guard before refreshing.
-  assert.match(app, /if \(credentials\?\.mode === "admin"\) \{\s*(?:if \(window\.location\.hash[^\n]*\) \{\s*window\.history\.replaceState\([^\n]*\);\s*\}\s*)?void refresh\(credentials\)/);
+  assert.match(app, /if \(credentials\?\.mode === "admin"\) \{[\s\S]*?if \(!session \|\| [^\n]+\) void refresh\(credentials\);\s*\}/);
   assert.doesNotMatch(app, /TenantWorkspace|MastersView|OperationsView/);
   const refresh = app.slice(app.indexOf("async function refresh"), app.indexOf("async function login"));
   assert.doesNotMatch(refresh, /error\.status === 403/);
@@ -44,8 +43,8 @@ test("initial login and password reauthentication reject other realms before adm
 test("internal login context is localized and fiscal monitoring is separate from global policy", async () => {
   const [app] = await sources;
   const auth = await readSources("features/auth/AuthScreens.tsx");
-  assert.match(auth, /t\("centralAdministration"\)/);
-  assert.match(auth, /t\("internalPortal"\)/);
+  assert.match(auth, /t\("centralServer"\)/);
+  assert.match(auth, /t\("adminAccess"\)/);
   assert.match(app, /activeView === "fiscal" && <FiscalStatusView/);
   assert.match(app, /activeView === "fiscal-policy" && <VerifactuPolicySection/);
   assert.match(app, /canManage=\{permissions\.has\("MANAGE_FISCAL_POLICY"\)\}/);

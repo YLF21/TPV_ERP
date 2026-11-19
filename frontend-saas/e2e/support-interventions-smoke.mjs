@@ -6,7 +6,7 @@ import { chromium } from "playwright";
 import { setup as fixtureSetup, sync, assignees } from "./failure-workflow-fixture.mjs";
 const base = "http://127.0.0.1:5199/";
 const errors = []; let browser;
-const server = spawn(process.execPath, [fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)), "--host", "127.0.0.1", "--port", "5199", "--strictPort", "--configLoader", "runner"], { cwd: fileURLToPath(new URL("..", import.meta.url)), stdio: "ignore", windowsHide: true });
+const server = spawn(process.execPath, [fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)), "--host", "127.0.0.1", "--port", "5199", "--strictPort", "--configLoader", "runner"], { cwd: fileURLToPath(new URL("..", import.meta.url)), env: { ...process.env, VITE_SAAS_SUPERVISION_ENABLED: "true" }, stdio: "ignore", windowsHide: true });
 async function setup(includeLicenses = false) {
   const fixture = await fixtureSetup(browser, errors, base, undefined, includeLicenses);
   await fixture.open("APPLICATION_ERROR");

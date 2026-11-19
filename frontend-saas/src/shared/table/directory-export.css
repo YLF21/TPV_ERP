@@ -1,0 +1,10 @@
+.directory-table-actions { display: flex; align-items: flex-start; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.directory-table-actions > button, .directory-excel-export > button { min-height: 36px; white-space: nowrap; }
+.directory-excel-export { display: grid; justify-items: end; gap: 4px; min-width: 0; }
+.directory-excel-export .error-message { max-width: 360px; margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.directory-license-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.directory-license-heading h2 { margin: 0; }
+@media (max-width: 700px) {
+  .directory-license-heading { flex-wrap: wrap; }
+  .directory-table-actions { justify-content: flex-start; }
+}

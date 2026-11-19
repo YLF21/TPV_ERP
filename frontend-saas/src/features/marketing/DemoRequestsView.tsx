@@ -7,14 +7,14 @@ import { EmptyState, RetryError, SectionHeader, StatusPill } from "../../shared/
 import { formatDate } from "../../shared/lib";
 import { WorkspaceDialog } from "../../shared/WorkspaceDialog";
 import { demoRequestStatuses } from "./demo-request-query.mjs";
-import { actionDateToInstant, isDemoActionOverdue, toLocalActionDate } from "./demo-follow-up.mjs";
+import { actionDateToInstant, isDemoActionOverdue, toUtcActionDate } from "./demo-follow-up.mjs";
 import "./demo-requests.css";
 
 const PAGE_SIZE = 20;
 type FollowUpDraft = { assigneeUsername: string; nextAction: string; nextActionAt: string; note: string };
 const emptyDraft: FollowUpDraft = { assigneeUsername: "", nextAction: "", nextActionAt: "", note: "" };
 function draftFor(request: DemoRequest): FollowUpDraft {
-  return { assigneeUsername: request.assigneeUsername ?? "", nextAction: request.nextAction ?? "", nextActionAt: toLocalActionDate(request.nextActionAt), note: "" };
+  return { assigneeUsername: request.assigneeUsername ?? "", nextAction: request.nextAction ?? "", nextActionAt: toUtcActionDate(request.nextActionAt), note: "" };
 }
 
 export function DemoRequestsView({ credentials, permissions }: { credentials: Credentials; permissions: Set<string> }) {

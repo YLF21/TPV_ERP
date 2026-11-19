@@ -8,6 +8,7 @@
 .saas-data-table tbody tr:nth-child(even) { background: #f2f6fa; }
 .saas-data-table tbody tr:hover { background: #e8f1fa; }
 .saas-data-table tbody tr[aria-selected="true"] { background: #d8e9fb; }
+.table-workspace .saas-data-table tbody tr[aria-selected="true"] { font-weight: 700; }
 .saas-data-table tbody tr:focus { outline: 2px solid #1f5a94; outline-offset: -2px; }
 .saas-data-table .saas-layout-heading { position: sticky; top: 0; z-index: 2; height: 36px; padding: 0 6px; background: #12385f; color: #fff; text-align: left; text-transform: none; font-size: 12px; font-weight: 700; user-select: none; }
 .saas-layout-heading:focus-visible { outline: 2px solid #91c9ff; outline-offset: -2px; }
@@ -30,6 +31,10 @@
 @media (hover: none), (any-pointer: coarse) {
   .saas-data-table .saas-layout-sort-indicator,
   .saas-data-table .saas-layout-menu-trigger { opacity: 1; }
+}
+/* Match Venta/Gestion on hybrid devices: a touch screen must not override an available mouse. */
+@media (any-hover: hover) {
+  .table-workspace .saas-data-table .saas-layout-heading:not(:hover):not(:focus-within):not(.is-menu-open) :is(.saas-layout-sort-indicator, .saas-layout-menu-trigger) { opacity: 0; }
 }
 .saas-layout-menu-trigger:hover, .saas-layout-menu-trigger[aria-expanded="true"] { background: #285787; }
 .saas-data-table .saas-layout-resizer { position: absolute; inset: 0 -4px 0 auto; z-index: 3; width: 9px; min-width: 0; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; cursor: col-resize; touch-action: none; }

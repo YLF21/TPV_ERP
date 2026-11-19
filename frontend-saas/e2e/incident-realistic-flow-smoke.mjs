@@ -8,7 +8,7 @@ import { setup, assignees, companyId } from "./failure-workflow-fixture.mjs";
 const base = "http://127.0.0.1:5201/";
 const errors = [];
 let browser;
-const server = spawn(process.execPath, [fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)), "--host", "127.0.0.1", "--port", "5201", "--strictPort", "--configLoader", "runner"], { cwd: fileURLToPath(new URL("..", import.meta.url)), stdio: "ignore", windowsHide: true });
+const server = spawn(process.execPath, [fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)), "--host", "127.0.0.1", "--port", "5201", "--strictPort", "--configLoader", "runner"], { cwd: fileURLToPath(new URL("..", import.meta.url)), env: { ...process.env, VITE_SAAS_SUPERVISION_ENABLED: "true" }, stdio: "ignore", windowsHide: true });
 try {
   for (let i = 0; i < 100; i++) { try { if ((await fetch(base)).ok) break; } catch {} await new Promise(resolve => setTimeout(resolve, 100)); }
   browser = await chromium.launch({ headless: true });

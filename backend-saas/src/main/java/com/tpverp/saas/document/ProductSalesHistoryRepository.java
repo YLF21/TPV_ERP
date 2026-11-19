@@ -26,19 +26,6 @@ public class ProductSalesHistoryRepository {
                   and cl.installation_id=d.source_installation_id and cl.local_customer_id=d.customer_local_id
              left join saas_erp_customer c on c.company_id=d.company_id and c.id=cl.customer_id
             """;
-    // A conversion replaces its origin even when the invoice is outside the user's period/status filter.
-    // COMPENSA links an exchange's independent new-sale and return lines, so both retain their sign.
-    private static final String COUNTS = """
-            (d.document_status <> 'ANULADO' and not (
-              d.document_type in ('TICKET','ALBARAN_VENTA') and exists (
-                select 1 from saas_commercial_document_relation r
-                join saas_commercial_document invoice on invoice.company_id=r.company_id
-                     and invoice.store_id=r.store_id and invoice.source_document_id=r.source_document_id
-                where r.company_id=d.company_id and r.store_id=d.store_id
-                  and r.origin_document_id=d.source_document_id and r.relation_type='FACTURA_DE'
-                  and invoice.document_type='FACTURA_VENTA' and invoice.document_status <> 'ANULADO'
-              )))
-            """;
     private static final String SELECT = """
             select d.source_document_id, d.document_type, d.document_number, d.document_status,
                    d.business_date, coalesce(d.source_confirmed_at,d.source_created_at,
@@ -49,7 +36,7 @@ public class ProductSalesHistoryRepository {
                    d.user_name, null::text warehouse_name,
                    case when d.document_type='RECTIFICATIVA_VENTA' and l.price_tariff='DIFERENCIA'
                         then 0 else l.quantity end quantity_contribution,
-            """ + COUNTS + " counts_as_sale ";
+            """ + CommercialDocumentFacts.COUNTS_AS_SALE + " counts_as_sale ";
     // Economic rectifications retain their historical quantity and amount in detail, but move no sale units.
     private static final String AMOUNTS = """
             sum(case when counts_as_sale then greatest(quantity_contribution,0) else 0 end) quantity_sold,
@@ -118,14 +105,9 @@ public class ProductSalesHistoryRepository {
     Coverage coverage(Scope scope, Filter filter) {
         Sql sql = headerFilter(scope, filter);
         return jdbc.queryForObject("""
-                select count(*) filter (where d.line_projection_status <> 'READY' or not d.relationships_complete
-                    or exists (select 1 from saas_commercial_document_relation r
-                        where r.company_id=d.company_id and r.store_id=d.store_id
-                        and r.source_document_id=d.source_document_id and not exists (
-                            select 1 from saas_commercial_document origin where origin.company_id=r.company_id
-                            and origin.store_id=r.store_id and origin.source_document_id=r.origin_document_id))) incomplete,
+                select count(*) filter (where d.line_projection_status <> 'READY' or %s) incomplete,
                     max(d.received_at) received_at from saas_commercial_document d
-                """ + sql.where(), sql.params(), (row, index) -> new Coverage(row.getLong("incomplete"),
+                """.formatted(CommercialDocumentFacts.UNKNOWN_RELATIONSHIPS) + sql.where(), sql.params(), (row, index) -> new Coverage(row.getLong("incomplete"),
                         row.getTimestamp("received_at") == null ? null : row.getTimestamp("received_at").toInstant()));
     }
 

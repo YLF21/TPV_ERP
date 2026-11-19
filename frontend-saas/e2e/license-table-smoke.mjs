@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { emptySummary, summaryPath } from "./summary-fixture.mjs";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -60,6 +61,8 @@ async function setup(username = "LICENSE_DEMO", allowed = permissions, count = 3
     calls.push({ path, method, query: Object.fromEntries(url.searchParams), body });
     const json = value => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     if (path === "/api/v1/auth/admin/login") return json({ username, accessToken: "synthetic-token", mode: "admin", expiresAt: "2099-01-01T00:00:00Z", passwordChangeRequired: false });
+    if (path === summaryPath + "/options") return json({ companies: [], stores: [] });
+    if (path === summaryPath) return json(emptySummary);
     if (path === "/api/v1/admin/me") return json({ username, permissions: allowed });
     if (path === "/api/v1/admin/licenses") {
       if (heldDashboard) {
@@ -255,7 +258,7 @@ try {
   assert.equal(await installationRow.locator("td").nth(5).innerText(), lastSyncBeforeRevocation,
     "A null lastSyncAt in the revocation response must preserve the known synchronization even when the dashboard refresh fails");
   console.log("License table E2E: canonical installation revocation remains visible during a pending and failed global refresh.");
-  await modal.getByLabel("Caducidad", { exact: true }).click(); await page.locator(".date-time-popover").waitFor();
+  await modal.getByLabel("Caducidad (UTC)", { exact: true }).click(); await page.locator(".date-time-popover").waitFor();
   await page.keyboard.press("Escape"); await page.locator(".date-time-popover").waitFor({ state: "hidden" });
   assert.equal(await modal.isVisible(), true, "First Escape closes date picker only");
   await page.keyboard.press("Escape"); await modal.waitFor({ state: "hidden" });
@@ -277,7 +280,7 @@ try {
   await nav(page, "Crear licencia");
   const creation = page.locator("main");
   assert.equal(await creation.getByLabel("Referencia", { exact: true }).count(), 0);
-  assert.equal(await creation.getByLabel("Caducidad", { exact: true }).count(), 0);
+  assert.equal(await creation.getByLabel("Caducidad (UTC)", { exact: true }).count(), 0);
   assert.equal(await creation.locator('input[type="number"]').count(), 0);
   await creation.getByRole("combobox", { name: "Empresa", exact: true }).fill("sin licencia");
   await page.getByRole("option", { name: /Empresa sin licencia/ }).click();
@@ -316,7 +319,7 @@ async function verifyContinuousDirectory() {
   const table = region.locator(".saas-data-table");
   const scroll = region.locator(".saas-data-table-scroll");
   const tableRows = table.locator("tbody tr");
-  const toolbar = section.getByRole("search", { name: "Licencias activas", exact: true });
+  const toolbar = section.getByRole("search");
   const search = toolbar.getByLabel("Buscar empresa, tienda o referencia", { exact: true });
   const companyFilter = toolbar.getByRole("combobox", { name: "Empresa", exact: true });
   const statusFilter = toolbar.getByLabel(/^Estado/);
@@ -361,7 +364,7 @@ async function verifyContinuousDirectory() {
     await waitRows(25); await settle();
     assert.equal(await connections.count(), 0, "Advanced license filters must start collapsed");
     assert.equal(await billing.count(), 0);
-    assert.equal(await toolbar.getByLabel("Caduca antes de", { exact: true }).count(), 0);
+    assert.equal(await toolbar.getByLabel("Caduca antes de (UTC)", { exact: true }).count(), 0);
     assert.equal(await applied.getByRole("button", { name: /^Quitar filtro / }).count(), 1);
     assert.match(await chip("Estado").locator("..").innerText(), /Licencias activas/);
     assert.equal(await section.getByRole("button", { name: "Columnas", exact: true }).count(), 0);
@@ -471,14 +474,14 @@ async function verifyContinuousDirectory() {
     assert.equal(await applied.count(), 0, "Removing the state chip must select all statuses rather than restoring VALIDA");
     await filter(() => statusFilter.selectOption("VALIDA"), 25, { status: "VALIDA" });
     const expiryStart = reads().length;
-    await toolbar.getByLabel("Caduca antes de", { exact: true }).click();
-    const calendar = page.getByRole("dialog", { name: "Caduca antes de", exact: true });
+    await toolbar.getByLabel("Caduca antes de (UTC)", { exact: true }).click();
+    const calendar = page.getByRole("dialog", { name: "Caduca antes de (UTC)", exact: true });
     await calendar.getByRole("button", { name: "Hoy", exact: true }).click();
     await calendar.getByRole("button", { name: "Cerrar calendario", exact: true }).click();
     await waitRows(0); await waitFor(() => reads().length > expiryStart);
     assert.equal(reads()[expiryStart].query.page, "0"); assert.ok(reads()[expiryStart].query.expiresBefore.endsWith("Z"));
-    await filter(() => chip("Caduca antes de").click(), 25, { expiresBefore: "", status: "VALIDA" });
-    await toolbar.getByLabel("Caduca antes de", { exact: true }).click();
+    await filter(() => chip("Caduca antes de (UTC)").click(), 25, { expiresBefore: "", status: "VALIDA" });
+    await toolbar.getByLabel("Caduca antes de (UTC)", { exact: true }).click();
     await calendar.getByRole("button", { name: "Hoy", exact: true }).click();
     await calendar.getByRole("button", { name: "Cerrar calendario", exact: true }).click(); await waitRows(0);
     await filter(() => chooseCompany("B00000000", company), 0, { companyId: company });
@@ -496,7 +499,7 @@ async function verifyContinuousDirectory() {
     await filter(() => applied.getByRole("button", { name: "Limpiar todos", exact: true }).click(), 25,
       { q: "", companyId: "", status: "", hasConnections: "", billingStatus: "", expiresBefore: "" });
     assert.equal(await applied.count(), 0);
-    for (const control of [search, companyFilter, statusFilter, connections, billing, toolbar.getByLabel("Caduca antes de", { exact: true })]) assert.equal(await control.inputValue(), "");
+    for (const control of [search, companyFilter, statusFilter, connections, billing, toolbar.getByLabel("Caduca antes de (UTC)", { exact: true })]) assert.equal(await control.inputValue(), "");
     await loadAll(82);
     assert.ok((await references()).includes("LIC-SCROLL-082"), "Clear all must include the license with a blocked status");
     await filter(() => chooseCompany("sintetica b", newCompany, true), 25, { companyId: newCompany, status: "" });

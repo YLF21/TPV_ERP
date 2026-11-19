@@ -36,7 +36,7 @@ test("company list opens creation and company-scoped detail dialogs while licens
   assert.match(companies, /\{selectedCompany && <WorkspaceDialog key=\{selectedCompany\.companyId\}/);
   assert.match(companies, /<CompanyDetail key=\{selectedCompany\.companyId\}/);
   assert.doesNotMatch(companies, /chooseCompany|setSelectedCompanyId/);
-  assert.match(licenses, /useState\("VALIDA"\)/);
+  assert.match(licenses, /useDirectoryState<LicenseDirectoryFilters>\([^\n]*readLicenseDirectoryFilters\)/);
   assert.match(licenses, /<option value="">\{l\("allLicenses"\)\}/);
   assert.match(licenses, /<option value="CADUCADA">/);
   assert.match(licenses, /<option value="BLOQUEADA_MANUAL">/);

@@ -50,6 +50,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -152,12 +153,19 @@ public class AdminService {
 
     @Transactional(readOnly = true)
     public List<CompanySummaryResponse> companies() {
-        return jdbc.query(companyProfileSql() + " order by c.name, c.id", (rs, row) -> companySummary(rs));
+        return jdbc.query(companyProfileSql("") + " order by c.name, c.id", (rs, row) -> companySummary(rs));
+    }
+
+    @Transactional(readOnly = true)
+    public List<CompanySummaryResponse> companyProfiles(List<UUID> ids) {
+        if (ids.isEmpty()) return List.of();
+        return new NamedParameterJdbcTemplate(jdbc).query(companyProfileSql("where id in (:ids)"),
+                Map.of("ids", ids), (rs, row) -> companySummary(rs));
     }
 
     @Transactional(readOnly = true)
     public CompanySummaryResponse companyProfile(UUID companyId) {
-        return jdbc.query(companyProfileSql() + " where c.id = ?", (rs, row) -> companySummary(rs), companyId)
+        return jdbc.query(companyProfileSql("where id = ?"), (rs, row) -> companySummary(rs), companyId)
                 .stream().findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Empresa no existe"));
     }
 
@@ -213,12 +221,24 @@ public class AdminService {
                 blankToNull(contactPhone), blankToNull(notes), sqlTimestamp(clock.instant()));
     }
 
-    private static String companyProfileSql() {
+    private static String companyProfileSql(String companyFilter) {
         return """
+                with selected_companies as (select * from saas_company %s),
+                store_counts as (
+                    select s.company_id, count(*) total from saas_store s
+                    join selected_companies c on c.id=s.company_id group by s.company_id
+                ),
+                license_counts as (
+                    select l.company_id, count(*) total from saas_license l
+                    join selected_companies c on c.id=l.company_id group by l.company_id
+                )
                 select c.id,c.name,c.tax_id,c.taxpayer_type,c.commercial_profile,c.company_address,c.created_at,c.owners,
-                       o.contact_name,o.contact_email,o.contact_phone,coalesce(o.support_status,'NORMAL') support_status,o.notes
-                from saas_company c left join saas_company_operations o on o.company_id=c.id
-                """;
+                       o.contact_name,o.contact_email,o.contact_phone,coalesce(o.support_status,'NORMAL') support_status,o.notes,
+                       coalesce(s.total,0) store_count,coalesce(l.total,0) license_count
+                from selected_companies c left join saas_company_operations o on o.company_id=c.id
+                left join store_counts s on s.company_id=c.id
+                left join license_counts l on l.company_id=c.id
+                """.formatted(companyFilter);
     }
 
     private String ownerTaxId(String value) {
@@ -238,7 +258,8 @@ public class AdminService {
                     address == null ? null : mapper.readValue(address, new TypeReference<Map<String, String>>() { }),
                     rs.getTimestamp("created_at").toInstant(), rs.getString("contact_name"), rs.getString("contact_email"),
                     rs.getString("contact_phone"), rs.getString("support_status"), rs.getString("notes"),
-                    mapper.readValue(rs.getString("owners"), new TypeReference<List<CompanyOwner>>() { }));
+                    mapper.readValue(rs.getString("owners"), new TypeReference<List<CompanyOwner>>() { }),
+                    rs.getLong("store_count"), rs.getLong("license_count"));
         } catch (JsonProcessingException exception) {
             throw new SQLException("Datos de ficha de empresa no validos");
         }

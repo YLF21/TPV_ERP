@@ -2,6 +2,31 @@
 
 Backend central para licencias, vinculacion de instalaciones y eventos sincronizados desde tiendas.
 
+El Resumen y los siete informes analíticos, sus fuentes, reglas de cómputo,
+comparaciones, capturas de inventario y exportaciones CSV/XLSX se describen en
+[Panel interno: estadísticas e informes](../frontend-saas/README.md).
+Supervisión permanece apartada de la navegación en esta versión; sus APIs y
+la recepción de eventos se conservan. Los nuevos informes requieren
+`VIEW_REPORTS` y el Resumen `VIEW_ADMIN_DATA`.
+
+Los directorios de Empresas, Tiendas y Licencias permiten descargar sus tablas en
+XLSX con el permiso `VIEW_ADMIN_DATA`. Las rutas `GET /api/v1/admin/directories/export/stores`
+y `GET /api/v1/admin/directories/export/licenses` aceptan los filtros y el orden de
+sus respectivos listados. `POST /api/v1/admin/directories/export/companies` recibe
+`companyIds` en el orden filtrado de la tabla, `filters`, `sortBy` y `sortDirection`.
+Admite `storeCount` y `licenseCount` como claves de orden y escribe ambos totales
+como números en el libro.
+El servidor vuelve a consultar los datos de esas empresas en una sola instantánea
+de lectura. Una selección vacía produce un libro con cabeceras. Si una empresa
+seleccionada ya no existe, la API responde con 409 para que se actualice el listado.
+
+Las tres rutas aceptan `language=es|en|zh` y exportan hasta 50.000 filas filtradas.
+Al superar el límite devuelven 422. El libro incluye todas las columnas de negocio
+del directorio, una hoja de contexto con filtros y orden y fechas en UTC. Los códigos
+y los importes decimales se conservan como texto exacto. Los saldos pendientes de
+una empresa se presentan por moneda. Las descargas comparten con los informes
+analíticos dos plazas concurrentes.
+
 La version registrada del backend SaaS se define en `pom.xml`. La serie `0.x.x`
 corresponde a pruebas; la serie `1.x.x` comienza con el despliegue. Maven incluye
 esta version en `META-INF/build-info.properties` del artefacto. El endpoint
@@ -141,7 +166,9 @@ Puede incluir `contactName`, `contactEmail`, `contactPhone`, `supportStatus` y `
 El perfil mayorista/minorista se configura en la tienda; el campo societario anterior
 solo se conserva para compatibilidad histórica y puede ser nulo.
 No crea tiendas, licencias ni usuarios automáticamente. `GET /api/v1/admin/companies`
-incluye contactos/propietarios y permite consultar también sociedades sin tiendas ni licencias.
+incluye contactos, propietarios y los totales `storeCount` y `licenseCount`.
+Los totales incluyen tiendas inactivas y licencias de todos los estados.
+Las sociedades sin tiendas o licencias muestran cero en el total correspondiente.
 `GET /profile` obtiene la ficha y `PUT /profile` guarda sociedad, contacto y propietarios
 en una sola transacción, con `EDIT_COMPANY_DATA`. Conserva NIF, tipo de obligado y
 datos comerciales históricos. Las sociedades históricas sin propietarios pueden consultarse,
@@ -162,7 +189,11 @@ como validar una instalación usa el perfil de esa tienda. En actualizaciones an
 omiten `commercialProfile` se conserva el valor actual de la tienda.
 
 `GET /api/v1/admin/stores` admite `companyId`, `q`, `active`, `page`, `size`,
-`sortBy` y `sortDirection` (`ASC`/`DESC`). Las columnas permitidas son `internalCode`,
+`commercialConfiguration`, `sortBy` y `sortDirection` (`ASC`/`DESC`).
+Con `commercialConfiguration=pending` aparecen las tiendas a las que les falta
+perfil comercial, precio, periodicidad o caducidad. `complete` exige los cuatro
+campos. Un precio de cero cuenta como configurado. Omitir el parámetro muestra
+ambos estados. Las columnas permitidas son `internalCode`,
 `companyName`, `code`, `name`, `active`, `taxRegime`, `commercialProfile`, `servicePrice`,
 `billingPeriod`, `validUntil`, `maxWindows`, `maxPda`, `installations`,
 `activeInstallations`, `lastSyncAt` y `createdAt`. La ordenación se aplica antes de
@@ -170,6 +201,11 @@ paginar, coloca los nulos al final y desempata por UUID; el orden predeterminado
 conserva empresa, código local y UUID. `GET /api/v1/admin/stores/{storeId}` obtiene
 la ficha actual para su consulta o gestión, con el permiso `VIEW_ADMIN_DATA`.
 No cambia los permisos de escritura ni requiere una migración.
+
+`GET /api/v1/admin/license-workspace` admite `companyId` para consultar todas las
+licencias de una empresa y `storeId` para limitar el listado a los vínculos directos
+e históricos de una tienda. Ambos filtros se combinan cuando se envían juntos.
+Omitir `status` incluye todos los estados.
 
 `GET /api/v1/admin/license-workspace/{licenseId}` obtiene la ficha vigente por UUID,
 con el mismo `LicenseRow` del listado y permiso `VIEW_ADMIN_DATA`. Incluye estado

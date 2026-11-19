@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { emptySummary, summaryPath } from "./summary-fixture.mjs";
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -48,6 +49,8 @@ try {
     calls.push({ path, method, body });
     const json = value => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     if (path === "/api/v1/auth/admin/login") return json({ username: "ONBOARDING_DEMO", accessToken: "synthetic-token", mode: "admin", passwordChangeRequired: false, expiresAt: "2099-01-01T00:00:00Z" });
+    if (path === summaryPath + "/options") return json({ companies: [], stores: [] });
+    if (path === summaryPath) return json(emptySummary);
     if (path === "/api/v1/admin/me") return json({ username: "ONBOARDING_DEMO", permissions });
     if (path === "/api/v1/admin/licenses") return json([]);
     if (path === "/api/v1/admin/companies") {
@@ -310,7 +313,7 @@ try {
   await storeForm.getByLabel("Periodicidad", { exact: true }).selectOption("ANNUAL");
   await storeForm.getByLabel("Windows", { exact: true }).fill("3");
   await storeForm.getByLabel("PDA", { exact: true }).fill("2");
-  await storeForm.getByLabel("Valida hasta", { exact: true }).click();
+  await storeForm.getByLabel("Valida hasta (UTC)", { exact: true }).click();
   const calendar = page.getByRole("dialog", { name: "Valida hasta", exact: true });
   await calendar.getByRole("button", { name: "Mes siguiente", exact: true }).click();
   await calendar.getByRole("grid").getByRole("button", { name: "15", exact: true }).click();
@@ -356,7 +359,7 @@ try {
   await page.getByRole("cell", { name: "3500001", exact: true }).waitFor();
   await openStore();
   assert.equal(await editStore.getByLabel("Windows", { exact: true }).isEnabled(), true);
-  assert.equal(await editStore.getByLabel("Valida hasta", { exact: true }).isEnabled(), true);
+  assert.equal(await editStore.getByLabel("Valida hasta (UTC)", { exact: true }).isEnabled(), true);
   assert.equal(await editStore.getByLabel("Impuestos", { exact: true }).isDisabled(), true);
   await editStore.getByLabel("Windows", { exact: true }).fill("4");
   await editStore.getByLabel("Periodicidad", { exact: true }).selectOption("MONTHLY");
@@ -370,7 +373,7 @@ try {
   await openStore();
   assert.equal(await editStore.getByLabel("Precio SaaS (EUR)", { exact: true }).inputValue(), "");
   assert.equal(await editStore.getByLabel("Periodicidad", { exact: true }).inputValue(), "");
-  assert.equal(await editStore.getByLabel("Valida hasta", { exact: true }).inputValue(), "");
+  assert.equal(await editStore.getByLabel("Valida hasta (UTC)", { exact: true }).inputValue(), "");
   await editStore.getByLabel("Precio SaaS (EUR)", { exact: true }).fill("29.90");
   await editStore.getByLabel("Periodicidad", { exact: true }).selectOption("MONTHLY");
   await editStore.getByRole("button", { name: "Guardar", exact: true }).click();

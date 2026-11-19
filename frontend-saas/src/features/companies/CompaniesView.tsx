@@ -9,6 +9,9 @@ import { SectionHeader, Input, Select, AddressFields, EmptyState } from "../../s
 import { LoadState } from "../../shared/workspace-ui";
 import { WorkspaceDialog } from "../../shared/WorkspaceDialog";
 import { SaasDataTable, type DataColumn } from "../../shared/table/SaasDataTable";
+import { DirectoryExcelExport } from "../../shared/table/DirectoryExcelExport";
+import { CopyDirectoryValue, DirectoryLink, DirectoryReturn } from "../../shared/DirectoryActions";
+import { useDirectoryPosition, useDirectoryState } from "../../shared/directory-navigation";
 import { CompanyDetail } from "./CompanyDetail";
 import { CompanyContactFields, emptyCompanyContact } from "./CompanyContactFields";
 import { useCompanyLabels } from "./labels";
@@ -20,7 +23,7 @@ function newCompany(): CreateCompanyRequest {
   return { name: "", taxId: "", taxpayerType: "SOCIEDAD", companyAddress: emptyFiscalAddress(), ...emptyCompanyContact() };
 }
 type CompanyRow = CompanySummary & { id: string };
-type CompanyColumn = "companyName" | "taxId" | "contactName" | "contactPhone" | "contactEmail" | "owners" | "taxpayerType" | "city" | "province" | "createdAt";
+type CompanyColumn = "companyName" | "taxId" | "storeCount" | "licenseCount" | "contactName" | "contactPhone" | "contactEmail" | "owners" | "taxpayerType" | "city" | "province" | "createdAt";
 
 export function CompaniesView({ credentials, installations, permissions, onChanged, onNotice }: {
   credentials: Credentials; installations: InstallationSummary[]; permissions: Set<string>;
@@ -35,8 +38,10 @@ export function CompaniesView({ credentials, installations, permissions, onChang
   const [busy, setBusy] = useState<string | null>(null);
   const [detailBusy, setDetailBusy] = useState(false);
   const [dialogNotice, setDialogNotice] = useState<Notice | null>(null);
-  const [filters, setFilters] = useState(emptyCompanyFilters);
-  const [sort, setSort] = useState({ key: "companyName", direction: "asc" as "asc" | "desc" });
+  const [filters, setFilters] = useDirectoryState(credentials.accessToken + ":companyFilters", emptyCompanyFilters);
+  const [sort, setSort] = useDirectoryState(credentials.accessToken + ":companySort", { key: "companyName", direction: "asc" as "asc" | "desc" });
+  const [openedId, setOpenedId] = useDirectoryState(credentials.accessToken + ":companyDetail", () => new URLSearchParams(window.location.hash.split("?")[1]).get("companyId") ?? "");
+  useDirectoryPosition(credentials.accessToken);
   const opener = useRef<HTMLElement | null>(null);
   const mounted = useRef(false);
   const activeToken = useRef(credentials.accessToken);
@@ -49,17 +54,22 @@ export function CompaniesView({ credentials, installations, permissions, onChang
   const canRevokeInstallation = permissions.has("REVOKE_INSTALLATION");
   const isBusy = busy !== null || detailBusy;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { setCreating(false); setSelectedCompany(null); setBusy(null); setDetailBusy(false); setDialogNotice(null); setFilters(emptyCompanyFilters()); }, [credentials.accessToken]);
+  useEffect(() => { setCreating(false); setSelectedCompany(null); setBusy(null); setDetailBusy(false); setDialogNotice(null); }, [credentials.accessToken]);
+  useEffect(() => {
+    if (!openedId) { setSelectedCompany(null); return; }
+    const company = directory.find(item => item.companyId === openedId);
+    if (company) setSelectedCompany(current => current?.companyId === openedId ? current : company);
+  }, [openedId, companies.data]);
 
   function refresh() { companies.reload(); onChanged(); }
-  function closeDialog() { if (!isBusy) { setCreating(false); setSelectedCompany(null); setDialogNotice(null); } }
+  function closeDialog() { if (!isBusy) { setCreating(false); setOpenedId(""); setSelectedCompany(null); setDialogNotice(null); } }
   function openCreate() {
     opener.current = document.activeElement as HTMLElement;
     setCompanyForm(newCompany()); setDialogNotice(null); setCreating(true);
   }
   function openCompany(company: CompanySummary) {
     opener.current = document.activeElement as HTMLElement;
-    setDialogNotice(null); setDetailBusy(false); setSelectedCompany(company);
+    setDialogNotice(null); setDetailBusy(false); setOpenedId(company.companyId); setSelectedCompany(company);
   }
   async function createCompany(event: FormEvent) {
     event.preventDefault(); if (isBusy || !canCreateCompany) return;
@@ -91,6 +101,7 @@ export function CompaniesView({ credentials, installations, permissions, onChang
   }
 
   function sortValue(company: CompanySummary, key: string) {
+    if (key === "storeCount" || key === "licenseCount") return company[key] ?? -1;
     if (key === "city") return company.companyAddress?.ciudad ?? "";
     if (key === "province") return company.companyAddress?.provincia ?? "";
     if (key === "owners") return company.owners?.[0]?.name ?? "";
@@ -98,14 +109,20 @@ export function CompaniesView({ credentials, installations, permissions, onChang
   }
   const rows: CompanyRow[] = directory.filter(company => matchesCompanyFilters(company, filters))
     .map(company => ({ ...company, id: company.companyId }))
-    .sort((a, b) => (sortValue(a, sort.key).localeCompare(sortValue(b, sort.key), language, { numeric: true, sensitivity: "base" })
-      || a.companyId.localeCompare(b.companyId)) * (sort.direction === "asc" ? 1 : -1));
+    .sort((a, b) => {
+      const left = sortValue(a, sort.key), right = sortValue(b, sort.key);
+      const compared = typeof left === "number" && typeof right === "number" ? left - right : String(left).localeCompare(String(right), language, { numeric: true, sensitivity: "base" });
+      return (compared || a.companyId.localeCompare(b.companyId)) * (sort.direction === "asc" ? 1 : -1);
+    });
+  const countsLabel = (kind: "stores" | "licenses") => kind === "stores" ? (language === "zh" ? "门店" : language === "en" ? "Stores" : "Tiendas") : (language === "zh" ? "许可证" : language === "en" ? "Licenses" : "Licencias");
   const columns: DataColumn<CompanyRow, CompanyColumn>[] = [
     { key: "companyName", label: t("company"), defaultWidth: 280, sortKey: "companyName", render: row => <strong>{row.companyName}</strong> },
-    { key: "taxId", label: t("taxId"), defaultWidth: 145, sortKey: "taxId", render: row => row.taxId },
-    { key: "contactName", label: t("contactName"), defaultWidth: 185, sortKey: "contactName", render: row => row.contactName || "—" },
-    { key: "contactPhone", label: l("phone"), defaultWidth: 145, sortKey: "contactPhone", render: row => row.contactPhone || "—" },
-    { key: "contactEmail", label: t("contactEmail"), defaultWidth: 220, sortKey: "contactEmail", render: row => row.contactEmail || "—" },
+    { key: "taxId", label: t("taxId"), defaultWidth: 155, sortKey: "taxId", render: row => <CopyDirectoryValue value={row.taxId} label={t("taxId")} /> },
+    { key: "storeCount", label: countsLabel("stores"), defaultWidth: 112, minWidth: 112, sortKey: "storeCount", align: "right", render: row => row.storeCount == null ? "—" : <DirectoryLink view="stores" parameters={{ companyId: row.companyId }} label={`${countsLabel("stores")}: ${row.companyName} (${row.storeCount})`}>{row.storeCount}</DirectoryLink> },
+    { key: "licenseCount", label: countsLabel("licenses"), defaultWidth: 128, minWidth: 128, sortKey: "licenseCount", align: "right", render: row => row.licenseCount == null ? "—" : <DirectoryLink view="licenses" parameters={{ companyId: row.companyId, status: "" }} label={`${countsLabel("licenses")}: ${row.companyName} (${row.licenseCount})`}>{row.licenseCount}</DirectoryLink> },
+    { key: "contactName", label: t("contactName"), defaultWidth: 185, sortKey: "contactName", render: row => <CopyDirectoryValue value={row.contactName} label={t("contactName")} /> },
+    { key: "contactPhone", label: l("phone"), defaultWidth: 155, sortKey: "contactPhone", render: row => <CopyDirectoryValue value={row.contactPhone} label={l("phone")} /> },
+    { key: "contactEmail", label: t("contactEmail"), defaultWidth: 240, sortKey: "contactEmail", render: row => <CopyDirectoryValue value={row.contactEmail} label={t("contactEmail")} /> },
     { key: "owners", label: l("firstOwner"), defaultWidth: 230, sortKey: "owners", render: row => row.owners?.[0]?.name || "—" },
     { key: "taxpayerType", label: t("type"), defaultWidth: 130, sortKey: "taxpayerType", render: row => row.taxpayerType === "SOCIEDAD" ? l("society") : l("selfEmployed") },
     { key: "city", label: t("city"), defaultWidth: 180, sortKey: "city", render: row => row.companyAddress?.ciudad ?? "—" },
@@ -117,12 +134,19 @@ export function CompaniesView({ credentials, installations, permissions, onChang
     <section className="content-section company-list-section">
       <div className="company-list-heading">
         <SectionHeader title={t("companies")} subtitle={l("tableHint")} />
-        {canCreateCompany && <button className="primary-button" type="button" onClick={openCreate}>{l("newCompany")}</button>}
+        <div className="directory-table-actions">
+          <DirectoryReturn />
+          <DirectoryExcelExport credentials={credentials} resource="companies" filters={filters} sort={sort}
+            companyIds={rows.map(row => row.companyId)} disabled={companies.loading || Boolean(companies.error) || isBusy} />
+          {canCreateCompany && <button className="primary-button" type="button" onClick={openCreate}>{l("newCompany")}</button>}
+        </div>
       </div>
       <CompanyFilters filters={filters} onChange={setFilters} companies={directory} count={rows.length} />
       <LoadState {...companies} />
+      {openedId && !companies.loading && !companies.error && !directory.some(company => company.companyId === openedId) && <p className="error-message" role="alert">{language === "zh" ? "找不到该企业。" : language === "en" ? "Company not found." : "No se ha encontrado la empresa."}</p>}
       <div className="company-table-region" aria-busy={companies.loading}>
         <SaasDataTable username={credentials.username} tableKey="companies" label={t("companies")} columns={columns} rows={rows}
+          legacyColumnOrder={["companyName", "taxId", "contactName", "contactPhone", "contactEmail", "owners", "taxpayerType", "city", "province", "createdAt"]}
           sort={sort} onSort={key => setSort(current => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }))}
           onOpen={openCompany} disabled={isBusy || companies.loading || Boolean(companies.error)} />
         {!companies.loading && !companies.error && rows.length === 0 && <EmptyState text={l("empty")} />}
