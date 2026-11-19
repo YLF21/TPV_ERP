@@ -78,6 +78,8 @@ export type TerminalContext = {
   terminalCode: string;
   terminalId?: string;
   terminalCredential?: string;
+  /** Browser installation proof is held exclusively in an HttpOnly server cookie. */
+  credentialMode?: "browser-cookie";
   installationId?: string;
   storeId?: string;
   bindingId?: string;

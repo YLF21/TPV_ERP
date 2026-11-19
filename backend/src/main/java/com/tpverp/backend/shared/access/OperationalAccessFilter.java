@@ -60,7 +60,8 @@ public class OperationalAccessFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
         // Recovery/revocation must remain possible after license expiry. The linking
         // service itself checks the current authenticated quota before requests/approval.
-        if (path.startsWith("/api/v1/terminal-linking/") || path.startsWith("/api/v1/terminals/workstations")) {
+        if (path.startsWith("/api/v1/terminal-linking/") || path.startsWith("/api/v1/terminals/workstations")
+                || path.startsWith("/api/v1/web-terminal/")) {
             return OperationCategory.LICENSE_MANAGEMENT;
         }
         if (path.startsWith("/api/v1/licenses")) {

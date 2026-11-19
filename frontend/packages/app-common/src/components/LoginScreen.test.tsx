@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -41,6 +41,22 @@ describe("LoginScreen", () => {
     cleanup();
     vi.clearAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("keeps sign-in disabled until the browser terminal has finished post-login verification", async () => {
+    let finish!: () => void;
+    const verified = new Promise<void>(resolve => { finish = resolve; });
+    mocks.authenticateRemote.mockResolvedValue({ username: "cashier", displayName: "Cashier", permissions: ["VENTA"] });
+    const onLogin = vi.fn(() => verified);
+    render(<LoginScreen app="venta" locale="es" terminalContext={terminalContext}
+      presentation="embedded" onLocaleChange={vi.fn()} onLogin={onLogin} />);
+    const submit = await screen.findByRole("button", { name: "Entrar" });
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(submit);
+    await waitFor(() => expect(onLogin).toHaveBeenCalledOnce());
+    expect(submit).toBeDisabled();
+    await act(async () => finish());
+    expect(submit).toBeEnabled();
   });
 
   it("renders the sales brand above the card and company context beside the corner logo", () => {

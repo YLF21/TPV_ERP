@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
-    "build": "tsc -p tsconfig.json && vite build"
+    "build": "tsc -p tsconfig.json && vite build",
+    "build:web": "tsc -p tsconfig.json && vite build --config vite.web.config.ts && node ../../scripts/check-venta-web-build.mjs",
+    "preview:web": "vite preview --config vite.web.config.ts"
   },
   "dependencies": {
     "@tpverp/app-common": "4.2.0"

@@ -7,6 +7,7 @@ import {
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent, type UIEvent } from "react";
 import { getMarketingContent, type MarketingLanguage } from "./marketingI18n";
 import { getMarketingUiContent } from "./marketingUiI18n";
+import { localPortalUrl, resolvePortalUrl } from "./portalAccess";
 import { getApplicationPreviewAlts } from "./applicationPreviewContent";
 import { productBrand } from "./brand";
 import { marketingContact } from "./contact";
@@ -37,6 +38,7 @@ type MarketingTab = MarketingRoute;
 const navigation = routeIds;
 const featureIcons = [Receipt, Package, Buildings, ShieldCheck];
 const benefitIcons = [Storefront, CloudArrowUp, ShieldCheck, Headset];
+const hasPublishedPortals = Boolean(import.meta.env.VITE_CLIENT_PORTAL_URL || import.meta.env.VITE_INTERNAL_PORTAL_URL);
 
 function readMarketingAttribution(): MarketingAttribution {
   let previous: unknown;
@@ -52,6 +54,11 @@ function readMarketingTab(): MarketingTab {
 
 function Brand({ footer = false }: { footer?: boolean }) {
   return <span className={`mk-brand${footer ? " mk-brand-footer" : ""}`}><img src={productBrand.logo} alt={productBrand.name} width={132} height={42} draggable={false} /></span>;
+}
+
+function PortalLink({ href, label, className, unavailable, shortLabel = label }: { href?: string; label: string; className: string; unavailable: string; shortLabel?: string }) {
+  const Tag = href ? "a" : "span";
+  return <Tag className={className} href={href} role={href ? undefined : "link"} aria-disabled={href ? undefined : true} aria-label={href ? label : `${label}: ${unavailable}`} title={href ? undefined : unavailable} referrerPolicy="no-referrer">{shortLabel}</Tag>;
 }
 
 function LanguageSelector({ language, label, mobile = false, onChange }: { language: MarketingLanguage; label: string; mobile?: boolean; onChange: (language: MarketingLanguage) => void }) {
@@ -82,6 +89,8 @@ export default function MarketingPage({ language, onLanguageChange }: { language
   const previousTabRef = useRef(activeTab);
   const copy = getMarketingContent(language);
   const ui = getMarketingUiContent(language);
+  const clientPortal = hasPublishedPortals ? resolvePortalUrl(import.meta.env.VITE_CLIENT_PORTAL_URL, window.location.origin, "venta") : localPortalUrl(window.location.origin, "venta");
+  const internalPortal = hasPublishedPortals ? resolvePortalUrl(import.meta.env.VITE_INTERNAL_PORTAL_URL, window.location.origin, "#/login") : localPortalUrl(window.location.origin, "#/login");
 
   useEffect(() => {
     const syncTab = () => {
@@ -157,15 +166,18 @@ export default function MarketingPage({ language, onLanguageChange }: { language
     <MarketingLink className="mk-skip-link" href="#mk-main-content" onClick={(event) => { event.preventDefault(); setMenuOpen(false); mainRef.current?.focus({ preventScroll: true }); mainRef.current?.scrollIntoView({ block: "start", behavior: "auto" }); }}>{ui.skipToContent}</MarketingLink>
     <header className={`mk-header${scrolled ? " is-scrolled" : ""}`}>
       <MarketingLink className="mk-brand-link" href="#/producto/inicio" aria-label={`${productBrand.name} — ${copy.navigation[0]}`}><Brand /></MarketingLink>
+      <PortalLink className="mk-mobile-portal" href={clientPortal} label={ui.clientAccess} shortLabel={ui.clients} unavailable={ui.portalUnavailable} />
       <button ref={menuButtonRef} className="mk-menu-button" type="button" aria-expanded={menuOpen} aria-controls="mk-navigation" aria-label={menuOpen ? ui.closeMenu : ui.openMenu} onClick={() => setMenuOpen((open) => !open)}><span /><span /><span /></button>
       <nav id="mk-navigation" className={menuOpen ? "is-open" : ""} aria-label={ui.primaryNavigation}>
         {navigation.map((id, index) => <MarketingLink key={id} href={`#/producto/${id}`} className={activeTab === id ? "active" : undefined} aria-current={activeTab === id ? "page" : undefined} onClick={() => { setMenuOpen(false); if (activeTab === id) mainRef.current?.focus({ preventScroll: true }); }}>{copy.navigation[index]}</MarketingLink>)}
+        <PortalLink className="mk-mobile-portal-menu" href={clientPortal} label={ui.clientAccess} unavailable={ui.portalUnavailable} />
         <LanguageSelector mobile language={language} label={copy.language} onChange={onLanguageChange} />
         <button className="mk-mobile-client-link" type="button" onClick={() => { setMenuOpen(false); setDownloadsOpen(true); }}><DownloadSimple aria-hidden="true" /> {copy.common.download} <ArrowRight aria-hidden="true" /></button>
       </nav>
       <div className="mk-header-actions">
         <LanguageSelector language={language} label={copy.language} onChange={onLanguageChange} />
-        <button className="mk-client-button" type="button" onClick={() => setDownloadsOpen(true)}><DownloadSimple aria-hidden="true" /> {copy.common.download} <ArrowRight aria-hidden="true" /></button>
+        <PortalLink className="mk-portal-button" href={clientPortal} label={ui.clientAccess} unavailable={ui.portalUnavailable} />
+        <button className="mk-client-button mk-download-button" type="button" aria-label={copy.common.download} title={copy.common.download} onClick={() => setDownloadsOpen(true)}><DownloadSimple aria-hidden="true" /></button>
       </div>
     </header>
 
@@ -181,7 +193,7 @@ export default function MarketingPage({ language, onLanguageChange }: { language
       <MarketingLink href="#/producto/inicio" aria-label={`${productBrand.name} — ${copy.navigation[0]}`}><Brand footer /></MarketingLink>
       <p>{copy.common.footer}</p>
       <div><MarketingLink href="#/producto/apps">{copy.common.applications}</MarketingLink><MarketingLink href="#/producto/ventajas">{copy.common.advantages}</MarketingLink><button type="button" onClick={() => setDownloadsOpen(true)}>{copy.common.download}</button></div>
-      <small>© {new Date().getFullYear()} {productBrand.name}</small>
+      <small><span>© {new Date().getFullYear()} {productBrand.name}</span><PortalLink className="mk-internal-access" href={internalPortal} label={ui.internalAccess} unavailable={ui.portalUnavailable} /></small>
     </footer>
     </div>
     <div id="mk-modal-root" />

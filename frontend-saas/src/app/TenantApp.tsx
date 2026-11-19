@@ -3,11 +3,10 @@ import { api, setUnauthorizedHandler } from "../lib/api";
 import type { Credentials, LoginCredentials } from "../lib/types";
 import type { Notice } from "../shared/types";
 import { I18nContext, readLanguage, translate, localeFor, setActiveLocale, type Language } from "../i18n";
-import { LanguageSelector } from "../shared/ui";
 import { errorMessage } from "../shared/lib";
 import { TenantWorkspace } from "../features/tenant/TenantWorkspace";
 import { RequiredPasswordChangeScreen } from "../features/auth/AuthScreens";
-import { appVersion } from "../lib/appVersion";
+import { TenantLoginScreen } from "../features/auth/TenantLoginScreen";
 
 // Independent entry point: no administrative session or navigation is mounted here.
 export function TenantApp() {
@@ -69,19 +68,9 @@ export function TenantApp() {
 
   return <I18nContext.Provider value={i18n}>
     {credentials ? <TenantWorkspace credentials={credentials} onLogout={logout} onNotice={setNotice} />
-      : pending ? <RequiredPasswordChangeScreen username={pending.credentials.username} loading={busy} notice={notice} onSubmit={changePassword} onCancel={logout} />
-      : <main className="login-page">
-        <header className="saas-login-topbar"><strong className="saas-login-brand">esPOS</strong><span>{label("Portal de tiendas", "Store portal", "门店门户")}</span><LanguageSelector /></header>
-        <section className="login-panel" aria-label={label("Acceso de tienda", "Store sign-in", "门店登录")}>
-          <header className="login-panel-heading"><strong>{label("Tu tienda, conectada", "Your connected store", "连接你的门店")}</strong><span>{label("Consulta tus incidencias y habla con soporte.", "Track your requests and contact support.", "查看事件并联系支持。")}</span></header>
-          {notice && <p className={`notice ${notice.type}`} role={notice.type === "error" ? "alert" : "status"}>{notice.text}</p>}
-          <form className="stack-form" onSubmit={event => { event.preventDefault(); if (!busy) void login({ username: username.trim(), password }); }}>
-            <label>{i18n.t("username")}<input autoComplete="username" value={username} onChange={event => setUsername(event.target.value)} required disabled={busy} /></label>
-            <label>{i18n.t("password")}<input type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required disabled={busy} /></label>
-            <button className="primary-button" type="submit" disabled={busy}>{i18n.t("enter")}</button>
-          </form>
-          <p className="saas-login-version">{i18n.t("saasVersion")} {appVersion}</p>
-        </section>
-      </main>}
+      : pending ? <RequiredPasswordChangeScreen portal="tenant" username={pending.credentials.username} loading={busy} notice={notice} onSubmit={changePassword} onCancel={logout} />
+      : <TenantLoginScreen username={username} password={password} busy={busy} notice={notice}
+        onUsernameChange={setUsername} onPasswordChange={setPassword}
+        onSubmit={event => { event.preventDefault(); if (!busy) void login({ username: username.trim(), password }); }} />}
   </I18nContext.Provider>;
 }

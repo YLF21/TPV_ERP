@@ -20,6 +20,13 @@ import { useSaleUserLocalePreference } from "./saleUserLocale";
 import { evaluateCompatibility, InvalidCompatibilityContractError, loadBackendCompatibility } from "../../../packages/app-common/src/api/compatibility";
 import { apiRequest, ApiConnectionError, ApiError } from "../../../packages/app-common/src/api/client";
 import { loadTerminalLoginContext } from "../../../packages/app-common/src/terminalIdentity";
+import { isWebTerminalMode, loadWebTerminalStatus, type WebTerminalStatus } from "../../../packages/app-common/src/webTerminalIdentity";
+import { browserTerminalCopy } from "../../../packages/app-common/src/components/browserTerminalCopy";
+
+const BrowserTerminalFrame = lazy(() => import("../../../packages/app-common/src/components/BrowserTerminalRegistrationScreen")
+  .then(module => ({ default: module.BrowserTerminalFrame })));
+const BrowserTerminalRegistrationScreen = lazy(() => import("../../../packages/app-common/src/components/BrowserTerminalRegistrationScreen")
+  .then(module => ({ default: module.BrowserTerminalRegistrationScreen })));
 import { useTerminalStoreCode } from "../../../packages/app-common/src/useTerminalStoreCode";
 import type { SaleOperationAuthorization } from "../../../packages/app-common/src/sale/operationSecurity";
 import {
@@ -375,6 +382,12 @@ export function SalesUtilityWindowApp() {
 function AppContent({ localePreference, recoveryEpoch }: { localePreference: ReturnType<typeof useSaleUserLocalePreference>; recoveryEpoch: number }) {
   const [session, setSession] = useState<UserSession | null>(null);
   const [terminalContext, setTerminalContext] = useState<TerminalContext | null | undefined>(undefined);
+  const webTerminal = isWebTerminalMode({ development: import.meta.env.DEV,
+    optIn: import.meta.env.VITE_TPV_WEB_TERMINAL, desktop: !!window.tpvDesktop });
+  const [webTerminalStatus, setWebTerminalStatus] = useState<WebTerminalStatus | null>(null);
+  const [webTerminalError, setWebTerminalError] = useState<unknown>();
+  const loginEpoch = useRef(0);
+  useEffect(() => () => { loginEpoch.current += 1; }, []);
   useTerminalStoreCode(terminalContext, setTerminalContext);
   const [offlineTerminalContext, setOfflineTerminalContext] = useState<TerminalContext | null>(null);
   const [screen, setScreen] = useState<"home" | "sale" | "stock" | "warehouse" | "salesReport" | "settings" | "hardwareSettings" | "documentPrintingSettings" | "diagnosticsSettings" | "connection">("home");
@@ -384,6 +397,12 @@ function AppContent({ localePreference, recoveryEpoch }: { localePreference: Ret
   const [receivablesCustomerId, setReceivablesCustomerId] = useState<string | undefined>();
   const { locale, applyUserLocale, changeLocale, resetLocale } = localePreference;
   const [compatibilityGate, setCompatibilityGate] = useState<CompatibilityGate>({ status: "ready" });
+  const webEntry = webTerminal && (!session || compatibilityGate.status !== "ready"
+    || !!session.accessToken && compatibilityGate.sessionToken !== session.accessToken);
+  useEffect(() => {
+    document.body.classList.toggle("espos-web-terminal-entry", webEntry);
+    return () => document.body.classList.remove("espos-web-terminal-entry");
+  }, [webEntry]);
   const compatibleSession = compatibilityGate.status === "ready"
     && compatibilityGate.sessionToken === session?.accessToken ? session : null;
   const { delivery: controlDelivery } = useSaleControlDelivery(compatibleSession, terminalContext);
@@ -393,8 +412,21 @@ function AppContent({ localePreference, recoveryEpoch }: { localePreference: Ret
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     async function loadIdentity() {
       if (recoveryEpoch > 0 && terminalContext) return;
+      if (webTerminal) {
+        try {
+          const status = await loadWebTerminalStatus(controller.signal);
+          if (!cancelled) {
+            setWebTerminalStatus(status); setWebTerminalError(undefined);
+            setTerminalContext(status.context ?? null); setOfflineTerminalContext(null);
+          }
+        } catch (error) {
+          if (!cancelled) { setWebTerminalError(error); setTerminalContext(null); }
+        }
+        return;
+      }
       const result = await loadTerminalLoginContext(
         window.tpvDesktop?.terminalIdentity,
         import.meta.env.DEV ? devTerminalContext : null
@@ -405,15 +437,64 @@ function AppContent({ localePreference, recoveryEpoch }: { localePreference: Ret
       }
     }
     void loadIdentity();
-    return () => { cancelled = true; };
-  }, [recoveryEpoch]);
+    return () => { cancelled = true; controller.abort(); };
+  }, [recoveryEpoch, webTerminal]);
 
   const reconnectLoginTerminal = useCallback(async () => {
+    if (webTerminal) {
+      try {
+        const status = await loadWebTerminalStatus();
+        setWebTerminalStatus(status); setWebTerminalError(undefined);
+        setTerminalContext(status.context ?? null);
+        return !!status.context;
+      } catch (error) {
+        setWebTerminalError(error); setTerminalContext(null); return false;
+      }
+    }
     const result = await loadTerminalLoginContext(window.tpvDesktop?.terminalIdentity, null);
     setTerminalContext(result.identity);
     setOfflineTerminalContext(result.offlineContext);
     return result.identity !== null;
-  }, []);
+  }, [webTerminal]);
+
+  useEffect(() => {
+    if (!webTerminal || !terminalContext) return;
+    let active = true;
+    let inFlight = false;
+    const controller = new AbortController();
+    const check = async () => {
+      if (!active || inFlight || document.visibilityState === "hidden") return;
+      inFlight = true;
+      try {
+        const status = await loadWebTerminalStatus(controller.signal);
+        if (!active) return;
+        setWebTerminalStatus(status); setWebTerminalError(undefined);
+        const identity = status.context;
+        if (!identity || identity.bindingId !== terminalContext.bindingId || identity.installationId !== terminalContext.installationId) {
+          loginEpoch.current += 1;
+          if (session?.accessToken) void apiRequest("/auth/logout", { method: "POST", token: session.accessToken }).catch(() => undefined);
+          setSession(null); setTerminalContext(identity ?? null); setScreen("home");
+        } else setTerminalContext(identity);
+      } catch (error) {
+        const invalidProof = error instanceof ApiError
+          && ["WEB_TERMINAL_PROOF_INVALID", "LINK_PROOF_INVALID", "WEB_TERMINAL_COOKIE_REQUIRED", "WEB_TERMINAL_DISABLED", "TERMINAL_DISABLED"].includes(String(error.problem?.code));
+        if (active && (!session || invalidProof)) {
+          loginEpoch.current += 1;
+          if (session?.accessToken) void apiRequest("/auth/logout", { method: "POST", token: session.accessToken }).catch(() => undefined);
+          setSession(null);
+          setWebTerminalError(error); setWebTerminalStatus(null); setTerminalContext(null);
+        }
+      } finally { inFlight = false; }
+    };
+    const onVisible = () => { void check(); };
+    const timer = window.setInterval(onVisible, 60_000);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      active = false; controller.abort(); window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", onVisible);
+    };
+  }, [webTerminal, terminalContext?.bindingId, terminalContext?.installationId, session?.accessToken]);
 
   useEffect(() => {
     let active = true;
@@ -457,13 +538,37 @@ function AppContent({ localePreference, recoveryEpoch }: { localePreference: Ret
   }, [session?.accessToken, terminalContext?.terminalId]);
 
   const handleLocaleChange = (next: LocaleCode) => changeLocale(session, next);
-  const handleLogin = (nextSession: UserSession) => {
+  const handleLogin = async (nextSession: UserSession) => {
+    if (webTerminal) {
+      const epoch = ++loginEpoch.current;
+      await loadWebTerminalStatus().then(status => {
+        if (epoch !== loginEpoch.current || !status.context
+          || status.context.bindingId !== terminalContext?.bindingId
+          || status.context.installationId !== terminalContext?.installationId) {
+          if (nextSession.accessToken) void apiRequest("/auth/logout", { method: "POST", token: nextSession.accessToken }).catch(() => undefined);
+          if (epoch === loginEpoch.current) {
+            setWebTerminalStatus(status); setTerminalContext(status.context ?? null);
+          }
+          return;
+        }
+        setTerminalContext(status.context); setWebTerminalStatus(status); setWebTerminalError(undefined);
+        setSession(nextSession); applyUserLocale(nextSession); setScreen(hasPermission(nextSession, "VENTA") ? "sale" : "home");
+      }).catch(error => {
+        if (nextSession.accessToken) void apiRequest("/auth/logout", { method: "POST", token: nextSession.accessToken }).catch(() => undefined);
+        if (epoch === loginEpoch.current) { setWebTerminalError(error); setWebTerminalStatus(null); setTerminalContext(null); }
+      });
+      return;
+    }
     setSession(nextSession);
     applyUserLocale(nextSession);
     setScreen("home");
   };
   const handleLogout = () => {
     if (screen === "sale" && saleExitBlocked) return;
+    loginEpoch.current += 1;
+    if (webTerminal && session?.accessToken) {
+      void apiRequest("/auth/logout", { method: "POST", token: session.accessToken }).catch(() => undefined);
+    }
     void window.tpvDesktop?.salesDocuments?.close();
     setSession(null);
     setSaleInterfaceMode(defaultSaleInterfaceMode);
@@ -546,6 +651,12 @@ function AppContent({ localePreference, recoveryEpoch }: { localePreference: Ret
   }
 
   if (terminalContext === null) {
+    if (webTerminal) return <BrowserTerminalRegistrationScreen locale={locale} onLocaleChange={handleLocaleChange}
+      initialStatus={webTerminalStatus} initialError={webTerminalError}
+      onReady={identity => {
+        setTerminalContext(identity); setWebTerminalStatus({ status: "ACTIVE", context: { ...identity, credentialMode: "browser-cookie" }, slots: [] });
+        setWebTerminalError(undefined); setOfflineTerminalContext(null); setScreen("home");
+      }} />;
     if (window.tpvDesktop?.backendConnection) {
       if (offlineTerminalContext && screen !== "connection") {
         return <LoginScreen app="venta" locale={locale} terminalContext={offlineTerminalContext}
@@ -585,6 +696,11 @@ function AppContent({ localePreference, recoveryEpoch }: { localePreference: Ret
     );
   }
 
+  if (webTerminal && screen === "connection" && (!session || hasPermission(session, "CONFIGURACION_TERMINAL"))) {
+    return <BrowserTerminalRegistrationScreen locale={locale} onLocaleChange={handleLocaleChange}
+      initialStatus={webTerminalStatus} onReady={setTerminalContext} onBack={() => setScreen(session ? "home" : "sale")} />;
+  }
+
   if (screen === "connection" && window.tpvDesktop?.backendConnection && terminalContext
       && (!session || hasPermission(session, "CONFIGURACION_TERMINAL"))) {
     return <TerminalConnectionScreen locale={locale} onLocaleChange={handleLocaleChange} identity={terminalContext} onReady={setTerminalContext}
@@ -599,6 +715,21 @@ function AppContent({ localePreference, recoveryEpoch }: { localePreference: Ret
   }
 
   if (!session) {
+    if (webTerminal) {
+      const copy = browserTerminalCopy(locale);
+      return <BrowserTerminalFrame locale={locale} onLocaleChange={handleLocaleChange}>
+        <div className="web-terminal-login-layout"><h1>{copy.login}</h1><p>{copy.loginDetail}</p>
+          <LoginScreen app="venta" locale={locale} terminalContext={terminalContext} presentation="embedded"
+            onLocaleChange={handleLocaleChange} onLogin={handleLogin} onReconnect={reconnectLoginTerminal}
+            secondaryActionLabel={copy.connection} onSecondaryAction={() => setScreen("connection")}
+            onAuthenticationError={error => {
+              if (error instanceof ApiError && ["WEB_TERMINAL_PROOF_INVALID", "LINK_PROOF_INVALID", "WEB_TERMINAL_COOKIE_REQUIRED", "WEB_TERMINAL_NOT_ACTIVE", "TERMINAL_DISABLED"].includes(String(error.problem?.code))) {
+                loginEpoch.current += 1; setWebTerminalError(error); setWebTerminalStatus(null); setTerminalContext(null);
+              }
+            }} />
+        </div>
+      </BrowserTerminalFrame>;
+    }
     return (
       <LoginScreen
         app="venta"

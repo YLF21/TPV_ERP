@@ -15,6 +15,27 @@
 .mk-page .mk-footer p { max-width: 60ch; margin: 0; justify-self: center; font-size: 13px; line-height: 1.5; }
 .mk-page .mk-footer > div { gap: 6px 16px; }
 .mk-page .mk-footer small { padding-top: 12px; font-size: 12px; }
+.mk-header .mk-mobile-portal, .mk-header nav .mk-mobile-portal-menu { display: none; }
+.mk-portal-button, .mk-mobile-portal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: 1px solid #a9c9fa;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--mk-blue) !important;
+  background: white;
+  font-size: 14px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.mk-portal-button:hover, .mk-mobile-portal:hover { background: var(--mk-soft-blue); }
+.mk-page [aria-disabled="true"][role="link"] { color: var(--mk-muted) !important; cursor: default; }
+.mk-page .mk-footer small { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px; }
+.mk-internal-access { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; }
+.mk-internal-access:hover { text-decoration: underline; }
+.mk-page .mk-footer [role="link"][aria-disabled="true"] { color: #adbed4 !important; }
 
 .mk-inner-page.mk-apps-page,
 .mk-inner-page.mk-advantages-page,
@@ -161,8 +182,18 @@
 .mk-advantages-page .mk-note { margin-top: 12px; color: var(--mk-muted); font-size: 13px; line-height: 1.55; }
 
 @media (min-width: 1121px) {
+  .mk-page .mk-header-actions { grid-template-columns: 80px auto 44px; gap: 8px; }
+  .mk-page .mk-download-button { width: 44px; padding: 0; }
+  .mk-page .mk-download-button svg { width: 18px; }
   .mk-page .mk-header nav { grid-template-columns: repeat(5, max-content); gap: 10px; }
   .mk-page .mk-header nav a { padding-inline: 10px; font-size: 14px; }
+}
+
+@media (max-width: 1120px) {
+  .mk-page .mk-header { grid-template-columns: minmax(0, 1fr) auto 44px; gap: 8px; }
+  .mk-header .mk-brand img { max-width: 100%; }
+  .mk-header .mk-mobile-portal { display: inline-flex; }
+  .mk-header nav .mk-mobile-portal-menu { display: flex; align-items: center; min-height: 44px; }
 }
 
 @media (max-width: 959px) {

@@ -132,6 +132,24 @@ public class TerminalLinkingService {
         return state(binding);
     }
 
+    /** An unused browser cookie is not a reservation; existing requests still require their proof. */
+    public Optional<LinkState> browserStatus(Proof request, UUID deviceId, java.net.InetAddress clientAddress) {
+        var store = lock(singleStore());
+        expire(store);
+        if (request == null || request.requestId() == null || request.credential() == null
+                || request.credential().length() > 256 || deviceId == null) throw forbidden("LINK_PROOF_INVALID");
+        var found = bindings.findByRequestId(request.requestId());
+        if (found.isEmpty()) return Optional.empty();
+        var binding = proof(found.get(), request.credential());
+        if (!binding.getDeviceId().equals(deviceId)) throw forbidden("LINK_PROOF_INVALID");
+        var terminal = terminals.findForCashSessionPreparation(binding.getTerminal().getId(), store.getId()).orElseThrow();
+        var seenAt = now();
+        binding.seen(seenAt);
+        if (binding.occupies() && binding.getId().equals(terminal.getCurrentBindingId()))
+            terminal.recordConnection(seenAt, clientAddress);
+        return Optional.of(state(binding));
+    }
+
     public LinkState cancel(Proof request) {
         var store = lock(singleStore());
         expire(store);

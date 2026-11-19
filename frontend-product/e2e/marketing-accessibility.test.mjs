@@ -11,7 +11,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const languages = ["es", "en", "zh"];
 const routes = ["inicio", "solucion", "funcionalidades", "apps", "ventajas", "contacto"];
 const navigationRoutes = ["inicio", "solucion", "apps", "ventajas", "contacto"];
-const uiKeys = ["skipToContent", "primaryNavigation", "openMenu", "closeMenu", "tourApplications", "tourSteps"];
+const uiKeys = ["skipToContent", "primaryNavigation", "openMenu", "closeMenu", "clientAccess", "clients", "internalAccess", "portalUnavailable", "tourApplications", "tourSteps"];
 const escapeHtml = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#x27;");
 
 // This parser only examines controlled React SSR output. It is not a DOM, layout

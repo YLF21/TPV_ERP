@@ -1,0 +1,96 @@
+.tenant-login-page {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+  height: 100dvh;
+  overflow: auto;
+  color: #14243d;
+  background: radial-gradient(ellipse at 15% 35%, #edf5ff, transparent 60%), #f8faff;
+}
+.tenant-login-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 76px;
+  border-bottom: 1px solid #e1e8f2;
+  padding: 12px clamp(20px, 4vw, 64px);
+  background: #fff;
+}
+.tenant-login-brand { display: flex; align-items: center; gap: 22px; min-width: 0; }
+.tenant-login-brand img { display: block; width: 120px; height: 38px; object-fit: contain; }
+.tenant-login-brand > span { border-left: 1px solid #dbe4f0; padding-left: 22px; color: #57667c; font-size: 14px; font-weight: 550; }
+.tenant-login-language { flex: 0 0 auto; }
+.tenant-login-language .language-selector { display: block; margin: 0; text-transform: none; }
+.tenant-login-language .language-selector > span { display: none; }
+.tenant-login-language .language-trigger {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 44px;
+  border: 1px solid #d4dfef;
+  border-radius: 10px;
+  padding: 9px 12px;
+  color: #29425f;
+  background: #fff;
+  font-size: 14px;
+  font-weight: 650;
+}
+.tenant-login-language .language-trigger:hover, .tenant-login-language .language-trigger[aria-expanded="true"] { border-color: #9dbdf0; background: #f2f7ff; }
+.tenant-login-language .language-menu { right: 0; left: auto; width: 188px; border: 1px solid #d4dfef; border-radius: 12px; padding: 6px; background: #fff; box-shadow: 0 12px 30px #14243d18; }
+.tenant-login-language .language-menu button { min-height: 44px; border: 0; border-radius: 7px; padding: 10px; color: #29425f; background: #fff; }
+.tenant-login-language .language-menu button.active, .tenant-login-language .language-menu button:hover { color: #0759d8; background: #edf4ff; }
+.tenant-login-page :focus-visible { outline: 3px solid #1264e8; outline-offset: 3px; }
+.tenant-login-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 420px); align-items: center; gap: clamp(36px, 7vw, 100px); width: min(100%, 1080px); margin: auto; padding: 48px 32px; }
+.tenant-login-with-account .tenant-login-content { padding-block: 32px; }
+.tenant-login-kicker { margin: 0 0 14px; color: #1264e8; font-size: 11px; font-weight: 800; letter-spacing: .14em; }
+.tenant-login-story h1 { margin: 0; font-size: clamp(36px, 4.3vw, 54px); line-height: 1.12; font-weight: 800; letter-spacing: -.045em; }
+.tenant-login-story h1 span { color: #1264e8; }
+.tenant-login-intro { max-width: 43ch; margin: 20px 0 0; color: #57667c; font-size: 16px; line-height: 1.65; }
+.tenant-login-story ul { display: grid; gap: 16px; margin: 30px 0 20px; padding: 0; list-style: none; }
+.tenant-login-story li { display: flex; align-items: center; gap: 13px; font-size: 14px; font-weight: 600; line-height: 1.5; }
+.tenant-login-story li > span { display: grid; flex: 0 0 38px; place-items: center; height: 38px; border: 1px solid #dce9fc; border-radius: 11px; color: #1264e8; background: #fff; }
+.tenant-login-permissions { max-width: 43ch; margin: 0; color: #66758a; font-size: 12px; line-height: 1.6; }
+.tenant-login-page .tenant-login-card { position: static; inset: auto; z-index: auto; width: auto; max-width: none; min-width: 0; height: auto; min-height: 0; margin: 0; overflow: visible; border: 1px solid #dfe7f2; border-radius: 22px; padding: 32px; background: #fff; box-shadow: 0 18px 54px #142f5a0c; transform: none; backdrop-filter: none; }
+.tenant-login-eyebrow { margin: 0 0 10px; color: #1264e8; font-size: 12px; font-weight: 700; }
+.tenant-login-card h2 { margin: 0; color: #14243d; font-size: 26px; line-height: 1.25; font-weight: 750; letter-spacing: -.035em; }
+.tenant-login-help { margin: 12px 0 24px; color: #66758a; font-size: 14px; line-height: 1.6; }
+.tenant-login-card form { display: grid; gap: 18px; }
+.tenant-login-page .tenant-login-card label { display: grid; gap: 8px; color: #29425f; font-size: 13px; font-weight: 650; }
+.tenant-login-page .tenant-login-card input { width: 100%; min-width: 0; height: auto; min-height: 48px; border: 1px solid #cfdced; border-radius: 9px; padding: 11px 13px; color: #14243d; background: #fff; font-size: 16px; font-weight: 400; }
+.tenant-login-page .tenant-login-card input::placeholder { color: #66758a; opacity: 1; }
+.tenant-login-page .tenant-login-card input:focus { border-color: #1264e8; outline: 3px solid #1264e81c; outline-offset: 0; }
+.tenant-login-page .tenant-login-submit { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; min-height: 48px; margin-top: 4px; border: 1px solid #1264e8; border-radius: 9px; padding: 12px; color: #fff; background: #1264e8; font-size: 14px; font-weight: 700; }
+.tenant-login-page .tenant-login-submit:hover:not(:disabled) { background: #0754ce; }
+.tenant-login-page .tenant-login-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px; border: 1px solid #d4dfef; border-radius: 9px; padding: 10px 14px; color: #29425f; background: #fff; box-shadow: none; font-size: 14px; font-weight: 650; line-height: 1.5; }
+.tenant-login-page .tenant-login-secondary:hover:not(:disabled) { border-color: #9dbdf0; background: #f2f7ff; }
+.tenant-login-page .tenant-login-client-link { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; color: #1264e8; font-size: 14px; font-weight: 650; line-height: 1.5; text-decoration: none; }
+.tenant-login-page .tenant-login-client-link:hover { text-decoration: underline; }
+.tenant-login-client-help { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tenant-login-account-help { margin: 22px 0 0; border-top: 1px solid #e6edf6; padding-top: 18px; color: #66758a; font-size: 12px; line-height: 1.6; }
+.tenant-login-card .notice { margin: 0 0 20px; border-radius: 9px; padding: 12px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.tenant-login-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px; padding: 18px clamp(20px, 4vw, 64px); color: #66758a; font-size: 12px; line-height: 1.5; }
+.tenant-login-footer .saas-login-clock { width: auto; min-width: 0; height: auto; min-height: 0; border: 0; border-radius: 0; padding: 0; color: inherit; background: none; box-shadow: none; font: inherit; font-variant-numeric: tabular-nums; white-space: normal; text-align: center; }
+@media (max-width: 760px) {
+  .tenant-login-topbar { min-height: 68px; padding: 10px 20px; }
+  .tenant-login-brand { gap: 12px; }
+  .tenant-login-brand img { width: 104px; height: 34px; }
+  .tenant-login-brand > span { display: none; }
+  .tenant-login-content { grid-template-columns: minmax(0, 420px); justify-content: center; gap: 24px; padding: 28px 20px; }
+  .tenant-login-story h1 { font-size: 32px; }
+  .tenant-login-story h1 br { display: none; }
+  .tenant-login-story h1 span::before { content: " "; }
+  .tenant-login-kicker { margin-bottom: 8px; font-size: 10px; }
+  .tenant-login-intro { margin-top: 12px; font-size: 14px; line-height: 1.6; }
+  .tenant-login-story ul, .tenant-login-permissions { display: none; }
+  .tenant-login-page .tenant-login-card { border-radius: 18px; padding: 24px; }
+  .tenant-login-card h2 { font-size: 24px; }
+  .tenant-login-footer { justify-content: center; text-align: center; padding: 12px 20px 18px; }
+}
+@media (max-width: 359px) {
+  .tenant-login-content { padding-inline: 16px; }
+  .tenant-login-page .tenant-login-card { padding: 22px 20px; }
+}

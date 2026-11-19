@@ -6,6 +6,8 @@
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev:venta": "npm run dev --workspace @tpverp/app-venta",
+    "build:web:venta": "npm run build:web --workspace @tpverp/app-venta",
+    "preview:web:venta": "npm run preview:web --workspace @tpverp/app-venta",
     "dev:gestion": "npm run dev --workspace @tpverp/app-gestion",
     "dev:pda": "npm run dev --workspace @tpverp/app-pda",
     "preview:pda": "npm run preview --workspace @tpverp/app-pda",

@@ -1038,3 +1038,56 @@ caché de Vite. El resultado final está en
 `output/marketing-mobile-navigation-20261027/tests-final.tap`. Los nuevos
 contratos cubren el destino de demo, la navegación del recorrido, el orden de
 teclado, el overlay compartido y las configuraciones de publicación de descargas.
+
+## Accesos web para clientes y equipo interno · 2026-11-19
+
+La cabecera incorpora «Acceso clientes» y el móvil mantiene un botón «Clientes»
+visible junto al menú, además del acceso dentro de este. El enlace «Acceso
+interno» se encuentra únicamente en el pie, en una posición secundaria. Las
+etiquetas y los estados no disponibles están traducidos a ES, EN y ZH. Descargas
+permanece en el menú móvil y en el pie; en la cabecera de escritorio utiliza un
+botón de icono con nombre accesible y título.
+
+El destino de clientes es Venta TPV web en `http://127.0.0.1:5173/` y el del
+equipo interno es SaaS en `http://127.0.0.1:5175/#/login`. La entrada comercial
+no dirige a los clientes al portal de tiendas de SaaS (`tienda.html`).
+Cada aplicación conserva su autenticación y permisos;
+la web informativa no recibe contraseñas, crea sesiones ni cambia autorizaciones.
+El acceso secundario del equipo es una decisión de presentación, no una medida
+de seguridad. Los enlaces son nativos, funcionan con Atrás y en otra pestaña,
+y no propagan la selección de apps, atribución o datos del formulario.
+
+Para publicar, configura `VITE_CLIENT_PORTAL_URL` y `VITE_INTERNAL_PORTAL_URL`
+antes de compilar, con los destinos HTTPS reales o rutas absolutas del mismo
+origen si el servidor las publica. No se ha definido ni inventado un dominio.
+Estas variables son públicas: no deben contener credenciales. Se rechazan
+esquemas inseguros, credenciales incrustadas, HTTP público y URLs malformadas.
+Una configuración inválida no activa un destino alternativo. Solo una web
+ejecutada en localhost, 127.0.0.1 o ::1 puede utilizar los enlaces locales
+automáticos a Venta en el puerto 5173 y a SaaS en el 5175. Sin configuración en un sitio publicado, el acceso
+se muestra no disponible y carece de `href`; nunca dirige al equipo del cliente.
+El prerender usa un origen de compilación no local para no publicar esos
+destinos de desarrollo en los HTML estáticos.
+
+La incorporación añade 509 bytes gzip de JavaScript frente a la fase anterior.
+El límite total de JavaScript comprimido se ajusta de 145.000 a 146.000 bytes
+para estos accesos y su información en tres idiomas. No cambia el límite de
+carga inicial (135.000 gzip), el de JavaScript sin comprimir (470.000), ni los
+límites de CSS, imágenes o tamaño total. Resultado de compilación: 19 HTML,
+3.403.309 bytes totales; JS 466.559 / 145.409 gzip y CSS 113.053 / 19.637 gzip.
+El aviso conocido del JPEG de Contacto permanece por debajo de 400.000 bytes.
+
+La entrada local de clientes usa Venta en modo de desarrollo y su terminal ya
+configurado, junto al backend de tienda de 8080. Para publicar en navegador se
+prepara una distribución separada con registro de puesto mediante cookie
+HttpOnly y aprobación administrativa; no se reutiliza la identidad DEV ni se
+amplía la licencia. Configuración, límites de hardware y publicación por HTTPS
+en [Venta desde el navegador](../docs/venta-browser-production.md).
+
+Verificación: 338 comprobaciones, 337 aprobadas y una omitida por la restricción
+de enlaces/junctions de Windows; cero fallos. Los nuevos contratos comprueban
+destinos y 27 combinaciones SSR de origen/configuración e idioma. Revisión con
+Cua en escritorio de 1280 px, cabecera inglesa de 1121 px y móvil de 320 y
+390 px, incluida la versión china. Ambos enlaces abren su pantalla de acceso
+correcta y Atrás vuelve a la web; no se introdujeron credenciales ni se enviaron
+formularios. Evidencias y registro de pruebas en `output/portal-access-20261119/`.

@@ -1,0 +1,163 @@
+.saas-desktop-login {
+  --internal-login-blue: #0065fe;
+  width: 100%;
+  min-width: 0;
+  min-height: 100dvh;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #e8edf6;
+  color: #202020;
+  font-family: Arial, "Microsoft YaHei UI", sans-serif;
+  overflow-wrap: anywhere;
+}
+.saas-desktop-login, .saas-desktop-login * { box-sizing: border-box; }
+.saas-desktop-login-topbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 54px;
+  padding: 5px 18px;
+  border-bottom: 1px solid #d6dfeb;
+  background: #f8fafc;
+}
+.saas-desktop-login-context { min-width: 0; display: flex; align-items: center; gap: 15px; }
+.saas-desktop-login-context img { display: block; width: 94px; height: 30px; object-fit: contain; flex-shrink: 0; }
+.saas-desktop-login-context > span { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.saas-desktop-login-tools { min-width: 0; display: flex; align-items: center; gap: 20px; }
+.saas-desktop-login-clock { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #263b57; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.saas-desktop-login .language-selector-floating { position: relative; display: block; margin: 0; color: #263b57; }
+.saas-desktop-login .language-selector-floating .language-trigger {
+  position: relative;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #cbd6e5;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: none;
+  color: #244567;
+  transform: none;
+}
+.saas-desktop-login .language-selector-floating .language-trigger:hover,
+.saas-desktop-login .language-selector-floating .language-trigger[aria-expanded="true"] { background: #edf4ff; border-color: #8bb5fc; box-shadow: none; transform: none; }
+.saas-desktop-login .language-selector-floating .language-trigger > .language-globe { width: 22px; height: 22px; object-fit: contain; }
+.saas-desktop-login .language-selector-floating .language-menu { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; left: auto; width: 180px; max-width: calc(100vw - 32px); padding: 6px; gap: 4px; border: 1px solid #cbd6e5; border-radius: 9px; background: #fff; box-shadow: 0 8px 24px #17365b24; backdrop-filter: none; }
+.saas-desktop-login .language-menu button { min-height: 44px; padding: 10px 12px; border-radius: 5px; background: #fff; color: #263b57; }
+.saas-desktop-login .language-menu button:hover, .saas-desktop-login .language-menu button.active { background: #0065fe; color: #fff; }
+.saas-desktop-login-content { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; justify-items: center; padding: 36px 24px 42px; }
+.saas-desktop-login-entry { width: 570px; max-width: 100%; min-width: 0; display: grid; gap: 24px; }
+.saas-desktop-login-brand { min-height: 76px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #000; line-height: 1; }
+.saas-desktop-login-brand img { display: block; width: 200px; max-width: 62%; height: auto; object-fit: contain; }
+.saas-desktop-login-brand span { font-size: 54px; font-weight: 700; letter-spacing: -.04em; }
+.saas-desktop-login .saas-desktop-login-card.login-panel {
+  position: static;
+  inset: auto;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 28px 50px 34px;
+  display: block;
+  border: 0;
+  border-radius: 16px;
+  background: #fff;
+  color: #202020;
+  box-shadow: -14px -4px 20px #0000004d;
+  transform: none;
+  overflow: visible;
+  backdrop-filter: none;
+}
+.saas-desktop-login-card > :is(h1,h2) { margin: 0 0 12px; color: #111; font-size: 24px; font-weight: 700; line-height: 1.25; text-align: center; letter-spacing: -.02em; }
+.saas-desktop-login-card .tenant-login-eyebrow { margin: 0 0 8px; font-size: 12px; line-height: 1.4; color: #4e6380; text-align: center; font-weight: 700; letter-spacing: .02em; }
+.saas-desktop-login-card .tenant-login-help { margin: 0 0 24px; font-size: 13px; line-height: 1.5; color: #5b6b80; text-align: center; }
+.saas-desktop-login-heading { margin: 0 0 24px; padding: 0; text-align: center; }
+.saas-desktop-login-heading h1 { margin: 0; color: #111; font-size: 22px; line-height: 1.3; font-weight: 700; letter-spacing: 0; }
+.saas-desktop-login-heading p { margin: 5px 0 0; color: #5b6b80; font-size: 13px; line-height: 1.4; }
+.saas-desktop-login-card .saas-desktop-login-help { margin: 18px 0 0; color: #63728a; font-size: 12px; line-height: 1.5; text-align: center; }
+.saas-desktop-login-card[aria-labelledby="password-change-title"] > .saas-desktop-login-help { margin: 0 0 24px; }
+.saas-desktop-login-card .saas-desktop-login-account { margin: 0 0 10px; color: #63728a; font-size: 13px; line-height: 1.4; text-align: center; }
+.saas-desktop-login-card .saas-desktop-login-client-help { display: grid; gap: 5px; margin-top: 16px; padding-top: 14px; border-top: 1px solid #e4eaf2; color: #63728a; font-size: 12px; line-height: 1.4; text-align: center; }
+.saas-desktop-login-card .saas-desktop-login-client-help a { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: #075bd7; font-size: 13px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.saas-desktop-login .stack-form { min-width: 0; display: grid; gap: 22px; }
+.saas-desktop-login .stack-form :is(label,.saas-desktop-login-field) { min-width: 0; display: grid; gap: 8px; color: #222; font-size: 24px; font-weight: 400; line-height: 1.2; }
+.saas-desktop-login .stack-form input {
+  width: 100%;
+  min-width: 0;
+  height: 64px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 14px;
+  border: 2px solid #ededed;
+  border-radius: 6px;
+  background: #fff;
+  color: #222;
+  box-shadow: none;
+  font-family: inherit;
+  font-size: 24px;
+  font-weight: 400;
+}
+.saas-desktop-login .stack-form input::placeholder { color: #9aabbd; opacity: 1; }
+.saas-desktop-login .stack-form input:focus { outline: none; border-color: #0065fe; box-shadow: 0 0 0 2px #0065fe1f; }
+.saas-desktop-login .saas-desktop-login-input-wrap { min-width: 0; min-height: 64px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border: 2px solid #ededed; border-radius: 6px; background: #fff; color: #808080; }
+.saas-desktop-login .saas-desktop-login-input-wrap:focus-within { border-color: #0065fe; box-shadow: 0 0 0 2px #0065fe1f; }
+.saas-desktop-login .saas-desktop-login-input-wrap > svg { flex: 0 0 auto; }
+.saas-desktop-login .stack-form .saas-desktop-login-input-wrap input { flex: 1; width: 100%; min-width: 0; height: 60px; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; outline: none; }
+.saas-desktop-login .stack-form .saas-desktop-login-password-toggle { flex: 0 0 44px; width: 44px; min-width: 44px; height: 44px; min-height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #6c7785; box-shadow: none; }
+.saas-desktop-login .stack-form .saas-desktop-login-password-toggle:hover:not(:disabled) { background: #edf4ff; color: #0058df; }
+.saas-desktop-login .stack-form :is(.saas-desktop-login-submit,.tenant-login-submit) { width: 100%; min-height: 82px; height: auto; margin: 0; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 16px; border: 0; border-radius: 6px; background: #0065fe; color: #fff; font-family: inherit; font-size: 24px; font-weight: 700; line-height: 1.3; text-transform: uppercase; box-shadow: none; white-space: normal; }
+.saas-desktop-login .stack-form :is(.saas-desktop-login-submit,.tenant-login-submit):hover:not(:disabled) { background: #0058df; box-shadow: none; }
+.saas-desktop-login button:disabled, .saas-desktop-login input:disabled { cursor: default; opacity: .6; }
+.saas-desktop-login .stack-form > .secondary-button { min-height: 44px; white-space: normal; }
+.saas-desktop-login button:focus-visible, .saas-desktop-login a:focus-visible { outline: 3px solid #8eb8ff; outline-offset: 3px; }
+.saas-desktop-login .notice { margin: 0 0 20px; padding: 12px; border-radius: 6px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; box-shadow: none; }
+.saas-desktop-login-card .tenant-login-account-help { margin-top: 22px; padding-top: 18px; border-top: 1px solid #e4eaf2; display: grid; gap: 8px; text-align: center; color: #5b6b80; font-size: 13px; line-height: 1.5; }
+.saas-desktop-login-card .tenant-login-client-link { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: #075bd7; font-size: 13px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.saas-desktop-login-footer { min-width: 0; min-height: 28px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: 18px; row-gap: 6px; padding: 6px 18px; border-top: 1px solid #d6dfeb; background: #f8fafc; color: #63728a; font-size: 11px; line-height: 1.4; }
+.saas-desktop-login-footer .saas-desktop-login-client-link { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; color: #075bd7; font-size: 12px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+@media (max-height: 850px), (max-width: 600px) {
+  .saas-desktop-login-content { padding: 26px 20px 30px; }
+  .saas-desktop-login-entry { width: 460px; gap: 18px; }
+  .saas-desktop-login-brand { min-height: 54px; }
+  .saas-desktop-login-brand img { width: 146px; }
+  .saas-desktop-login-brand span { font-size: 40px; }
+  .saas-desktop-login .saas-desktop-login-card.login-panel { padding: 22px 32px 26px; }
+  .saas-desktop-login-card > :is(h1,h2) { font-size: 21px; }
+  .saas-desktop-login-card .tenant-login-help { margin-bottom: 20px; }
+  .saas-desktop-login-heading { margin-bottom: 20px; }
+  .saas-desktop-login-heading h1 { font-size: 20px; }
+  .saas-desktop-login .stack-form { gap: 18px; }
+  .saas-desktop-login .stack-form :is(label,.saas-desktop-login-field) { font-size: 20px; }
+  .saas-desktop-login .stack-form input { height: 56px; font-size: 20px; }
+  .saas-desktop-login .saas-desktop-login-input-wrap { min-height: 56px; }
+  .saas-desktop-login .stack-form .saas-desktop-login-input-wrap input { height: 52px; }
+  .saas-desktop-login .stack-form :is(.saas-desktop-login-submit,.tenant-login-submit) { min-height: 70px; font-size: 21px; }
+}
+@media (max-width: 640px) {
+  .saas-desktop-login-topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 8px 16px; }
+  .saas-desktop-login-context { grid-column: 1; grid-row: 1; gap: 10px; }
+  .saas-desktop-login-context > span { font-size: 12px; }
+  .saas-desktop-login-tools { display: contents; }
+  .saas-desktop-login-tools .language-selector-floating { grid-column: 2; grid-row: 1; }
+  .saas-desktop-login-clock { position: static; transform: none; grid-column: 1 / -1; grid-row: 2; justify-self: end; font-size: 11px; }
+  .saas-desktop-login-content { padding: 24px 16px; }
+  .saas-desktop-login-entry { width: 100%; max-width: 460px; }
+  .saas-desktop-login .saas-desktop-login-card.login-panel { padding: 24px 22px; }
+  .saas-desktop-login-footer { padding: 6px 16px; font-size: 10px; }
+  .saas-desktop-login-footer .saas-desktop-login-client-link { flex-basis: 100%; }
+}
+@media (max-width: 360px) {
+  .saas-desktop-login-context img { width: 84px; height: auto; }
+  .saas-desktop-login-context > span { font-size: 11px; }
+  .saas-desktop-login .saas-desktop-login-card.login-panel { padding: 22px 18px; }
+  .saas-desktop-login-card > :is(h1,h2) { font-size: 20px; }
+}

@@ -1,4 +1,5 @@
 import { apiRequest } from "../api/client";
+import { webTerminalRequest } from "../webTerminalIdentity";
 import type { AppKind, Permission, TerminalContext, UserSession } from "../types";
 
 type LocalUser = UserSession & {
@@ -96,7 +97,9 @@ export async function authenticateRemote(
     throw new Error("terminal_not_configured");
   }
 
-  const result = await apiRequest<LoginResult>("/auth/login", {
+  const result = terminalContext.credentialMode === "browser-cookie"
+    ? await webTerminalRequest<LoginResult>("login", { userName: username, password })
+    : await apiRequest<LoginResult>("/auth/login", {
     method: "POST",
     body: {
       terminalId: terminalContext.terminalId,

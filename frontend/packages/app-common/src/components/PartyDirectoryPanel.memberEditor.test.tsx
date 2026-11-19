@@ -55,7 +55,8 @@ describe("Venta member editor", () => {
     const number = within(dialog).getByLabelText("Número de documento");
     const name = within(dialog).getByLabelText("Nombre o razón social");
     expect(number.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(name).toHaveFocus();
+    // Loading the shared address book enables the fields before React's focus effect runs.
+    await waitFor(() => expect(name).toHaveFocus());
     const personal = dialog.querySelector(".party-form-section--personal")!;
     const communications = dialog.querySelector(".party-form-section--communications")!;
     const credit = dialog.querySelector(".party-credit-settings")!;

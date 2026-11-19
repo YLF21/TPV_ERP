@@ -3,7 +3,7 @@
   "limits": {
     "totalBytes": 3500000,
     "javascriptBytes": 470000,
-    "javascriptGzipBytes": 145000,
+    "javascriptGzipBytes": 146000,
     "cssBytes": 115000,
     "cssGzipBytes": 24000,
     "initialJavascriptGzipBytes": 135000,

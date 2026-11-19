@@ -55,7 +55,7 @@ export async function prerender() {
     const origin = safePublicSiteUrl(publicSiteUrl);
     if (publicSiteUrl && !origin) console.warn("SEO: VITE_PUBLIC_SITE_URL is not a public HTTPS origin; indexing and canonical URLs remain disabled.");
     const render = (language, route, pathname = marketingHref(language, route)) => {
-      const location = { origin: origin?.origin ?? "http://localhost", pathname, hash: "", search: "" };
+      const location = { origin: origin?.origin ?? "https://prerender.invalid", pathname, hash: "", search: "" };
       const storage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
       Object.defineProperty(globalThis, "window", { configurable: true, value: { location } });
       Object.defineProperty(globalThis, "document", { configurable: true, value: { referrer: "" } });

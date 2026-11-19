@@ -250,6 +250,77 @@ de administración. Para consultar el producto, utiliza la dirección de la web 
 
 Verificación: `npm test`, `npm run build` y `npm run test:e2e`.
 
+## Presentación del acceso de clientes · 2026-11-19
+
+`tienda.html` utiliza `TenantLoginScreen`, con el logotipo oficial, una cabecera
+adaptable y el selector de idioma alineado a la derecha. El selector compartido
+conserva su comportamiento; las clases `tenant-login-*` adaptan su presentación
+al acceso de clientes sin alterar la barra lateral ni la entrada administrativa.
+El formulario muestra usuario de tienda y contraseña, conserva el autocompletado
+y explica el uso del portal en ES, EN y ZH. La descripción de funciones indica
+que su disponibilidad depende de los permisos de la cuenta.
+
+El contenido se distribuye en dos columnas en escritorio y una en móvil. Se
+eliminan para esta pantalla el ancho mínimo de 1024 px y el posicionamiento
+absoluto del formulario. El desplazamiento vertical permite acceder a los
+controles cuando aparece un aviso o disminuye la altura disponible. Se mantienen
+el login de cliente, el rechazo y revocación de sesiones internas y el cambio
+obligatorio de contraseña. No se modificaron endpoints, credenciales ni datos.
+
+Compilación de ambas entradas aprobada y 18 comprobaciones existentes de
+autenticación, seguridad, contraseñas e idiomas correctas. Verificación visual
+con Cua en 1280 × 720, 821 × 800 y 390 × 844; cambio de idioma, menú, Escape y
+foco visible. Un harness aislado del componente real permitió revisar un aviso
+simulado en 320 × 740 y 740 × 390, sin enviar credenciales ni llamar a la API:
+sin desbordamiento horizontal, aviso anterior al formulario y botón alcanzable
+con Tab. Las capturas están en `output/tenant-login-20261119/` del repositorio;
+el harness está fuera del build de producción y su servidor temporal se detiene
+al terminar la revisión.
+
+## Estilo compartido del acceso interno · 2026-11-19
+
+El acceso interno y el cambio obligatorio de contraseña utilizan ahora
+`PortalLoginLayout`, con la misma cabecera, fondo, tarjeta y comportamiento
+adaptable del acceso de clientes. La presentación compartida conserva las clases
+visuales `tenant-login-*`; el estado y las llamadas de autenticación siguen en
+cada aplicación. Se mantienen las clases de formulario usadas por los E2E y el
+identificador `password-change-title`. El reloj permanece en el pie, dejando
+espacio al selector de idioma en la cabecera móvil.
+
+Los campos conservan el autocompletado y, junto al botón principal, alcanzan 48 px de altura;
+la salida del cambio de contraseña tiene al menos 44 px. Durante una petición
+se deshabilitan los campos y se evita el reenvío del formulario. El acceso
+inicial no enfoca automáticamente un campo para evitar abrir el teclado móvil
+al cargar. Los avisos conservan `alert/status`, los controles de credenciales y
+la cancelación del cambio obligatorio conservan sus callbacks. No se habilita
+la recuperación de contraseña que actualmente no tiene controles públicos.
+
+El destino para clientes se aclara como **Venta TPV web**, no el portal tenant
+de SaaS. El enlace del acceso interno utiliza el mismo validador puro que la web
+informativa (`frontend-product/src/portalAccess.ts`): en local abre
+`http://127.0.0.1:5173/`; para publicar, configura `VITE_CLIENT_PORTAL_URL` en
+ambos frontends. Sin un destino válido fuera de localhost no se ofrece un
+enlace falso. El acceso interno permanece en `http://127.0.0.1:5175/#/login`.
+
+La prueba local de Venta utiliza su configuración de terminal existente y el
+backend de tienda en 8080; SaaS mantiene su backend en 8090. La distribución web
+de Venta registra cada navegador como un puesto y exige aprobación de la tienda.
+No utiliza las credenciales DEV ni cambia cupos o permisos. La publicación HTTPS
+y el registro se describen en [Venta desde el navegador](../docs/venta-browser-production.md).
+
+Comprobación de esta fase: ambas entradas SaaS compiladas, 18 contratos de
+autenticación/seguridad/contraseñas/idiomas aprobados y 34 comprobaciones de
+destinos de acceso aprobadas en la web informativa. Revisión Cua de la entrada
+interna en 1280 × 720, 390 × 844 y 821 × 800, con ES/EN/ZH. El fixture aislado
+permitió comprobar avisos, carga y cambio obligatorio en 320 × 740 y 740 × 390:
+sin desbordamiento horizontal, controles de salida y envío alcanzables con Tab,
+campos deshabilitados durante la petición y menú de idioma dentro de la vista.
+No se enviaron credenciales ni se cambiaron contraseñas durante la revisión.
+Capturas en `output/internal-login-20261119/`; servidor de fixture detenido.
+Se verificó por navegación real que el acceso comercial llega al login de Venta
+en 5173, con el backend de tienda conectado. La base local ya estaba en V289 y
+el arranque no aplicó migraciones ni restableció credenciales.
+
 ## Bandeja comercial de solicitudes de demo
 
 Tras iniciar sesión con una cuenta interna, abre **Clientes → Solicitudes de

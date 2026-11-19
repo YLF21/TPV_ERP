@@ -21,7 +21,7 @@ type LoginScreenProps = {
   locale: LocaleCode;
   terminalContext: TerminalContext;
   onLocaleChange: (locale: LocaleCode) => void;
-  onLogin: (session: UserSession) => void;
+  onLogin: (session: UserSession) => void | Promise<void>;
   onAuthenticationError?: (error: unknown) => void;
   presentation?: "desktop" | "embedded";
   heading?: string;
@@ -119,7 +119,7 @@ export function LoginScreen({
       const normalizedUsername = username.trim();
       const session = await authenticateRemote(normalizedUsername, password, app, terminalContext);
       rememberUser(normalizedUsername);
-      onLogin(session);
+      await onLogin(session);
     } catch (caught) {
       onAuthenticationError?.(caught);
       const invalidCredentials = caught instanceof ApiError && caught.status === 401;

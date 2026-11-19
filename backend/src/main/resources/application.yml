@@ -55,6 +55,11 @@ springdoc:
     enabled: false
 
 tpv:
+  web-terminal:
+    enabled: ${TPV_WEB_TERMINAL_ENABLED:false}
+    allowed-origin: ${TPV_WEB_TERMINAL_ALLOWED_ORIGIN:}
+    # Development only: literal 127.0.0.1 / [::1] origins, never remote HTTP.
+    allow-local-http: ${TPV_WEB_TERMINAL_ALLOW_LOCAL_HTTP:false}
   sync:
     remote-repair-enabled: ${TPV_REMOTE_REPAIR_ENABLED:false}
   monitoring:

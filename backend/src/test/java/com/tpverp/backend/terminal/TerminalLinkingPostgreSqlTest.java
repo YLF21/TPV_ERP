@@ -151,6 +151,27 @@ class TerminalLinkingPostgreSqlTest {
         assertThat(bindings.count()).isEqualTo(2);
     }
 
+    @Test void browserProofDoesNotReserveBeforeRequestAndCannotReuseWrongDeviceOrRevokedIdentity() {
+        var browser = request("002");
+        assertThat(service.browserStatus(proof(browser), browser.deviceId(), null)).isEmpty();
+        assertThat(bindings.count()).isZero();
+        var pending = service.request(browser);
+        assertThat(service.browserStatus(proof(browser), browser.deviceId(), null)).get()
+                .extracting(TerminalLinkingService.LinkState::status).isEqualTo("PENDING");
+        assertThatThrownBy(() -> service.browserStatus(proof(browser), UUID.randomUUID(), null))
+                .hasMessage("LINK_PROOF_INVALID");
+        assertThatThrownBy(() -> service.browserStatus(new TerminalLinkingService.Proof(browser.requestId(), "wrong"), browser.deviceId(), null))
+                .hasMessage("LINK_PROOF_INVALID");
+        service.action("002", pending.bindingId(), "approve");
+        var login = authentication.login(pending.terminalId(), browser.credential(), "ADMIN", "1234");
+        service.action("002", pending.bindingId(), "release");
+        assertThat(service.browserStatus(proof(browser), browser.deviceId(), null)).get()
+                .extracting(TerminalLinkingService.LinkState::status).isEqualTo("RELEASED");
+        assertThatThrownBy(() -> authentication.renew(login.accessToken())).isInstanceOf(AuthenticationFailedException.class);
+        assertThatThrownBy(() -> authentication.login(pending.terminalId(), browser.credential(), "ADMIN", "1234"))
+                .isInstanceOf(AuthenticationFailedException.class);
+    }
+
     @Test void authenticatedStatusPersistsTheLatestAddressOnlyForManagement() {
         var request = request("002");
         var linked = service.request(request);
