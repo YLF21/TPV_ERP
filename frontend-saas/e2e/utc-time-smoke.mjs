@@ -72,7 +72,7 @@ async function runZone(zone) {
 
   try {
     await page.goto(baseUrl);
-    const loginClock = page.locator(".saas-login-topbar .saas-login-clock");
+    const loginClock = page.locator(".saas-desktop-login-topbar time[datetime]");
     await loginClock.waitFor();
     assert.equal(await loginClock.getAttribute("datetime"), fixedInstant);
     const clockText = await loginClock.innerText();
