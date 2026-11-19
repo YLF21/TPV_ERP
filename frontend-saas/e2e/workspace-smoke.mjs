@@ -251,7 +251,7 @@ try {
   await tenantSection.getByLabel("Empresa", { exact: true }).selectOption(companyWithoutLicense);
   const createTenant = page.getByRole("form", { name: "Crear usuario cliente", exact: true });
   await createTenant.getByLabel("Usuario", { exact: true }).fill("unlicensed-company-user");
-  await createTenant.getByLabel("Password", { exact: true }).fill("synthetic-password-only");
+  await createTenant.getByLabel("Contraseña", { exact: true }).fill("synthetic-password-only");
   await createTenant.getByRole("button", { name: "Crear usuario cliente", exact: true }).click();
   const createdTenant = await latestCall(calls, c => c.method === "POST" && c.path.endsWith(`${companyWithoutLicense}/tenant-users`));
   assert.equal(createdTenant.body.username, "unlicensed-company-user");
