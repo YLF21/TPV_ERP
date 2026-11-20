@@ -66,6 +66,16 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
+    @ExceptionHandler(org.springframework.mail.MailAuthenticationException.class)
+    ProblemDetail mailAuthentication(org.springframework.mail.MailAuthenticationException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        // Never expose SMTP replies: they may contain account identifiers or credentials.
+        String code = "message.smtp.authentication_failed";
+        return problem(HttpStatus.BAD_GATEWAY, code,
+                localizedExceptionDetail(code, SystemErrorCode.STATE_CONFLICT, language), language, request);
+    }
+
     @ExceptionHandler(com.tpverp.backend.terminal.TerminalLinkingException.class)
     ProblemDetail terminalLinking(com.tpverp.backend.terminal.TerminalLinkingException exception) {
         var problem = ProblemDetail.forStatusAndDetail(exception.status(), exception.getMessage());
@@ -641,6 +651,11 @@ public class ApiExceptionHandler {
             IllegalStateException exception,
             HttpServletRequest request) {
         var language = language(request);
+        if ("message.smtp.encryption_key_missing".equals(exception.getMessage())) {
+            return problem(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage(),
+                    localizedExceptionDetail(exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
+                    language, request);
+        }
         var traceId = CorrelationIdFilter.getOrCreate(request);
         LOGGER.warn(
                 "State conflict traceId={} method={} path={} reason={}",

@@ -992,8 +992,9 @@ class MemberLoyaltyServiceTest {
         verify(syncOutbox).enqueue(any());
     }
 
-    @Test
-    void activationCreatesPendingWelcomeCardWhenConfiguredAndCustomerHasEmail() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void activationCreatesPendingWelcomeCardWhenConfiguredAndCustomerHasEmail(boolean useDefaultText) {
         var company = PartyTestData.company();
         var store = PartyTestData.store(company);
         var user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
@@ -1003,7 +1004,7 @@ class MemberLoyaltyServiceTest {
         var config = new MemberSettings(company);
         config.update(false, BigDecimal.ONE, BigDecimal.ZERO,
                 BalanceExpirationPolicy.NO_CADUCA, true, BigDecimal.ONE, BigDecimal.ONE,
-                true, true, MemberCardCodeFormat.QR, "Bienvenido", "Codigo {memberId}");
+                true, true, MemberCardCodeFormat.QR, useDefaultText ? null : "Bienvenido", useDefaultText ? null : "Codigo {memberId}");
         when(context.currentCompany()).thenReturn(company);
         when(context.currentStore()).thenReturn(store);
         when(context.currentUser()).thenReturn(user);
@@ -1011,7 +1012,9 @@ class MemberLoyaltyServiceTest {
         when(categories.findByCompanyIdAndActiveTrueOrderByMinPointsAscNameAsc(company.getId()))
                 .thenReturn(java.util.List.of());
         when(movements.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(cardDeliveries.existsByMemberId(member.getId())).thenReturn(false, true);
 
+        service().activateMember(member);
         service().activateMember(member);
 
         var delivery = org.mockito.ArgumentCaptor.forClass(MemberCardDelivery.class);
@@ -1019,6 +1022,15 @@ class MemberLoyaltyServiceTest {
         assertThat(delivery.getValue().getEmail()).isEqualTo("cliente@example.com");
         assertThat(delivery.getValue().getCardCode()).isEqualTo("M-001-000001");
         assertThat(delivery.getValue().getStatus()).isEqualTo(MemberCardDeliveryStatus.PENDIENTE);
+        if (useDefaultText) {
+            assertThat(delivery.getValue().getSubject()).isEqualTo("Tu tarjeta de cliente de " + company.getRazonSocial());
+            assertThat(delivery.getValue().getBody()).contains("Hola Cliente,", "M-001-000001", "Adjuntamos tu tarjeta de cliente", company.getRazonSocial())
+                    .doesNotContain("{name}", "{memberId}", "{storeName}");
+        } else {
+            assertThat(delivery.getValue().getSubject()).isEqualTo("Bienvenido");
+            assertThat(delivery.getValue().getBody()).isEqualTo("Codigo M-001-000001");
+        }
+        verify(cardDeliveries, org.mockito.Mockito.times(2)).lockMember(member.getId());
     }
 
     @Test
@@ -1134,6 +1146,65 @@ class MemberLoyaltyServiceTest {
                 MemberCardCodeFormat.QR, "Bienvenido", "Codigo {memberId}")))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("message.member_welcome.smtp_required");
+    }
+
+    @Test
+    void explicitResendUsesCurrentEmailAndIdempotencyKey() {
+        var company = PartyTestData.company();
+        var customer = new Customer(company, "Cliente", DocumentType.NIF, "1", null, null,
+                "current@example.com", null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
+        var original = new MemberCardDelivery(member, "old@example.com", "Card", "Body",
+                MemberCardCodeFormat.QR, Instant.parse("2026-07-02T11:00:00Z"));
+        original.markSent(Instant.parse("2026-07-02T11:01:00Z"));
+        var requestId = UUID.randomUUID();
+        when(context.currentCompany()).thenReturn(company);
+        when(cardDeliveries.findByIdAndCompanyId(original.getId(), company.getId())).thenReturn(Optional.of(original));
+        when(cardDeliveries.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var result = service().resendCardDelivery(original.getId(), requestId);
+        assertThat(result.id()).isNotEqualTo(original.getId());
+        assertThat(result.email()).isEqualTo("current@example.com");
+        assertThat(result.status()).isEqualTo(MemberCardDeliveryStatus.PENDIENTE);
+        var captured = org.mockito.ArgumentCaptor.forClass(MemberCardDelivery.class);
+        verify(cardDeliveries).save(captured.capture());
+        when(cardDeliveries.findByMemberIdAndResendRequestId(member.getId(), requestId))
+                .thenReturn(Optional.of(captured.getValue()));
+        assertThat(service().resendCardDelivery(original.getId(), requestId).id()).isEqualTo(result.id());
+        verify(cardDeliveries, org.mockito.Mockito.times(1)).save(any());
+    }
+
+    @Test
+    void welcomeUsesImmutableRenderedTemplateSnapshot() {
+        var company = PartyTestData.company();
+        var store = PartyTestData.store(company);
+        var user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
+        var customer = new Customer(company, "Cliente", DocumentType.NIF, "1", null, null,
+                "client@example.com", null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
+        var config = new MemberSettings(company);
+        config.update(false, BigDecimal.ONE, BigDecimal.ZERO, BalanceExpirationPolicy.NO_CADUCA,
+                true, BigDecimal.ONE, BigDecimal.ONE, true, true, MemberCardCodeFormat.QR, "Default", "Default");
+        when(context.currentCompany()).thenReturn(company);
+        when(context.currentStore()).thenReturn(store);
+        when(context.currentUser()).thenReturn(user);
+        when(settingsRepository.findById(company.getId())).thenReturn(Optional.of(config));
+        when(movements.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var templates = org.mockito.Mockito.mock(com.tpverp.backend.communications.CommunicationWelcomeTemplateService.class);
+        @SuppressWarnings("unchecked")
+        var provider = (org.springframework.beans.factory.ObjectProvider<com.tpverp.backend.communications.CommunicationWelcomeTemplateService>)
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(templates);
+        when(templates.renderWelcome(company.getId(), customer.getFiscalName(), member.getMemberId(), company.getRazonSocial()))
+                .thenReturn(Optional.of(new com.tpverp.backend.communications.CommunicationWelcomeTemplateService.RenderedWelcome(
+                        "Welcome snapshot", "Snapshot text", "<html><body>Snapshot</body></html>")));
+        var service = service();
+        service.setWelcomeTemplates(provider);
+        service.activateMember(member);
+        var captured = org.mockito.ArgumentCaptor.forClass(MemberCardDelivery.class);
+        verify(cardDeliveries).save(captured.capture());
+        assertThat(captured.getValue().getSubject()).isEqualTo("Welcome snapshot");
+        assertThat(captured.getValue().getBody()).isEqualTo("Snapshot text");
+        assertThat(captured.getValue().getHtmlBody()).isEqualTo("<html><body>Snapshot</body></html>");
     }
 
     private MemberLoyaltyService service() {

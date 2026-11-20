@@ -55,6 +55,23 @@ springdoc:
     enabled: false
 
 tpv:
+  mail:
+    encryption-key: ${TPV_MAIL_ENCRYPTION_KEY:}
+    oauth:
+      redirect-uri: ${TPV_MAIL_OAUTH_REDIRECT_URI:}
+      google:
+        client-id: ${TPV_MAIL_GOOGLE_CLIENT_ID:}
+        client-secret: ${TPV_MAIL_GOOGLE_CLIENT_SECRET:}
+      microsoft:
+        client-id: ${TPV_MAIL_MICROSOFT_CLIENT_ID:}
+        client-secret: ${TPV_MAIL_MICROSOFT_CLIENT_SECRET:}
+  members:
+    card-delivery-enabled: ${TPV_MEMBER_CARD_DELIVERY_ENABLED:false}
+    card-delivery-delay-ms: ${TPV_MEMBER_CARD_DELIVERY_DELAY_MS:60000}
+  communications:
+    public-base-url: ${TPV_COMMUNICATIONS_PUBLIC_BASE_URL:}
+    unsubscribe-secret: ${TPV_COMMUNICATIONS_UNSUBSCRIBE_SECRET:}
+    delivery-enabled: ${TPV_COMMUNICATIONS_DELIVERY_ENABLED:false}
   web-terminal:
     enabled: ${TPV_WEB_TERMINAL_ENABLED:false}
     allowed-origin: ${TPV_WEB_TERMINAL_ALLOWED_ORIGIN:}

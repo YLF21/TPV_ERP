@@ -50,6 +50,58 @@ class ApiExceptionHandlerTest {
     private final ApiExceptionHandler handler = new ApiExceptionHandler(messageSource());
 
     @Test
+    void smtpAuthenticationFailureReturnsSafeTranslatedProblem() throws Exception {
+        var service = org.mockito.Mockito.mock(com.tpverp.backend.party.MemberSmtpSettingsService.class);
+        org.mockito.Mockito.doThrow(new org.springframework.mail.MailAuthenticationException(
+                "raw-provider-reply-with-secret", new jakarta.mail.AuthenticationFailedException("private-account")))
+                .when(service).test(org.mockito.ArgumentMatchers.any());
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders
+                .standaloneSetup(new com.tpverp.backend.party.MemberSmtpSettingsController(service))
+                .setControllerAdvice(handler).build();
+        for (var locale : List.of("es", "en", "zh")) {
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .post("/api/v1/member-smtp-settings/test")
+                            .header(HttpHeaders.ACCEPT_LANGUAGE, locale)
+                            .contentType("application/json").content("""
+                                {"toEmail":"test@example.org","subject":"Test","body":"Test"}
+                                """))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadGateway())
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.code")
+                            .value("message.smtp.authentication_failed"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.locale").value(locale))
+                    .andExpect(result -> org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentAsString())
+                            .doesNotContain("raw-provider-reply-with-secret", "private-account"));
+        }
+    }
+
+    @Test
+    void missingMailKeyReturnsActionableCodeInEverySupportedLanguage() throws Exception {
+        var service = org.mockito.Mockito.mock(com.tpverp.backend.party.MemberSmtpSettingsService.class);
+        org.mockito.Mockito.when(service.update(org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new IllegalStateException("message.smtp.encryption_key_missing"));
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders
+                .standaloneSetup(new com.tpverp.backend.party.MemberSmtpSettingsController(service))
+                .setControllerAdvice(handler).build();
+        for (var locale : List.of("es", "en", "zh")) {
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .put("/api/v1/member-smtp-settings")
+                            .header(HttpHeaders.ACCEPT_LANGUAGE, locale)
+                            .contentType("application/json").content("""
+                                {"enabled":true,"host":"smtp.example.org","port":587,
+                                 "username":"test@example.org","password":"never-echo-this-secret",
+                                 "fromEmail":"test@example.org","startTls":true,"sslEnabled":false}
+                                """))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isServiceUnavailable())
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.code")
+                            .value("message.smtp.encryption_key_missing"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.locale").value(locale))
+                    .andExpect(result -> org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentAsString())
+                            .doesNotContain("never-echo-this-secret")
+                            .contains("detail"));
+        }
+    }
+
+    @Test
     void customerAddressErrorsKeepStableCodesAndTranslateTheirDetail() {
         var request = new MockHttpServletRequest();
         request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en");

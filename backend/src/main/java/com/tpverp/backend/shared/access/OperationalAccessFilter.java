@@ -19,6 +19,13 @@ public class OperationalAccessFilter extends OncePerRequestFilter {
     private final InstallationStatusService statusService;
     private final OperationalAccessPolicy accessPolicy;
 
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        // Revoking marketing permission must not depend on the store's licence state.
+        return "/api/public/communications/unsubscribe".equals(request.getRequestURI())
+                && Set.of("GET", "POST").contains(request.getMethod());
+    }
+
     public OperationalAccessFilter(
             InstallationStatusService statusService,
             OperationalAccessPolicy accessPolicy) {

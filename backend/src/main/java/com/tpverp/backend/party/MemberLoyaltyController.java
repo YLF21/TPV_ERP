@@ -182,6 +182,15 @@ public class MemberLoyaltyController {
         return service.retryCardDelivery(id);
     }
 
+    @PostMapping("/api/v1/member-card-deliveries/{id}/resend")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
+    public MemberLoyaltyService.MemberCardDeliveryView resendCardDelivery(
+            @PathVariable UUID id, @Valid @RequestBody ResendCardRequest request) {
+        return service.resendCardDelivery(id, request.requestId());
+    }
+
+    public record ResendCardRequest(@NotNull UUID requestId) {}
+
     public record BalanceAdjustmentRequest(@NotNull BigDecimal amount, @NotBlank String reason) {
     }
 

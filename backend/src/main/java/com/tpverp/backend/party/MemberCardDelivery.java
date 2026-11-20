@@ -29,6 +29,8 @@ public class MemberCardDelivery {
     private String subject;
     @Column(nullable = false, columnDefinition = "text")
     private String body;
+    @Column(name = "html_body", columnDefinition = "text")
+    private String htmlBody;
     @Enumerated(EnumType.STRING)
     @Column(name = "card_code_format", nullable = false, length = 16)
     private MemberCardCodeFormat cardCodeFormat;
@@ -43,6 +45,14 @@ public class MemberCardDelivery {
     private Instant sentAt;
     @Column(name = "error_message", columnDefinition = "text")
     private String errorMessage;
+    @Column(name = "attempt_count", nullable = false)
+    private int attemptCount;
+    @Column(name = "next_attempt_at")
+    private Instant nextAttemptAt;
+    @Column(name = "claimed_at")
+    private Instant claimedAt;
+    @Column(name = "resend_request_id")
+    private UUID resendRequestId;
     @Version
     private long version;
 
@@ -81,6 +91,10 @@ public class MemberCardDelivery {
         return body;
     }
 
+    public String getHtmlBody() { return htmlBody; }
+
+    public void setHtmlSnapshot(String htmlBody) { this.htmlBody = htmlBody; }
+
     public MemberCardCodeFormat getCardCodeFormat() {
         return cardCodeFormat;
     }
@@ -105,9 +119,40 @@ public class MemberCardDelivery {
     }
 
     public void retry() {
+        // Repeated requests must not reset the retry budget or bring a delayed pending send forward.
+        if (status == MemberCardDeliveryStatus.PENDIENTE) return;
+        if (status != MemberCardDeliveryStatus.ERROR) {
+            throw new IllegalStateException("message.member_card_delivery.retry_unsafe");
+        }
         status = MemberCardDeliveryStatus.PENDIENTE;
         errorMessage = null;
+        attemptCount = 0;
+        nextAttemptAt = null;
     }
+
+    public void claim(Instant now) {
+        if (status != MemberCardDeliveryStatus.PENDIENTE) throw new IllegalStateException("Delivery already claimed");
+        status = MemberCardDeliveryStatus.ENVIANDO;
+        claimedAt = now;
+        attemptCount++;
+    }
+
+    public void retryLater(Instant now) {
+        if (attemptCount >= 4) { markError("message.smtp.connection_failed"); return; }
+        status = MemberCardDeliveryStatus.PENDIENTE;
+        nextAttemptAt = now.plusSeconds(60L * (1L << (attemptCount - 1)));
+        errorMessage = "message.smtp.retry_pending";
+    }
+
+    public void markUncertain() {
+        status = MemberCardDeliveryStatus.INCIERTO;
+        errorMessage = "message.smtp.delivery_uncertain";
+    }
+
+    public int getAttemptCount() { return attemptCount; }
+    public Instant getNextAttemptAt() { return nextAttemptAt; }
+    public Instant getClaimedAt() { return claimedAt; }
+    public void setResendRequestId(UUID requestId) { resendRequestId = Objects.requireNonNull(requestId); }
     // Keeps the same queued card content while allowing a failed delivery to be retried.
 
     public Instant getCreatedAt() {

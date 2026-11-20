@@ -3,11 +3,30 @@ package com.tpverp.backend.party;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Instant;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface MemberCardDeliveryRepository extends JpaRepository<MemberCardDelivery, UUID> {
+
+    @Query(value = """
+            select * from member_card_delivery
+            where status = 'PENDIENTE' and (next_attempt_at is null or next_attempt_at <= :now)
+            order by created_at, id limit 1 for update skip locked
+            """, nativeQuery = true)
+    Optional<MemberCardDelivery> claimNext(@Param("now") Instant now);
+
+    List<MemberCardDelivery> findByStatusAndClaimedAtBefore(MemberCardDeliveryStatus status, Instant before);
+
+    boolean existsByMemberId(UUID memberId);
+
+    Optional<MemberCardDelivery> findByMemberIdAndResendRequestId(UUID memberId, UUID requestId);
+
+    boolean existsByMemberIdAndStatusIn(UUID memberId, List<MemberCardDeliveryStatus> statuses);
+
+    @Query(value = "select id from miembro where id = :memberId for update", nativeQuery = true)
+    UUID lockMember(@Param("memberId") UUID memberId);
 
     List<MemberCardDelivery> findByStatusOrderByCreatedAtAsc(MemberCardDeliveryStatus status);
 

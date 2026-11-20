@@ -77,7 +77,7 @@ describe("desktop navigation security", () => {
   it("denies popups and navigation outside the configured application origin", () => {
     expect(navigation).toContain('window.webContents.on("will-navigate"');
     expect(navigation).toContain("new URL(targetUrl).origin === trustedAppOrigin");
-    expect(navigation).toContain('setWindowOpenHandler(() => ({ action: "deny" }))');
+    expect(navigation).toContain('return { action: "deny" }');
     expect(source).toContain("restrictNavigation(mainWindow, trustedAppOrigin)");
     expect(source).toContain("restrictNavigation(salesDocumentWindow, trustedAppOrigin)");
   });

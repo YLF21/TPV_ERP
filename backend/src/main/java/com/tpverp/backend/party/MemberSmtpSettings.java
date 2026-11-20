@@ -21,6 +21,7 @@ public class MemberSmtpSettings {
     @Column(nullable = false)
     private int port;
     private String username;
+    @Column(columnDefinition = "text")
     private String password;
     @Column(name = "from_email", nullable = false)
     private String fromEmail;
@@ -44,6 +45,15 @@ public class MemberSmtpSettings {
     public void update(MemberSmtpSettingsCommand command) {
         enabled = command.enabled();
         host = PartyValues.required(command.host(), "host");
+        if (host.length() > 253 || !host.matches("[a-zA-Z0-9.-]+")) {
+            throw new IllegalArgumentException("message.smtp.host_invalid");
+        }
+        if (command.startTls() && command.sslEnabled()) {
+            throw new IllegalArgumentException("message.smtp.tls_conflict");
+        }
+        if (command.enabled() && !command.startTls() && !command.sslEnabled()) {
+            throw new IllegalArgumentException("message.smtp.tls_required");
+        }
         if (command.port() < 1 || command.port() > 65535) {
             throw new IllegalArgumentException("message.smtp.port_invalid");
         }
@@ -81,6 +91,11 @@ public class MemberSmtpSettings {
     public String getPassword() {
         return password;
     }
+
+    void setProtectedPassword(String password) { this.password = password; }
+
+    /** A verified OAuth connection replaces password authentication; disconnect must not restore it. */
+    public void clearPassword() { this.password = null; }
 
     public String getFromEmail() {
         return fromEmail;

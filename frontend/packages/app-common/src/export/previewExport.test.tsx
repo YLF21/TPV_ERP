@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import readXlsxFile from "read-excel-file/browser";
@@ -20,6 +20,10 @@ vi.mock("read-excel-file/browser", () => ({
     { sheet: "Second", data: [["Other sheet", "<script>alert(1)</script>"]] }
   ])
 }));
+
+// Load the lazy dialog before timing interaction tests; its first transform is
+// substantially slower on cold CI workers than subsequent preview openings.
+beforeAll(async () => { await import("./ExportPreviewDialog"); });
 
 beforeEach(() => {
   pdfMock.numPages = 3;
@@ -76,6 +80,8 @@ describe("export preview", () => {
     const outcome = previewExport({ blob: new Blob(["a,b\n1,2"]), fileName: "test.csv" });
     await screen.findByRole("dialog", {}, { timeout: 5000 });
     expect(saveFile).not.toHaveBeenCalled();
+    // The dialog is rendered before its effect installs the keyboard listener.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cerrar" })).toHaveFocus());
     fireEvent.keyDown(window, { key: "Escape" });
     expect(await outcome).toEqual({ downloaded: false, printed: false, canceled: true });
     expect(document.activeElement).toBe(opener);

@@ -20,6 +20,18 @@ import java.util.UUID;
 @Table(name = "member_settings")
 public class MemberSettings {
 
+    public static final String DEFAULT_WELCOME_SUBJECT = "Tu tarjeta de cliente de {storeName}";
+    public static final String DEFAULT_WELCOME_BODY = """
+            Hola {name},
+
+            Gracias por unirte a {storeName}.
+            Tu número de miembro es: {memberId}.
+
+            Adjuntamos tu tarjeta de cliente. Guárdala en tu móvil y muéstrala en la tienda para identificarte como miembro.
+
+            ¡Te esperamos!
+            El equipo de {storeName}""";
+
     @Id
     @Column(name = "empresa_id")
     private UUID companyId;
@@ -54,7 +66,9 @@ public class MemberSettings {
     @Column(name = "welcome_body_template", columnDefinition = "text")
     private String welcomeBodyTemplate;
     @Version
-    private long version;
+    // The company assigns the ID before save. A null version lets Spring Data
+    // recognize a new settings row and persist it instead of merging @MapsId.
+    private Long version;
 
     protected MemberSettings() {
     }
@@ -130,11 +144,13 @@ public class MemberSettings {
     }
 
     public String getWelcomeSubjectTemplate() {
-        return welcomeSubjectTemplate;
+        return welcomeSubjectTemplate == null || welcomeSubjectTemplate.isBlank()
+                ? DEFAULT_WELCOME_SUBJECT : welcomeSubjectTemplate;
     }
 
     public String getWelcomeBodyTemplate() {
-        return welcomeBodyTemplate;
+        return welcomeBodyTemplate == null || welcomeBodyTemplate.isBlank()
+                ? DEFAULT_WELCOME_BODY : welcomeBodyTemplate;
     }
 
     private static BigDecimal positiveMoney(BigDecimal value, String field) {

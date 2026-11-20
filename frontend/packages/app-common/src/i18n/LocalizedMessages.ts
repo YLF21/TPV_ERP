@@ -1,3 +1,4 @@
+import { mailMessages } from "./MailMessages";
 import { partyGestionMessages } from "./PartyGestionMessages";
 import type { LocaleCode } from "../types";
 import { MessagesEn } from "./MessagesEn";
@@ -34,9 +35,9 @@ const buildAppKind = typeof __TPV_APP_KIND__ === "undefined" ? "test" : __TPV_AP
 const managementMessages = buildAppKind === "venta"
   ? { es: {}, en: {}, zh: {} }
   : {
-      es: { ...verifactuManagementMessages("es"), ...licenseMessages("es"), ...safeManagementMessages("es"), ...gestionNavigationMessages("es"), ...dashboardMessages("es"), ...serverTerminalSetupMessages("es") },
-      en: { ...verifactuManagementMessages("en"), ...licenseMessages("en"), ...safeManagementMessages("en"), ...gestionNavigationMessages("en"), ...dashboardMessages("en"), ...serverTerminalSetupMessages("en") },
-      zh: { ...verifactuManagementMessages("zh"), ...licenseMessages("zh"), ...safeManagementMessages("zh"), ...gestionNavigationMessages("zh"), ...dashboardMessages("zh"), ...serverTerminalSetupMessages("zh") }
+      es: { ...verifactuManagementMessages("es"), ...licenseMessages("es"), ...safeManagementMessages("es"), ...gestionNavigationMessages("es"), ...dashboardMessages("es"), ...serverTerminalSetupMessages("es"), ...mailMessages("es") },
+      en: { ...verifactuManagementMessages("en"), ...licenseMessages("en"), ...safeManagementMessages("en"), ...gestionNavigationMessages("en"), ...dashboardMessages("en"), ...serverTerminalSetupMessages("en"), ...mailMessages("en") },
+      zh: { ...verifactuManagementMessages("zh"), ...licenseMessages("zh"), ...safeManagementMessages("zh"), ...gestionNavigationMessages("zh"), ...dashboardMessages("zh"), ...serverTerminalSetupMessages("zh"), ...mailMessages("zh") }
     };
 
 export const messages: Record<LocaleCode, Record<string, string>> = {

@@ -2567,7 +2567,7 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 }
 
 @media (max-width: 950px) {
-  .gestion-screen { grid-template-columns: 190px minmax(0, 1fr); }
+  .gestion-screen { grid-template-columns: 190px 6px minmax(0, 1fr); }
   .gestion-workspace { padding: 15px; }
   .gestion-dashboard-toolbar { align-items: flex-start; }
   .gestion-dashboard-actions { flex-wrap: wrap; justify-content: flex-end; }

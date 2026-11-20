@@ -86,6 +86,8 @@ const SalesOperationSecurityScreen = lazy(() =>
   }))
 );
 
+const MailCommunicationsScreen = lazy(() => import("./MailCommunicationsScreen").then(({ MailCommunicationsScreen }) => ({ default: MailCommunicationsScreen })));
+
 const MemberLoyaltySettingsScreen = lazy(() =>
   import("./MemberLoyaltySettingsScreen").then(({ MemberLoyaltySettingsScreen }) => ({
     default: MemberLoyaltySettingsScreen
@@ -187,7 +189,7 @@ const LicenseSaasManagementScreen = lazy(() =>
   }))
 );
 
-type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "vouchers" | "stock" | "users" | "roles" | "terminals" | "backups" | "serverTransfer" | "paymentMethods" | "taxes" | "salesOperationSecurity" | "memberLoyaltySettings" | "memberCategories" | "internalEan" | "documentTemplates" | "documentPrintSettings" | "voucherSettings" | "licenses" | "families" | "productManagement" | "customerManagement" | "supplierManagement";
+type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "vouchers" | "stock" | "users" | "roles" | "terminals" | "backups" | "serverTransfer" | "paymentMethods" | "taxes" | "salesOperationSecurity" | "memberLoyaltySettings" | "mailCommunications" | "memberCategories" | "internalEan" | "documentTemplates" | "documentPrintSettings" | "voucherSettings" | "licenses" | "families" | "productManagement" | "customerManagement" | "supplierManagement";
 type StockSelection = {
   key: string;
   view?: StockViewKey;
@@ -329,6 +331,7 @@ function AppContent({ locale, setLocale, recoveryEpoch, newInstallation, onNewIn
         onOpenTaxes={() => setModule("taxes")}
         onOpenSalesOperationSecurity={() => setModule("salesOperationSecurity")}
         onOpenMemberLoyaltySettings={() => setModule("memberLoyaltySettings")}
+        onOpenMailCommunications={() => setModule("mailCommunications")}
         onOpenMemberCategories={() => setModule("memberCategories")}
         onOpenInternalEan={() => setModule("internalEan")}
         onOpenDocumentTemplates={() => setModule("documentTemplates")}
@@ -375,6 +378,7 @@ function GestionScreen({
   onOpenTaxes,
   onOpenSalesOperationSecurity,
   onOpenMemberLoyaltySettings,
+  onOpenMailCommunications,
   onOpenMemberCategories,
   onOpenInternalEan,
   onOpenDocumentTemplates,
@@ -413,6 +417,7 @@ function GestionScreen({
   onOpenTaxes: () => void;
   onOpenSalesOperationSecurity: () => void;
   onOpenMemberLoyaltySettings: () => void;
+  onOpenMailCommunications: () => void;
   onOpenMemberCategories: () => void;
   onOpenInternalEan: () => void;
   onOpenDocumentTemplates: () => void;
@@ -446,7 +451,7 @@ function GestionScreen({
     || session.permissions.includes("GESTION_ALMACEN")
     || session.permissions.includes("SUPPLIERS_READ");
   const effectiveModule = (module === "verifactu" && !verifactuAllowed)
-    || ((module === "paymentMethods" || module === "salesOperationSecurity" || module === "memberLoyaltySettings" || module === "memberCategories" || module === "internalEan" || module === "documentPrintSettings" || module === "voucherSettings")
+    || ((module === "paymentMethods" || module === "salesOperationSecurity" || module === "memberLoyaltySettings" || module === "mailCommunications" || module === "memberCategories" || module === "internalEan" || module === "documentPrintSettings" || module === "voucherSettings")
       && !canConfigurePaymentMethods)
     || (module === "taxes" && !canManageTaxesForSession)
     || (module === "licenses" && !canReadLicenses)
@@ -656,6 +661,10 @@ function GestionScreen({
             key: "memberLoyaltySettings",
             label: t("gestion.memberSettings.navigation"),
             onOpen: onOpenMemberLoyaltySettings
+          }, {
+            key: "mailCommunications",
+            label: t("mail.title"),
+            onOpen: onOpenMailCommunications
           }, {
             key: "paymentMethods",
             label: t("gestion.paymentMethods.navigation"),
@@ -901,6 +910,8 @@ function GestionScreen({
     content = <SalesOperationSecurityScreen session={session} t={t} />;
   } else if (effectiveModule === "memberLoyaltySettings" && canConfigurePaymentMethods) {
     content = <MemberLoyaltySettingsScreen session={session} t={t} />;
+  } else if (effectiveModule === "mailCommunications" && canConfigurePaymentMethods) {
+    content = <MailCommunicationsScreen session={session} t={t} />;
   } else if (effectiveModule === "memberCategories" && canConfigurePaymentMethods) {
     content = <MemberCategoriesScreen session={session} t={t} />;
   } else if (effectiveModule === "internalEan" && canConfigurePaymentMethods) {

@@ -6,6 +6,9 @@ import com.tpverp.backend.security.gestion.RequireGestionGroup;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -47,12 +50,12 @@ public class MemberSmtpSettingsController {
 
     public record SettingsRequest(
             boolean enabled,
-            @NotBlank String host,
-            int port,
-            String username,
-            String password,
-            @Email @NotBlank String fromEmail,
-            String fromName,
+            @NotBlank @Size(max = 253) String host,
+            @Min(1) @Max(65535) int port,
+            @Size(max = 255) String username,
+            @Size(max = 512) String password,
+            @Email @NotBlank @Size(max = 320) String fromEmail,
+            @Size(max = 255) String fromName,
             boolean startTls,
             boolean sslEnabled) {
 
@@ -64,8 +67,8 @@ public class MemberSmtpSettingsController {
     }
 
     public record TestRequest(
-            @Email @NotBlank String toEmail,
-            @NotBlank String subject,
-            @NotBlank String body) {
+            @Email @NotBlank @Size(max = 320) String toEmail,
+            @NotBlank @Size(max = 200) String subject,
+            @NotBlank @Size(max = 20000) String body) {
     }
 }

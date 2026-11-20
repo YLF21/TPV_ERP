@@ -1,5 +1,8 @@
 package com.tpverp.backend.party;
 
+import com.tpverp.backend.communications.CommunicationWelcomeTemplateService;
+import com.tpverp.backend.communications.CommunicationWelcomeTemplateService.RenderedWelcome;
+import org.springframework.beans.factory.ObjectProvider;
 import com.tpverp.backend.sync.SyncOperation;
 import com.tpverp.backend.sync.SyncOutboundEventCommand;
 import com.tpverp.backend.sync.SyncOutboxService;
@@ -81,6 +84,12 @@ public class MemberLoyaltyService {
     private com.tpverp.backend.audit.AuditService audit;
     private LocalMemberBalanceReservationRepository localBalanceReservations;
     private MemberReturnBalanceRetentionPlanner retentionPlanner;
+    private ObjectProvider<CommunicationWelcomeTemplateService> welcomeTemplates;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setWelcomeTemplates(ObjectProvider<CommunicationWelcomeTemplateService> welcomeTemplates) {
+        this.welcomeTemplates = welcomeTemplates;
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     public MemberLoyaltyService(
@@ -1467,6 +1476,26 @@ public class MemberLoyaltyService {
         return MemberCardDeliveryView.from(delivery);
     }
 
+    @Transactional
+    public MemberCardDeliveryView resendCardDelivery(UUID id, UUID requestId) {
+        var original = cardDeliveries.findByIdAndCompanyId(id, context.currentCompany().getId())
+                .orElseThrow(() -> new IllegalArgumentException("message.member_card_delivery.not_found"));
+        var member = original.getMember();
+        cardDeliveries.lockMember(member.getId());
+        var existing = cardDeliveries.findByMemberIdAndResendRequestId(member.getId(), requestId);
+        if (existing.isPresent()) return MemberCardDeliveryView.from(existing.get());
+        if (!member.isActive() || original.getStatus() != MemberCardDeliveryStatus.ENVIADO
+                || cardDeliveries.existsByMemberIdAndStatusIn(member.getId(),
+                        List.of(MemberCardDeliveryStatus.PENDIENTE, MemberCardDeliveryStatus.ENVIANDO))) {
+            throw new IllegalStateException("message.member_card_delivery.resend_unavailable");
+        }
+        var copy = new MemberCardDelivery(member, member.getCustomer().getEmail(), original.getSubject(),
+                original.getBody(), original.getCardCodeFormat(), clock.instant());
+        copy.setHtmlSnapshot(original.getHtmlBody());
+        copy.setResendRequestId(requestId);
+        return MemberCardDeliveryView.from(cardDeliveries.save(copy));
+    }
+
     private void autoCategory(Member member) {
         var config = settings.findById(context.currentCompany().getId())
                 .orElseGet(() -> new MemberSettings(context.currentCompany()));
@@ -1549,16 +1578,33 @@ public class MemberLoyaltyService {
         if (!config.isMemberWelcomeEnabled() || email == null || email.isBlank()) {
             return;
         }
-        var subject = config.getWelcomeSubjectTemplate() == null
-                ? "Tarjeta de miembro"
-                : config.getWelcomeSubjectTemplate();
-        var body = config.getWelcomeBodyTemplate() == null
-                ? "Codigo de miembro: " + member.getMemberId()
-                : config.getWelcomeBodyTemplate().replace("{memberId}", member.getMemberId());
-        cardDeliveries.save(new MemberCardDelivery(
-                member, email, subject, body, config.getMemberCardCodeFormat(), Instant.now(clock)));
+        // Serialize activation for this member. Reactivation never creates another welcome.
+        cardDeliveries.lockMember(member.getId());
+        if (cardDeliveries.existsByMemberId(member.getId())) return;
+        var subject = config.getWelcomeSubjectTemplate();
+        var body = config.getWelcomeBodyTemplate();
+        subject = welcomeVariables(subject, member);
+        body = welcomeVariables(body, member);
+        var templateService = welcomeTemplates == null ? null : welcomeTemplates.getIfAvailable();
+        var rendered = templateService == null
+                ? Optional.<RenderedWelcome>empty()
+                : templateService.renderWelcome(member.getCompany().getId(), member.getCustomer().getFiscalName(),
+                        member.getMemberId(), member.getCompany().getRazonSocial());
+        var delivery = new MemberCardDelivery(member, email,
+                rendered.map(RenderedWelcome::subject).orElse(subject),
+                rendered.map(RenderedWelcome::text).orElse(body),
+                config.getMemberCardCodeFormat(), Instant.now(clock));
+        rendered.ifPresent(value -> delivery.setHtmlSnapshot(value.html()));
+        cardDeliveries.save(delivery);
     }
-    // Registers the transactional welcome card for the future sender integration.
+    // Stores the welcome snapshot in the same transaction as the membership activation.
+
+    private static String welcomeVariables(String text, Member member) {
+        return text.replace("{memberId}", member.getMemberId())
+                .replace("{name}", member.getCustomer().getFiscalName())
+                .replace("{storeName}", member.getCompany().getRazonSocial())
+                .replace("{store}", member.getCompany().getRazonSocial());
+    }
 
     private MemberMovementView movement(Member member, MemberMovementType type, BigDecimal balance,
             long points, UUID previousCategoryId, UUID newCategoryId, String reason) {
