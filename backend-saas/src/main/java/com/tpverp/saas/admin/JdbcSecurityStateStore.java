@@ -36,7 +36,7 @@ class JdbcSecurityStateStore implements SecurityStateStore {
     }
 
     @Override
-    public Optional<SessionState> consumeSessionForRefresh(String tokenHash, Instant now) {
+    public Optional<SessionState> consumeActiveSession(String tokenHash, Instant now) {
         return jdbc.query("""
                 delete from saas_session
                 where token_hash = ? and expires_at > ?
@@ -45,6 +45,25 @@ class JdbcSecurityStateStore implements SecurityStateStore {
                 rs.getString("realm"),
                 rs.getString("username"),
                 rs.getTimestamp("expires_at").toInstant()), tokenHash, timestamp(now)).stream().findFirst();
+    }
+
+    @Override
+    public Optional<SessionState> consumeSessionsForLogoutAll(String tokenHash, Instant now) {
+        return jdbc.query("""
+                with actor as (select realm, username from saas_session where token_hash=? and expires_at>?),
+                locked as (
+                    select s.token_hash from saas_session s join actor a
+                    on s.realm=a.realm and lower(s.username)=lower(a.username)
+                    order by s.token_hash for update of s
+                ), removed as (
+                    delete from saas_session using locked
+                    where saas_session.token_hash=locked.token_hash and exists(select 1 from locked where token_hash=?)
+                    returning saas_session.*
+                )
+                select realm,username,expires_at from removed where token_hash=?
+                """, (rs, row) -> new SessionState(rs.getString("realm"), rs.getString("username"),
+                        rs.getTimestamp("expires_at").toInstant()), tokenHash, timestamp(now), tokenHash, tokenHash)
+                .stream().findFirst();
     }
 
     @Override

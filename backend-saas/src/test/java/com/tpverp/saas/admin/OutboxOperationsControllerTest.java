@@ -24,7 +24,7 @@ class OutboxOperationsControllerTest {
 
     @Test
     void requiresAuthenticationForReadRequeueAndAcknowledge() throws Exception {
-        Fixture fixture = fixture(Set.of());
+        Fixture fixture = fixture(true);
         fixture.mvc().perform(get("/api/v1/admin/outbox/failures")).andExpect(status().isUnauthorized());
         fixture.mvc().perform(post("/api/v1/admin/outbox/security/{id}/requeue", UUID.randomUUID())
                 .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Incidencia resuelta\"}"))
@@ -35,23 +35,23 @@ class OutboxOperationsControllerTest {
     }
 
     @Test
-    void requiresManageOperationsForReadAndMutations() throws Exception {
-        Fixture fixture = fixture(Set.of(AdminPermission.VIEW_ADMIN_DATA.name()));
+    void rejectsInactiveStaffForReadAndMutations() throws Exception {
+        Fixture fixture = fixture(false);
         fixture.mvc().perform(get("/api/v1/admin/outbox/failures").header("Authorization", "Bearer token"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         fixture.mvc().perform(post("/api/v1/admin/outbox/security/{id}/requeue", UUID.randomUUID())
                 .header("Authorization", "Bearer token")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Incidencia resuelta\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         fixture.mvc().perform(post("/api/v1/admin/outbox/integrations/{id}/acknowledge", UUID.randomUUID())
                 .header("Authorization", "Bearer token")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Revision manual\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
     void authorizedOperatorCanPageRequeueAndAcknowledge() throws Exception {
-        Fixture fixture = fixture(Set.of(AdminPermission.MANAGE_OPERATIONS.name()));
+        Fixture fixture = fixture(true);
         UUID failureId = UUID.randomUUID();
         when(fixture.operations().failures("SECURITY", 25, null)).thenReturn(
                 new OutboxFailurePageResponse(List.of(new OutboxFailureResponse(
@@ -79,15 +79,14 @@ class OutboxOperationsControllerTest {
         verify(fixture.operations()).acknowledgeIntegration(failureId, "Revision manual completada");
     }
 
-    private Fixture fixture(Set<String> permissions) {
+    private Fixture fixture(boolean active) {
         OutboxOperationsService operations = mock(OutboxOperationsService.class);
         SaasAdminUserRepository users = mock(SaasAdminUserRepository.class);
         SaasSessionTokenStore sessions = mock(SaasSessionTokenStore.class);
         LoginAttemptLimiter attempts = mock(LoginAttemptLimiter.class);
-        SaasAdminUser operator = new SaasAdminUser(UUID.randomUUID(), "operator", "unused", true, Instant.now());
+        SaasAdminUser operator = new SaasAdminUser(UUID.randomUUID(), "operator", "unused", active, Instant.now());
         when(sessions.username(eq("token"), eq("admin"))).thenReturn(Optional.of("operator"));
         when(users.findByUsernameIgnoreCase("operator")).thenReturn(Optional.of(operator));
-        when(users.permissionCodes("operator")).thenReturn(permissions);
         AdminAuthInterceptor interceptor = new AdminAuthInterceptor(users, new AdminPasswordHasher(),
                 attempts, sessions, new LocalAdminCredentialPolicy(Set.of("test")), false);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new OutboxOperationsController(operations))

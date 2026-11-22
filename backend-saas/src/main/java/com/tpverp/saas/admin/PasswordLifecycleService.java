@@ -29,6 +29,7 @@ public class PasswordLifecycleService {
     private final IntegrationSecretCipher cipher;
     private final Clock clock;
     private final Duration resetLifetime;
+    private final AdminAuditService audit;
 
     public PasswordLifecycleService(
             SaasAdminUserRepository admins,
@@ -37,7 +38,7 @@ public class PasswordLifecycleService {
             SaasSessionTokenStore sessions,
             JdbcTemplate jdbc,
             IntegrationSecretCipher cipher,
-            Clock clock,
+            Clock clock, AdminAuditService audit,
             @Value("${tpv.saas.password-reset.lifetime:PT30M}") Duration resetLifetime) {
         this.admins = admins;
         this.tenants = tenants;
@@ -46,6 +47,7 @@ public class PasswordLifecycleService {
         this.jdbc = jdbc;
         this.cipher = cipher;
         this.clock = clock;
+        this.audit = audit;
         if (resetLifetime == null || resetLifetime.isZero() || resetLifetime.isNegative()) {
             throw new IllegalArgumentException("La duracion del token de recuperacion debe ser positiva");
         }
@@ -60,13 +62,17 @@ public class PasswordLifecycleService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La nueva password debe ser diferente");
         }
         if ("admin".equals(identity.realm())) {
-            SaasAdminUser user = admins.findByUsernameIgnoreCase(identity.username())
+            SaasAdminUser user = admins.lockByUsername(identity.username())
                     .filter(SaasAdminUser::isActive)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesion invalida o caducada"));
+            if (sessions.username(bearerToken, "admin").isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesion invalida o caducada");
+            }
             verifyCurrent(currentPassword, user.getPasswordHash());
             user.changePasswordHash(passwords.hash(newPassword));
             user.passwordChanged();
             admins.save(user);
+            audit.logAccountAction(user.getUsername(), "CHANGE_OWN_ADMIN_PASSWORD");
         } else if ("tenant".equals(identity.realm())) {
             SaasTenantUser user = tenants.findByUsernameIgnoreCase(identity.username())
                     .filter(SaasTenantUser::isActive)
@@ -78,7 +84,7 @@ public class PasswordLifecycleService {
         } else {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesion invalida o caducada");
         }
-        invalidateResetTokens(identity.realm(), identity.username(), clock.instant());
+        invalidateResetTokens(jdbc, identity.realm(), identity.username(), clock.instant());
         sessions.revokeByUser(identity.realm(), identity.username());
     }
 
@@ -89,7 +95,7 @@ public class PasswordLifecycleService {
                     "El canal seguro de recuperacion no esta configurado");
         }
         String normalized = normalize(username);
-        var admin = admins.findByUsernameIgnoreCase(normalized).filter(SaasAdminUser::isActive).orElse(null);
+        var admin = admins.lockByUsername(normalized).filter(SaasAdminUser::isActive).orElse(null);
         var tenant = tenants.findByUsernameIgnoreCase(normalized).filter(SaasTenantUser::isActive).orElse(null);
         if ((admin == null) == (tenant == null)) {
             return;
@@ -122,26 +128,30 @@ public class PasswordLifecycleService {
                 select realm, username_key
                 from saas_password_reset_token
                 where token_hash = ? and consumed_at is null and expires_at > ?
-                for update
                 """, rs -> rs.next() ? new ResetIdentity(rs.getString(1), rs.getString(2)) : null,
                 SaasSessionTokenStore.hash(token), timestamp(now));
         if (identity == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token de recuperacion invalido o caducado");
         }
+        // Take the staff account lock before consuming the token, as in staff password changes.
+        SaasAdminUser admin = null;
+        if ("admin".equals(identity.realm())) {
+            admin = admins.lockByUsername(identity.username()).filter(SaasAdminUser::isActive)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token de recuperacion invalido o caducado"));
+        }
+        now = clock.instant();
         int consumed = jdbc.update("""
                 update saas_password_reset_token set consumed_at = ?
-                where token_hash = ? and consumed_at is null
-                """, timestamp(now), SaasSessionTokenStore.hash(token));
+                where token_hash = ? and consumed_at is null and expires_at > ?
+                """, timestamp(now), SaasSessionTokenStore.hash(token), timestamp(now));
         if (consumed != 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token de recuperacion invalido o caducado");
         }
-        if ("admin".equals(identity.realm())) {
-            SaasAdminUser user = admins.findByUsernameIgnoreCase(identity.username())
-                    .filter(SaasAdminUser::isActive)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token de recuperacion invalido o caducado"));
-            user.changePasswordHash(passwords.hash(newPassword));
-            user.passwordChanged();
-            admins.save(user);
+        if (admin != null) {
+            admin.changePasswordHash(passwords.hash(newPassword));
+            admin.passwordChanged();
+            admins.save(admin);
+            audit.logAccountAction(admin.getUsername(), "RESET_ADMIN_PASSWORD");
         } else if ("tenant".equals(identity.realm())) {
             SaasTenantUser user = tenants.findByUsernameIgnoreCase(identity.username())
                     .filter(SaasTenantUser::isActive)
@@ -152,7 +162,7 @@ public class PasswordLifecycleService {
         } else {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token de recuperacion invalido o caducado");
         }
-        invalidateResetTokens(identity.realm(), identity.username(), now);
+        invalidateResetTokens(jdbc, identity.realm(), identity.username(), now);
         sessions.revokeByUser(identity.realm(), identity.username());
     }
 
@@ -168,7 +178,7 @@ public class PasswordLifecycleService {
         });
     }
 
-    private void invalidateResetTokens(String realm, String username, Instant now) {
+    static void invalidateResetTokens(JdbcTemplate jdbc, String realm, String username, Instant now) {
         jdbc.update("""
                 update saas_password_reset_token set consumed_at = ?
                 where realm = ? and lower(username_key) = lower(?) and consumed_at is null

@@ -22,13 +22,20 @@ final class InMemorySecurityStateStore implements SecurityStateStore {
     }
 
     @Override
-    public synchronized Optional<SessionState> consumeSessionForRefresh(String tokenHash, Instant now) {
+    public synchronized Optional<SessionState> consumeActiveSession(String tokenHash, Instant now) {
         SessionState session = sessions.get(tokenHash);
         if (session == null || !session.expiresAt().isAfter(now)) {
             return Optional.empty();
         }
         sessions.remove(tokenHash);
         return Optional.of(session);
+    }
+
+    @Override
+    public synchronized Optional<SessionState> consumeSessionsForLogoutAll(String tokenHash, Instant now) {
+        var actor = consumeActiveSession(tokenHash, now);
+        actor.ifPresent(value -> deleteSessionsByUser(value.realm(), value.username()));
+        return actor;
     }
 
     @Override

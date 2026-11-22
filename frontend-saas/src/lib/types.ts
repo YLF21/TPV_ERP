@@ -237,6 +237,13 @@ export type AuditLog = {
   createdAt: string;
 };
 
+export type AuditPage = {
+  items: AuditLog[];
+  page: number;
+  size: number;
+  total: number;
+};
+
 export type VerifactuActivationPolicy = {
   taxpayerType: TaxpayerType;
   activationDate: string;

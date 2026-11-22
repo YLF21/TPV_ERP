@@ -56,7 +56,9 @@ async function runZone(zone) {
     if (path === "/api/v1/admin/me") return json({ username: "UTC_E2E", permissions: ["VIEW_ADMIN_DATA", "EDIT_COMPANY_DATA", "RENEW_LICENSE"] });
     if (path === "/api/v1/admin/companies") return json([company]);
     if (path === "/api/v1/admin/licenses") return json([]);
-    if (path === "/api/v1/admin/audit") return json([{ id: "utc-audit", username: "UTC_E2E", action: "UTC_TEST", targetType: "STORE", targetId: currentStore.id, createdAt: fixedInstant }]);
+    const auditEntry = { id: "utc-audit", username: "UTC_E2E", action: "UTC_TEST", targetType: "STORE", targetId: currentStore.id, createdAt: fixedInstant };
+    if (path === "/api/v1/admin/audit") return json([auditEntry]);
+    if (path === "/api/v1/admin/audit/search") return json({ items: [auditEntry], page: 0, size: 50, total: 1 });
     if (path === "/api/v1/admin/sync/sales-summary") return json({ documentCount: 0, total: "0.00" });
     if (path === "/api/v1/admin/reports/advanced") return json({ companies: 1, invoices: 0, invoicedTotal: "0.00", paidTotal: "0.00", salesDocuments: 0, salesTotal: "0.00", inventoryMovements: 0, integrations: 0, activeIntegrations: 0 });
     if (path === "/api/v1/admin/stores" && method === "GET") return json({ items: [currentStore], page: 0, size: 25, total: 1, totalPages: 1 });
@@ -99,7 +101,7 @@ async function runZone(zone) {
     assert.equal(isYesterday, false, `${zone}: today's sync count must use UTC day boundaries`);
 
     await page.evaluate(() => { location.hash = "#/audit"; });
-    const auditTime = page.locator(".audit-row span").filter({ hasText: "UTC_E2E" });
+    const auditTime = page.getByRole("row").filter({ hasText: "UTC_E2E" }).locator("time");
     await auditTime.waitFor();
     assert.match(await auditTime.innerText(), /00:34.*UTC/, `${zone}: audit time must use UTC`);
 

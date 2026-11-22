@@ -15,7 +15,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @Order(-100)
-@RestControllerAdvice(assignableTypes = {DemoRequestController.class, DemoRequestAdminController.class})
+@RestControllerAdvice(assignableTypes = {DemoRequestController.class, DemoRequestAdminController.class,
+        ClientAccessSubmissionController.class})
 public class DemoRequestExceptionHandler {
 
     @ExceptionHandler({MethodArgumentNotValidException.class, HttpMessageNotReadableException.class,

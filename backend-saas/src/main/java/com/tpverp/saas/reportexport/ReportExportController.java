@@ -1,5 +1,6 @@
 package com.tpverp.saas.reportexport;
 
+import com.tpverp.saas.admin.AdminAuditService;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Map;
@@ -25,8 +26,10 @@ public class ReportExportController {
     private static final String XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
     private final ReportExportService service;
+    private final AdminAuditService audit;
 
-    public ReportExportController(ReportExportService service) {
+    public ReportExportController(ReportExportService service, AdminAuditService audit) {
+        this.audit = audit;
         this.service = service;
     }
 
@@ -42,6 +45,7 @@ public class ReportExportController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Formato de exportación no válido");
         }
         try (var report = service.prepare(resource, parameters, format, language)) {
+            audit.log("EXPORT_SAAS_REPORT", "REPORT", resource, format);
             download(report, resource, format, response);
         }
     }

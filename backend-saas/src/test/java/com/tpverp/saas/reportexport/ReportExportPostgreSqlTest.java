@@ -79,7 +79,7 @@ class ReportExportPostgreSqlTest {
     private static final String DIRECTORIES = "/api/v1/admin/directories/export/";
 
     @Test
-    void directoryReadPermissionAppliesToAllDownloadsIncludingCompanyPost() throws Exception {
+    void allStaffCanDownloadDirectoriesIncludingCompanyPost() throws Exception {
         String tenant = "Bearer " + sessions.issue("tenant", "directory-tenant").token();
         String reportsOnly = adminToken("VIEW_REPORTS");
         String readOnly = adminToken("VIEW_ADMIN_DATA");
@@ -91,7 +91,7 @@ class ReportExportPostgreSqlTest {
                     : get(path).param("companyId", UUID.randomUUID().toString());
             mvc.perform(request.get()).andExpect(status().isUnauthorized());
             mvc.perform(request.get().header("Authorization", tenant)).andExpect(status().isUnauthorized());
-            mvc.perform(request.get().header("Authorization", reportsOnly)).andExpect(status().isForbidden());
+            mvc.perform(request.get().header("Authorization", reportsOnly)).andExpect(status().isOk());
             var empty = workbook(request.get().param("language", "zh"), readOnly, name);
             assertThat(empty.get("xl/workbook.xml")).contains("数据", "上下文");
             assertThat(empty.get("xl/worksheets/sheet1.xml")).contains("frozen")
@@ -347,8 +347,7 @@ class ReportExportPostgreSqlTest {
     }
 
     @Test
-    void requiresReportsPermissionAndExportsEveryPageWithTheOriginalFilters() throws Exception {
-        String reportToken = adminToken("VIEW_REPORTS");
+    void requiresStaffAndExportsEveryPageWithTheOriginalFilters() throws Exception {
         String adminToken = adminToken("VIEW_ADMIN_DATA");
         String tenantToken = "Bearer " + sessions.issue("tenant", "tenant-reports").token();
         var request = dates("articles").param("companyId", COMPANY.toString()).param("storeId", STORE.toString())
@@ -356,11 +355,6 @@ class ReportExportPostgreSqlTest {
                 .param("page", "20").param("size", "1").param("language", "en");
         mvc.perform(request).andExpect(status().isUnauthorized());
         mvc.perform(request.header("Authorization", tenantToken)).andExpect(status().isUnauthorized());
-        var wrongPermission = dates("articles").header("Authorization", adminToken);
-        mvc.perform(wrongPermission).andExpect(status().isForbidden());
-        mvc.perform(dates("articles").param("layout", "readable").header("Authorization", adminToken))
-                .andExpect(status().isForbidden());
-
         for (int page = 0; page < 3; page++) {
             int start = page * ANALYTICS_PAGE_SIZE;
             var rows = IntStream.range(start, Math.min(start + ANALYTICS_PAGE_SIZE, 202))
@@ -372,7 +366,7 @@ class ReportExportPostgreSqlTest {
         var result = mvc.perform(dates("articles").param("companyId", COMPANY.toString())
                         .param("storeId", STORE.toString()).param("province", "38").param("search", "Café")
                         .param("sort", "CODE").param("direction", "ASC").param("page", "20").param("size", "1")
-                        .param("language", "en").header("Authorization", reportToken))
+                        .param("language", "en").header("Authorization", adminToken))
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(header().string("X-Content-Type-Options", "nosniff"))
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"espos-articles.csv\""))

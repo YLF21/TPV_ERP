@@ -194,7 +194,7 @@ export async function requestBinary(credentials: Credentials, path: string, opti
 }
 
 // The inbox keeps its deadline active through JSON/error body consumption.
-async function inboxRequest<T>(credentials: Credentials, path: string, options: RequestOptions = {}): Promise<T> {
+export async function inboxRequest<T>(credentials: Credentials, path: string, options: RequestOptions = {}): Promise<T> {
   return fetchWithTimeout(`${API_BASE}${path}`, {
     method: options.method ?? "GET",
     cache: "no-store",
@@ -204,6 +204,7 @@ async function inboxRequest<T>(credentials: Credentials, path: string, options: 
     if (response.status === 401) unauthorizedHandler?.(credentials);
     const text = await response.text();
     if (!response.ok) throw new ApiError(response.status, text || response.statusText || "Error de comunicacion");
+    if (response.status === 204) return undefined as T;
     if (!/\bapplication\/(?:[\w.+-]+\+)?json\b/i.test(response.headers.get("Content-Type") ?? "")) throw new ApiError(502, "Respuesta no valida");
     return JSON.parse(text) as T;
   });
@@ -226,7 +227,7 @@ export const api = {
     return inboxRequest<DemoRequestFollowUp>(credentials, `/api/v1/admin/demo-requests/${encodeURIComponent(id)}/follow-up`, { method: "PUT", body });
   },
   tenantLogin(credentials: LoginCredentials) {
-    return publicPost<LoginResponse>("/api/v1/auth/login", credentials);
+    return publicPost<LoginResponse>("/api/v1/auth/tenant/login", credentials);
   },
   login(credentials: LoginCredentials) {
     return publicPost<LoginResponse>("/api/v1/auth/admin/login", credentials);
@@ -696,7 +697,7 @@ export const api = {
     });
   },
 
-  createUser(credentials: Credentials, payload: { username: string; password: string; roleName: string }) {
+  createUser(credentials: Credentials, payload: { username: string; password: string }) {
     return request<AdminUser>(credentials, "/api/v1/admin/users", {
       method: "POST",
       body: payload

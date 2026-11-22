@@ -189,7 +189,7 @@ class StoreWorkspacePostgreSqlTest {
     }
 
     @Test
-    void activationCodeRecoveryRequiresCreatePermissionAndPreservesCodesAcrossReads() throws Exception {
+    void allStaffCanRecoverActivationCodesAcrossReads() throws Exception {
         var company = company();
         var store = createStore(company, "001");
         String creator = adminWithPermissions("ADD_COMPANY");
@@ -197,7 +197,7 @@ class StoreWorkspacePostgreSqlTest {
         String endpoint = "/api/v1/admin/license-workspace/activation-codes";
         mvc.perform(get(endpoint)).andExpect(status().isUnauthorized());
         for (String user : List.of("viewer", regenerateOnly, adminWithPermissions())) {
-            mvc.perform(get(endpoint).header("Authorization", basic(user))).andExpect(status().isForbidden());
+            mvc.perform(get(endpoint).header("Authorization", basic(user))).andExpect(status().isOk());
         }
         String response = mvc.perform(post("/api/v1/admin/license-workspace").header("Authorization", basic(creator))
                         .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(new CreateLicense(store.id()))))
@@ -330,7 +330,7 @@ class StoreWorkspacePostgreSqlTest {
                 select ?,?,password_hash,true,now(),false from saas_admin_user where username='admin'
                 """, UUID.randomUUID(), username);
         mvc.perform(get("/api/v1/admin/license-workspace/{id}", license.id()).header("Authorization", basic(username)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -376,19 +376,19 @@ class StoreWorkspacePostgreSqlTest {
     }
 
     @Test
-    void mutationPermissionsAreEnforcedInBackendAndReadPaginationIsValidated() throws Exception {
+    void staffCanManageStoresAndLicensesAndReadPaginationIsValidated() throws Exception {
         var company = company(); var store = createStore(company, "001");
         mvc.perform(get("/api/v1/admin/stores")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/v1/admin/stores").header("Authorization", basic("viewer"))).andExpect(status().isOk());
         mvc.perform(post("/api/v1/admin/companies/{id}/stores", company.getId()).header("Authorization", basic("viewer"))
-                        .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(new CreateStore("002", "Denied", fiscalAddress(), "Atlantic/Canary", TaxRegime.IVA, PRICE, StoreBillingPeriod.MONTHLY, 2, 1, EXPIRY))))
-                .andExpect(status().isForbidden());
+                        .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(new CreateStore("002", "Updated", fiscalAddress(), "Atlantic/Canary", TaxRegime.IVA, PRICE, StoreBillingPeriod.MONTHLY, 2, 1, EXPIRY))))
+                .andExpect(status().isOk());
         mvc.perform(post("/api/v1/admin/license-workspace").header("Authorization", basic("viewer"))
                         .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(licenseRequest(company.getId(), store.id()))))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
         mvc.perform(put("/api/v1/admin/stores/{id}", store.id()).header("Authorization", basic("viewer"))
-                        .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(new UpdateStore("Denied", fiscalAddress(), "Atlantic/Canary", false, TaxRegime.IVA, PRICE, StoreBillingPeriod.MONTHLY, 2, 1, EXPIRY))))
-                .andExpect(status().isForbidden());
+                        .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(new UpdateStore("Updated", fiscalAddress(), "Atlantic/Canary", false, TaxRegime.IVA, PRICE, StoreBillingPeriod.MONTHLY, 2, 1, EXPIRY))))
+                .andExpect(status().isOk());
         mvc.perform(get("/api/v1/admin/license-workspace?size=101").header("Authorization", basic("admin")))
                 .andExpect(status().isBadRequest());
         mvc.perform(get("/api/v1/admin/license-workspace?status=UNKNOWN").header("Authorization", basic("admin")))
@@ -718,7 +718,7 @@ class StoreWorkspacePostgreSqlTest {
                 select ?,?,password_hash,true,now(),false from saas_admin_user where username='admin'
                 """, UUID.randomUUID(), username);
         mvc.perform(get("/api/v1/admin/stores/{id}", original.id()).header("Authorization", basic(username)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
     }
 
     private List<SaasStore> sortingStores(SaasCompany company) {
@@ -740,7 +740,7 @@ class StoreWorkspacePostgreSqlTest {
     }
 
     @Test
-    void existingLicensesCannotBypassSeparateRenewAndPairingPermissions() throws Exception {
+    void historicalStaffPermissionsDoNotRestrictRenewalsOrPairing() throws Exception {
         var company = company(); var store = createStore(company, "001");
         String username = "store-editor-" + UUID.randomUUID().toString().substring(0, 8);
         UUID user = UUID.randomUUID(), role = UUID.randomUUID();
@@ -754,19 +754,15 @@ class StoreWorkspacePostgreSqlTest {
         mvc.perform(post("/api/v1/admin/license-workspace").header("Authorization", basic(username)).contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk());
         mvc.perform(post("/api/v1/admin/license-workspace").header("Authorization", basic(username)).contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
         var renewal = new UpdateStore(store.name(), fiscalAddress(), store.timeZoneId(), true, TaxRegime.IVA, PRICE, StoreBillingPeriod.MONTHLY, 3, 1, EXPIRY);
         mvc.perform(put("/api/v1/admin/stores/{id}", store.id()).header("Authorization", basic(username)).contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(renewal)))
-                .andExpect(status().isForbidden());
-        jdbc.update("insert into saas_admin_role_permission(role_id,permission_code) values(?,'RENEW_LICENSE'),(?,'REGENERATE_PAIRING_CODE')", role, role);
-        mvc.perform(put("/api/v1/admin/stores/{id}", store.id()).header("Authorization", basic(username)).contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(renewal)))
                 .andExpect(status().isOk());
-        mvc.perform(post("/api/v1/admin/license-workspace").header("Authorization", basic(username)).contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isOk());
+
     }
 
     @Test
-    void revocationRequiresPairingPermissionAndPreservesHistoryAndLicense() throws Exception {
+    void staffRevocationPreservesHistoryAndLicense() throws Exception {
         var store = createStore(company(), "001");
         var response = mvc.perform(post("/api/v1/admin/license-workspace").header("Authorization", basic("admin"))
                         .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(new CreateLicense(store.id()))))
@@ -776,11 +772,8 @@ class StoreWorkspacePostgreSqlTest {
         var original = pairingRepository.findById(created.pairingCodeId()).orElseThrow();
         String endpoint = "/api/v1/admin/license-workspace/activation-codes/" + created.pairingCodeId();
         mvc.perform(delete(endpoint)).andExpect(status().isUnauthorized());
-        for (String user : List.of("viewer", adminWithPermissions("ADD_COMPANY"), adminWithPermissions())) {
-            mvc.perform(delete(endpoint).header("Authorization", basic(user))).andExpect(status().isForbidden());
-        }
         assertThat(pairingRepository.findById(created.pairingCodeId()).orElseThrow().usableAt(Instant.now())).isTrue();
-        String operator = adminWithPermissions("REGENERATE_PAIRING_CODE");
+        String operator = "viewer";
         for (int attempt = 0; attempt < 2; attempt++) {
             mvc.perform(delete(endpoint).header("Authorization", basic(operator)))
                     .andExpect(status().isNoContent()).andExpect(header().string("Cache-Control", "no-store"));

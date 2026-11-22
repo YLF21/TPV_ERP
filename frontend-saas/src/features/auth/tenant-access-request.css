@@ -1,0 +1,46 @@
+.tenant-login-content:has(.tenant-access-request) {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 660px);
+  align-items: start;
+  gap: clamp(24px, 4vw, 60px);
+  width: min(100%, 1140px);
+}
+
+.tenant-access-request .tenant-login-help { margin-bottom: 16px; }
+.tenant-access-request form { gap: 16px; }
+.tenant-access-request fieldset { min-width: 0; margin: 0; border: 0; border-top: 1px solid #e1e8f2; padding: 8px 0 0; }
+.tenant-access-request legend { padding: 0 8px 0 0; color: #14243d; font-size: 14px; font-weight: 700; }
+.tenant-access-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tenant-access-wide { grid-column: 1 / -1; }
+.tenant-access-request .tenant-access-hint { margin: 0; color: #57667c; font-size: 12px; font-weight: 400; line-height: 1.45; }
+.tenant-login-page .tenant-access-request input, .tenant-access-request textarea { min-height: 40px; padding: 8px 10px; }
+.tenant-access-request textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  border: 1px solid #cfdced;
+  border-radius: 9px;
+  color: #14243d;
+  background: #fff;
+  font-size: 16px;
+}
+.tenant-access-request :is(h2, input, textarea, button, a) { scroll-margin-top: 92px; }
+.tenant-access-request input[aria-invalid="true"] { border-color: #a82732; }
+.tenant-access-store-list { display: grid; gap: 8px; margin-top: 8px; }
+.tenant-access-store { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+.tenant-access-store .tenant-login-secondary { width: 44px; padding: 0; }
+.tenant-login-page .tenant-access-add-store { width: auto; margin-top: 8px; }
+.tenant-access-request .notice { margin: 0; }
+.tenant-login-page .tenant-access-back { margin-top: 12px; }
+.tenant-login-story:has(+ .tenant-access-request) .tenant-login-kicker:empty { display: none; }
+
+@media (max-width: 900px) {
+  .tenant-login-content:has(.tenant-access-request) { grid-template-columns: minmax(0, 660px); justify-content: center; }
+  .tenant-login-story:has(+ .tenant-access-request) h1 { font-size: clamp(26px, 4.3vw, 38px); }
+  .tenant-login-story:has(+ .tenant-access-request) h1 br { display: none; }
+  .tenant-login-story:has(+ .tenant-access-request) h1 span::before { content: " "; }
+}
+
+@media (max-width: 540px) {
+  .tenant-access-fields { grid-template-columns: minmax(0, 1fr); }
+  .tenant-login-page .tenant-access-request input { min-height: 44px; }
+}

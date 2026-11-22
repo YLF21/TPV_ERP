@@ -3,8 +3,10 @@ package com.tpverp.saas.admin;
 import com.tpverp.saas.tenant.SaasTenantUserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,6 +27,7 @@ public class SaasAuthenticationController {
     private final LoginAttemptLimiter attempts;
     private final SaasSessionTokenStore sessions;
     private final LocalAdminCredentialPolicy localCredentials;
+    private final AdminAuditService audit;
 
     @Autowired
     public SaasAuthenticationController(
@@ -33,7 +36,9 @@ public class SaasAuthenticationController {
             AdminPasswordHasher passwords,
             LoginAttemptLimiter attempts,
             SaasSessionTokenStore sessions,
+            AdminAuditService audit,
             LocalAdminCredentialPolicy localCredentials) {
+        this.audit = audit;
         this.admins = admins;
         this.tenants = tenants;
         this.passwords = passwords;
@@ -47,104 +52,104 @@ public class SaasAuthenticationController {
             SaasTenantUserRepository tenants,
             AdminPasswordHasher passwords,
             LoginAttemptLimiter attempts,
-            SaasSessionTokenStore sessions) {
-        this(admins, tenants, passwords, attempts, sessions,
+            SaasSessionTokenStore sessions, AdminAuditService audit) {
+        this(admins, tenants, passwords, attempts, sessions, audit,
                 new LocalAdminCredentialPolicy(java.util.Set.of("test")));
     }
 
-    @PostMapping("/login")
-    public SaasLoginResponse login(
-            @Valid @RequestBody SaasLoginRequest request,
-            HttpServletRequest httpRequest) {
-        return login(request, ACCOUNT_SCOPE);
-    }
-
+    @Transactional(noRollbackFor = ResponseStatusException.class)
     @PostMapping("/admin/login")
     public SaasLoginResponse adminLogin(@Valid @RequestBody SaasLoginRequest request) {
-        return login(request, ACCOUNT_SCOPE, true);
+        String username = checkLoginAttempt(request);
+        var admin = admins.lockByUsername(username).orElse(null);
+        if (admin == null || !admin.isActive() || !passwords.matches(request.password(), admin.getPasswordHash())) {
+            throw rejectedCredentials(username);
+        }
+        upgradeAdminPassword(admin, request.password());
+        attempts.success("login-account", username, ACCOUNT_SCOPE);
+        audit.logAccountAction(admin.getUsername(), "ADMIN_LOGIN");
+        return response("admin", admin.getUsername(), admin.isMustChangePassword());
     }
 
-    SaasLoginResponse login(SaasLoginRequest request) {
-        return login(request, ACCOUNT_SCOPE);
+    @Transactional(noRollbackFor = ResponseStatusException.class)
+    @PostMapping({"/tenant/login", "/login"})
+    public SaasLoginResponse tenantLogin(@Valid @RequestBody SaasLoginRequest request) {
+        String username = checkLoginAttempt(request);
+        var tenant = tenants.findByUsernameIgnoreCase(username).orElse(null);
+        if (tenant == null || !tenant.isActive() || !passwords.matches(request.password(), tenant.getPasswordHash())) {
+            throw rejectedCredentials(username);
+        }
+        if (passwords.needsUpgrade(tenant.getPasswordHash())) {
+            tenant.changePasswordHash(passwords.hash(request.password()));
+            tenants.save(tenant);
+        }
+        attempts.success("login-account", username, ACCOUNT_SCOPE);
+        return response("tenant", tenant.getUsername(), tenant.isMustChangePassword());
     }
 
-    private SaasLoginResponse login(SaasLoginRequest request, String attemptScope) {
-        return login(request, attemptScope, false);
-    }
-
-    private SaasLoginResponse login(SaasLoginRequest request, String attemptScope, boolean adminOnly) {
+    private String checkLoginAttempt(SaasLoginRequest request) {
         String username = request.username().trim();
-        if (attempts.blocked("login-account", username, attemptScope)) {
+        if (attempts.blocked("login-account", username, ACCOUNT_SCOPE)) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Demasiados intentos de autenticacion");
         }
         if (!localCredentials.permits(username, request.password())) {
-            attempts.failure("login-account", username, attemptScope);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales invalidas");
+            throw rejectedCredentials(username);
         }
-
-        var admin = admins.findByUsernameIgnoreCase(username).orElse(null);
-        // The internal portal never looks up or falls back to a customer account.
-        // The compatibility endpoint retains its existing dual-realm behavior.
-        var tenant = adminOnly ? null : tenants.findByUsernameIgnoreCase(username).orElse(null);
-        if (admin != null && tenant != null) {
-            attempts.failure("login-account", username, attemptScope);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales invalidas");
-        }
-        if (admin != null && admin.isActive() && passwords.matches(request.password(), admin.getPasswordHash())) {
-            upgradeAdminPassword(admin, request.password());
-            attempts.success("login-account", username, attemptScope);
-            return response("admin", admin.getUsername(), admin.isMustChangePassword());
-        }
-
-        if (tenant != null && tenant.isActive() && passwords.matches(request.password(), tenant.getPasswordHash())) {
-            if (passwords.needsUpgrade(tenant.getPasswordHash())) {
-                tenant.changePasswordHash(passwords.hash(request.password()));
-                tenants.save(tenant);
-            }
-            attempts.success("login-account", username, attemptScope);
-            return response("tenant", tenant.getUsername(), tenant.isMustChangePassword());
-        }
-
-        attempts.failure("login-account", username, attemptScope);
-        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales invalidas");
+        return username;
     }
 
+    private ResponseStatusException rejectedCredentials(String username) {
+        attempts.failure("login-account", username, ACCOUNT_SCOPE);
+        return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales invalidas");
+    }
+
+    @Transactional(noRollbackFor = ResponseStatusException.class)
     @PostMapping("/refresh")
     public SaasLoginResponse refresh(
             @RequestHeader(name = "Authorization", required = false) String authorization) {
-        var refreshed = sessions.refresh(bearer(authorization))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesion invalida o caducada"));
-        if (!activeUser(refreshed.realm(), refreshed.username())) {
-            sessions.revoke(refreshed.issued().token());
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesion invalida o caducada");
+        String token = bearer(authorization);
+        var identity = sessions.session(token).orElseThrow(SaasAuthenticationController::invalidSession);
+        Optional<Boolean> passwordChangeRequired;
+        if ("admin".equals(identity.realm())) {
+            passwordChangeRequired = admins.lockByUsername(identity.username()).filter(SaasAdminUser::isActive)
+                    .map(SaasAdminUser::isMustChangePassword);
+        } else if ("tenant".equals(identity.realm())) {
+            passwordChangeRequired = tenants.findByUsernameIgnoreCase(identity.username()).filter(user -> user.isActive())
+                    .map(user -> user.isMustChangePassword());
+        } else {
+            passwordChangeRequired = Optional.empty();
         }
-        return new SaasLoginResponse(
-                refreshed.username(), refreshed.issued().token(), refreshed.realm(), refreshed.issued().expiresAt(),
-                passwordChangeRequired(refreshed.realm(), refreshed.username()));
+        if (passwordChangeRequired.isEmpty()) {
+            sessions.revoke(token);
+            throw invalidSession();
+        }
+        var refreshed = sessions.refresh(token).orElseThrow(SaasAuthenticationController::invalidSession);
+        return new SaasLoginResponse(refreshed.username(), refreshed.issued().token(), refreshed.realm(),
+                refreshed.issued().expiresAt(), passwordChangeRequired.get());
     }
 
+    @Transactional
     @PostMapping("/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void logout(@RequestHeader(name = "Authorization", required = false) String authorization) {
-        sessions.revoke(bearer(authorization));
+        sessions.logout(bearer(authorization), false).filter(actor -> "admin".equals(actor.realm()))
+                .ifPresent(actor -> audit.logAccountAction(actor.username(), "ADMIN_LOGOUT"));
     }
 
+    @Transactional
     @PostMapping("/logout-all")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void logoutAll(@RequestHeader(name = "Authorization", required = false) String authorization) {
-        if (!sessions.revokeAllForToken(bearer(authorization))) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesion invalida o caducada");
-        }
+        String token = bearer(authorization);
+        sessions.session(token).filter(identity -> "admin".equals(identity.realm()))
+                .ifPresent(identity -> admins.lockByUsername(identity.username()));
+        var actor = sessions.logout(token, true)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesion invalida o caducada"));
+        if ("admin".equals(actor.realm())) audit.logAccountAction(actor.username(), "ADMIN_LOGOUT_ALL");
     }
 
-    private boolean activeUser(String realm, String username) {
-        if ("admin".equals(realm)) {
-            return admins.findByUsernameIgnoreCase(username).filter(SaasAdminUser::isActive).isPresent();
-        }
-        if ("tenant".equals(realm)) {
-            return tenants.findByUsernameIgnoreCase(username).filter(value -> value.isActive()).isPresent();
-        }
-        return false;
+    private static ResponseStatusException invalidSession() {
+        return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesion invalida o caducada");
     }
 
     private void upgradeAdminPassword(SaasAdminUser admin, String password) {
@@ -157,15 +162,6 @@ public class SaasAuthenticationController {
     private SaasLoginResponse response(String realm, String username, boolean passwordChangeRequired) {
         var issued = sessions.issue(realm, username);
         return new SaasLoginResponse(username, issued.token(), realm, issued.expiresAt(), passwordChangeRequired);
-    }
-
-    private boolean passwordChangeRequired(String realm, String username) {
-        if ("admin".equals(realm)) {
-            return admins.findByUsernameIgnoreCase(username)
-                    .map(SaasAdminUser::isMustChangePassword).orElse(false);
-        }
-        return tenants.findByUsernameIgnoreCase(username)
-                .map(value -> value.isMustChangePassword()).orElse(false);
     }
 
     public static String remoteAddress(HttpServletRequest request) {

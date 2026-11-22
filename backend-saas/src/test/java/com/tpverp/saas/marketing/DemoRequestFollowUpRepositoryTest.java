@@ -55,13 +55,13 @@ class DemoRequestFollowUpRepositoryTest {
     }
 
     @Test
-    void assigneeLookupUsesActiveOperationRolesAndNeverReadsPasswordHashes() {
+    void assigneeLookupUsesActiveStaffAndNeverReadsPasswordHashes() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         var repository = new DemoRequestFollowUpRepository(jdbc);
         repository.assignees();
         var sql = ArgumentCaptor.forClass(String.class);
         verify(jdbc).query(sql.capture(), org.mockito.ArgumentMatchers.<RowMapper<DemoRequestAssignee>>any());
         assertThat(sql.getValue()).contains("select u.username").contains("u.active = true")
-                .contains("rp.permission_code = 'MANAGE_OPERATIONS'").doesNotContain("password_hash");
+                .doesNotContain("saas_admin_user_role", "password_hash");
     }
 }

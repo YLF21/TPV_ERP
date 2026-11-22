@@ -106,7 +106,7 @@ class AdminApiTest {
         SaasStatusResponse response = mapper.readValue(
                 result.getResponse().getContentAsString(), SaasStatusResponse.class);
         assertThat(response.expectedMigration())
-                .isEqualTo("V85__inventory_snapshot");
+                .isEqualTo("V86__saas_staff_audit");
         assertThat(response.modules()).contains(
                 "licenses", "fiscal-provisioning", "fiscal-status",
                 "operational-incidents", "stores", "tenant-access", "supervision");
@@ -249,14 +249,14 @@ class AdminApiTest {
     }
 
     @Test
-    void impideModificarPoliticaVerifactuSinPermisoFiscal() throws Exception {
+    void personalPuedeModificarPoliticaVerifactu() throws Exception {
         mvc.perform(put("/api/v1/admin/verifactu-activation-policies/AUTONOMO")
                         .header("Authorization", basic("viewer", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new UpdateVerifactuActivationPolicyRequest(
                                 java.time.LocalDate.of(2027, 7, 1),
-                                "Intento sin permiso fiscal"))))
-                .andExpect(status().isForbidden());
+                                "Cambio acordado con el responsable fiscal"))))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -318,8 +318,7 @@ class AdminApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new CreateAdminUserRequest(
                                 "support1",
-                                "supportpass",
-                                "VIEWER"))))
+                                "supportpass"))))
                 .andExpect(status().isOk());
 
         mvc.perform(get("/api/v1/admin/audit")
@@ -367,8 +366,7 @@ class AdminApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new CreateAdminUserRequest(
                                 username,
-                                "initial-reactivation-pass",
-                                "VIEWER"))))
+                                "initial-reactivation-pass"))))
                 .andExpect(status().isOk());
 
         mvc.perform(delete("/api/v1/admin/users/{username}", username)
@@ -385,8 +383,8 @@ class AdminApiTest {
                         .header("Authorization", basic("viewer", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new ChangeAdminPasswordRequest(
-                                "forbidden-reactivation-pass"))))
-                .andExpect(status().isForbidden());
+                                "first-reactivation-pass"))))
+                .andExpect(status().isOk());
 
         mvc.perform(put("/api/v1/admin/users/{username}/activation", username)
                         .header("Authorization", basic("admin", "admin"))
@@ -423,12 +421,9 @@ class AdminApiTest {
                 AdminAuditLogResponse[].class);
         assertThat(auditEntries)
                 .filteredOn(value -> value.action().equals("ACTIVATE_ADMIN_USER")
-                        && value.targetId().equals(username))
-                .singleElement()
-                .satisfies(value -> {
-                    assertThat(value.username()).isEqualTo("admin");
-                    assertThat(value.targetType()).isEqualTo("ADMIN_USER");
-                });
+                        && value.targetId().equals(username) && value.targetType().equals("ADMIN_USER"))
+                .extracting(AdminAuditLogResponse::username)
+                .containsExactlyInAnyOrder("viewer", "admin");
     }
 
     @Test
@@ -500,8 +495,7 @@ class AdminApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new CreateAdminUserRequest(
                                 company.tenantUsername().toUpperCase(java.util.Locale.ROOT),
-                                "cross-realm-admin-pass",
-                                "VIEWER"))))
+                                "cross-realm-admin-pass"))))
                 .andExpect(status().isConflict());
 
         mvc.perform(post("/api/v1/admin/users")
@@ -509,8 +503,7 @@ class AdminApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new CreateAdminUserRequest(
                                 "cross-realm-admin",
-                                "cross-realm-admin-pass",
-                                "VIEWER"))))
+                                "cross-realm-admin-pass"))))
                 .andExpect(status().isOk());
         createTenantUser(
                         company.companyId(),
@@ -525,8 +518,7 @@ class AdminApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new CreateAdminUserRequest(
                                 bootstrapTaxId.toLowerCase(java.util.Locale.ROOT),
-                                "reserved-bootstrap-pass",
-                                "VIEWER"))))
+                                "reserved-bootstrap-pass"))))
                 .andExpect(status().isOk());
 
         var bareCompany = mvc.perform(post("/api/v1/admin/companies")
@@ -615,7 +607,7 @@ class AdminApiTest {
     }
 
     @Test
-    void rechazaEditarEmpresaSinPermiso() throws Exception {
+    void personalPuedeEditarEmpresa() throws Exception {
         ProvisionedCompany company = createCompany("B55443322");
 
         mvc.perform(put("/api/v1/admin/companies/{companyId}", company.companyId())
@@ -623,9 +615,9 @@ class AdminApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new EditCompanyDataRequest(
                                 "Empresa Editada",
-                                TaxpayerType.AUTONOMO,
+                                TaxpayerType.SOCIEDAD,
                                 CommercialProfile.MAYORISTA, fiscalAddress()))))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -726,11 +718,11 @@ class AdminApiTest {
                         .header("Authorization", basic("viewer", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(validRequest)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
     }
 
     @Test
-    void validaMotivoYPermisoAntesDeRevocarUnaInstalacion() throws Exception {
+    void validaMotivoYAutenticacionAntesDeRevocarUnaInstalacion() throws Exception {
         ProvisionedCompany company = createCompany("B71234570");
         UUID installationId = UUID.randomUUID();
         link(company, installationId);
@@ -743,10 +735,10 @@ class AdminApiTest {
                 .andExpect(status().isBadRequest());
         mvc.perform(post("/api/v1/admin/installations/{installationId}/revoke",
                         installationId)
-                        .header("Authorization", basic("viewer", "admin"))
+                        .header("Authorization", basic("unknown", "invalid"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"reason\":\"equipo sustituido\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
 
         var installationsResult = mvc.perform(get("/api/v1/admin/installations")
                         .header("Authorization", basic("admin", "admin")))
@@ -839,7 +831,7 @@ class AdminApiTest {
     }
 
     @Test
-    void rechazaRenovarSinPermiso() throws Exception {
+    void personalPuedeRenovarLicencia() throws Exception {
         ProvisionedCompany company = createCompany("B55667788");
 
         mvc.perform(post("/api/v1/admin/licenses/{reference}/renew", company.licenseReference())
@@ -849,7 +841,7 @@ class AdminApiTest {
                                 Instant.parse("2100-01-01T00:00:00Z"),
                                 5,
                                 2))))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -1253,7 +1245,7 @@ class AdminApiTest {
                                 }
                                 """))
                 .andExpect(status().isOk());
-        String firstAdminToken = loginToken("session-admin-revoke", "initial-admin-pass");
+        String firstAdminToken = loginToken("admin", "session-admin-revoke", "initial-admin-pass");
         mvc.perform(get("/api/v1/admin/status")
                         .header("Authorization", "Bearer " + firstAdminToken))
                 .andExpect(status().isOk());
@@ -1267,7 +1259,7 @@ class AdminApiTest {
                         .header("Authorization", "Bearer " + firstAdminToken))
                 .andExpect(status().isUnauthorized());
 
-        String secondAdminToken = loginToken("session-admin-revoke", "changed-admin-pass");
+        String secondAdminToken = loginToken("admin", "session-admin-revoke", "changed-admin-pass");
         mvc.perform(delete("/api/v1/admin/users/{username}", "session-admin-revoke")
                         .header("Authorization", basic("admin", "admin")))
                 .andExpect(status().isOk());
@@ -1277,7 +1269,7 @@ class AdminApiTest {
 
         ProvisionedCompany company = createCompany("B77990033");
         String currentTenantPassword = activateTenant(company);
-        String firstTenantToken = loginToken(company.tenantUsername(), currentTenantPassword);
+        String firstTenantToken = loginToken("tenant", company.tenantUsername(), currentTenantPassword);
         mvc.perform(get("/api/v1/tenant/me")
                         .header("Authorization", "Bearer " + firstTenantToken))
                 .andExpect(status().isOk());
@@ -1291,7 +1283,7 @@ class AdminApiTest {
                         .header("Authorization", "Bearer " + firstTenantToken))
                 .andExpect(status().isUnauthorized());
 
-        String secondTenantToken = loginToken(company.tenantUsername(), "changed-tenant-pass");
+        String secondTenantToken = loginToken("tenant", company.tenantUsername(), "changed-tenant-pass");
         mvc.perform(delete("/api/v1/admin/tenant-users/{username}", company.tenantUsername())
                         .header("Authorization", basic("admin", "admin")))
                 .andExpect(status().isOk());
@@ -1659,8 +1651,8 @@ class AdminApiTest {
                 .content(mapper.writeValueAsString(new CreateTenantUserRequest(username, password, roleName))));
     }
 
-    private String loginToken(String username, String password) throws Exception {
-        var result = mvc.perform(post("/api/v1/auth/login")
+    private String loginToken(String realm, String username, String password) throws Exception {
+        var result = mvc.perform(post("/api/v1/auth/{realm}/login", realm)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new SaasLoginRequest(username, password))))
                 .andExpect(status().isOk())
@@ -1681,7 +1673,7 @@ class AdminApiTest {
 
     private String activateTenant(ProvisionedCompany company) throws Exception {
         String activatedPassword = "activated-tenant-pass";
-        String initialToken = loginToken(company.tenantUsername(), company.tenantInitialPassword());
+        String initialToken = loginToken("tenant", company.tenantUsername(), company.tenantInitialPassword());
         mvc.perform(post("/api/v1/auth/password/change")
                         .header("Authorization", "Bearer " + initialToken)
                         .contentType(MediaType.APPLICATION_JSON)

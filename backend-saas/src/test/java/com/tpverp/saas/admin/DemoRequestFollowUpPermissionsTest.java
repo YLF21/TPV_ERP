@@ -35,27 +35,17 @@ class DemoRequestFollowUpPermissionsTest {
     }
 
     @Test
-    void readingNeedsViewPermissionAndUpdatingNeedsViewPlusOperations() throws Exception {
-        login(Set.of(AdminPermission.VIEW_ADMIN_DATA.name()));
+    void activeStaffCanReadAndUpdateFollowUp() throws Exception {
+        login();
         assertThat(interceptor.preHandle(request("GET"), new MockHttpServletResponse(), new Object())).isTrue();
-        var viewerUpdate = new MockHttpServletResponse();
-        assertThat(interceptor.preHandle(request("PUT"), viewerUpdate, new Object())).isFalse();
-        assertThat(viewerUpdate.getStatus()).isEqualTo(403);
-
-        login(Set.of(AdminPermission.MANAGE_OPERATIONS.name()));
-        var operationsOnly = new MockHttpServletResponse();
-        assertThat(interceptor.preHandle(request("PUT"), operationsOnly, new Object())).isFalse();
-        assertThat(operationsOnly.getStatus()).isEqualTo(403);
-
-        login(Set.of(AdminPermission.VIEW_ADMIN_DATA.name(), AdminPermission.MANAGE_OPERATIONS.name()));
         var update = request("PUT");
         assertThat(interceptor.preHandle(update, new MockHttpServletResponse(), new Object())).isTrue();
         assertThat(update.getAttribute(AdminAuditService.USERNAME_ATTRIBUTE)).isEqualTo("operator");
     }
 
     @Test
-    void disabledOperatorsCannotAccessTheFollowUpEvenWithBothPermissions() throws Exception {
-        login(Set.of(AdminPermission.VIEW_ADMIN_DATA.name(), AdminPermission.MANAGE_OPERATIONS.name()));
+    void disabledOperatorsCannotAccessTheFollowUp() throws Exception {
+        login();
         var user = new SaasAdminUser(UUID.randomUUID(), "operator", "unused", false, Instant.now());
         when(users.findByUsernameIgnoreCase("operator")).thenReturn(Optional.of(user));
         var response = new MockHttpServletResponse();
@@ -63,11 +53,10 @@ class DemoRequestFollowUpPermissionsTest {
         assertThat(response.getStatus()).isEqualTo(401);
     }
 
-    private void login(Set<String> permissions) {
+    private void login() {
         when(sessions.username("operator-token", "admin")).thenReturn(Optional.of("operator"));
         when(users.findByUsernameIgnoreCase("operator")).thenReturn(Optional.of(new SaasAdminUser(
                 UUID.randomUUID(), "operator", "unused", true, Instant.now())));
-        when(users.permissionCodes("operator")).thenReturn(permissions);
     }
 
     private MockHttpServletRequest request(String method) {

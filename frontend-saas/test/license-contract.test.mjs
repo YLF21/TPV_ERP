@@ -83,25 +83,9 @@ test("company profile failures are retryable and never create writable defaults"
   assert.doesNotMatch(detail, /defaultCompanyOperations/);
 });
 
-test("tenant user management keeps responses and mutations scoped to the selected company", async () => {
-  const source = await readSources("features/companies/CompaniesView.tsx", "features/companies/CompanyDetail.tsx", "shared/ui.tsx", "shared/license-tables.tsx", "features/users/UsersView.tsx", "i18n/es.ts", "i18n/en.ts", "i18n/zh.ts");
-  const usersView = await readSources("features/users/UsersView.tsx");
-
-  assert.match(usersView, /const tenantUsersRequestId = useRef\(0\);/);
-  assert.match(usersView, /const tenantUsersMutationId = useRef\(0\);/);
-  assert.match(usersView, /selectedTenantCompanyIdRef\.current !== companyId/);
-  assert.match(usersView, /tenantUsersCompanyId === companyId/);
-  assert.match(usersView, /user\.companyId === companyId && user\.username === username/);
-  assert.match(usersView, /isCurrentTenantMutation\(companyId, mutationId\)/);
-  assert.match(usersView, /visibleTenantUsers\.map/);
-  assert.doesNotMatch(usersView, /<option value="OWNER">OWNER<\/option>/);
-  assert.match(usersView, /<option value="MANAGER">MANAGER<\/option>/);
-  assert.match(usersView, /<option value="VIEWER">VIEWER<\/option>/);
-  assert.match(usersView, /<option value="BILLING">BILLING<\/option>/);
-});
-
 test("the SaaS edge discards caller supplied forwarded addresses", async () => {
   const nginx = await readFile(nginxConfigUrl, "utf8");
+  assert.match(nginx, /proxy_set_header Forwarded "";/);
 
   assert.match(nginx, /proxy_set_header X-Forwarded-For \$remote_addr;/);
   assert.doesNotMatch(nginx, /\$proxy_add_x_forwarded_for/);

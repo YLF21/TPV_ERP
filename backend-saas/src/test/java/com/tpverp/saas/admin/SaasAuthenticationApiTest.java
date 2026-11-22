@@ -71,6 +71,12 @@ class SaasAuthenticationApiTest {
                         .content(mapper.writeValueAsBytes(new SaasLoginRequest(username, password))))
                 .andExpect(status().isUnauthorized()).andReturn();
         assertThat(mapper.readTree(rejected.getResponse().getContentAsString()).has("accessToken")).isFalse();
+        assertThat(successfulLogin("/api/v1/auth/tenant/login", username, password).mode()).isEqualTo("tenant");
+        for (String path : new String[] {"/api/v1/auth/login", "/api/v1/auth/tenant/login"}) {
+            mvc.perform(post(path).contentType(MediaType.APPLICATION_JSON)
+                            .content(mapper.writeValueAsBytes(new SaasLoginRequest("admin", "admin"))))
+                    .andExpect(status().isUnauthorized());
+        }
         var compatible = successfulLogin("/api/v1/auth/login", username, password);
         assertThat(compatible.mode()).isEqualTo("tenant");
         mvc.perform(get("/api/v1/tenant/access").header("Authorization", "Bearer " + compatible.accessToken()))
@@ -125,7 +131,7 @@ class SaasAuthenticationApiTest {
 
     @Test
     void exchangesPasswordForOpaqueRevocableBearerToken() throws Exception {
-        var login = mvc.perform(post("/api/v1/auth/login")
+        var login = mvc.perform(post("/api/v1/auth/admin/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"username":"admin","password":"admin"}
@@ -155,7 +161,7 @@ class SaasAuthenticationApiTest {
     void blocksAccountEvenWhenEachFailureUsesADifferentForwardedAddress() throws Exception {
         for (int attempt = 1; attempt <= LoginAttemptLimiter.MAX_FAILURES; attempt++) {
             String address = "198.51.100." + attempt;
-            mvc.perform(post("/api/v1/auth/login")
+            mvc.perform(post("/api/v1/auth/admin/login")
                             .with(request -> {
                                 request.setRemoteAddr(address);
                                 return request;
@@ -168,7 +174,7 @@ class SaasAuthenticationApiTest {
                     .andExpect(status().isUnauthorized());
         }
 
-        mvc.perform(post("/api/v1/auth/login")
+        mvc.perform(post("/api/v1/auth/admin/login")
                         .with(request -> {
                             request.setRemoteAddr("198.51.100.250");
                             return request;
@@ -186,7 +192,7 @@ class SaasAuthenticationApiTest {
     void successfulLoginClearsAccountFailuresRegardlessOfTheClientAddress() throws Exception {
         for (int attempt = 1; attempt < LoginAttemptLimiter.MAX_FAILURES; attempt++) {
             String address = "203.0.113." + attempt;
-            mvc.perform(post("/api/v1/auth/login")
+            mvc.perform(post("/api/v1/auth/admin/login")
                             .with(request -> {
                                 request.setRemoteAddr(address);
                                 return request;
@@ -198,7 +204,7 @@ class SaasAuthenticationApiTest {
                     .andExpect(status().isUnauthorized());
         }
 
-        mvc.perform(post("/api/v1/auth/login")
+        mvc.perform(post("/api/v1/auth/admin/login")
                         .with(request -> {
                             request.setRemoteAddr("203.0.113.200");
                             return request;
@@ -209,7 +215,7 @@ class SaasAuthenticationApiTest {
                                 """))
                 .andExpect(status().isOk());
 
-        mvc.perform(post("/api/v1/auth/login")
+        mvc.perform(post("/api/v1/auth/admin/login")
                         .with(request -> {
                             request.setRemoteAddr("203.0.113.201");
                             return request;
@@ -220,7 +226,7 @@ class SaasAuthenticationApiTest {
                                 """))
                 .andExpect(status().isUnauthorized());
 
-        mvc.perform(post("/api/v1/auth/login")
+        mvc.perform(post("/api/v1/auth/admin/login")
                         .with(request -> {
                             request.setRemoteAddr("203.0.113.202");
                             return request;

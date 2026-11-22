@@ -102,7 +102,7 @@ class InvoiceRegimeStagesTest {
         UUID invoice = invoice(company(), "121.00");
         assertThatThrownBy(() -> jdbc.update("update saas_billing_invoice set fiscal_status='CALCULATED' where id=?", invoice))
                 .isInstanceOf(DataIntegrityViolationException.class);
-        decision(invoice, calculated("IVA", "21.00"), "viewer").andExpect(status().isForbidden());
+        decision(invoice, calculated("IVA", "21.00"), "unknown").andExpect(status().isUnauthorized());
         decision(invoice, calculated("INVALID", "21.00"), "admin").andExpect(status().isBadRequest());
         var inconsistent = calculated("IVA", "21.00"); inconsistent.put("taxAmount", "20.99");
         decision(invoice, inconsistent, "admin").andExpect(status().isBadRequest());

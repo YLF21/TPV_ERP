@@ -61,8 +61,8 @@ class SupportInterventionPostgreSqlTest {
         mvc.perform(get(path(ticket))).andExpect(status().isUnauthorized());
         mvc.perform(get(path(ticket)).header("Authorization", basic("viewer"))).andExpect(status().isOk());
         Request request = request(interventions.state(ticket), "START_REMOTE", "123456789");
-        mvc.perform(post(path(ticket)).header("Authorization", basic("viewer")).contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(request))).andExpect(status().isForbidden());
+        mvc.perform(post(path(ticket)).header("Authorization", basic("unknown")).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(request))).andExpect(status().isUnauthorized());
         for (String invalid : List.of("12345", "1234567890123456", "123 456", "password=secret")) {
             submit(ticket, new Request(UUID.randomUUID(), 0L, "ABIERTO", "START_REMOTE", "Valid investigation", invalid), 400);
         }
@@ -424,15 +424,14 @@ class SupportInterventionPostgreSqlTest {
     }
 
     @Test
-    void assignmentRequiresPermittedActiveUserAndCanExplicitlyUnassign() throws Exception {
+    void assignmentAcceptsActiveStaffWithoutRoleAndCanExplicitlyUnassign() throws Exception {
         UUID ticket=linked().ticket(); State initial=read(ticket);
-        UUID disabled=technicianId("Disabled "+UUID.randomUUID()), denied=technicianId("Denied "+UUID.randomUUID());
+        UUID disabled=technicianId("Disabled "+UUID.randomUUID()), withoutRole=technicianId("Roleless "+UUID.randomUUID());
         jdbc.update("update saas_admin_user set active=false where id=?",disabled);
-        jdbc.update("delete from saas_admin_user_role where user_id=?",denied);
-        for (UUID invalid:List.of(UUID.randomUUID(),disabled,denied)) {
+        for (UUID invalid:List.of(UUID.randomUUID(),disabled)) {
             submit(ticket,new Request(UUID.randomUUID(),0L,"ABIERTO","SAVE_DETAILS","Assign valid technician",null,null,null,null,null,null,invalid,null),400);
         }
-        assertThat(read(ticket).assignees()).extracting(Assignee::id).doesNotContain(disabled,denied);
+        assertThat(read(ticket).assignees()).extracting(Assignee::id).contains(withoutRole).doesNotContain(disabled);
         submit(ticket,new Request(UUID.randomUUID(),0L,"ABIERTO","SAVE_DETAILS","Legacy free name",null,"Unverified technician",null,null,null,null),400);
         State planned=submit(ticket,planning(initial,"Technician Ana"),200);
         State unassigned=submit(ticket,new Request(UUID.randomUUID(),planned.version(),planned.ticketStatus(),"SAVE_DETAILS","Remove assignment",null,null,null,null,null,null,null,null),200);
@@ -451,7 +450,7 @@ class SupportInterventionPostgreSqlTest {
         assertThat(support.notifications()).extracting(AdminNotificationResponse::id).doesNotContain(notification);
         apply(ticket,closed,"REOPEN",null);
         assertThat(support.notifications()).extracting(AdminNotificationResponse::id).contains(notification);
-        assertThat(support.status().expectedMigration()).isEqualTo("V85__inventory_snapshot");
+        assertThat(support.status().expectedMigration()).isEqualTo("V86__saas_staff_audit");
     }
 
     @Test
@@ -489,7 +488,6 @@ class SupportInterventionPostgreSqlTest {
         if (!existing.isEmpty()) return existing.getFirst();
         UUID id=UUID.randomUUID();
         jdbc.update("insert into saas_admin_user(id,username,password_hash,active,created_at,must_change_password) values (?,?,?,true,now(),false)",id,username,"test-only-no-login");
-        jdbc.update("insert into saas_admin_user_role(user_id,role_id) select ?,role_id from saas_admin_role_permission where permission_code='MANAGE_SUPPORT_TICKETS' order by role_id limit 1",id);
         return id;
     }
     private Request waitRequest(State state, String action, Instant review) {

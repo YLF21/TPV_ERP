@@ -28,19 +28,36 @@ public class AdminAuditService {
 
     @Transactional
     public void log(String action, String targetType, String targetId, String details) {
-        audit.save(new SaasAdminAuditLog(
-                UUID.randomUUID(),
-                currentUsername(),
-                action,
-                targetType,
-                targetId,
-                details,
+        String actor = authenticatedUsername();
+        save(actor == null ? "system" : actor, actor == null ? "OTHER" : "SAAS_ADMIN",
+                action, targetType, targetId, details);
+    }
+
+    /** For authentication flows where the credentials or token have already been verified. */
+    @Transactional
+    public void logAccountAction(String verifiedUsername, String action) {
+        save(verifiedUsername, "SAAS_ADMIN", action, "ADMIN_USER", verifiedUsername, null);
+    }
+
+    /** The OAuth callback revalidates the staff account that created the single-use authorization. */
+    @Transactional
+    public void logMailConnection(String verifiedUsername, String provider, UUID accountId) {
+        save(verifiedUsername, "SAAS_ADMIN", "CONNECT_MAIL_OAUTH", "SMTP_SETTINGS", accountId.toString(), provider);
+    }
+
+    @Transactional
+    public void logOperational(String action, String targetType, String targetId, String details) {
+        save("system", "OTHER", action, targetType, targetId, details);
+    }
+
+    private void save(String username, String origin, String action, String targetType, String targetId, String details) {
+        audit.save(new SaasAdminAuditLog(UUID.randomUUID(), username, origin, action, targetType, targetId, details,
                 clock.instant()));
     }
 
     @Transactional(readOnly = true)
     public List<AdminAuditLogResponse> recent() {
-        return audit.findTop100ByOrderByCreatedAtDesc().stream()
+        return audit.findTop100ByOriginOrderByCreatedAtDescIdDesc("SAAS_ADMIN").stream()
                 .map(value -> new AdminAuditLogResponse(
                         value.getId(),
                         value.getUsername(),
@@ -53,6 +70,11 @@ public class AdminAuditService {
     }
 
     public String currentUsername() {
+        String actor = authenticatedUsername();
+        return actor == null ? "system" : actor;
+    }
+
+    private String authenticatedUsername() {
         var attributes = RequestContextHolder.getRequestAttributes();
         if (attributes instanceof ServletRequestAttributes servletAttributes) {
             Object username = servletAttributes.getRequest().getAttribute(USERNAME_ATTRIBUTE);
@@ -60,6 +82,6 @@ public class AdminAuditService {
                 return username.toString();
             }
         }
-        return "system";
+        return null;
     }
 }

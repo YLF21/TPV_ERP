@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
@@ -21,14 +22,17 @@ public class AdminController {
 
     private final AdminService service;
     private final AdminAuditService audit;
+    private final AdminAuditQuery auditQuery;
     private final VerifactuActivationPolicyAdminService verifactuPolicies;
 
     public AdminController(
             AdminService service,
             AdminAuditService audit,
+            AdminAuditQuery auditQuery,
             VerifactuActivationPolicyAdminService verifactuPolicies) {
         this.service = service;
         this.audit = audit;
+        this.auditQuery = auditQuery;
         this.verifactuPolicies = verifactuPolicies;
     }
 
@@ -327,6 +331,12 @@ public class AdminController {
             @PathVariable UUID installationId,
             @Valid @RequestBody RevokeInstallationRequest request) {
         return service.revokeInstallation(installationId, request);
+    }
+
+    @GetMapping("/audit/search")
+    public AdminAuditQuery.Page searchAudit(AdminAuditQuery.Filters filters,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size) {
+        return auditQuery.search(filters, page, size);
     }
 
     @GetMapping("/audit")

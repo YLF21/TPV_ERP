@@ -59,8 +59,15 @@ public class DisasterRecoveryService {
     }
     public State adminState(UUID ticket,UUID id) { var row=locked(id); requireTicket(ticket,row); return state(row); }
     public List<CloudBackupDescriptor> backups(UUID ticket,UUID installationId) { var installation=lock(installationId);ticket(ticket,installation);return vault.listAvailable(installationId); }
-    public InputStream downloadBackup(UUID ticket,UUID installationId,UUID backupId)throws Exception {ticket(ticket,lock(installationId));return vault.openVerified(installationId,backupId);}
-    public byte[] downloadBackupKey(UUID ticket,UUID installationId,UUID backupId){ticket(ticket,lock(installationId));return vault.wrappedRecoveryKey(installationId,backupId);}
+    @Transactional(rollbackFor = Exception.class)
+    public InputStream downloadBackup(UUID ticket, UUID installationId, UUID backupId) throws Exception {
+        ticket(ticket, lock(installationId));
+        return staffArtifact(ticket, installationId, backupId);
+    }
+    public byte[] downloadBackupKey(UUID ticket, UUID installationId, UUID backupId) {
+        ticket(ticket, lock(installationId));
+        return staffKey(ticket, installationId, backupId);
+    }
     public List<Map<String,Object>> ticketInstallations(UUID ticket) {
         if(jdbc.queryForObject("select count(*) from saas_support_ticket where id=? and status in ('ABIERTO','EN_CURSO')",Long.class,ticket)!=1)
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,"RECOVERY_TICKET_NOT_FOUND");
@@ -164,8 +171,37 @@ public class DisasterRecoveryService {
     }
     public InputStream destinationArtifact(UUID id,Proof proof) throws Exception {var row=locked(id);proof(row,"artifact","",proof.destinationProof(),false);return vault.openVerified(row.installation(),row.backup());}
     public byte[] destinationKey(UUID id,Proof proof) {var row=locked(id);proof(row,"wrapped-key","",proof.destinationProof(),false);return vault.wrappedRecoveryKey(row.installation(),row.backup());}
-    public InputStream adminArtifact(UUID ticket,UUID id) throws Exception {var row=locked(id);requireTicket(ticket,row);return vault.openVerified(row.installation(),row.backup());}
-    public byte[] adminKey(UUID ticket,UUID id) {var row=locked(id);requireTicket(ticket,row);return vault.wrappedRecoveryKey(row.installation(),row.backup());}
+    @Transactional(rollbackFor = Exception.class)
+    public InputStream adminArtifact(UUID ticket, UUID id) throws Exception {
+        var row = locked(id);
+        requireTicket(ticket, row);
+        return staffArtifact(ticket, row.installation(), row.backup());
+    }
+    public byte[] adminKey(UUID ticket, UUID id) {
+        var row = locked(id);
+        requireTicket(ticket, row);
+        return staffKey(ticket, row.installation(), row.backup());
+    }
+
+    private InputStream staffArtifact(UUID ticket, UUID installation, UUID backup) throws Exception {
+        audit.log("DOWNLOAD_RECOVERY_BACKUP", "BACKUP", backup.toString(), "ticket=" + ticket);
+        InputStream stream = vault.openVerified(installation, backup);
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override public void afterCompletion(int status) {
+                        if (status != STATUS_COMMITTED) {
+                            try { stream.close(); } catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
+                        }
+                    }
+                });
+        return stream;
+    }
+
+    private byte[] staffKey(UUID ticket, UUID installation, UUID backup) {
+        byte[] key = vault.wrappedRecoveryKey(installation, backup);
+        audit.log("DOWNLOAD_RECOVERY_KEY", "BACKUP", backup.toString(), "ticket=" + ticket);
+        return key;
+    }
     private Activation activation(Row row) {return new Activation(state(row),jdbc.queryForObject("select encrypted_credential from saas_disaster_recovery where id=?",String.class,row.id()));}
     private State state(Row row) {
         var installation=lock(row.installation());var evidence=checkpoint(installation);var blockers=new ArrayList<String>();

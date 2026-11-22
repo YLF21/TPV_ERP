@@ -248,7 +248,7 @@ public class StoreRepairService {
                 update saas_store_repair_command set status = 'EXPIRED', result_code = 'REPAIR_EXPIRED', updated_at = ?
                  where installation_id = ? and status in ('QUEUED','RUNNING') and expires_at <= ? returning command_id
                 """, UUID.class, timestamp(clock.instant()), installationId, timestamp(clock.instant()));
-        for (UUID id : expired) audit.log("EXPIRE_STORE_REPAIR", "STORE_REPAIR_COMMAND", id.toString(), "resultCode=REPAIR_EXPIRED");
+        for (UUID id : expired) audit.logOperational("EXPIRE_STORE_REPAIR", "STORE_REPAIR_COMMAND", id.toString(), "resultCode=REPAIR_EXPIRED");
     }
 
     private void lockInstallation(UUID id) {

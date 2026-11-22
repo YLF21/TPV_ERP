@@ -1,8 +1,9 @@
 import { ArrowRight, ChatsCircle, Package, Storefront } from "@phosphor-icons/react";
-import type { FormEventHandler } from "react";
+import { useEffect, useRef, type FormEventHandler } from "react";
 import { useI18n } from "../../i18n";
 import type { Notice } from "../../shared/types";
 import { PortalLoginLayout } from "./PortalLoginLayout";
+import { accessRequestCopy } from "./tenant-access-request-copy";
 
 const content = {
   es: {
@@ -12,7 +13,7 @@ const content = {
     permissions: "Las opciones disponibles dependen de los permisos de tu cuenta.",
     welcome: "Te damos la bienvenida", signIn: "Accede a tu cuenta", help: "Utiliza las credenciales facilitadas para tu tienda.",
     username: "Usuario de tienda", usernamePlaceholder: "Tu usuario", password: "Contraseña", passwordPlaceholder: "Tu contraseña",
-    enter: "Entrar al portal", entering: "Accediendo…", accountHelp: "Si todavía no tienes acceso, contacta con el equipo de esPOS."
+    enter: "Entrar al portal", entering: "Accediendo…", accountHelp: "¿Todavía no tienes acceso?"
   },
   en: {
     portal: "Customer portal", kicker: "YOUR CONNECTED STORE", title: "Closer to", accent: "your business.",
@@ -21,7 +22,7 @@ const content = {
     permissions: "Available options depend on your account permissions.",
     welcome: "Welcome back", signIn: "Sign in to your account", help: "Use the credentials provided for your store.",
     username: "Store username", usernamePlaceholder: "Your username", password: "Password", passwordPlaceholder: "Your password",
-    enter: "Sign in to the portal", entering: "Signing in…", accountHelp: "If you do not have access yet, contact the esPOS team."
+    enter: "Sign in to the portal", entering: "Signing in…", accountHelp: "Need an account?"
   },
   zh: {
     portal: "客户门户", kicker: "连接你的门店", title: "更贴近", accent: "你的生意。",
@@ -30,24 +31,26 @@ const content = {
     permissions: "可用功能取决于你的账号权限。",
     welcome: "欢迎回来", signIn: "登录你的账号", help: "请使用为你的门店提供的账号和密码。",
     username: "门店用户名", usernamePlaceholder: "你的用户名", password: "密码", passwordPlaceholder: "你的密码",
-    enter: "登录客户门户", entering: "正在登录…", accountHelp: "如果尚未获得访问权限，请联系 esPOS 团队。"
+    enter: "登录客户门户", entering: "正在登录…", accountHelp: "还没有账号？"
   }
 } as const;
 
 const featureIcons = [Storefront, Package, ChatsCircle];
 
-export function TenantLoginScreen({ username, password, busy, notice, onUsernameChange, onPasswordChange, onSubmit }: {
-  username: string; password: string; busy: boolean; notice: Notice;
+export function TenantLoginScreen({ username, password, busy, notice, focusHeading, onUsernameChange, onPasswordChange, onSubmit }: {
+  username: string; password: string; busy: boolean; notice: Notice; focusHeading: boolean;
   onUsernameChange: (value: string) => void; onPasswordChange: (value: string) => void;
   onSubmit: FormEventHandler<HTMLFormElement>;
 }) {
   const { language } = useI18n();
   const copy = content[language];
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { if (focusHeading) heading.current?.focus(); }, [focusHeading]);
   return <PortalLoginLayout portal={copy.portal} kicker={copy.kicker} title={copy.title} accent={copy.accent}
     description={copy.body} features={copy.features.map((title, index) => ({ title, icon: featureIcons[index] }))}
     note={copy.permissions} headingId="tenant-signin-title">
         <p className="tenant-login-eyebrow">{copy.welcome}</p>
-        <h2 id="tenant-signin-title">{copy.signIn}</h2>
+        <h2 id="tenant-signin-title" ref={heading} tabIndex={-1}>{copy.signIn}</h2>
         <p id="tenant-signin-help" className="tenant-login-help">{copy.help}</p>
         {notice && <p className={`notice ${notice.type}`} role={notice.type === "error" ? "alert" : "status"}>{notice.text}</p>}
         <form onSubmit={onSubmit} aria-describedby="tenant-signin-help" aria-busy={busy}>
@@ -55,6 +58,9 @@ export function TenantLoginScreen({ username, password, busy, notice, onUsername
           <label>{copy.password}<input name="password" type="password" autoComplete="current-password" placeholder={copy.passwordPlaceholder} value={password} onChange={event => onPasswordChange(event.target.value)} required disabled={busy} /></label>
           <button className="tenant-login-submit" type="submit" disabled={busy}><span>{busy ? copy.entering : copy.enter}</span><ArrowRight size={18} aria-hidden="true" /></button>
         </form>
-        <p className="tenant-login-account-help">{copy.accountHelp}</p>
+        <p className="tenant-login-account-help tenant-login-client-help">
+          {copy.accountHelp}
+          <a className="tenant-login-client-link" href="#/request-access">{accessRequestCopy[language].title}</a>
+        </p>
   </PortalLoginLayout>;
 }

@@ -18,6 +18,9 @@ public class SaasAdminAuditLog {
     private String username;
 
     @Column(nullable = false)
+    private String origin;
+
+    @Column(nullable = false)
     private String action;
 
     @Column(name = "target_type", nullable = false)
@@ -35,20 +38,11 @@ public class SaasAdminAuditLog {
     protected SaasAdminAuditLog() {
     }
 
-    public SaasAdminAuditLog(UUID id, String username, String action, String targetType, String targetId, Instant createdAt) {
-        this(id, username, action, targetType, targetId, null, createdAt);
-    }
-
-    public SaasAdminAuditLog(
-            UUID id,
-            String username,
-            String action,
-            String targetType,
-            String targetId,
-            String details,
-            Instant createdAt) {
+    SaasAdminAuditLog(UUID id, String username, String origin, String action, String targetType,
+            String targetId, String details, Instant createdAt) {
         this.id = id;
         this.username = username;
+        this.origin = origin;
         this.action = action;
         this.targetType = targetType;
         this.targetId = targetId;

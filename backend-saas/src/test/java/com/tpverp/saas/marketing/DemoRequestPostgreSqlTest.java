@@ -148,10 +148,10 @@ class DemoRequestPostgreSqlTest {
         mvc.perform(put(route).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"CONTACTED\",\"expectedStatus\":\"NEW\"}"))
                 .andExpect(status().isUnauthorized());
-        mvc.perform(put(route).header("Authorization", basic("viewer"))
+        mvc.perform(put(route).header("Authorization", basic("unknown"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"CONTACTED\",\"expectedStatus\":\"NEW\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mvc.perform(put(route).header("Authorization", basic("admin"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"CONTACTED\",\"expectedStatus\":\"NEW\"}"))
@@ -204,8 +204,8 @@ class DemoRequestPostgreSqlTest {
         String payload = mapper.writeValueAsString(new UpdateDemoRequestFollowUp("admin", action,
                 Instant.parse("2026-11-02T10:00:00Z"), privateNote, 0L));
         mvc.perform(get(route)).andExpect(status().isUnauthorized());
-        mvc.perform(put(route).header("Authorization", basic("viewer"))
-                        .contentType(MediaType.APPLICATION_JSON).content(payload)).andExpect(status().isForbidden());
+        mvc.perform(put(route).header("Authorization", basic("unknown"))
+                        .contentType(MediaType.APPLICATION_JSON).content(payload)).andExpect(status().isUnauthorized());
         mvc.perform(put(route).header("Authorization", basic("admin"))
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))

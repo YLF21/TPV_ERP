@@ -19,6 +19,15 @@ spring:
 
 tpv:
   saas:
+    mail:
+      oauth:
+        redirect-uri: ${TPV_SAAS_MAIL_OAUTH_REDIRECT_URI:}
+        google:
+          client-id: ${TPV_SAAS_MAIL_OAUTH_GOOGLE_CLIENT_ID:}
+          client-secret: ${TPV_SAAS_MAIL_OAUTH_GOOGLE_CLIENT_SECRET:}
+        microsoft:
+          client-id: ${TPV_SAAS_MAIL_OAUTH_MICROSOFT_CLIENT_ID:}
+          client-secret: ${TPV_SAAS_MAIL_OAUTH_MICROSOFT_CLIENT_SECRET:}
     sync-recovery:
       enabled: ${TPV_SAAS_SYNC_RECOVERY_ENABLED:false}
     legacy-basic-auth-enabled: ${TPV_SAAS_LEGACY_BASIC_AUTH_ENABLED:false}

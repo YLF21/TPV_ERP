@@ -36,12 +36,12 @@ class AdminSummaryPostgreSqlTest extends CommercialProjectionTestSupport {
     @Autowired AdminPasswordHasher passwords;
     @Autowired MockMvc mvc;
 
-    @Test void httpRequiresAdminReadPermissionAndReturnsRealEmptyCoverage() throws Exception {
+    @Test void httpAcceptsStaffRegardlessOfRoleAndReturnsRealEmptyCoverage() throws Exception {
         mvc.perform(get(PATH)).andExpect(status().isUnauthorized());
         admins.saveAndFlush(new SaasAdminUser(UUID.randomUUID(), "summary-no-role", passwords.hash("summary-password"),
                 true, BASE));
         mvc.perform(get(PATH).header("Authorization", basic("summary-no-role", "summary-password")))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
         mvc.perform(get(PATH).header("Authorization", basic("viewer", "admin")))
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.companies").value(0)).andExpect(jsonPath("$.documents.total").value(0))

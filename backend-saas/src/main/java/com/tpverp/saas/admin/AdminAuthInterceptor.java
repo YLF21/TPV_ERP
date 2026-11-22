@@ -2,9 +2,9 @@ package com.tpverp.saas.admin;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 @Component
@@ -34,6 +34,7 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
     }
 
     @Override
+    @Transactional
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             return true;
@@ -61,7 +62,7 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        var user = users.findByUsernameIgnoreCase(username).orElse(null);
+        var user = (sessionUsername == null ? users.lockByUsername(username) : users.findByUsernameIgnoreCase(username)).orElse(null);
         if (user == null || !user.isActive()
                 || (sessionUsername == null && !passwords.matches(password, user.getPasswordHash()))) {
             if (sessionUsername == null) {
@@ -82,119 +83,7 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
             users.save(user);
         }
 
-        Set<String> permissions = users.permissionCodes(user.getUsername());
-        if (permissions.contains(requiredPermission(request).name())
-                && (!demoFollowUpMutation(request) || permissions.contains(AdminPermission.VIEW_ADMIN_DATA.name()))) {
-            request.setAttribute(AdminAuditService.USERNAME_ATTRIBUTE, user.getUsername());
-            return true;
-        }
-        response.sendError(HttpServletResponse.SC_FORBIDDEN, "Permiso admin insuficiente");
-        return false;
+        request.setAttribute(AdminAuditService.USERNAME_ATTRIBUTE, user.getUsername());
+        return true;
     }
-
-    private AdminPermission requiredPermission(HttpServletRequest request) {
-        String method = request.getMethod();
-        Object matched = request.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
-        String path = matched == null ? request.getRequestURI() : matched.toString();
-        if (path.contains("/backup-recoveries")) return AdminPermission.MANAGE_SUPPORT_TICKETS;
-        if ("PUT".equals(method) && path.startsWith("/api/v1/admin/demo-requests/")
-                && (path.endsWith("/status") || path.endsWith("/follow-up"))) {
-            return AdminPermission.MANAGE_OPERATIONS;
-        }
-        if ("GET".equals(method) && path.equals("/api/v1/admin/license-workspace/activation-codes")) {
-            return AdminPermission.ADD_COMPANY;
-        }
-        if ("DELETE".equals(method) && path.matches("/api/v1/admin/license-workspace/activation-codes/[^/]+")) {
-            return AdminPermission.REGENERATE_PAIRING_CODE;
-        }
-        if ("POST".equals(method) && path.startsWith("/api/v1/admin/supervision/failures/")) {
-            if (path.endsWith("/repairs")) return AdminPermission.MANAGE_OPERATIONAL_INCIDENTS;
-            if (path.endsWith("/manual")) return AdminPermission.MANAGE_SUPPORT_TICKETS;
-        }
-        if (path.startsWith("/api/v1/admin/operational-incidents")
-                && "POST".equals(method)) {
-            return AdminPermission.MANAGE_OPERATIONAL_INCIDENTS;
-        }
-        if ("POST".equals(method) && path.startsWith("/api/v1/admin/sync/events/")
-                && path.endsWith("/recover")) {
-            return AdminPermission.MANAGE_OPERATIONAL_INCIDENTS;
-        }
-        if (path.startsWith("/api/v1/admin/outbox/")) {
-            return AdminPermission.MANAGE_OPERATIONS;
-        }
-        if (path.startsWith("/api/v2/admin/")
-                && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {
-            return AdminPermission.MANAGE_OPERATIONS;
-        }
-        if (path.startsWith("/api/v1/admin/stores/") && !"GET".equals(method)) {
-            return AdminPermission.EDIT_COMPANY_DATA;
-        }
-        if ("POST".equals(method) && (path.equals("/api/v1/admin/license-workspace")
-                || path.matches("/api/v1/admin/companies/[^/]+/stores"))) {
-            return AdminPermission.ADD_COMPANY;
-        }
-        if ("POST".equals(method) && "/api/v1/admin/companies".equals(path)) {
-            return AdminPermission.ADD_COMPANY;
-        }
-        if ("PUT".equals(method) && path.startsWith("/api/v1/admin/verifactu-activation-policies/")) {
-            return AdminPermission.MANAGE_FISCAL_POLICY;
-        }
-        if ("PUT".equals(method) && path.startsWith("/api/v1/admin/companies/")) {
-            return AdminPermission.EDIT_COMPANY_DATA;
-        }
-        if (path.contains("/tickets") && ("POST".equals(method) || "PUT".equals(method))) {
-            return AdminPermission.MANAGE_SUPPORT_TICKETS;
-        }
-        if ((path.contains("/invoices") || path.contains("/reconciliations"))
-                && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {
-            return AdminPermission.MANAGE_BILLING;
-        }
-        if ((path.contains("/sales-documents") || path.contains("/inventory-")) && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {
-            return AdminPermission.MANAGE_OPERATIONS;
-        }
-        if (path.contains("/integrations") && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {
-            return AdminPermission.MANAGE_INTEGRATIONS;
-        }
-        if (path.contains("/reports/")) {
-            return AdminPermission.VIEW_REPORTS;
-        }
-        if (path.contains("/tenant-users") && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {
-            return AdminPermission.MANAGE_TENANT_USERS;
-        }
-        if (path.contains("/erp/") && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {
-            return AdminPermission.MANAGE_ERP_MASTERS;
-        }
-        if ("PUT".equals(method) && path.startsWith("/api/v1/admin/users/")) {
-            return AdminPermission.MANAGE_ADMIN_USERS;
-        }
-        if (("POST".equals(method) || "DELETE".equals(method)) && path.startsWith("/api/v1/admin/users")) {
-            return AdminPermission.MANAGE_ADMIN_USERS;
-        }
-        if ("POST".equals(method) && path.endsWith("/renew")) {
-            return AdminPermission.RENEW_LICENSE;
-        }
-        if ("POST".equals(method) && path.endsWith("/block")) {
-            return AdminPermission.BLOCK_LICENSE;
-        }
-        if ("POST".equals(method) && path.endsWith("/unblock")) {
-            return AdminPermission.UNBLOCK_LICENSE;
-        }
-        if ("POST".equals(method) && path.endsWith("/pairing-codes")) {
-            return AdminPermission.REGENERATE_PAIRING_CODE;
-        }
-        if ("POST".equals(method)
-                && path.startsWith("/api/v1/admin/installations/")
-                && path.endsWith("/revoke")) {
-            return AdminPermission.REVOKE_INSTALLATION;
-        }
-        return AdminPermission.VIEW_ADMIN_DATA;
-    }
-
-    private static boolean demoFollowUpMutation(HttpServletRequest request) {
-        Object matched = request.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
-        String path = matched == null ? request.getRequestURI() : matched.toString();
-        return "PUT".equals(request.getMethod()) && path.startsWith("/api/v1/admin/demo-requests/")
-                && path.endsWith("/follow-up");
-    }
-
 }

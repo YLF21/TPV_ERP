@@ -203,11 +203,11 @@ class CompanyProfilePostgreSqlTest {
     }
 
     @Test
-    void backendEnforcesEditPermissionAndUnknownCompaniesCannotBeCreatedByProfilePut() throws Exception {
+    void staffCanEditProfilesAndUnknownCompaniesCannotBeCreatedByProfilePut() throws Exception {
         UUID id = createCompany(); JsonNode before = profile(id);
-        var request = update("Bloqueado", "No permitido", "12345678Z");
-        save(id, request, "viewer").andExpect(status().isForbidden());
-        assertThat(profile(id)).isEqualTo(before);
+        var request = update("Editado", "Contacto actualizado", "12345678Z");
+        save(id, request, "viewer").andExpect(status().isOk());
+        assertThat(profile(id)).isNotEqualTo(before);
         save(UUID.randomUUID(), request, "admin").andExpect(status().isNotFound());
         mvc.perform(get("/api/v1/admin/companies/{id}/profile", id)).andExpect(status().isUnauthorized());
     }

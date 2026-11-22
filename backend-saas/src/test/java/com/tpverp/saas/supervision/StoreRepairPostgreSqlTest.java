@@ -67,10 +67,10 @@ class StoreRepairPostgreSqlTest {
         mvc.perform(get(path(failure))).andExpect(status().isUnauthorized());
         mvc.perform(get(path(failure)).header("Authorization", basic("viewer"))).andExpect(status().isOk());
         var request = new CreateRepairRequest(UUID.randomUUID(), "Reintentar entrega atascada");
-        mvc.perform(post(path(failure)).header("Authorization", basic("viewer")).contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(request))).andExpect(status().isForbidden());
-        mvc.perform(post(manualPath(failure)).header("Authorization", basic("viewer")).contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(new ManualRequest("Revisar manualmente")))).andExpect(status().isForbidden());
+        mvc.perform(post(path(failure)).header("Authorization", basic("unknown")).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(request))).andExpect(status().isUnauthorized());
+        mvc.perform(post(manualPath(failure)).header("Authorization", basic("unknown")).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(new ManualRequest("Revisar manualmente")))).andExpect(status().isUnauthorized());
         var created = create(failure, request);
         assertThat(created.requestId()).isEqualTo(request.requestId());
         assertThat(created.expectedVersion()).isEqualTo(7);
