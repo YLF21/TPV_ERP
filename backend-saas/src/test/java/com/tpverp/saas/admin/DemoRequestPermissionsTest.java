@@ -13,7 +13,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 class DemoRequestPermissionsTest {
     @Test
-    void anonymousCannotReadOrMutateAndViewerCannotUpdateStatus() throws Exception {
+    void anonymousIsRejectedAndActiveStaffCanReadAndUpdateStatus() throws Exception {
         var users = mock(SaasAdminUserRepository.class);
         var sessions = mock(SaasSessionTokenStore.class);
         var interceptor = interceptor(users, sessions);
@@ -26,16 +26,11 @@ class DemoRequestPermissionsTest {
         when(sessions.username("viewer-token", "admin")).thenReturn(Optional.of("viewer"));
         when(users.findByUsernameIgnoreCase("viewer")).thenReturn(Optional.of(new SaasAdminUser(
                 UUID.randomUUID(), "viewer", "unused", true, Instant.now())));
-        when(users.permissionCodes("viewer")).thenReturn(Set.of(AdminPermission.VIEW_ADMIN_DATA.name()));
         var update = new MockHttpServletRequest("PUT", "/api/v1/admin/demo-requests/" + UUID.randomUUID() + "/status");
         update.addHeader("Authorization", "Bearer viewer-token");
-        var denied = new MockHttpServletResponse();
-        assertThat(interceptor.preHandle(update, denied, new Object())).isFalse();
-        assertThat(denied.getStatus()).isEqualTo(403);
         var read = new MockHttpServletRequest("GET", "/api/v1/admin/demo-requests/page");
         read.addHeader("Authorization", "Bearer viewer-token");
         assertThat(interceptor.preHandle(read, new MockHttpServletResponse(), new Object())).isTrue();
-        when(users.permissionCodes("viewer")).thenReturn(Set.of(AdminPermission.MANAGE_OPERATIONS.name()));
         assertThat(interceptor.preHandle(update, new MockHttpServletResponse(), new Object())).isTrue();
     }
 

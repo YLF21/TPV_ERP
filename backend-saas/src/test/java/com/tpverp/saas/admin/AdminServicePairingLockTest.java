@@ -58,7 +58,7 @@ class AdminServicePairingLockTest {
                 companies, stores, licenses, installations, pairingCodes,
                 adminUsers, tenantUsers, passwordHasher, integrationSecrets,
                 audit, mock(com.tpverp.saas.supervision.SupportInterventionTicketState.class), sessions, mock(PlanLimitService.class), mock(com.tpverp.saas.access.TenantAccessService.class), jdbc,
-                mock(com.fasterxml.jackson.databind.ObjectMapper.class), mock(jakarta.validation.Validator.class), Clock.fixed(NOW, ZoneOffset.UTC));
+                mock(com.fasterxml.jackson.databind.ObjectMapper.class), mock(jakarta.validation.Validator.class), mock(org.springframework.transaction.support.TransactionTemplate.class), Clock.fixed(NOW, ZoneOffset.UTC));
 
         var company = new SaasCompany(
                 UUID.randomUUID(), "Empresa", "B12345674",
@@ -123,7 +123,7 @@ class AdminServicePairingLockTest {
                 companies, stores, licenses, installations, pairingCodes,
                 adminUsers, tenantUsers, passwordHasher, integrationSecrets,
                 audit, mock(com.tpverp.saas.supervision.SupportInterventionTicketState.class), sessions, mock(PlanLimitService.class), mock(com.tpverp.saas.access.TenantAccessService.class), jdbc,
-                mock(com.fasterxml.jackson.databind.ObjectMapper.class), mock(jakarta.validation.Validator.class), Clock.fixed(NOW, ZoneOffset.UTC));
+                mock(com.fasterxml.jackson.databind.ObjectMapper.class), mock(jakarta.validation.Validator.class), mock(org.springframework.transaction.support.TransactionTemplate.class), Clock.fixed(NOW, ZoneOffset.UTC));
         when(adminUsers.existsByUsernameIgnoreCase("simultaneo")).thenReturn(false);
         when(tenantUsers.existsByUsernameIgnoreCase("simultaneo")).thenReturn(false);
         when(passwordHasher.hash("password-segura")).thenReturn("hash");
@@ -131,7 +131,7 @@ class AdminServicePairingLockTest {
                 .thenThrow(new DataIntegrityViolationException("uk_saas_global_username"));
 
         assertThatThrownBy(() -> service.createUser(new CreateAdminUserRequest(
-                        "simultaneo", "password-segura", "VIEWER")))
+                        "simultaneo", "password-segura")))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
                         assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
     }

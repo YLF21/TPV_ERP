@@ -53,7 +53,7 @@ const labels = {
   from: ["Desde", "From", "开始日期"],
   to: ["Hasta", "To", "结束日期"],
   access: ["Accesos a empresas y tiendas", "Company and store access", "企业与门店访问权限"],
-  accessHint: ["Cuentas para la futura aplicación cliente, sin acceso a este portal interno. Asigna sus tiendas y permisos en Accesos a empresas y tiendas.", "Accounts for the future customer app, without access to this internal portal. Assign their stores and permissions under Company and store access.", "用于未来客户应用的账号，不能访问本内部门户。请在企业与门店访问权限中分配门店和权限。"],
+  accessHint: ["Cuentas del portal de clientes. Asigna sus tiendas y permisos en Accesos a empresas y tiendas.", "Customer portal accounts. Assign their stores and permissions under Company and store access.", "客户门户账号。请在企业与门店访问权限中分配门店和权限。"],
   account: ["Usuario cliente", "Customer account", "客户账户"],
   role: ["Rol", "Role", "角色"],
   privileges: ["Permisos sobre toda la empresa", "Company-wide permissions", "整个企业的权限"],

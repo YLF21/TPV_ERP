@@ -28,10 +28,10 @@ class SaasAuthenticationControllerTest {
         var clock = Clock.fixed(Instant.parse("2026-08-25T10:00:00Z"), ZoneOffset.UTC);
         var state = new InMemorySecurityStateStore();
         var admin = new SaasAdminUser(UUID.randomUUID(), "internal", "admin-hash", true, clock.instant());
-        when(admins.findByUsernameIgnoreCase("internal")).thenReturn(Optional.of(admin));
+        when(admins.lockByUsername("internal")).thenReturn(Optional.of(admin));
         when(passwords.matches("customer-password", "admin-hash")).thenReturn(false);
         var controller = new SaasAuthenticationController(admins, tenants, passwords,
-                new LoginAttemptLimiter(clock, state), new SaasSessionTokenStore(clock, state, java.time.Duration.ofHours(8)));
+                new LoginAttemptLimiter(clock, state), new SaasSessionTokenStore(clock, state, java.time.Duration.ofHours(8)), mock(AdminAuditService.class));
 
         assertThatThrownBy(() -> controller.adminLogin(new SaasLoginRequest("internal", "customer-password")))
                 .isInstanceOfSatisfying(ResponseStatusException.class, error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED));
@@ -50,11 +50,11 @@ class SaasAuthenticationControllerTest {
         var sessions = new SaasSessionTokenStore(clock, state, java.time.Duration.ofHours(8));
         var admin = new SaasAdminUser(UUID.randomUUID(), "internal", "old-hash", true, clock.instant());
         admin.requirePasswordChange();
-        when(admins.findByUsernameIgnoreCase("internal")).thenReturn(Optional.of(admin));
+        when(admins.lockByUsername("internal")).thenReturn(Optional.of(admin));
         when(passwords.matches("valid-password", "old-hash")).thenReturn(true);
         when(passwords.needsUpgrade("old-hash")).thenReturn(true);
         when(passwords.hash("valid-password")).thenReturn("new-hash");
-        var controller = new SaasAuthenticationController(admins, tenants, passwords, new LoginAttemptLimiter(clock, state), sessions);
+        var controller = new SaasAuthenticationController(admins, tenants, passwords, new LoginAttemptLimiter(clock, state), sessions, mock(AdminAuditService.class));
 
         var response = controller.adminLogin(new SaasLoginRequest(" internal ", "valid-password"));
         assertThat(response.mode()).isEqualTo("admin");
@@ -79,9 +79,9 @@ class SaasAuthenticationControllerTest {
                 passwords,
                 new LoginAttemptLimiter(clock, securityState),
                 new SaasSessionTokenStore(clock, securityState, java.time.Duration.ofHours(8)),
-                new LocalAdminCredentialPolicy(Set.of("staging")));
+                mock(AdminAuditService.class), new LocalAdminCredentialPolicy(Set.of("staging")));
 
-        assertThatThrownBy(() -> controller.login(new SaasLoginRequest("ADMIN", "000")))
+        assertThatThrownBy(() -> controller.adminLogin(new SaasLoginRequest("ADMIN", "000")))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
                         org.assertj.core.api.Assertions.assertThat(exception.getStatusCode())
                                 .isEqualTo(HttpStatus.UNAUTHORIZED));
@@ -89,7 +89,7 @@ class SaasAuthenticationControllerTest {
     }
 
     @Test
-    void rejectsAmbiguousUsernameWithoutTryingEitherRealmPassword() {
+    void tenantEndpointNeverConsultsStaffAccounts() {
         SaasAdminUserRepository admins = mock(SaasAdminUserRepository.class);
         SaasTenantUserRepository tenants = mock(SaasTenantUserRepository.class);
         AdminPasswordHasher passwords = mock(AdminPasswordHasher.class);
@@ -97,18 +97,16 @@ class SaasAuthenticationControllerTest {
         var securityState = new InMemorySecurityStateStore();
         var attempts = new LoginAttemptLimiter(clock, securityState);
         var sessions = new SaasSessionTokenStore(clock, securityState, java.time.Duration.ofHours(8));
-        var admin = mock(SaasAdminUser.class);
         var tenant = mock(SaasTenantUser.class);
-        when(admins.findByUsernameIgnoreCase("ambiguous")).thenReturn(Optional.of(admin));
         when(tenants.findByUsernameIgnoreCase("ambiguous")).thenReturn(Optional.of(tenant));
         var controller = new SaasAuthenticationController(
-                admins, tenants, passwords, attempts, sessions);
+                admins, tenants, passwords, attempts, sessions, mock(AdminAuditService.class));
 
-        assertThatThrownBy(() -> controller.login(
+        assertThatThrownBy(() -> controller.tenantLogin(
                         new SaasLoginRequest("ambiguous", "password-value")))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
                         org.assertj.core.api.Assertions.assertThat(exception.getStatusCode())
                                 .isEqualTo(HttpStatus.UNAUTHORIZED));
-        verifyNoInteractions(passwords);
+        verifyNoInteractions(admins, passwords);
     }
 }

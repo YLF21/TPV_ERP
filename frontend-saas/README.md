@@ -2,6 +2,160 @@
 
 Aplicación de administración de empresas, tiendas, licencias e incidencias.
 
+## Usuarios del SaaS y auditoría
+
+En **Administración → Usuarios SaaS**, el formulario crea cuentas del personal
+sin roles. El listado muestra usuario, estado y fecha de alta en UTC. Todas las
+cuentas de personal activas, tanto nuevas como anteriores, tienen las mismas
+capacidades administrativas. El alta envía `{username, password}`; la respuesta
+no contiene roles. El servidor mantiene `permissions` en `/api/v1/admin/me`
+como contrato de compatibilidad con las pantallas, con la misma política para
+todo el personal. No se permite desactivar la propia cuenta ni dejar al SaaS
+sin ninguna cuenta de personal activa.
+
+**Clientes → Usuarios cliente** (`#/client-users`) es una pantalla independiente.
+Incluye las pestañas **Solicitudes** y **Usuarios cliente**. La primera permite
+buscar y filtrar solicitudes, revisar los datos personales y las referencias
+de tiendas, aprobar sin tiendas o seleccionar tiendas de varias empresas,
+y rechazar con un motivo. La revisión comprueba la versión y registra al
+personal que tomó la decisión, con fecha UTC. La selección preparada y el motivo
+se conservan ante errores recuperables; antes de reintentar se consulta el estado.
+
+El directorio (`#/client-users/users`) incluye también cuentas sin empresas ni
+tiendas. Desde una fila se gestionan contraseña, desactivación y accesos, sin
+volver a escribir el usuario. Las concesiones existentes se conservan; guardar
+cero tiendas o revocar una empresa no altera las demás. `#/access` se mantiene
+como enlace compatible al directorio. Las tablas reutilizan la selección,
+columnas y teclado de las otras pantallas; búsqueda y ordenación son globales.
+
+En `tienda.html#/request-access`, accesible desde **Solicitar acceso**, el cliente
+rellena sus datos, elige sus credenciales y puede describir de cero a veinte
+tiendas. No se publica el catálogo de empresas/tiendas. El formulario usa un
+identificador de reintento, no guarda contraseñas en el navegador y solo confirma
+el envío al recibir HTTP 202. La identidad autenticable se crea al aprobar;
+las referencias declaradas nunca conceden acceso automáticamente. La asignación
+inicial solo incluye las tiendas elegidas por el personal, sin permisos globales
+de empresa. Una cuenta aprobada sin accesos puede entrar y consultar el estado
+vacío.
+
+En **Configuración técnica → Correo SMTP** (`#/smtp`), el personal conecta las
+cuentas de salida. La pantalla muestra cada dirección, su estado y las acciones
+de añadir o eliminar correo. El formulario y la ayuda del proveedor se abren
+en un diálogo. Pulsar una dirección permite probar o revisar su conexión.
+Una contraseña vacía conserva la guardada; cambiar servidor, puerto, TLS o
+usuario requiere introducirla de nuevo. Cada cuenta mantiene sus propias
+credenciales y se puede elegir como remitente al redactar.
+
+Los **Avisos automáticos** se configuran desde **Comunicaciones**, con elección
+expresa de cuenta y URL pública HTTPS del portal. Las pruebas y los correos
+manuales funcionan con los avisos desactivados y sin URL pública. Conectar una
+cuenta no activa avisos ni envía mensajes por sí solo.
+
+El selector ofrece los mismos preajustes que Gestión: Gmail / Google Workspace,
+Yahoo Mail, QQ Mail, iCloud Mail, NetEase 163 y Tencent Exmail, además de otro
+servidor manual. Seleccionar uno rellena servidor, puerto y seguridad; no guarda
+ni envía mensajes. Al cargar una cuenta se respetan su puerto y cifrado guardados.
+La ayuda de contraseña incluye los enlaces oficiales y pasos en ES/EN/ZH. La
+prueba requiere confirmar que la dirección de destino es propia o está autorizada.
+
+También permite autorizar Google o Microsoft cuando el servidor tenga registrado
+el cliente OAuth correspondiente. La autorización se abre en el proveedor y se
+confirma al volver y recargar la configuración de esa cuenta. La autorización
+solo afecta a la cuenta elegida. Eliminar una cuenta retira sus credenciales y
+conserva el historial; no se permite mientras tenga envíos manuales pendientes
+o en curso. Los tokens nunca se envían al navegador. Los requisitos de
+instalación y la URI de retorno se documentan en `backend-saas/README.md`.
+
+Al aprobar o rechazar una solicitud, se encola el aviso. El rechazo incluye el
+motivo. La ficha muestra el estado del aviso, los intentos, la aceptación por el proveedor
+con fecha UTC y un reintento para envíos fallidos. Los avisos pendientes de
+configuración permanecen en cola hasta activar SMTP.
+
+**Clientes → Comunicaciones** (`#/communications`) permite redactar con el editor
+visual o con código HTML, elegir remitente, guardar borradores y enviarse una
+prueba del contenido. El interruptor de
+avisos de solicitudes y la URL pública no son necesarios para un envío manual.
+Antes de confirmar, la revisión muestra el contenido saneado, el remitente y
+los destinatarios exactos, con los totales de omisiones y correos duplicados.
+El selector incluye los contactos de las empresas, sus propietarios y las cuentas
+cliente con su correo de solicitud aprobada. Las direcciones repetidas se agrupan
+sin distinguir mayúsculas ni espacios exteriores, antes de buscar o paginar.
+Cada fila muestra las empresas asociadas y los tipos de contacto; se puede buscar
+por cualquiera de sus nombres, empresas o correo. Las cuentas cliente inactivas
+y los registros sin dirección válida permanecen inhabilitados, salvo que la misma
+dirección tenga otro origen disponible. No se exige que el contacto tenga tiendas.
+La opción inicial es una selección vacía y «Todos» exige elegirla explícitamente.
+
+El historial y las tablas de destinatarios conservan su altura aunque estén
+vacíos y usan los controles, selección y estilo de las tablas del SaaS.
+El historial conserva el resultado por destinatario y las fechas UTC. Permite
+cancelar los pendientes y reintentar fallos; una entrega incierta exige confirmar
+que se ha revisado antes de repetirla. El borrador avisa antes de salir con cambios.
+`node e2e/client-communications.mjs` comprueba estos recorridos, ES/EN/ZH, HTML
+hostil, vista previa bajo la política de seguridad de producción y navegación,
+con API simulada y sin enviar correos reales.
+
+El panel interno utiliza `/api/v1/auth/admin/login`, exclusivo del personal.
+La aplicación cliente utiliza `/api/v1/auth/tenant/login`, exclusivo de clientes;
+`/api/v1/auth/login` se conserva como alias de este último. Cada interfaz rechaza
+y revoca una respuesta de sesión del otro ámbito antes de cargar datos.
+Se conservan el cambio obligatorio de contraseña y la revocación de sesiones.
+
+**Administración → Auditoría** consulta exclusivamente registros atribuibles a
+personal autenticado del SaaS. Incluye usuario, acción, entidad, referencia,
+detalles y fecha/hora UTC. Las acciones recibidas desde instalaciones, el portal
+cliente y las tareas automáticas no se muestran como acciones del personal.
+La migración V86 clasifica los registros anteriores solo cuando puede verificar
+una cuenta administrativa y una acción conocida; los registros de origen
+ambiguo se conservan sin inventar una atribución.
+
+La consulta usa `GET /api/v1/admin/audit/search` con `from`, `to`, `username`,
+`action`, `q`, `page`, `size`, `sortBy` y `sortDirection`. Los días inicial y final se incluyen en UTC;
+sin fechas se consulta todo el historial. Usuario, código de acción y texto
+aceptan coincidencias parciales literales sin distinguir mayúsculas. El servidor
+devuelve `{items, page, size, total}`, con páginas de hasta 100 filas y orden
+estable de fecha descendente e identificador por defecto. `sortBy` admite
+`createdAt`, `username`, `action`, `targetType`, `targetId`, `details` e `id`,
+con dirección `ASC`/`DESC`, desempate por ID en la misma dirección y detalles
+nulos al final. La ordenación se aplica a todo el historial filtrado y al Excel.
+La pantalla deja atrás el límite
+de los últimos 100 registros; la API antigua `GET /audit` se conserva para
+compatibilidad.
+
+La pantalla usa la misma `SaasDataTable` que Empresas, Tiendas y Licencias:
+columnas ocultables, reordenación por arrastre o Ctrl+flechas, anchos ajustables,
+menú de tres puntos, ordenación por cabecera y preferencias de columnas por
+usuario en el navegador. La selección se marca en negrita, admite flechas e
+Inicio/Fin, y abre el detalle de solo lectura con doble clic o Intro. Cerrar el
+detalle devuelve el foco a la fila. Las cabeceras se mantienen visibles al
+desplazarse y la paginación permanece debajo de la tabla. El ID de auditoría
+es una columna opcional, oculta inicialmente.
+
+La auditoría es de solo lectura: no hay operaciones API de edición o borrado.
+PostgreSQL también rechaza `UPDATE`, `DELETE` y `TRUNCATE` de sus registros.
+Los cambios de negocio auditados y su registro comparten transacción. Los accesos,
+salidas, cambios de contraseña, conciliaciones y exportaciones relevantes se
+atribuyen a la identidad verificada; no se guardan contraseñas ni tokens.
+
+**Exportar Excel** descarga todos los resultados de los filtros aplicados,
+independientemente de la página visible, mediante `GET /api/v1/admin/audit/export`.
+Requiere `VIEW_ADMIN_DATA`, igual que la consulta, y acepta `language=es|en|zh`.
+El XLSX conserva cabeceras, bordes completos, filas alternas y las hojas de datos
+y contexto; las fechas incluyen UTC. El límite es 50.000 filas: por encima
+devuelve 413 y se debe acotar el periodo o los filtros. La exportación también
+deja un registro de quién la realizó y cuántas filas preparó.
+
+La prueba `node e2e/users-audit.mjs` usa datos y respuestas de API aislados para
+comprobar separación de pantallas, creación de personal sin roles, consulta de más de 100 registros, filtros,
+ausencia de acciones de edición, Excel, errores, reintento y ES/EN/ZH. Las pruebas
+PostgreSQL del backend comprueban autorización, atribución, aislamiento de origen
+y protección del historial.
+`node e2e/user-portals.mjs` comprueba el acceso cliente y rechaza respuestas de
+sesión de personal, incluso cuando requieren cambiar contraseña.
+`node e2e/client-access-requests.mjs` verifica solicitud en ES/EN/ZH y móvil,
+validaciones, reintentos, revisión simultánea, aprobación con cero o varias
+tiendas, rechazo, recuperación ante errores y gestión posterior de accesos.
+
 ## Resumen estadístico y módulos aplazados
 
 El Resumen consulta `GET /api/v1/admin/summary` con el permiso

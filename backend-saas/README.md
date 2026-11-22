@@ -6,11 +6,10 @@ El Resumen y los siete informes analíticos, sus fuentes, reglas de cómputo,
 comparaciones, capturas de inventario y exportaciones CSV/XLSX se describen en
 [Panel interno: estadísticas e informes](../frontend-saas/README.md).
 Supervisión permanece apartada de la navegación en esta versión; sus APIs y
-la recepción de eventos se conservan. Los nuevos informes requieren
-`VIEW_REPORTS` y el Resumen `VIEW_ADMIN_DATA`.
+la recepción de eventos se conservan. El personal SaaS activo puede consultar el Resumen y los informes.
 
 Los directorios de Empresas, Tiendas y Licencias permiten descargar sus tablas en
-XLSX con el permiso `VIEW_ADMIN_DATA`. Las rutas `GET /api/v1/admin/directories/export/stores`
+XLSX desde el panel interno. Las rutas `GET /api/v1/admin/directories/export/stores`
 y `GET /api/v1/admin/directories/export/licenses` aceptan los filtros y el orden de
 sus respectivos listados. `POST /api/v1/admin/directories/export/companies` recibe
 `companyIds` en el orden filtrado de la tabla, `filters`, `sortBy` y `sortDirection`.
@@ -53,8 +52,8 @@ permite saltarse esta verificación.
   comprobación, o pasar a asistencia remota/presencial si hace falta.
 - `WAIT_CUSTOMER` y `WAIT_MATERIAL` requieren un motivo y `nextReviewAt` futuro.
   `RESUME` recupera la fase anterior; la espera no permite cerrar directamente.
-- `SAVE_DETAILS` guarda `assigneeUserId` y `visitAt`. Solo admite técnicos
-  activos con `MANAGE_SUPPORT_TICKETS`; un identificador nulo desasigna el caso.
+- `SAVE_DETAILS` guarda `assigneeUserId` y `visitAt`. Admite cuentas activas del personal SaaS.
+  Un identificador nulo desasigna el caso.
   Una visita necesita técnico, y una visita en curso conserva ambos datos.
 - Los nombres históricos se conservan como texto hasta elegir un usuario real.
   El estado del fallo técnico permanece independiente del cierre del ticket.
@@ -127,8 +126,9 @@ caracteres.
 
 ## Endpoints base
 
-- `POST /api/v1/auth/admin/login` — acceso exclusivo al portal interno; nunca autentica cuentas de tiendas.
-- `POST /api/v1/auth/login` — contrato compatible para aplicaciones cliente; conserva los ámbitos admin/tenant.
+- `POST /api/v1/auth/admin/login` autentica al personal SaaS y emite sesiones `admin`.
+- `POST /api/v1/auth/tenant/login` autentica a los clientes y emite sesiones `tenant`.
+- `POST /api/v1/auth/login` es el alias histórico de acceso cliente.
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
 - `POST /api/v1/auth/logout-all`
@@ -199,8 +199,7 @@ ambos estados. Las columnas permitidas son `internalCode`,
 `activeInstallations`, `lastSyncAt` y `createdAt`. La ordenación se aplica antes de
 paginar, coloca los nulos al final y desempata por UUID; el orden predeterminado
 conserva empresa, código local y UUID. `GET /api/v1/admin/stores/{storeId}` obtiene
-la ficha actual para su consulta o gestión, con el permiso `VIEW_ADMIN_DATA`.
-No cambia los permisos de escritura ni requiere una migración.
+la ficha actual para su consulta o gestión por el personal SaaS.
 
 `GET /api/v1/admin/license-workspace` admite `companyId` para consultar todas las
 licencias de una empresa y `storeId` para limitar el listado a los vínculos directos
@@ -208,16 +207,15 @@ e históricos de una tienda. Ambos filtros se combinan cuando se envían juntos.
 Omitir `status` incluye todos los estados.
 
 `GET /api/v1/admin/license-workspace/{licenseId}` obtiene la ficha vigente por UUID,
-con el mismo `LicenseRow` del listado y permiso `VIEW_ADMIN_DATA`. Incluye estado
+con el mismo `LicenseRow` del listado. Incluye estado
 efectivo, caducidad, cupos, conexiones, tiendas y saldos separados por moneda.
 No aplica los filtros del listado: una licencia puede seguir abierta tras bloquearla
 o renovarla. El directorio conserva filtros y paginación en servidor; el frontend
 carga bloques de 25 al desplazarse y usa este detalle independiente para gestionar.
 
 `GET /api/v1/admin/license-workspace/activation-codes` recupera los códigos
-vigentes con `page`, `size` y filtro `companyId` opcional. Exige `ADD_COMPANY`, el
-mismo permiso que la pantalla Crear licencia; `VIEW_ADMIN_DATA` solo no permite
-leer los códigos. Devuelve `{items,page,size,total,totalPages,serverNow}` con empresa,
+vigentes con `page`, `size` y filtro `companyId` opcional. Requiere una sesión del personal SaaS,
+al igual que la pantalla Crear licencia. Devuelve `{items,page,size,total,totalPages,serverNow}` con empresa,
 tienda, referencia, código y `pairingExpiresAt`. Excluye códigos consumidos/caducados,
 licencias bloqueadas/vencidas y tiendas inactivas. La respuesta utiliza `no-store`;
 el frontend mantiene los secretos solo en memoria y vuelve a consultarlos al abrir.
@@ -235,10 +233,13 @@ revoca todas las sesiones del usuario. Los endpoints protegidos comprueban en
 cada petición que el usuario siga activo. HTTP Basic solo debe habilitarse durante una migración
 controlada.
 
-El frontend SaaS publicado es exclusivamente interno y utiliza `auth/admin/login`.
-Las cuentas de tiendas no acceden al portal. Las API tenant y sus concesiones por
-empresa/tienda se conservan para la futura aplicación cliente, con autorización
-independiente de las API administrativas.
+Las cuentas de personal SaaS activas comparten las capacidades del panel interno, incluidas las de
+empresas, tiendas, licencias y gestión del personal. Esta regla se aplica también a las cuentas con
+asignaciones históricas. `GET /api/v1/admin/me` devuelve el mismo conjunto de capacidades para cada
+cuenta de personal. `POST /api/v1/admin/users` recibe `username` y `password`. Los clientes antiguos
+que envíen `roleName` pueden seguir creando cuentas y ese campo se ignora. El alta y el listado de
+personal devuelven `username`, `active` y `createdAt`. Se protege la propia cuenta y la última
+cuenta activa frente a la desactivación. Las API de cliente aplican sus concesiones por empresa y tienda.
 
 ## Tests PostgreSQL reales
 
@@ -317,7 +318,7 @@ HMAC, idempotencia, timeouts y tratamiento de errores. Hasta incorporar y probar
 proveedores, `/actuator/health` queda fuera de servicio y Compose no abre el panel;
 rellenar las variables reservadas no cambia este estado.
 
-Los administradores con `MANAGE_OPERATIONS` pueden inspeccionar fallos sin exponer
+Las cuentas de personal SaaS activas pueden inspeccionar fallos sin exponer
 payloads ni secretos mediante
 `GET /api/v1/admin/outbox/failures?channel=SECURITY|INTEGRATION&limit=1..100&cursor=<opaco>`;
 la respuesta paginada contiene `items` y `nextCursor`. Un fallo puede
@@ -473,10 +474,9 @@ aplicarse antes de publicar el frontend que comprueba disponibilidad.
   Busca texto literal en nombre, empresa y email. Si `query` es una UUID
   canónica, busca exclusivamente esa referencia exacta (manteniendo los filtros),
   sin mezclar coincidencias del UUID en otros campos de contacto.
-  Leer exige el permiso existente `VIEW_ADMIN_DATA`.
+  La lectura requiere acceso de personal SaaS.
 - `PUT /api/v1/admin/demo-requests/{id}/status` recibe
-  `{ "status": "CONTACTED", "expectedStatus": "NEW" }`. Exige el permiso
-  existente `MANAGE_OPERATIONS` y devuelve el registro actualizado. Si otro
+  `{ "status": "CONTACTED", "expectedStatus": "NEW" }`. El personal SaaS puede actualizar el estado y recibe el registro actualizado. Si otro
   operador cambió el estado esperado, devuelve 409 `STATUS_CONFLICT`; actualizar
   la bandeja antes de volver a decidir. Repetir un cambio ya aplicado al mismo
   destino devuelve el registro sin duplicar el evento de auditoría. La auditoría
@@ -510,3 +510,200 @@ Docker). Como alternativa, configurar `TPV_TEST_DB_URL`, `TPV_TEST_DB_DRIVER`,
 `TPV_TEST_DB_USERNAME` y `TPV_TEST_DB_PASSWORD` para una base **exclusiva de pruebas**;
 nunca apuntarlos a una base de operación. Cada ejecución crea un esquema aleatorio
 `marketing_test_*` y solo introduce contactos sintéticos, sin notificaciones.
+
+## Solicitudes de cuenta de cliente
+
+El formulario envía `POST /api/v1/public/client-access-requests` con un
+`submissionId` UUID, usuario, contraseña, nombre completo, documento, correo,
+teléfono, dirección, código postal, ciudad, provincia, país, una lista de hasta
+20 referencias de tiendas escritas por el solicitante y notas opcionales.
+Puede enviar la lista vacía. La contraseña admite un mínimo de 12 caracteres y
+un máximo de 72 bytes UTF-8. La recepción devuelve HTTP 202 sin cuerpo. Los
+reintentos con el mismo UUID conservan el primer envío. Cada instancia limita
+los nuevos envíos a 30 por dirección remota en diez minutos y cinco por correo
+en una hora.
+
+El personal del SaaS consulta `GET /api/v1/admin/client-access-requests` y
+`GET /api/v1/admin/client-access-requests/{id}`. La bandeja admite `status`,
+`q`, `page` (desde cero), `size` (1 a 100), `sort` y `direction`.
+La solicitud pendiente conserva el hash bcrypt separado de las identidades
+autenticables. El operador contrasta los datos y elige las tiendas reales.
+
+- `POST /api/v1/admin/client-access-requests/{id}/approve` recibe
+  `{ "version": 0, "grants": [], "reason": "..." }`. El motivo es opcional.
+  Cada entrada en `grants` contiene una empresa (`companyId`) y la lista de
+  tiendas elegidas (`storeIds`). Se valida la pertenencia de cada tienda y
+  la capacidad del plan. Una lista vacía crea una cuenta que puede iniciar
+  sesión y consultar su lista de accesos vacía.
+- `POST /api/v1/admin/client-access-requests/{id}/reject` recibe
+  `{ "version": 0, "reason": "..." }` con motivo obligatorio.
+- Cada decisión registra el operador, fecha y resultado y elimina el hash de la
+  solicitud. La aprobación crea en la misma transacción la cuenta de cliente y
+  las asignaciones de tiendas con acceso de consulta y sin privilegios
+  empresariales. Un conflicto de versión o un usuario ocupado devuelve HTTP 409.
+- `GET /api/v1/admin/tenant-users` pagina las cuentas de todas las empresas,
+  incluidas las históricas y las que tienen cero asignaciones. Admite los
+  mismos parámetros de consulta salvo `status`. Para gestionar los accesos
+  después de aprobar, se utilizan las rutas de `/tenant-users/{username}/access`.
+
+La revisión es manual. Al aprobar o rechazar, la misma transacción registra un
+aviso de correo destinado al solicitante. El formulario acepta el campo opcional
+`locale` con valores `es`, `en` o `zh`. En su ausencia se utiliza español.
+Las aprobaciones incluyen el usuario y el enlace público del portal. Los
+rechazos incluyen el motivo indicado por el operador. Las notas internas de
+aprobación y las contraseñas se excluyen del mensaje. El personal SaaS y las
+integraciones autorizadas pueden seguir utilizando
+`POST /api/v1/admin/companies/{companyId}/tenant-users` para el alta manual
+de cuentas de cliente con asignaciones explícitas.
+
+La validación con PostgreSQL 17 desechable comprende siete pruebas en
+`ClientAccessRequestsPostgreSqlTest` y ocho en `TenantStoreAccessPostgreSqlTest`.
+Cubren la migración V86→V87, aprobación y rechazo simultáneos, colisiones de
+usuario, credenciales, búsqueda y aislamiento de tiendas, incluidas la asignación
+y la revocación durante una sesión abierta.
+
+### Correo SMTP del servidor central
+
+El personal del SaaS administra varias cuentas desde
+`GET` y `POST /api/v1/admin/smtp-settings/accounts`. Cada cuenta dispone de
+`GET`, `PUT` y `DELETE /api/v1/admin/smtp-settings/accounts/{id}`; el borrado
+exige `?version=N`. La configuración parte desactivada. Requiere un servidor, puerto, TLS implícito
+(`SSL`) o `STARTTLS` obligatorio y dirección de remitente. La URL HTTPS pública del
+portal es obligatoria solo al activar los avisos automáticos. Admite nombre de remitente y dirección de respuesta. Para autenticación
+se indica usuario y contraseña. La clave de instalación
+`TPV_SAAS_SECRET_ENCRYPTION_KEY` protege la contraseña con AES-GCM. La lectura
+devuelve `hasPassword`, `configured`, `testReady`, `cryptoReady` y `version`. `testReady`
+indica que el transporte y el remitente permiten una prueba; `configured` exige además
+la URL del portal para los avisos automáticos. El guardado exige
+la versión leída. Omitir la contraseña o enviar una cadena vacía conserva la
+existente. Para sustituir el servidor, el puerto, el modo TLS o el usuario
+con contraseña guardada, debe introducirse la nueva contraseña o borrarse con
+`clearPassword: true`.
+
+`POST /api/v1/admin/smtp-settings/test` acepta `{"recipient":"correo@dominio.es"}`
+y envía una prueba con el remitente y la conexión guardados (`testReady`). No exige
+URL pública ni activar avisos: permite comprobar Gmail desde localhost dejando
+`portalUrl` vacío y `enabled: false`. La prueba no modifica esos valores, no incluye
+enlace al portal y no consume ni entrega avisos pendientes. El límite compartido
+es global: una prueba cada 30 segundos. Un rechazo del servidor SMTP devuelve HTTP
+502 y un código de error sin credenciales ni la respuesta del proveedor.
+
+La prueba de una cuenta concreta usa `POST /smtp-settings/accounts/{id}/test`.
+La migración V91 conserva en la misma fila la configuración original, su versión
+y los secretos cifrados, asignándole un UUID estable. Los tokens OAuth y las
+comunicaciones existentes quedan vinculados a ese UUID. Añadir una cuenta no
+activa avisos. Eliminarla retira sus secretos, conserva el histórico y falla
+si tiene destinatarios manuales pendientes o en curso, o si es la cuenta de
+avisos y tiene avisos pendientes o en curso. Si era la cuenta de
+avisos, los desactiva; no elige otra cuenta automáticamente.
+
+`GET` y `PUT /api/v1/admin/smtp-settings` permanecen como compatibilidad para
+la cuenta predeterminada de avisos. La interfaz separa los avisos de la conexión
+y usa `PUT /api/v1/admin/smtp-settings/notices` con `accountId`, `enabled`,
+`portalUrl`, `version`, `defaultAccountId` y `defaultVersion`. La selección
+comprueba las versiones de ambas cuentas. Cambiar de remitente con avisos
+pendientes requiere además `confirmPending: true`. Los PUT de una cuenta
+concreta conservan la activación y la URL de avisos.
+
+La migración V88 empieza con la cola vacía y conserva las decisiones anteriores.
+Un proceso independiente recoge los nuevos avisos cada 15 segundos. Con SMTP
+desactivado, incompleto o con una contraseña indescifrable, los avisos quedan
+pendientes sin consumir intentos. Los errores de entrega se reintentan después
+de 1, 2, 4 y 8 minutos. Tras cinco intentos el estado pasa a `FAILED`. El detalle
+de la solicitud devuelve `delivery` con estado, número de intentos del ciclo,
+próximo intento, fecha de aceptación por el relay y último código de error.
+`POST /api/v1/admin/client-access-requests/{id}/retry-email` inicia otro ciclo
+para un aviso fallido y registra al operador en la auditoría.
+
+Cada solicitud tiene una sola entrada de cola y un `Message-ID` estable.
+Si el proveedor acepta el mensaje y se pierde la confirmación antes de registrar
+la entrega, SMTP puede volver a recibirlo tras recuperarse el proceso. El estado
+`DELIVERED` indica la aceptación por el relay. La acreditación de recepción en
+el buzón depende del proveedor.
+
+### Correo con autorización de Google y Microsoft
+
+Las cuentas de salida están disponibles para el personal del servidor central.
+Se puede conectar una cuenta de Google mediante Gmail API o una cuenta de Microsoft
+mediante SMTP con XOAUTH2 y STARTTLS obligatorio. El envío de prueba y los
+avisos de aprobación y rechazo utilizan la cuenta seleccionada para cada función.
+
+Para habilitar un proveedor, configura una aplicación web en ese proveedor y
+registra la URI externa exacta del SaaS en `TPV_SAAS_MAIL_OAUTH_REDIRECT_URI`.
+La ruta debe ser `/api/v1/mail-oauth/callback` bajo HTTPS. Para desarrollo
+local se admite HTTP con la dirección de loopback literal. Configura también
+`TPV_SAAS_SECRET_ENCRYPTION_KEY` y las variables correspondientes al proveedor.
+
+| Proveedor | Variables del registro | Permisos |
+| --- | --- | --- |
+| Google | `TPV_SAAS_MAIL_OAUTH_GOOGLE_CLIENT_ID`, `TPV_SAAS_MAIL_OAUTH_GOOGLE_CLIENT_SECRET` | Habilitar Gmail API, solicitar `https://www.googleapis.com/auth/gmail.send` y `https://www.googleapis.com/auth/userinfo.email` con acceso sin conexión. |
+| Microsoft | `TPV_SAAS_MAIL_OAUTH_MICROSOFT_CLIENT_ID`, `TPV_SAAS_MAIL_OAUTH_MICROSOFT_CLIENT_SECRET` | Autorizar `offline_access` y `https://outlook.office.com/SMTP.Send`. El buzón debe admitir SMTP AUTH mediante OAuth. |
+
+`GET /api/v1/admin/mail-oauth/status` indica qué registros están disponibles y
+qué cuenta está vinculada. `POST /api/v1/admin/mail-oauth/connect` recibe
+`provider` (`GOOGLE` o `MICROSOFT`), `email`, `version`, `enabled`,
+`fromName`, `replyTo` y `portalUrl`. Abre la `authorizationUrl` devuelta.
+Los endpoints de estado y desconexión aceptan `accountId` en la consulta y el
+de conexión en el cuerpo; al omitirlo se usa la cuenta predeterminada por
+compatibilidad. Cada flujo y sus tokens pertenecen exclusivamente a esa cuenta.
+La cuenta previa continúa operativa hasta que el proveedor confirma la nueva
+identidad. El servidor comprueba la versión y el operador antes de aplicar
+los nuevos datos y sustituir la contraseña o los tokens anteriores. La
+autorización caduca en diez minutos y es de un solo uso. Para conectar con el
+envío activo se necesita la URL HTTPS del portal. Para preparar una cuenta
+desactivada se puede dejar esa URL vacía.
+
+La configuración SMTP informa de `oauthProvider`. Una cuenta conectada admite
+cambios de activación, nombre visible, respuesta y portal mediante el PUT
+habitual. `DELETE /api/v1/admin/mail-oauth/connection?version=N` cancela la
+autorización pendiente, elimina los tokens y desactiva el remitente OAuth.
+Las acciones de conexión y desconexión se registran con la identidad del
+operador. Los tokens y el verificador PKCE se cifran con AES-GCM.
+
+Si se pierde la respuesta final de SMTP o Gmail después de que el proveedor
+haya podido aceptar el envío, el aviso pasa a `FAILED` con
+`SMTP_DELIVERY_UNCERTAIN`. Comprueba la entrega antes de solicitar un reintento
+manual. Las respuestas explícitas de rechazo mantienen el ciclo de reintentos.
+
+### Comunicaciones manuales a clientes
+
+El personal del SaaS puede guardar borradores y consultar el historial mediante
+`/api/v1/admin/communications`. Cada edición requiere la versión que abrió el
+operador. El servidor conserva el HTML saneado y genera una alternativa en
+texto que incluye los destinos de los enlaces. La vista previa, la prueba y el
+envío utilizan ese contenido. Cada borrador guarda `senderAccountId`; la prueba
+y el envío usan exclusivamente esa cuenta, sin sustitución automática. La prueba
+de un borrador comparte la espera global de 30 segundos con las pruebas de conexión.
+
+La audiencia incluye el contacto de `saas_company_operations`, los propietarios
+de `saas_company.owners` y los usuarios del portal con correo de solicitud aprobada,
+incluso si todavía carecen de tiendas. El directorio agrupa por correo recortado y
+sin distinguir mayúsculas, antes de buscar o paginar; conserva empresas y tipos
+de origen agregados. Los registros sin dirección válida no se pueden seleccionar;
+un buzón compartido está disponible si conserva al menos un origen habilitado.
+La revisión admite contactos seleccionados o el directorio completo y cuenta
+las omisiones y las direcciones duplicadas. El operador puede consultar la
+lista paginada de direcciones exactas antes de confirmar. El envío exige
+el identificador de revisión, la versión del borrador y el número revisado
+de destinatarios. V92 conserva los orígenes habilitados de cada buzón al revisarlo.
+Si ninguno conserva esa dirección, se exige revisar de nuevo; un origen añadido
+después no sustituye a los revisados. Antes de entregar cada mensaje se bloquea y
+comprueba su origen para proteger cambios concurrentes. Los sobres anteriores
+mantienen la comprobación de su usuario original. Un cambio de configuración del
+remitente anterior a la confirmación también requiere otra revisión.
+
+El trabajador procesa un sobre individual por dirección, con identificador
+estable y un ritmo compartido de una reserva por segundo. Cada sobre utiliza
+el transporte de salida guardado y requiere un remitente disponible. El nombre
+y dirección del remitente y la dirección de respuesta deben coincidir con los
+revisados. Ante `SMTP_SENDER_CHANGED`, restablece la identidad revisada antes
+de reintentar. El interruptor de avisos de solicitudes y la URL del portal
+solo afectan a dichos avisos.
+
+`SENT` registra la aceptación por el proveedor. Una desconexión ambigua o una
+interrupción del proceso con un envío en curso deja el sobre en `UNCERTAIN`.
+Después de dos minutos el trabajador recupera las reservas abandonadas en ese
+estado. El operador puede consultar los resultados individuales, comprobar la
+entrega y confirmar el riesgo de duplicado antes de reintentar. Los rechazos
+explícitos quedan en `FAILED` y también se reintentan de forma manual. Cancelar
+detiene los envíos pendientes y conserva el resultado de los ya iniciados.

@@ -42,7 +42,6 @@ async function setup(permissions = allPermissions) {
   page.on("pageerror", error => errors.push(error.message));
   const calls = [];
   let companiesFail = false;
-  const tenantUsers = [];
   const activationCodes = [];
   let stores = [storeA, storeB].map((id, i) => ({ id, companyId: i ? companyB : companyA, companyName: licenses[i].companyName,
     code: "001", internalCode: `350000${i + 1}`, name: `Tienda de prueba ${i + 1}`, active: true,
@@ -100,6 +99,15 @@ async function setup(permissions = allPermissions) {
         stores: stores.filter(s => s.companyId === l.companyId), billingScope: "COMPANY", companyBillingStatus: "PAGADO", companyDebt: [] }));
       return json(path === "/api/v1/admin/license-workspace" ? { items, page: 0, size: 25, total: 2, totalPages: 1 } : items.find(item => item.id === path.split("/").at(-1)));
     }
+    if (path === "/api/v1/admin/client-access-requests" && method === "GET") return json({ items: [], total: 0 });
+    if (path === "/api/v1/admin/tenant-users" && method === "GET") {
+      return json({ items: [{
+        id: "80000000-0000-4000-8000-000000000001", username: "client-demo",
+        fullName: "Cliente de prueba", email: "client-demo@example.test", active: true,
+        createdAt: "2026-09-20T10:00:00Z", companyCount: memberships.length,
+        storeCount: memberships.reduce((count, membership) => count + membership.stores.length, 0),
+      }], total: 1 });
+    }
     if (path.startsWith("/api/v1/admin/tenant-users/client-demo/access")) {
       if (method === "PUT") {
         const id = path.split("/").at(-1); memberships = memberships.filter(m => m.companyId !== id);
@@ -107,14 +115,6 @@ async function setup(permissions = allPermissions) {
           companyPrivileges: body.companyPrivileges, stores: body.storeIds.map(id => { const s = stores.find(s => s.id === id); return { storeId: id, code: s.code, name: s.name, internalCode: s.internalCode, active: s.active }; }) });
       }
       return json({ username: "client-demo", companies: memberships });
-    }
-    if (path.match(/\/companies\/[^/]+\/tenant-users$/)) {
-      const selectedCompany = path.split("/")[5];
-      if (method === "POST") {
-        const created = { companyId: selectedCompany, username: body.username, roleName: body.roleName, active: true, createdAt: "2026-09-20T10:00:00Z" };
-        tenantUsers.push(created); return json(created);
-      }
-      return json(tenantUsers.filter(user => user.companyId === selectedCompany));
     }
     if (method !== "GET") throw new Error(`Unexpected workspace mutation: ${method} ${path}`);
     return json([]);
@@ -238,54 +238,48 @@ try {
 
   assert.equal(licenses.some(license => license.companyId === companyWithoutLicense), false);
   failCompanies(true);
-  await nav(page, "Usuarios admin");
-  const tenantSection = page.locator("section.content-section").filter({ has: page.getByRole("heading", { name: "Usuarios cliente", exact: true }) });
-  await tenantSection.locator(".retry-error").waitFor();
-  assert.equal(await tenantSection.getByLabel("Empresa", { exact: true }).isDisabled(), true);
-  assert.equal(await tenantSection.getByRole("button", { name: "Crear usuario cliente", exact: true }).isDisabled(), true);
+  await nav(page, "Usuarios cliente");
+  await page.getByRole("tab", { name: "Usuarios cliente", exact: true }).click();
+  await page.getByRole("button", { name: "Acceso client-demo", exact: true }).click();
+  const accountDialog = page.getByRole("dialog", { name: "client-demo", exact: true });
+  const accessEditor = accountDialog.locator("section").filter({
+    has: page.getByRole("heading", { name: "Accesos a empresas y tiendas", exact: true }),
+  });
+  const accessCompany = accessEditor.getByRole("combobox", { name: /^Empresa/ });
+  const saveAccess = accessEditor.getByRole("button", { name: "Guardar", exact: true });
+  await accessEditor.locator(".retry-error").waitFor();
+  await accessCompany.waitFor();
+  assert.equal(await accessCompany.isDisabled(), true);
   failCompanies(false);
   await Promise.all([
     page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/admin/companies" && response.ok()),
-    tenantSection.getByRole("button", { name: "Reintentar", exact: true }).click(),
+    accessEditor.getByRole("button", { name: "Reintentar", exact: true }).click(),
   ]);
-  await tenantSection.getByLabel("Empresa", { exact: true }).selectOption(companyWithoutLicense);
-  const createTenant = page.getByRole("form", { name: "Crear usuario cliente", exact: true });
-  await createTenant.getByLabel("Usuario", { exact: true }).fill("unlicensed-company-user");
-  await createTenant.getByLabel("Contraseña", { exact: true }).fill("synthetic-password-only");
-  await createTenant.getByRole("button", { name: "Crear usuario cliente", exact: true }).click();
-  const createdTenant = await latestCall(calls, c => c.method === "POST" && c.path.endsWith(`${companyWithoutLicense}/tenant-users`));
-  assert.equal(createdTenant.body.username, "unlicensed-company-user");
-  await tenantSection.getByRole("cell", { name: "unlicensed-company-user", exact: true }).waitFor();
-  console.log("Workspace E2E: company-list error/retry and customer account creation without a license passed.");
-
-  failCompanies(true);
-  await nav(page, "Accesos a empresas y tiendas");
-  await page.getByLabel("Usuario cliente", { exact: true }).fill("client-demo");
-  await page.getByRole("button", { name: "Detalle", exact: true }).click();
-  await page.locator(".retry-error").waitFor();
-  assert.equal(await page.getByLabel("Empresa", { exact: true }).isDisabled(), true);
-  failCompanies(false);
-  await Promise.all([
-    page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/admin/companies" && response.ok()),
-    page.getByRole("button", { name: "Reintentar", exact: true }).click(),
-  ]);
-  await page.getByLabel(/^Empresa/).selectOption(companyB);
-  await page.getByLabel(/^Rol/).selectOption("MANAGER");
-  await page.getByLabel("Gestionar maestros", { exact: true }).check();
-  assert.equal(await page.getByLabel("Consultar maestros", { exact: true }).isChecked(), true);
-  await page.getByRole("checkbox", { name: /Tienda de prueba 2$/ }).check();
-  await page.getByRole("button", { name: "Guardar", exact: true }).click();
+  await accessEditor.getByRole("checkbox", { name: /Tienda editada$/ }).waitFor();
+  assert.equal(await accessCompany.inputValue(), companyA);
+  assert.equal(await accessEditor.getByRole("checkbox", { name: /Tienda editada$/ }).isChecked(), true);
+  await accessCompany.selectOption(companyB);
+  await accessEditor.getByLabel(/^Rol/).selectOption("MANAGER");
+  await accessEditor.getByLabel("Gestionar maestros", { exact: true }).check();
+  assert.equal(await accessEditor.getByLabel("Consultar maestros", { exact: true }).isChecked(), true);
+  await accessEditor.getByRole("checkbox", { name: /Tienda de prueba 2$/ }).check();
+  await saveAccess.click();
   const grant = await latestCall(calls, c => c.method === "PUT" && c.path.includes("/access/companies/"));
   assert.equal(grant.path.endsWith(companyB), true); assert.deepEqual(grant.body.storeIds, [storeB]);
   assert.deepEqual([...grant.body.companyPrivileges].sort(), ["READ_MASTERS", "WRITE_MASTERS"]);
-  await page.getByLabel("Empresa", { exact: true }).selectOption(companyWithoutLicense);
-  await page.getByLabel("Consultar empresa y licencias", { exact: true }).check();
-  await page.getByRole("checkbox", { name: /Tienda sin licencia$/ }).check();
-  await page.getByRole("button", { name: "Guardar", exact: true }).click();
+  await accessCompany.selectOption(companyWithoutLicense);
+  assert.equal(await accessEditor.getByLabel(/^Rol/).inputValue(), "VIEWER");
+  assert.equal(await accessEditor.getByLabel("Consultar maestros", { exact: true }).isChecked(), false);
+  await accessEditor.getByLabel("Consultar empresa y licencias", { exact: true }).check();
+  await accessEditor.getByRole("checkbox", { name: /Tienda sin licencia$/ }).check();
+  await saveAccess.click();
   const unlicensedGrant = await latestCall(calls, c => c.method === "PUT" && c.path.endsWith(`/access/companies/${companyWithoutLicense}`));
   assert.deepEqual(unlicensedGrant.body.storeIds, [storeWithoutLicense]);
   assert.deepEqual(unlicensedGrant.body.companyPrivileges, ["READ_COMPANY"]);
-  const accessEditor = page.locator("section.content-section").filter({ has: page.getByRole("heading", { name: "Accesos a empresas y tiendas", level: 2, exact: true }) });
+  await accessCompany.selectOption(companyB);
+  assert.equal(await accessEditor.getByLabel(/^Rol/).inputValue(), "MANAGER");
+  assert.equal(await accessEditor.getByLabel("Gestionar maestros", { exact: true }).isChecked(), true);
+  assert.equal(await accessEditor.getByLabel("Consultar empresa y licencias", { exact: true }).isChecked(), false);
   assert.equal(await accessEditor.locator('input[type="password"]').count(), 0);
   assert.equal(await page.getByText("TPV-SYNTHETIC-DEMO", { exact: true }).count(), 0);
   console.log("Workspace E2E: explicit grants without a license, company-list retry, privilege dependency and no installation secret passed.");
@@ -297,7 +291,7 @@ try {
 
   const viewer = await setup(["VIEW_ADMIN_DATA"]);
   assert.equal(await viewer.page.locator(".top-nav-list").getByRole("button", { name: "Crear licencia", exact: true }).count(), 0);
-  assert.equal(await viewer.page.locator(".top-nav-list").getByRole("button", { name: "Accesos a empresas y tiendas", exact: true }).count(), 0);
+  assert.equal(await viewer.page.locator(".top-nav-list").getByRole("button", { name: "Usuarios cliente", exact: true }).count(), 0);
   await nav(viewer.page, "Tiendas");
   await viewer.page.getByRole("cell", { name: "3500001", exact: true }).waitFor();
   assert.equal(await viewer.page.locator("main").getByRole("button", { name: /^(Crear|Editar|Desactivar|Activar)$/i }).count(), 0);
@@ -309,7 +303,9 @@ try {
   await viewer.page.keyboard.press("Escape");
   await viewerStoreDialog.waitFor({ state: "hidden" });
   await viewer.page.evaluate(() => { location.hash = "#/access"; });
-  assert.equal(await viewer.page.getByLabel("Usuario cliente", { exact: true }).count(), 0);
+  await viewer.page.getByText("No hay datos cargados.", { exact: true }).waitFor();
+  assert.equal(await viewer.page.getByRole("tab", { name: "Usuarios cliente", exact: true }).count(), 0);
+  assert.equal(viewer.calls.some(call => call.path === "/api/v1/admin/tenant-users"), false);
   await viewer.page.close();
   assert.deepEqual(errors, []);
   console.log("Workspace E2E: viewer mutation guards passed. All scenarios passed.");

@@ -1,0 +1,56 @@
+.smtp-settings { max-width: 960px; }
+.smtp-list-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.smtp-list-header h2 { margin: 0; font-size: 15px; }
+.smtp-account-list { list-style: none; margin: 14px 0 0; padding: 0; }
+.smtp-account-list > li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-top: 1px solid #d9e1e9; }
+.smtp-account-info { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; min-width: 0; }
+.smtp-account-info .smtp-address { padding: 0; border: 0; background: transparent; color: #173d64; font: inherit; font-weight: 600; text-align: start; overflow-wrap: anywhere; cursor: pointer; }
+.smtp-address:hover { text-decoration: underline; }
+.smtp-account-list > li > button { flex-shrink: 0; }
+.smtp-empty { margin: 20px 0 4px; }
+.smtp-dialog { width: min(700px, calc(100vw - 32px)); }
+.smtp-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
+.smtp-dialog .saas-workspace-dialog-header { flex-shrink: 0; }
+.smtp-dialog .saas-workspace-dialog-body { overflow: auto; min-height: 0; }
+.smtp-form > fieldset { padding: 0; margin: 0; border: 0; }
+.smtp-form .smtp-actions { justify-content: flex-end; }
+.smtp-dialog .control-input { min-height: 36px; }
+.smtp-advanced { padding-block: 8px; border-top: 1px solid #d9e1e9; }
+.smtp-advanced > .smtp-fields { margin-top: 12px; }
+.smtp-advanced > summary, .smtp-oauth > summary { cursor: pointer; color: #173d64; font-size: 13px; font-weight: 600; }
+.smtp-oauth { padding-top: 12px; margin-top: 12px; border-top: 1px solid #d9e1e9; }
+.smtp-oauth > p { margin-block: 10px; }
+.smtp-test-form, .smtp-notices-form { display: grid; gap: 14px; }
+.smtp-test-form > label, .smtp-notices-form > label { display: grid; gap: 5px; font-size: 13px; font-weight: 600; }
+.smtp-test-form > .smtp-checkbox, .smtp-notices-form > .smtp-checkbox { display: flex; align-items: center; gap: 7px; font-weight: 400; }
+.smtp-dialog .smtp-checkbox input { width: 15px; height: 15px; margin: 0; flex: none; }
+.smtp-test-form .smtp-actions { justify-content: space-between; margin: 0; }
+.smtp-test-address { overflow-wrap: anywhere; }
+.smtp-notices-form .smtp-actions { justify-content: flex-end; margin: 0; }
+.smtp-notices-form > p { margin: 0; }
+.smtp-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; align-items: end; min-width: 0; }
+.smtp-fields + .smtp-fields { margin-top: 12px; }
+.smtp-fields label { display: grid; gap: 5px; min-width: 0; }
+.smtp-fields .control-input { width: 100%; min-width: 0; }
+.smtp-fields .smtp-checkbox { display: flex; gap: 7px; align-items: center; min-height: 32px; }
+.smtp-fields .smtp-checkbox input { width: auto; }
+.smtp-fields .module-help { margin: 0; }
+.smtp-fields .smtp-password-help { margin-top: -5px; }
+.smtp-wide { grid-column: 1 / -1; }
+.smtp-fields > button { justify-self: start; }
+.smtp-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.smtp-fields .smtp-oauth-actions { margin: 0; }
+.smtp-fields p { margin: 0; }
+.smtp-help { display: grid; gap: 6px; }
+.smtp-help summary { cursor: pointer; width: fit-content; }
+.smtp-help ol { padding-inline-start: 24px; margin: 6px 0; }
+.smtp-help li + li { margin-top: 4px; }
+.smtp-help a { overflow-wrap: anywhere; }
+.smtp-help-link { width: fit-content; }
+.request-email-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.request-email-notice { margin-top: 8px; }
+@media (max-width: 620px) {
+  .smtp-fields { grid-template-columns: minmax(0, 1fr); }
+  .smtp-account-list > li { align-items: flex-start; flex-wrap: wrap; }
+  .smtp-account-info { flex-direction: column; align-items: flex-start; }
+}

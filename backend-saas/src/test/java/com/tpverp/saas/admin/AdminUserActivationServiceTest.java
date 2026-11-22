@@ -38,7 +38,7 @@ class AdminUserActivationServiceTest {
         var user = new SaasAdminUser(
                 UUID.randomUUID(), "inactive-admin", "old-hash", false, NOW);
         user.requirePasswordChange();
-        when(adminUsers.findByUsernameIgnoreCase("INACTIVE-admin"))
+        when(adminUsers.lockByUsername("INACTIVE-admin"))
                 .thenReturn(Optional.of(user));
         when(passwordHasher.hash("new-secure-password"))
                 .thenReturn("new-hash");
@@ -61,7 +61,7 @@ class AdminUserActivationServiceTest {
         var audit = mock(AdminAuditService.class);
         var sessions = mock(SaasSessionTokenStore.class);
         var service = service(adminUsers, passwordHasher, audit, sessions);
-        when(adminUsers.findByUsernameIgnoreCase("missing"))
+        when(adminUsers.lockByUsername("missing"))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.activateUser(
@@ -94,7 +94,7 @@ class AdminUserActivationServiceTest {
                 sessions,
                 mock(PlanLimitService.class), mock(com.tpverp.saas.access.TenantAccessService.class),
                 mock(JdbcTemplate.class),
-                mock(com.fasterxml.jackson.databind.ObjectMapper.class), mock(jakarta.validation.Validator.class),
+                mock(com.fasterxml.jackson.databind.ObjectMapper.class), mock(jakarta.validation.Validator.class), mock(org.springframework.transaction.support.TransactionTemplate.class),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 }

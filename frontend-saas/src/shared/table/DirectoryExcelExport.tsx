@@ -21,12 +21,29 @@ export function DirectoryExcelExport({ credentials, resource, filters, sort, com
   disabled?: boolean;
 }) {
   const { language } = useI18n();
+  const sortParameters = { sortBy: sort.key, sortDirection: sort.direction.toUpperCase() };
+  const parameters = resource === "companies" ? { language } : { ...filters, ...sortParameters, language };
+  const filename = `espos-${names[resource][language === "zh" ? 2 : language === "en" ? 1 : 0]}`;
+  const path = `/api/v1/admin/directories/export/${resource}${query(parameters)}`;
+  const body = resource === "companies" ? { companyIds: companyIds ?? [], filters, ...sortParameters } : undefined;
+  return <ExcelExportButton credentials={credentials} path={path} filename={filename} body={body} disabled={disabled} />;
+}
+
+export function ExcelExportButton({ credentials, path, filename, body, disabled = false, describeError = errorMessage }: {
+  credentials: Credentials;
+  path: string;
+  filename: string;
+  body?: unknown;
+  disabled?: boolean;
+  describeError?: (reason: unknown) => string;
+}) {
+  const { language } = useI18n();
   const l = (es: string, en: string, zh: string) => language === "zh" ? zh : language === "en" ? en : es;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const active = useRef<AbortController | null>(null);
   const scope = JSON.stringify([credentials.accessToken, credentials.mode, credentials.companyId,
-    credentials.username, language, resource, filters, sort, companyIds]);
+    credentials.username, language, path, body]);
   const currentScope = useRef(scope);
   currentScope.current = scope;
   useEffect(() => {
@@ -39,30 +56,26 @@ export function DirectoryExcelExport({ credentials, resource, filters, sort, com
     const controller = new AbortController();
     active.current = controller;
     const startedScope = scope;
-    const filename = `espos-${names[resource][language === "zh" ? 2 : language === "en" ? 1 : 0]}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const datedFilename = `${filename}-${new Date().toISOString().slice(0, 10)}.xlsx`;
     const current = () => active.current === controller && currentScope.current === startedScope;
     setBusy(true); setError(null);
     try {
-      const sortParameters = { sortBy: sort.key, sortDirection: sort.direction.toUpperCase() };
-      const parameters = resource === "companies" ? { language } : { ...filters, ...sortParameters, language };
-      const path = `/api/v1/admin/directories/export/${resource}${query(parameters)}`;
       const blob = await requestBinary(credentials, path, {
         signal: controller.signal,
-        ...(resource === "companies" ? { method: "POST" as const,
-          body: { companyIds: companyIds ?? [], filters, ...sortParameters } } : {}),
+        ...(body === undefined ? {} : { method: "POST", body }),
       });
       if (!current()) return;
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       try {
-        link.href = url; link.download = filename;
+        link.href = url; link.download = datedFilename;
         document.body.append(link); link.click();
       } finally {
         link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
     } catch (reason) {
-      if (current() && !controller.signal.aborted) setError(errorMessage(reason));
+      if (current() && !controller.signal.aborted) setError(describeError(reason));
     } finally {
       if (current()) { active.current = null; setBusy(false); }
     }

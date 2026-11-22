@@ -224,14 +224,12 @@ public class SupportInterventionService {
     private List<Assignee> assignees() {
         return jdbc.query("""
                 select u.id,u.username from saas_admin_user u where u.active
-                and exists(select 1 from saas_admin_user_role ur join saas_admin_role_permission rp on rp.role_id=ur.role_id
-                           where ur.user_id=u.id and rp.permission_code='MANAGE_SUPPORT_TICKETS')
                 order by lower(u.username),u.id
                 """, (rs,row)->new Assignee(rs.getObject("id",UUID.class),rs.getString("username")));
     }
     private Assignee technician(UUID id) {
         return assignees().stream().filter(user->user.id().equals(id)).findFirst()
-                .orElseThrow(()->badRequest("El tecnico debe estar activo y tener permiso para gestionar soporte"));
+                .orElseThrow(()->badRequest("El tecnico debe ser un usuario de personal activo"));
     }
     private static Timestamp timestamp(Instant value) { return value == null ? null : Timestamp.from(value); }
     private static Instant instant(ResultSet rs,String column) throws SQLException { var value=rs.getTimestamp(column); return value==null?null:value.toInstant(); }

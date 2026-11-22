@@ -2,19 +2,11 @@
 import { ApiError, extractApiErrorMessage } from "../lib/api";
 import { formatCurrency as formatCurrencyValue, formatQuantity as formatQuantityValue } from "../lib/frontend-runtime.mjs";
 import type { DashboardData, LicenseSummary, SyncEventView, TaxpayerType, FiscalAddress, FiscalStatusAdmin } from "../lib/types";
-import { SaasAdminRoleName, View, LicenseWorkspaceSection, GlobalSearchCriterion, GlobalSearchSuggestion } from "./types";
+import { View, LicenseWorkspaceSection, GlobalSearchCriterion, GlobalSearchSuggestion } from "./types";
 import { activeLocale, TRANSLATIONS } from "../i18n/index";
 import { availableView } from "../app/features";
 import { formatSaasDate, parsePickerDate, sameCalendarDay } from "../lib/utc-date-time.mjs";
 export { toUtcInput, parseUtcDateTime, utcInputToInstant, parsePickerDate, toDateInput, monthStart, addMonths, calendarDays, sameCalendarDay, addYears, addDays } from "../lib/utc-date-time.mjs";
-
-export const SAAS_ADMIN_ROLES: Array<{ value: SaasAdminRoleName; label: string; description: string }> = [
-  { value: "ADMIN", label: "ADMIN", description: "Gestion completa del SaaS" },
-  { value: "VIEWER", label: "VIEWER", description: "Solo consulta de datos admin" },
-  { value: "SUPPORT", label: "SUPPORT", description: "Soporte tecnico y codigos de enlace" },
-  { value: "BILLING", label: "BILLING", description: "Licencias, renovaciones y facturacion" },
-  { value: "AUDITOR", label: "AUDITOR", description: "Solo auditoria y lectura" }
-];
 
 export function emptyFiscalAddress(): FiscalAddress {
   return { linea1: "", ciudad: "", codigoPostal: "", provincia: "", pais: "ES" };
@@ -49,7 +41,7 @@ export function licenseStatusPresentation(
   return { label: t("valid"), tone: "ok" };
 }
 
-export const VALID_VIEWS: View[] = ["dashboard", "companies", "stores", "create-license", "failures", "access", "integrations", "licenses", "sync", "fiscal", "fiscal-policy", "users", "audit", "support", "health", "billing", "outbox", "reports", "demo-requests"];
+export const VALID_VIEWS: View[] = ["dashboard", "companies", "stores", "create-license", "failures", "access", "integrations", "smtp", "licenses", "sync", "fiscal", "fiscal-policy", "users", "client-users", "communications", "audit", "support", "health", "billing", "outbox", "reports", "demo-requests"];
 
 export function readViewFromLocation(): View {
   const candidate = window.location.hash.split("?")[0].replace(/^#\/?/, "").split("/")[0] as View;
@@ -71,12 +63,15 @@ export function viewTitle(view: View, t: (key: string) => string) {
     failures: t("failures"),
     access: t("access"),
     integrations: t("integrations"),
+    smtp: t("smtpSettings"),
     dashboard: t("dashboard"),
     licenses: t("activeLicenses"),
     sync: t("sync"),
     fiscal: t("fiscal"),
     "fiscal-policy": t("verifactuPolicy"),
     users: t("adminUsers"),
+    "client-users": t("tenantUsers"),
+    communications: t("communications"),
     support: t("supportCenter"),
     health: t("customerHealth"),
     billing: t("billing"),
@@ -287,29 +282,6 @@ export function operationalAlerts(data: DashboardData, t: (key: string) => strin
   });
 
   return alerts;
-}
-
-export function auditActionLabel(action: string) {
-  const labels: Record<string, string> = {
-    CREATE_COMPANY: "Empresa creada",
-    UPDATE_COMPANY: "Empresa actualizada",
-    CREATE_LICENSE: "Licencia creada",
-    RENEW_LICENSE: "Licencia renovada",
-    BLOCK_LICENSE: "Licencia bloqueada",
-    UNBLOCK_LICENSE: "Licencia desbloqueada",
-    REGENERATE_PAIRING_CODE: "Codigo de enlace regenerado",
-    CREATE_ADMIN_USER: "Usuario admin creado",
-    UPDATE_ADMIN_PASSWORD: "Password admin actualizada",
-    CHANGE_ADMIN_PASSWORD: "Password admin actualizada",
-        DELETE_ADMIN_USER: "Usuario admin desactivado",
-        DEACTIVATE_ADMIN_USER: "Usuario admin desactivado",
-        ACTIVATE_ADMIN_USER: "Usuario admin activado",
-        UPDATE_COMPANY_OPERATIONS: "Datos SaaS de empresa actualizados",
-    CREATE_SUPPORT_TICKET: "Ticket de soporte creado",
-    UPDATE_SUPPORT_TICKET: "Ticket de soporte actualizado",
-    UPDATE_VERIFACTU_ACTIVATION_POLICY: "Politica de activacion de VeriFactu actualizada"
-  };
-  return labels[action] ?? action.replaceAll("_", " ").toLowerCase().replace(/^\w/, (value) => value.toUpperCase());
 }
 
 export function ticketStatusLabel(status: string, t: (key: string) => string) {

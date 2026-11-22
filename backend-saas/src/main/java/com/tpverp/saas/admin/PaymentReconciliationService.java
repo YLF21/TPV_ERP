@@ -21,8 +21,11 @@ public class PaymentReconciliationService {
     private final JdbcTemplate jdbc;
     private final PaymentReconciliationAdapter adapter;
     private final Clock clock;
+    private final AdminAuditService audit;
 
-    public PaymentReconciliationService(JdbcTemplate jdbc, PaymentReconciliationAdapter adapter, Clock clock) {
+    public PaymentReconciliationService(JdbcTemplate jdbc, PaymentReconciliationAdapter adapter, Clock clock,
+            AdminAuditService audit) {
+        this.audit = audit;
         this.jdbc = jdbc;
         this.adapter = adapter;
         this.clock = clock;
@@ -86,6 +89,7 @@ public class PaymentReconciliationService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "No se pudo registrar la conciliacion por una restriccion de integridad", exception);
         }
+        audit.log("CREATE_PAYMENT_RECONCILIATION", "PAYMENT_RECONCILIATION", id.toString(), "companyId=" + companyId);
         return byId(id);
     }
 

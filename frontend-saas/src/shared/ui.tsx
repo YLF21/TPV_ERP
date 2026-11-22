@@ -75,6 +75,7 @@ export function Input({
   min,
   minLength,
   maxLength,
+  autoComplete,
   step,
   disabled
 }: {
@@ -86,6 +87,7 @@ export function Input({
   min?: number;
   minLength?: number;
   maxLength?: number;
+  autoComplete?: string;
   step?: string;
   disabled?: boolean;
 }) {
@@ -112,6 +114,7 @@ export function Input({
         min={min}
         minLength={minLength}
         maxLength={maxLength}
+        autoComplete={autoComplete}
         step={step}
         onChange={(event) => onChange(event.target.value)}
         required={required}

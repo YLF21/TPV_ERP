@@ -55,7 +55,7 @@ class PaymentReconciliationServiceTest {
     }
 
     private PaymentReconciliationService service(JdbcTemplate jdbc) {
-        return new PaymentReconciliationService(jdbc, mock(PaymentReconciliationAdapter.class), CLOCK);
+        return new PaymentReconciliationService(jdbc, mock(PaymentReconciliationAdapter.class), CLOCK, mock(AdminAuditService.class));
     }
 
     private CreatePaymentReconciliationRequest request(UUID paymentId) {

@@ -39,13 +39,18 @@ public class IntegrationSecretCipher {
         if (value == null || value.isBlank()) {
             return null;
         }
+        return encryptExact(value.trim());
+    }
+
+    /** Password-based protocols can treat leading and trailing spaces as significant. */
+    public String encryptExact(String value) {
         requireKey();
         try {
             byte[] iv = new byte[IV_LENGTH];
             random.nextBytes(iv);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(128, iv));
-            byte[] ciphertext = cipher.doFinal(value.trim().getBytes(StandardCharsets.UTF_8));
+            byte[] ciphertext = cipher.doFinal(value.getBytes(StandardCharsets.UTF_8));
             return PREFIX + Base64.getEncoder().encodeToString(
                     ByteBuffer.allocate(iv.length + ciphertext.length).put(iv).put(ciphertext).array());
         } catch (Exception exception) {

@@ -53,6 +53,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.server.ResponseStatusException;
@@ -83,6 +84,7 @@ public class AdminService {
     private final ObjectMapper mapper;
     private final Validator validator;
     private final Clock clock;
+    private final TransactionTemplate transactions;
     private final SecureRandom random = new SecureRandom();
 
     public AdminService(
@@ -103,7 +105,8 @@ public class AdminService {
             JdbcTemplate jdbc,
             ObjectMapper mapper,
             Validator validator,
-            Clock clock) {
+            TransactionTemplate transactions, Clock clock) {
+        this.transactions = transactions;
         this.companies = companies;
         this.stores = stores;
         this.licenses = licenses;
@@ -323,7 +326,7 @@ public class AdminService {
     @Transactional(readOnly = true)
     public AdminSessionResponse session() {
         String username = currentAdminUsername();
-        return new AdminSessionResponse(username, adminUsers.permissionCodes(username));
+        return new AdminSessionResponse(username, AdminPermission.ALL_CODES);
     }
 
     @Transactional(readOnly = true)
@@ -878,10 +881,10 @@ public class AdminService {
 
     @Transactional
     public void changePassword(String username, ChangeAdminPasswordRequest request) {
-        SaasAdminUser user = adminUsers.findByUsernameIgnoreCase(username)
+        SaasAdminUser user = adminUsers.lockByUsername(username)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario admin no existe"));
         user.changePasswordHash(passwordHasher.hash(request.password()));
-        sessions.revokeByUser("admin", user.getUsername());
+        invalidateStaffCredentials(user.getUsername());
         audit.log("CHANGE_ADMIN_PASSWORD", "ADMIN_USER", user.getUsername());
     }
 
@@ -902,43 +905,49 @@ public class AdminService {
         } catch (DataIntegrityViolationException exception) {
             throw usernameConflict(exception);
         }
-        int assigned = jdbc.update("""
-                insert into saas_admin_user_role(user_id, role_id)
-                select ?, id from saas_admin_role where upper(name) = upper(?)
-                """, user.getId(), request.roleName());
-        if (assigned == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Rol admin no existe");
-        }
         audit.log("CREATE_ADMIN_USER", "ADMIN_USER", user.getUsername());
-        return userResponse(user);
+        return new AdminUserResponse(user.getUsername(), user.isActive(), user.getCreatedAt());
     }
 
     @Transactional(readOnly = true)
     public List<AdminUserResponse> users() {
-        return adminUsers.findAll().stream()
-                .sorted(Comparator.comparing(SaasAdminUser::getUsername))
-                .map(AdminService::userResponse)
-                .toList();
+        return jdbc.query("""
+                select username, active, created_at from saas_admin_user order by username
+                """, (rs, row) -> new AdminUserResponse(rs.getString("username"), rs.getBoolean("active"),
+                        rs.getTimestamp("created_at").toInstant()));
     }
 
     @Transactional
     public void deactivateUser(String username) {
-        SaasAdminUser user = adminUsers.findByUsernameIgnoreCase(username)
+        if (username.equalsIgnoreCase(audit.currentUsername())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "No puedes desactivar tu propia cuenta");
+        }
+        // Serialize the last-active check across staff deactivations, including distinct target rows.
+        jdbc.execute("select pg_advisory_xact_lock(hashtextextended('saas_staff_deactivation', 0))");
+        SaasAdminUser user = adminUsers.lockByUsername(username)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario admin no existe"));
+        if (user.isActive() && !adminUsers.existsByActiveTrueAndIdNot(user.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Debe quedar una cuenta de personal activa");
+        }
         user.deactivate();
-        sessions.revokeByUser("admin", user.getUsername());
+        invalidateStaffCredentials(user.getUsername());
         audit.log("DEACTIVATE_ADMIN_USER", "ADMIN_USER", user.getUsername());
     }
 
     @Transactional
     public void activateUser(String username, ChangeAdminPasswordRequest request) {
-        SaasAdminUser user = adminUsers.findByUsernameIgnoreCase(username)
+        SaasAdminUser user = adminUsers.lockByUsername(username)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario admin no existe"));
         user.changePasswordHash(passwordHasher.hash(request.password()));
         user.passwordChanged();
         user.activate();
-        sessions.revokeByUser("admin", user.getUsername());
+        invalidateStaffCredentials(user.getUsername());
         audit.log("ACTIVATE_ADMIN_USER", "ADMIN_USER", user.getUsername());
+    }
+
+    private void invalidateStaffCredentials(String username) {
+        PasswordLifecycleService.invalidateResetTokens(jdbc, "admin", username, clock.instant());
+        sessions.revokeByUser("admin", username);
     }
 
     @Transactional(readOnly = true)
@@ -1401,14 +1410,17 @@ public class AdminService {
         try {
             String payload = buildLocalIntegrationPayload(endpoint);
             Instant completedAt = clock.instant();
-            jdbc.update("""
-                    update saas_integration_run
-                    set status = 'PENDING', payload = ?, completed_at = null, next_attempt_at = ?
-                    where id = ? and status = 'RUNNING'
-                    """, integrationSecrets.encrypt(payload), sqlTimestamp(completedAt), runId);
-
-            audit.log("EXECUTE_LOCAL_INTEGRATION", "INTEGRATION",
-                    integrationId + "; run=" + runId + "; key=" + key);
+            transactions.executeWithoutResult(transaction -> {
+                int queued = jdbc.update("""
+                        update saas_integration_run
+                        set status = 'PENDING', payload = ?, completed_at = null, next_attempt_at = ?
+                        where id = ? and status = 'RUNNING'
+                        """, integrationSecrets.encrypt(payload), sqlTimestamp(completedAt), runId);
+                if (queued != 1) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "La ejecución ha cambiado de estado");
+                }
+                audit.log("EXECUTE_LOCAL_INTEGRATION", "INTEGRATION", integrationId.toString(), "run=" + runId);
+            });
             return integration(integrationId);
         } catch (ResponseStatusException exception) {
             failIntegrationRun(runId, "VALIDATION_ERROR", "No se pudo generar la entrega local");
@@ -2519,14 +2531,10 @@ public class AdminService {
                 installation.getVersion());
     }
 
-    private static AdminUserResponse userResponse(SaasAdminUser user) {
-        return new AdminUserResponse(user.getUsername(), user.isActive(), user.getCreatedAt());
-    }
-
     private static TenantUserResponse tenantUserResponse(SaasTenantUser user) {
         return new TenantUserResponse(
                 user.getId(),
-                user.getCompany().getId(),
+                user.getCompany() == null ? null : user.getCompany().getId(),
                 user.getUsername(),
                 user.getRoleName(),
                 user.isActive(),

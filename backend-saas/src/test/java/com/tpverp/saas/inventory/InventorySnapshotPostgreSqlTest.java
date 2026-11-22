@@ -319,7 +319,7 @@ class InventorySnapshotPostgreSqlTest {
     }
 
     @Test
-    void internalReportPermissionAndNoStoreOnAllRoutes() throws Exception {
+    void allStaffCanReadUncachedInventoryReports() throws Exception {
         var a = site();
         var reads = admin("VIEW_ADMIN_DATA");
         var reports = admin("VIEW_REPORTS");
@@ -332,7 +332,7 @@ class InventorySnapshotPostgreSqlTest {
                             + "&storeId="
                             + a.store();
             mvc.perform(get(url)).andExpect(status().isUnauthorized());
-            mvc.perform(get(url).header("Authorization", reads)).andExpect(status().isForbidden());
+            mvc.perform(get(url).header("Authorization", reads)).andExpect(status().isOk());
             mvc.perform(get(url).header("Authorization", reports))
                     .andExpect(status().isOk())
                     .andExpect(header().string("Cache-Control", "no-store"));
@@ -590,7 +590,7 @@ class InventorySnapshotPostgreSqlTest {
     }
 
     @Test
-    void internalReportPermissionAlsoProtectsComparisonMovementsAndProvinceCoverage()
+    void allStaffCanReadComparisonsMovementsAndProvinceCoverage()
             throws Exception {
         var a = site();
         var first = empty(a);
@@ -614,7 +614,7 @@ class InventorySnapshotPostgreSqlTest {
                         "movements/ledger" + dates)) {
             String url = "/api/v1/admin/reports/" + path;
             mvc.perform(get(url)).andExpect(status().isUnauthorized());
-            mvc.perform(get(url).header("Authorization", read)).andExpect(status().isForbidden());
+            mvc.perform(get(url).header("Authorization", read)).andExpect(status().isOk());
             mvc.perform(get(url).header("Authorization", report))
                     .andExpect(status().isOk())
                     .andExpect(header().string("Cache-Control", "no-store"));

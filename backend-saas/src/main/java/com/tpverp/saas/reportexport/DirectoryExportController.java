@@ -1,5 +1,6 @@
 package com.tpverp.saas.reportexport;
 
+import com.tpverp.saas.admin.AdminAuditService;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.time.Instant;
@@ -10,8 +11,10 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/admin/directories/export")
 public class DirectoryExportController {
     private final DirectoryExportService service;
+    private final AdminAuditService audit;
 
-    DirectoryExportController(DirectoryExportService service) {
+    DirectoryExportController(DirectoryExportService service, AdminAuditService audit) {
+        this.audit = audit;
         this.service = service;
     }
 
@@ -19,6 +22,7 @@ public class DirectoryExportController {
     public void companies(@RequestBody DirectoryExportService.CompanySelection selection,
             @RequestParam(defaultValue = "es") String language, HttpServletResponse response) throws IOException {
         try (var report = service.companies(selection, language)) {
+            audit.log("EXPORT_SAAS_DIRECTORY", "DIRECTORY", "companies", "xlsx");
             ReportExportController.download(report, "companies", "xlsx", response);
         }
     }
@@ -30,6 +34,7 @@ public class DirectoryExportController {
             @RequestParam(defaultValue = "ASC") String sortDirection, @RequestParam(defaultValue = "es") String language,
             HttpServletResponse response) throws IOException {
         try (var report = service.stores(companyId, q, active, commercialConfiguration, sortBy, sortDirection, language)) {
+            audit.log("EXPORT_SAAS_DIRECTORY", "DIRECTORY", "stores", "xlsx");
             ReportExportController.download(report, "stores", "xlsx", response);
         }
     }
@@ -43,6 +48,7 @@ public class DirectoryExportController {
             @RequestParam(defaultValue = "es") String language, HttpServletResponse response) throws IOException {
         try (var report = service.licenses(companyId, storeId, q, status, expiresBefore, hasConnections,
                 billingStatus, sortBy, sortDirection, language)) {
+            audit.log("EXPORT_SAAS_DIRECTORY", "DIRECTORY", "licenses", "xlsx");
             ReportExportController.download(report, "licenses", "xlsx", response);
         }
     }

@@ -120,7 +120,7 @@ class DisasterRecoveryPostgreSqlTest {
         assertThatThrownBy(()->service.inspect(state.recoveryId(),new Proof(Base64.getEncoder().encodeToString(new byte[384])))).hasMessageContaining("PROOF_INVALID");
         String path="/api/v1/admin/tickets/"+first.ticket()+"/backup-recoveries/"+state.recoveryId()+"/wrapped-key";
         mvc.perform(get(path)).andExpect(status().isUnauthorized());
-        mvc.perform(get(path).header("Authorization",basic("viewer"))).andExpect(status().isForbidden());
+        mvc.perform(get(path).header("Authorization",basic("viewer"))).andExpect(status().isOk());
         mvc.perform(get(path).header("Authorization",basic("admin"))).andExpect(status().isOk());
     }
     @Test void cancelledGrantCannotDownloadOrActivate()throws Exception {

@@ -18,7 +18,9 @@ import { workspaceLabels } from "../i18n/workspace";
 import { StoresView } from "../features/stores/StoresView";
 import { LicenseWorkspace } from "../features/licenses/LicenseWorkspace";
 import { CreateLicenseView } from "../features/licenses/CreateLicenseView";
-import { TenantAccessEditor } from "../features/users/TenantAccessEditor";
+import { ClientUsersView } from "../features/users/ClientUsersView";
+import { SmtpSettingsView } from "../features/mail/SmtpSettingsView";
+import { CommunicationsView } from "../features/communications/CommunicationsView";
 import { FailuresView } from "../features/supervision/FailuresView";
 import { LanguageSelector, NavButton, EmptyState } from "../shared/ui";
 import { Dashboard } from "../features/dashboard/Dashboard";
@@ -39,12 +41,19 @@ import { appVersion } from "../lib/appVersion";
 
 import type { SupportTarget } from "../features/support/support-labels";
 
+function readAdminView(): View {
+  const view = readViewFromLocation();
+  return view === "access" ? "client-users" : view;
+}
+
 export default function App() {
   const [credentials, setCredentials] = useState<Credentials | null>(null);
   const [pendingPasswordChange, setPendingPasswordChange] = useState<{ credentials: Credentials; currentPassword: string } | null>(null);
   const [language, setLanguageState] = useState<Language>(() => readLanguage());
   setActiveLocale(localeFor(language));
-  const [activeView, setActiveView] = useState<View>(() => readViewFromLocation());
+  const [activeView, setActiveView] = useState<View>(readAdminView);
+  const navigationGuard = useRef<(() => boolean) | null>(null);
+  const activeViewRef = useRef(activeView);
   const [licenseDirectoryTitle, setLicenseDirectoryTitle] = useState("");
   const [supportTarget, setSupportTarget] = useState<SupportTarget | null>(null);
   const [returnFailureKey, setReturnFailureKey] = useState<string | undefined>();
@@ -60,7 +69,7 @@ export default function App() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchStores, setSearchStores] = useState<FiscalStatusAdmin[]>([]);
   const [navigationQuery, setNavigationQuery] = useState("");
-  const [expandedNavigationGroups, setExpandedNavigationGroups] = useState<Set<typeof navigationGroups[number]>>(() => new Set([navigation.find(item => item.view === readViewFromLocation())?.group ?? "home"]));
+  const [expandedNavigationGroups, setExpandedNavigationGroups] = useState<Set<typeof navigationGroups[number]>>(() => new Set([navigation.find(item => item.view === readAdminView())?.group ?? "home"]));
   const navigationSearchRef = useRef<HTMLInputElement | null>(null);
   const navigationListRef = useRef<HTMLElement | null>(null);
   const refreshRequestId = useRef(0);
@@ -94,6 +103,7 @@ export default function App() {
     [data, searchQuery, searchCriterion, searchStores]
   );
   const permissions = useMemo(() => new Set(session?.permissions ?? []), [session]);
+  const needsDashboardData = !["dashboard", "demo-requests", "reports", "audit", "users", "client-users", "communications", "smtp"].includes(activeView);
 
   function revealNavigationGroup(view: View) {
     const group = navigation.find(item => item.view === view)?.group;
@@ -103,9 +113,11 @@ export default function App() {
   function openSupport(target: SupportTarget) { navigate("support"); setSupportTarget(target); }
   function returnToFailure(key: string) { navigate("failures"); setReturnFailureKey(key); }
   function navigate(view: View) {
-    view = availableView(view);
+    view = view === "access" ? "client-users" : availableView(view);
     if (view === activeView) return;
+    if (navigationGuard.current && !navigationGuard.current()) return;
     setSupportTarget(null); setReturnFailureKey(undefined);
+    activeViewRef.current = view;
     setActiveView(view);
     revealNavigationGroup(view);
     const nextHash = `#/${view}`;
@@ -126,8 +138,14 @@ export default function App() {
         window.history.replaceState({ entry: "login" }, "", "#/login");
       }
       const requested = window.location.hash.split("?")[0].replace(/^#\/?/, "").split("/")[0];
+      if (readAdminView() !== activeViewRef.current && navigationGuard.current && !navigationGuard.current()) {
+        const view = activeViewRef.current;
+        window.history.pushState({ view }, "", `#/${view}`);
+        return;
+      }
       if (!isViewEnabled(requested)) window.history.replaceState({ view: "dashboard" }, "", "#/dashboard");
-      setActiveView(readViewFromLocation());
+      activeViewRef.current = readAdminView();
+      setActiveView(activeViewRef.current);
     };
     syncView();
     window.addEventListener("popstate", syncView);
@@ -176,11 +194,11 @@ export default function App() {
       if (window.location.hash === "#/login") {
         window.history.replaceState({ view: activeView }, "", `#/${activeView}`);
       }
-      if (!session || (activeView !== "dashboard" && activeView !== "demo-requests" && activeView !== "reports" && !data)) void refresh(credentials);
+      if (!session || (needsDashboardData && !data)) void refresh(credentials);
     }
   }, [credentials, activeView]);
 
-  async function refresh(activeCredentials = credentials): Promise<boolean> {
+  async function refresh(activeCredentials = credentials, clearNotice = true): Promise<boolean> {
     if (!activeCredentials) return false;
     const requestId = ++refreshRequestId.current;
     const isCurrent = () => isCurrentSessionRequest(
@@ -197,8 +215,8 @@ export default function App() {
         setSession(nextSession);
         setRefreshVersion(v => v + 1);
         // These independent modules must not wait for legacy dashboard data.
-        if (activeView === "dashboard" || activeView === "demo-requests" || activeView === "reports") {
-          setNotice(null);
+        if (!needsDashboardData) {
+          if (clearNotice) setNotice(null);
           return true;
         }
         const [dashboard, stores] = await Promise.all([
@@ -206,7 +224,8 @@ export default function App() {
           api.fiscalStatus(activeCredentials).catch(() => [] as FiscalStatusAdmin[])
         ]);
         if (!isCurrent()) return false;
-        setData(dashboard); setSearchStores(stores); setNotice(null);
+        setData(dashboard); setSearchStores(stores);
+        if (clearNotice) setNotice(null);
         return true;
     } catch (error) {
       if (!isCurrent()) return false;
@@ -305,6 +324,7 @@ export default function App() {
   }
 
   function logout() {
+    if (navigationGuard.current && !navigationGuard.current()) return;
     const activeCredentials = credentialsRef.current ?? pendingPasswordChangeRef.current?.credentials;
     refreshRequestId.current += 1;
     authRequestId.current += 1;
@@ -342,7 +362,7 @@ export default function App() {
   return (
     <I18nContext.Provider value={i18n}>
     <RefreshContext.Provider value={refreshVersion}>
-    <div className={`app-shell${["companies", "stores", "licenses"].includes(activeView) ? " app-shell--table-workspace" : ""}`}>
+    <div className={`app-shell${["companies", "stores", "licenses", "audit", "communications"].includes(activeView) ? " app-shell--table-workspace" : ""}`}>
       <header className="app-system-bar">
         <div className="system-product">
           <img className="system-wordmark" src={esposWordmark} alt="esPOS" width={94} height={30} draggable={false} title={`${i18n.t("saasVersion")} ${appVersion}`} />
@@ -424,12 +444,12 @@ export default function App() {
             <h1>{activeView === "licenses" && licenseDirectoryTitle ? licenseDirectoryTitle : title(activeView)}</h1>
             {activeNavigationItem?.description && <p className="module-help">{l(activeNavigationItem.description)}</p>}
           </div>
-          <button className="secondary-button" type="button" onClick={() => void refresh()} disabled={loading}>
+          {!["smtp", "communications"].includes(activeView) && <button className="secondary-button" type="button" onClick={() => void refresh()} disabled={loading}>
             {loading ? i18n.t("refreshing") : i18n.t("refresh")}
-          </button>
+          </button>}
         </header>
 
-        {data && ["users", "health", "billing", "support"].includes(activeView) && (
+        {data && ["health", "billing", "support"].includes(activeView) && (
           <div
             className="global-search guided-global-search"
             role="search"
@@ -505,6 +525,25 @@ export default function App() {
         ) : activeView === "demo-requests" ? (
           session ? <DemoRequestsView credentials={credentials} permissions={permissions} />
             : <EmptyState text={loading ? i18n.t("loadingSaas") : i18n.t("noLoadedData")} />
+        ) : activeView === "audit" ? (
+          session
+            ? permissions.has("VIEW_ADMIN_DATA")
+              ? <AuditView credentials={credentials} />
+              : <EmptyState text={i18n.t("auditReadForbidden")} />
+            : <EmptyState text={loading ? i18n.t("loadingSaas") : i18n.t("noLoadedData")} />
+        ) : activeView === "users" ? (
+          session ? <UsersView credentials={credentials} permissions={permissions} onNotice={setNotice} />
+            : <EmptyState text={loading ? i18n.t("loadingSaas") : i18n.t("noLoadedData")} />
+        ) : activeView === "client-users" ? (
+          session && permissions.has("MANAGE_TENANT_USERS")
+            ? <ClientUsersView credentials={credentials} onNotice={setNotice} />
+            : <EmptyState text={loading ? i18n.t("loadingSaas") : i18n.t("noLoadedData")} />
+        ) : activeView === "communications" ? (
+          session ? <CommunicationsView key={credentials.accessToken} credentials={credentials} navigationGuard={navigationGuard} onOpenSmtp={() => navigate("smtp")} />
+            : <EmptyState text={loading ? i18n.t("loadingSaas") : i18n.t("noLoadedData")} />
+        ) : activeView === "smtp" ? (
+          session ? <SmtpSettingsView key={credentials.accessToken} credentials={credentials} navigationGuard={navigationGuard} />
+            : <EmptyState text={loading ? i18n.t("loadingSaas") : i18n.t("noLoadedData")} />
         ) : !visibleData ? (
           <EmptyState text={loading ? i18n.t("loadingSaas") : i18n.t("noLoadedData")} />
         ) : (
@@ -513,7 +552,6 @@ export default function App() {
             {activeView === "licenses" && <LicenseWorkspace credentials={credentials} installations={data!.installations} permissions={permissions} onChanged={() => refresh()} onTitleChange={setLicenseDirectoryTitle} />}
             {activeView === "create-license" && <CreateLicenseView credentials={credentials} permissions={permissions} onChanged={() => refresh()} />}
             {activeView === "failures" && <FailuresView credentials={credentials} licenses={data!.licenses} permissions={permissions} onNavigate={navigate} onNotice={setNotice} initialFailureKey={returnFailureKey} onOpenSupport={openSupport} />}
-            {activeView === "access" && permissions.has("MANAGE_TENANT_USERS") && <TenantAccessEditor credentials={credentials} onNotice={setNotice} />}
             {activeView === "companies" && (
               <CompaniesView
                 credentials={credentials}
@@ -533,15 +571,6 @@ export default function App() {
             )}
             {activeView === "fiscal" && <FiscalStatusView credentials={credentials} licenses={data!.licenses} onNotice={setNotice} />}
             {activeView === "fiscal-policy" && <VerifactuPolicySection credentials={credentials} canManage={permissions.has("MANAGE_FISCAL_POLICY")} onChanged={() => void refresh()} onNotice={setNotice} />}
-            {activeView === "users" && (
-              <UsersView
-                credentials={credentials}
-                users={visibleData.users}
-                permissions={permissions}
-                onChanged={() => void refresh()}
-                onNotice={setNotice}
-              />
-            )}
             {activeView === "support" && (
               <SupportView credentials={credentials} licenses={visibleData.licenses} permissions={permissions} onNotice={setNotice} target={supportTarget} onReturnToFailure={returnToFailure} onClearTarget={() => setSupportTarget(null)} />
             )}
@@ -557,7 +586,6 @@ export default function App() {
             {activeView === "integrations" && (
               <ReportsView mode="integrations" credentials={credentials} licenses={data!.licenses} permissions={permissions} onNotice={setNotice} />
             )}
-            {activeView === "audit" && <AuditView audit={data!.audit} />}
           </>
         )}
       </main>

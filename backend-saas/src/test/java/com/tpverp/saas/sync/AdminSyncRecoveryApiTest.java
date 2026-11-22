@@ -95,12 +95,12 @@ class AdminSyncRecoveryApiTest {
     }
 
     @Test
-    void rejectsAnonymousAndReadOnlyUserWithoutChangingEvent() throws Exception {
+    void rejectsAnonymousAndUnknownUserWithoutChangingEvent() throws Exception {
         String before = fullEvent();
         String body = body(company.companyId(), hash(), "RECEIVED");
         mvc.perform(post(endpoint()).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isUnauthorized());
-        mvc.perform(post(endpoint()).header("Authorization", basic("viewer", "admin"))
-                .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mvc.perform(post(endpoint()).header("Authorization", basic("unknown", "admin"))
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isUnauthorized());
         assertThat(fullEvent()).isEqualTo(before);
         assertThat(auditCount()).isZero();
     }

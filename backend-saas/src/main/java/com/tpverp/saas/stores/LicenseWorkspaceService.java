@@ -132,7 +132,7 @@ public class LicenseWorkspaceService {
         return enrich(rows, now).stream().findFirst().orElseThrow(() -> missing("Licencia no encontrada"));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ActivationCodePage activationCodes(UUID companyId, int page, int size) {
         validatePage(page, size);
         Instant now = clock.instant();
@@ -161,6 +161,10 @@ public class LicenseWorkspaceService {
                         rs.getString("company_name"), rs.getObject("store_id", UUID.class), rs.getString("store_name"),
                         rs.getString("internal_code"), rs.getString("store_code"), rs.getObject("license_id", UUID.class),
                         rs.getString("reference"), rs.getString("code"), instant(rs, "expires_at")));
+        if (!rows.isEmpty()) {
+            audit.log("VIEW_ACTIVATION_CODES", "PAIRING_CODE", companyId == null ? "ALL" : companyId.toString(),
+                    "rows=" + rows.size());
+        }
         return new ActivationCodePage(rows, page, size, total, (int) Math.ceil((double) total / size), now);
     }
 

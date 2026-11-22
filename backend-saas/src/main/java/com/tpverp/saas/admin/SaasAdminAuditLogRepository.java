@@ -6,5 +6,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface SaasAdminAuditLogRepository extends JpaRepository<SaasAdminAuditLog, UUID> {
 
-    List<SaasAdminAuditLog> findTop100ByOrderByCreatedAtDesc();
+    List<SaasAdminAuditLog> findTop100ByOriginOrderByCreatedAtDescIdDesc(String origin);
 }

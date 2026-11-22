@@ -6,7 +6,10 @@ import { I18nContext, readLanguage, translate, localeFor, setActiveLocale, type 
 import { errorMessage } from "../shared/lib";
 import { TenantWorkspace } from "../features/tenant/TenantWorkspace";
 import { RequiredPasswordChangeScreen } from "../features/auth/AuthScreens";
+import { TenantAccessRequestScreen } from "../features/auth/TenantAccessRequestScreen";
 import { TenantLoginScreen } from "../features/auth/TenantLoginScreen";
+
+const isAccessRequestRoute = () => window.location.hash === "#/request-access";
 
 // Independent entry point: no administrative session or navigation is mounted here.
 export function TenantApp() {
@@ -17,6 +20,8 @@ export function TenantApp() {
   const [busy, setBusy] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [requestAccess, setRequestAccess] = useState(isAccessRequestRoute);
+  const [returningToLogin, setReturningToLogin] = useState(false);
   const generation = useRef(0);
   const current = useRef({ credentials, pending }); current.current = { credentials, pending };
   const i18n = useMemo(() => ({ language, setLanguage: (next: Language) => {
@@ -37,6 +42,21 @@ export function TenantApp() {
     });
     return () => { generation.current++; setUnauthorizedHandler(null); };
   }, [logout]);
+  useEffect(() => {
+    function routeChanged() {
+      const next = isAccessRequestRoute();
+      if (requestAccess === next) return;
+      if (next && !current.current.credentials && !current.current.pending) {
+        generation.current++;
+        setPassword(""); setBusy(false); setNotice(null);
+      }
+      setReturningToLogin(!next);
+      setRequestAccess(next);
+    }
+    window.addEventListener("hashchange", routeChanged);
+    routeChanged();
+    return () => window.removeEventListener("hashchange", routeChanged);
+  }, [requestAccess]);
 
   async function login(input: LoginCredentials) {
     const id = ++generation.current; setBusy(true); setNotice(null);
@@ -44,7 +64,7 @@ export function TenantApp() {
       const result = await api.tenantLogin(input);
       if (id !== generation.current) { void api.logout(result).catch(() => undefined); return; }
       if (result.mode !== "tenant") {
-        await api.logout(result);
+        void api.logout(result).catch(() => undefined);
         setNotice({ type: "error", text: label("Utiliza tu usuario de tienda. El acceso de administración está separado.", "Use your store account. Administration has a separate sign-in.", "请使用门店账号，管理员请从独立入口登录。") }); return;
       }
       const next: Credentials = { username: result.username, accessToken: result.accessToken, mode: result.mode };
@@ -69,7 +89,9 @@ export function TenantApp() {
   return <I18nContext.Provider value={i18n}>
     {credentials ? <TenantWorkspace credentials={credentials} onLogout={logout} onNotice={setNotice} />
       : pending ? <RequiredPasswordChangeScreen portal="tenant" username={pending.credentials.username} loading={busy} notice={notice} onSubmit={changePassword} onCancel={logout} />
+      : requestAccess ? <TenantAccessRequestScreen />
       : <TenantLoginScreen username={username} password={password} busy={busy} notice={notice}
+        focusHeading={returningToLogin}
         onUsernameChange={setUsername} onPasswordChange={setPassword}
         onSubmit={event => { event.preventDefault(); if (!busy) void login({ username: username.trim(), password }); }} />}
   </I18nContext.Provider>;

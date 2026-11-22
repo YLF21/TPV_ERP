@@ -39,8 +39,8 @@ class OperationalIncidentApiTest {
                 .andExpect(status().isUnauthorized());
 
         mvc.perform(post("/api/v2/admin/companies/{companyId}/member-wallet-bootstrap", companyId)
-                        .header("Authorization", basic("viewer", "admin")))
-                .andExpect(status().isForbidden());
+                        .header("Authorization", basic("unknown", "invalid")))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -76,10 +76,10 @@ class OperationalIncidentApiTest {
         String endpoint = "/api/v1/admin/operational-incidents/companies/"
                 + company.companyId() + "/member-category-bootstraps/" + residualId + "/cancel";
         mvc.perform(post(endpoint)
-                        .header("Authorization", basic("viewer", "admin"))
+                        .header("Authorization", basic("unknown", "invalid"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mvc.perform(post(endpoint)
                         .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)

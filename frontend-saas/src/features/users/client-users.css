@@ -1,0 +1,25 @@
+.client-users-section .segmented { margin-bottom: 12px; }
+.client-users-filters.toolbar { justify-content: flex-start; }
+.client-users-filters > label:first-child { flex: 1 1 220px; max-width: 520px; }
+.client-users-records { margin-top: 12px; }
+.client-users-records .saas-data-table-scroll { min-height: 42px; }
+.client-user-dialog { width: min(900px, calc(100vw - 32px)); }
+.client-user-detail { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 16px; margin: 0; }
+.client-user-detail dt { font-weight: 700; margin-bottom: 4px; }
+.client-user-detail dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.client-user-detail ul { margin: 0; padding-inline-start: 1.4em; }
+.client-user-detail-wide { grid-column: 1 / -1; }
+.client-user-panel { border-top: 1px solid #cddbea; margin-top: 16px; padding-top: 14px; }
+.client-user-panel h3, .client-user-panel h4 { margin: 0 0 8px; }
+.client-user-panel .toolbar { justify-content: flex-start; align-items: end; }
+.client-user-panel .toolbar > label { flex: 1 1 180px; }
+.client-user-panel .form-actions { flex-wrap: wrap; }
+.client-user-panel .table-wrap { max-height: 280px; overflow: auto; }
+.client-user-review-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.client-user-reason { display: grid; gap: 4px; }
+.client-user-reason textarea { min-height: 5em; resize: vertical; }
+.client-user-grants { margin: 8px 0; padding-inline-start: 1.4em; }
+.client-user-grants li { margin: 4px 0; }
+.client-user-grants button { margin-inline-start: 8px; }
+.client-user-dialog .permission-hint { margin: 12px 0; }
+@media (max-width: 640px) { .client-user-detail { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

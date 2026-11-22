@@ -18,8 +18,8 @@ public class SaasTenantUser {
     @Id
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "company_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id")
     private SaasCompany company;
 
     @Column(nullable = false, unique = true)

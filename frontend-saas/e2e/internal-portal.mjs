@@ -68,6 +68,7 @@ async function setup(loginResponses, { adminPermissions = permissions } = {}) {
       if (path === summaryPath + "/options") return json({ companies: [], stores: [] });
     if (path === summaryPath) return json(emptySummary);
       if (path === "/api/v1/admin/me") return json({ username: "INTERNAL_E2E", permissions: adminPermissions });
+      if (path === "/api/v1/admin/audit/search") return json({ items: [], page: 0, size: 50, total: 0 });
       if (path === "/api/v1/admin/sync/sales-summary") return json({ documentCount: 0, total: "0.00" });
       if (path === "/api/v1/admin/reports/advanced") return json({ companies: 0, invoices: 0, invoicedTotal: "0.00", paidTotal: "0.00", salesDocuments: 0, salesTotal: "0.00", inventoryMovements: 0, integrations: 0, activeIntegrations: 0 });
       if (path === "/api/v1/admin/billing-summary") return json({ totalCompanies: 0, paidCompanies: 0, pendingCompanies: 0, overdueCompanies: 0, renewalsNext30Days: 0, monthlyRecurringRevenue: "0.00", companies: [] });

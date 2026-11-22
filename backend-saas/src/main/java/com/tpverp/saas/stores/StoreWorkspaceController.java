@@ -3,10 +3,6 @@ package com.tpverp.saas.stores;
 import static com.tpverp.saas.stores.StoreWorkspaceApi.*;
 
 import jakarta.validation.Valid;
-import jakarta.servlet.http.HttpServletRequest;
-import com.tpverp.saas.admin.AdminAuditService;
-import com.tpverp.saas.admin.AdminPermission;
-import com.tpverp.saas.admin.SaasAdminUserRepository;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.*;
@@ -16,12 +12,10 @@ import org.springframework.web.bind.annotation.*;
 public class StoreWorkspaceController {
     private final StoreAdministrationService stores;
     private final LicenseWorkspaceService licenses;
-    private final SaasAdminUserRepository users;
 
-    public StoreWorkspaceController(StoreAdministrationService stores, LicenseWorkspaceService licenses, SaasAdminUserRepository users) {
+    public StoreWorkspaceController(StoreAdministrationService stores, LicenseWorkspaceService licenses) {
         this.stores = stores;
         this.licenses = licenses;
-        this.users = users;
     }
 
     @GetMapping("/stores")
@@ -45,8 +39,8 @@ public class StoreWorkspaceController {
     }
 
     @PutMapping("/stores/{storeId}")
-    public StoreRow updateStore(@PathVariable UUID storeId, @Valid @RequestBody UpdateStore request, HttpServletRequest http) {
-        return stores.update(storeId, request, hasPermission(http, AdminPermission.RENEW_LICENSE));
+    public StoreRow updateStore(@PathVariable UUID storeId, @Valid @RequestBody UpdateStore request) {
+        return stores.update(storeId, request, true);
     }
 
     @PostMapping("/stores/{storeId}/internal-code")
@@ -91,12 +85,7 @@ public class StoreWorkspaceController {
     }
 
     @PostMapping("/license-workspace")
-    public CreatedLicense createLicense(@Valid @RequestBody CreateLicense request, HttpServletRequest http) {
-        return licenses.create(request, hasPermission(http, AdminPermission.REGENERATE_PAIRING_CODE));
-    }
-
-    private boolean hasPermission(HttpServletRequest request, AdminPermission permission) {
-        Object username = request.getAttribute(AdminAuditService.USERNAME_ATTRIBUTE);
-        return username instanceof String value && users.permissionCodes(value).contains(permission.name());
+    public CreatedLicense createLicense(@Valid @RequestBody CreateLicense request) {
+        return licenses.create(request, true);
     }
 }

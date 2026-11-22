@@ -34,7 +34,7 @@ class SaasSessionTokenStoreTest {
         var second = issuingNode.issue("tenant", "customer");
         var other = issuingNode.issue("tenant", "other");
 
-        assertThat(issuingNode.revokeAllForToken(first.token())).isTrue();
+        assertThat(issuingNode.logout(first.token(), true)).isPresent();
         assertThat(issuingNode.username(first.token(), "tenant")).isEmpty();
         assertThat(issuingNode.username(second.token(), "tenant")).isEmpty();
         assertThat(issuingNode.username(other.token(), "tenant")).contains("other");

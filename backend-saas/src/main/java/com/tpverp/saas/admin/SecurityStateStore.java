@@ -9,7 +9,9 @@ interface SecurityStateStore {
 
     Optional<SessionState> findSession(String tokenHash);
 
-    Optional<SessionState> consumeSessionForRefresh(String tokenHash, Instant now);
+    Optional<SessionState> consumeActiveSession(String tokenHash, Instant now);
+
+    Optional<SessionState> consumeSessionsForLogoutAll(String tokenHash, Instant now);
 
     void deleteSession(String tokenHash);
 

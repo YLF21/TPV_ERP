@@ -3,7 +3,7 @@
 
 
 
-export type View = "dashboard" | "companies" | "stores" | "create-license" | "failures" | "access" | "integrations" | "licenses" | "sync" | "fiscal" | "fiscal-policy" | "users" | "audit" | "support" | "health" | "billing" | "outbox" | "reports" | "demo-requests";
+export type View = "dashboard" | "companies" | "stores" | "create-license" | "failures" | "access" | "integrations" | "smtp" | "licenses" | "sync" | "fiscal" | "fiscal-policy" | "users" | "client-users" | "communications" | "audit" | "support" | "health" | "billing" | "outbox" | "reports" | "demo-requests";
 
 export type Notice = { type: "success" | "error"; text: string } | null;
 
@@ -14,8 +14,6 @@ export type LicenseWorkspaceSection = "companies" | "licenses" | "verifactu";
 export type GlobalSearchCriterion = "company" | "store" | "taxId";
 
 export type GlobalSearchSuggestion = { key: string; value: string; label: string; detail: string };
-
-export type SaasAdminRoleName = "ADMIN" | "VIEWER" | "SUPPORT" | "BILLING" | "AUDITOR";
 
 export type TenantAssignableRoleName = "MANAGER" | "VIEWER" | "BILLING";
 

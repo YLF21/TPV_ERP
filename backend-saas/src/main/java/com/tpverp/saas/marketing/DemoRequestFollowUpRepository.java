@@ -19,22 +19,14 @@ public class DemoRequestFollowUpRepository {
     public List<DemoRequestAssignee> assignees() {
         return jdbc.query("""
                 select u.username from saas_admin_user u
-                where u.active = true and exists (
-                    select 1 from saas_admin_user_role ur
-                    join saas_admin_role_permission rp on rp.role_id = ur.role_id
-                    where ur.user_id = u.id and rp.permission_code = 'MANAGE_OPERATIONS'
-                ) order by lower(u.username), u.username
+                where u.active = true order by lower(u.username), u.username
                 """, (rs, index) -> new DemoRequestAssignee(rs.getString("username")));
     }
 
     public Optional<UUID> eligibleAssignee(String username) {
         return jdbc.query("""
                 select u.id from saas_admin_user u
-                where lower(u.username) = lower(?) and u.active = true and exists (
-                    select 1 from saas_admin_user_role ur
-                    join saas_admin_role_permission rp on rp.role_id = ur.role_id
-                    where ur.user_id = u.id and rp.permission_code = 'MANAGE_OPERATIONS'
-                )
+                where lower(u.username) = lower(?) and u.active = true
                 """, (rs, index) -> rs.getObject("id", UUID.class), username).stream().findFirst();
     }
 

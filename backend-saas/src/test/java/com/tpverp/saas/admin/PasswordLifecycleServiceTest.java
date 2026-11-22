@@ -40,7 +40,7 @@ class PasswordLifecycleServiceTest {
         passwords = new AdminPasswordHasher();
         sessions = new SaasSessionTokenStore(clock, new InMemorySecurityStateStore(), Duration.ofHours(8));
         service = new PasswordLifecycleService(admins, tenants, passwords, sessions, jdbc,
-                new IntegrationSecretCipher("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="), clock, Duration.ofMinutes(30));
+                new IntegrationSecretCipher("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="), clock, mock(AdminAuditService.class), Duration.ofMinutes(30));
     }
 
     @Test
@@ -48,7 +48,7 @@ class PasswordLifecycleServiceTest {
         SaasAdminUser user = new SaasAdminUser(UUID.randomUUID(), "ADMIN",
                 passwords.hash("old-password"), true, clock.instant());
         user.requirePasswordChange();
-        when(admins.findByUsernameIgnoreCase("ADMIN")).thenReturn(Optional.of(user));
+        when(admins.lockByUsername("ADMIN")).thenReturn(Optional.of(user));
         var first = sessions.issue("admin", "ADMIN");
         var second = sessions.issue("admin", "ADMIN");
 
@@ -80,7 +80,7 @@ class PasswordLifecycleServiceTest {
     void wrongCurrentPasswordDoesNotRevokeSessions() {
         SaasAdminUser user = new SaasAdminUser(UUID.randomUUID(), "secure-admin",
                 passwords.hash("old-password"), true, clock.instant());
-        when(admins.findByUsernameIgnoreCase("secure-admin")).thenReturn(Optional.of(user));
+        when(admins.lockByUsername("secure-admin")).thenReturn(Optional.of(user));
         var token = sessions.issue("admin", "secure-admin");
 
         assertThrows(ResponseStatusException.class,
@@ -92,7 +92,7 @@ class PasswordLifecycleServiceTest {
 
     @Test
     void recoveryRequestDoesNotRevealOrPersistAnythingForUnknownAccount() {
-        when(admins.findByUsernameIgnoreCase("missing")).thenReturn(Optional.empty());
+        when(admins.lockByUsername("missing")).thenReturn(Optional.empty());
         when(tenants.findByUsernameIgnoreCase("missing")).thenReturn(Optional.empty());
 
         service.requestReset(" Missing ", "127.0.0.1");

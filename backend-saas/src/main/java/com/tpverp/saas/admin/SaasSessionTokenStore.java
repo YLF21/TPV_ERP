@@ -80,22 +80,17 @@ public class SaasSessionTokenStore {
             return Optional.empty();
         }
         Instant now = clock.instant();
-        return state.consumeSessionForRefresh(hash(token), now)
+        return state.consumeActiveSession(hash(token), now)
                 .map(session -> new RefreshedSession(
                         session.realm(), session.username(), issue(session.realm(), session.username())));
     }
 
-    public boolean revokeAllForToken(String token) {
-        if (token == null || token.isBlank()) {
-            return false;
-        }
-        SecurityStateStore.SessionState session = state.findSession(hash(token)).orElse(null);
-        if (session == null || !session.expiresAt().isAfter(clock.instant())) {
-            revoke(token);
-            return false;
-        }
-        state.deleteSessionsByUser(session.realm(), session.username());
-        return true;
+    public Optional<SessionIdentity> logout(String token, boolean allSessions) {
+        if (token == null || token.isBlank()) return Optional.empty();
+        String tokenHash = hash(token);
+        var removed = allSessions ? state.consumeSessionsForLogoutAll(tokenHash, clock.instant())
+                : state.consumeActiveSession(tokenHash, clock.instant());
+        return removed.map(session -> new SessionIdentity(session.realm(), session.username(), session.expiresAt()));
     }
 
     public void revoke(String token) {

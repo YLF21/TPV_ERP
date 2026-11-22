@@ -1,5 +1,9 @@
 package com.tpverp.saas.admin;
 
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 public enum AdminPermission {
     ADD_COMPANY,
     RENEW_LICENSE,
@@ -18,5 +22,7 @@ public enum AdminPermission {
     MANAGE_OPERATIONAL_INCIDENTS,
     MANAGE_OPERATIONS,
     MANAGE_INTEGRATIONS,
-    VIEW_REPORTS
+    VIEW_REPORTS;
+
+    static final Set<String> ALL_CODES = Arrays.stream(values()).map(Enum::name).collect(Collectors.toUnmodifiableSet());
 }

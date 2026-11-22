@@ -37,7 +37,7 @@ class ReportStatisticsPostgreSqlTest extends CommercialProjectionTestSupport {
     @Autowired SaasSessionTokenStore sessions;
     @Autowired SaasAdminUserRepository admins;
 
-    @Test void bothEndpointsRequireInternalReportsPermissionAndReturnUncachedMinimalOptions() throws Exception {
+    @Test void bothEndpointsRequireInternalStaffAndReturnUncachedMinimalOptions() throws Exception {
         var site = site("Scope", "B91100010");
         String reportsToken = adminToken("stats-reports", "VIEW_REPORTS");
         String adminToken = adminToken("stats-read", "VIEW_ADMIN_DATA");
@@ -46,7 +46,7 @@ class ReportStatisticsPostgreSqlTest extends CommercialProjectionTestSupport {
                 "/api/v1/admin/reports/documents" + DATES)) {
             mvc.perform(get(path)).andExpect(status().isUnauthorized());
             mvc.perform(get(path).header("Authorization", tenant)).andExpect(status().isUnauthorized());
-            mvc.perform(get(path).header("Authorization", adminToken)).andExpect(status().isForbidden());
+            mvc.perform(get(path).header("Authorization", adminToken)).andExpect(status().isOk());
             mvc.perform(get(path).header("Authorization", reportsToken)).andExpect(status().isOk())
                     .andExpect(header().string("Cache-Control", "no-store"));
         }

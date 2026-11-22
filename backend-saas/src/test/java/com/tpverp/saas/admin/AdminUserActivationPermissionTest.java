@@ -15,7 +15,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 class AdminUserActivationPermissionTest {
 
     @Test
-    void activationRequiresManageAdminUsersPermission() throws Exception {
+    void activationRequiresAnActiveStaffAccount() throws Exception {
         var users = mock(SaasAdminUserRepository.class);
         var sessions = mock(SaasSessionTokenStore.class);
         var interceptor = new AdminAuthInterceptor(
@@ -26,22 +26,20 @@ class AdminUserActivationPermissionTest {
                 new LocalAdminCredentialPolicy(Set.of("test")),
                 false);
         var operator = new SaasAdminUser(
-                UUID.randomUUID(), "viewer", "unused", true, Instant.now());
+                UUID.randomUUID(), "viewer", "unused", false, Instant.now());
         when(sessions.username("viewer-token", "admin"))
                 .thenReturn(Optional.of("viewer"));
         when(users.findByUsernameIgnoreCase("viewer"))
                 .thenReturn(Optional.of(operator));
-        when(users.permissionCodes("viewer"))
-                .thenReturn(Set.of(AdminPermission.VIEW_ADMIN_DATA.name()));
         var request = activationRequest("viewer-token");
         var response = new MockHttpServletResponse();
 
         assertThat(interceptor.preHandle(request, response, new Object())).isFalse();
-        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getStatus()).isEqualTo(401);
     }
 
     @Test
-    void activationAllowsManageAdminUsersPermission() throws Exception {
+    void activeStaffCanManageOtherAccounts() throws Exception {
         var users = mock(SaasAdminUserRepository.class);
         var sessions = mock(SaasSessionTokenStore.class);
         var interceptor = new AdminAuthInterceptor(
@@ -57,8 +55,6 @@ class AdminUserActivationPermissionTest {
                 .thenReturn(Optional.of("administrator"));
         when(users.findByUsernameIgnoreCase("administrator"))
                 .thenReturn(Optional.of(operator));
-        when(users.permissionCodes("administrator"))
-                .thenReturn(Set.of(AdminPermission.MANAGE_ADMIN_USERS.name()));
         var request = activationRequest("admin-token");
         var response = new MockHttpServletResponse();
 
