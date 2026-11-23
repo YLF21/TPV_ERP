@@ -241,12 +241,14 @@ public class SalesInvoiceRectificationService {
             throw new IllegalArgumentException(
                     "Las promociones y cupones solo admiten rectificacion completa");
         }
-        return DocumentLine.special(
+        var line = DocumentLine.special(
                 draft, position, source.getNombre(),
                 source.getPrecioUnitario().negate(), source.isImpuestosIncluidos(),
                 source.getRegimenImpuesto(), source.getPorcentajeImpuesto(),
                 source.getPromotionId(), source.getPromotionVersionId(),
                 source.getPromotionalCouponId());
+        line.assignPromotionEngineVersion(source.getPromotionEngineVersion());
+        return line;
     }
 
     private static DocumentLine economicLine(
@@ -266,12 +268,14 @@ public class SalesInvoiceRectificationService {
             throw new IllegalArgumentException(
                     "Las lineas de promocion solo admiten una diferencia unitaria");
         }
-        return DocumentLine.special(
+        var line = DocumentLine.special(
                 draft, position, source.getNombre(),
                 request.unitPrice().multiply(BigDecimal.valueOf(request.quantity().signum())),
                 source.isImpuestosIncluidos(), source.getRegimenImpuesto(),
                 source.getPorcentajeImpuesto(), source.getPromotionId(),
                 source.getPromotionVersionId(), source.getPromotionalCouponId());
+        line.assignPromotionEngineVersion(source.getPromotionEngineVersion());
+        return line;
     }
 
     private void validateStockAvailability(

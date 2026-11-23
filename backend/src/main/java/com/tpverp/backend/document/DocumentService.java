@@ -1951,6 +1951,7 @@ public class DocumentService {
                     benefit.promotionVersionId(),
                     null);
             promotionLine.assignPromotionAffectedPositions(benefit.affectedPositions());
+            promotionLine.assignPromotionEngineVersion(PromotionEngine.CURRENT_VERSION);
             document.addLine(promotionLine);
             active.stream()
                     .filter(promotion -> promotion.id().equals(benefit.promotionVersionId()))

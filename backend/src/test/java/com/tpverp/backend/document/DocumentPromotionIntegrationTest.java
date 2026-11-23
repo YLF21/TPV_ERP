@@ -28,6 +28,7 @@ import com.tpverp.backend.party.MemberCategory;
 import com.tpverp.backend.party.Supplier;
 import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.promotion.Promotion;
+import com.tpverp.backend.promotion.BuyXPayYMode;
 import com.tpverp.backend.promotion.PromotionEngine;
 import com.tpverp.backend.promotion.PromotionRepository;
 import com.tpverp.backend.promotion.PromotionScope;
@@ -58,6 +59,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -283,6 +286,75 @@ class DocumentPromotionIntegrationTest {
                     assertThat(line.getPromotionAffectedPositions()).containsExactly(1);
                 });
         assertThat(quote.getTotal()).isEqualByComparingTo("21.40");
+    }
+
+    @ParameterizedTest
+    @EnumSource(BuyXPayYMode.class)
+    void ticketQuoteRespectsSameProductAndMixedTargetModes(BuyXPayYMode mode) {
+        var tax = new StoreTax(store.getId(), new BigDecimal("21.00"), true);
+        var first = realProduct("MODE-A", "Primero", "5.00", tax);
+        var second = realProduct("MODE-B", "Segundo", "2.00", tax);
+        var promotion = buyXPayY("2x1 modo", 2, 1);
+        promotion.configureBuyXPayY(new BigDecimal("2"), BigDecimal.ONE, mode);
+        org.mockito.Mockito.doReturn(Map.of(
+                first.getId(), new PromotionCatalogGateway.ProductSnapshot(first, tax),
+                second.getId(), new PromotionCatalogGateway.ProductSnapshot(second, tax)))
+                .when(promotionCatalog).products(any(), any());
+        when(promotionRepository.findByEmpresaIdAndEstado(store.getEmpresa().getId(), PromotionStatus.ACTIVE))
+                .thenReturn(List.of(promotion));
+
+        var quote = serviceWithPricing(new AuthoritativePromotionPricing(customerRepository, memberRepository))
+                .quoteTicket(command(CommercialDocumentType.TICKET, List.of(
+                        line(first.getId(), "1", "5.00"), line(second.getId(), "1", "2.00"))),
+                        null, authentication());
+
+        assertThat(quote.getTotal()).isEqualByComparingTo(mode == BuyXPayYMode.SAME_PRODUCT ? "7.00" : "5.00");
+        assertThat(quote.getLineas().stream().filter(item -> item.getLineType() == DocumentLineType.PROMOTION))
+                .hasSize(mode == BuyXPayYMode.SAME_PRODUCT ? 0 : 1);
+    }
+
+    @Test
+    void confirmedMixedTaxTicketGivesAwayCheapestFinalPriceAndKeepsFiscalBreakdown() {
+        var netTax = new StoreTax(store.getId(), new BigDecimal("21.00"), false);
+        var includedTax = new StoreTax(store.getId(), new BigDecimal("10.00"), true);
+        var first = realProduct("TAX-A", "Neto", "10.00", netTax, false);
+        var second = realProduct("TAX-B", "Final", "11.00", includedTax);
+        var promotion = buyXPayY("3x2 combinado", 3, 2);
+        org.mockito.Mockito.doReturn(Map.of(
+                first.getId(), new PromotionCatalogGateway.ProductSnapshot(first, netTax),
+                second.getId(), new PromotionCatalogGateway.ProductSnapshot(second, includedTax)))
+                .when(promotionCatalog).products(any(), any());
+        when(promotionRepository.findByEmpresaIdAndEstado(store.getEmpresa().getId(), PromotionStatus.ACTIVE))
+                .thenReturn(List.of(promotion));
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any())).thenReturn(Optional.empty());
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var ticket = serviceWithPricing(new AuthoritativePromotionPricing(customerRepository, memberRepository))
+                .createTicket(command(CommercialDocumentType.TICKET, List.of(
+                        taxLine(first.getId(), "2", "10.00", false, "21"),
+                        taxLine(second.getId(), "1", "11.00", true, "10"))),
+                        List.of(new PaymentCommand(cash.getId(), new BigDecimal("24.20"), true, null, null)),
+                        authentication());
+
+        assertThat(ticket.getTotal()).isEqualByComparingTo("24.20");
+        assertThat(ticket.getLineas().stream().filter(item -> item.getLineType() == DocumentLineType.PROMOTION))
+                .singleElement().satisfies(item -> {
+                    assertThat(item.getTotal()).isEqualByComparingTo("-11.00");
+                    assertThat(item.getBase()).isEqualByComparingTo("-10.00");
+                    assertThat(item.getImpuesto()).isEqualByComparingTo("-1.00");
+                    assertThat(item.getPorcentajeImpuesto()).isEqualByComparingTo("10.00");
+                    assertThat(item.getPromotionId()).isEqualTo(promotion.rootVersionId());
+                    assertThat(item.getPromotionVersionId()).isEqualTo(promotion.id());
+                    assertThat(item.getPromotionEngineVersion()).isEqualTo(PromotionEngine.CURRENT_VERSION);
+                    assertThat(item.getPromotionAffectedPositions()).containsExactlyInAnyOrder(1, 2);
+                });
+        assertThat(ticket.getLineas().stream().map(DocumentLine::getBase).reduce(BigDecimal.ZERO, BigDecimal::add))
+                .isEqualByComparingTo("20.00");
+        assertThat(ticket.getLineas().stream().map(DocumentLine::getImpuesto).reduce(BigDecimal.ZERO, BigDecimal::add))
+                .isEqualByComparingTo("4.20");
+        verify(stockGateway).confirm(ticket);
     }
 
     @Test
@@ -595,10 +667,19 @@ class DocumentPromotionIntegrationTest {
             String name,
             String salePrice,
             StoreTax tax) {
+        return realProduct(code, name, salePrice, tax, true);
+    }
+
+    private Product realProduct(
+            String code,
+            String name,
+            String salePrice,
+            StoreTax tax,
+            boolean taxesIncluded) {
         var product = new Product(
                 store.getId(), UUID.randomUUID(), null, tax.getId(),
                 ProductType.UNIT, DiscountType.NORMAL,
-                name, null, null, BigDecimal.ZERO, true);
+                name, null, null, BigDecimal.ZERO, taxesIncluded);
         product.replaceIdentifier(IdentifierType.CODIGO, code);
         product.setPrice(PriceTier.VENTA, new BigDecimal(salePrice));
         return product;
@@ -661,9 +742,13 @@ class DocumentPromotionIntegrationTest {
     }
 
     private DocumentLineCommand line(UUID productId, String quantity, String price) {
+        return taxLine(productId, quantity, price, true, "21");
+    }
+
+    private DocumentLineCommand taxLine(UUID productId, String quantity, String price, boolean included, String tax) {
         return new DocumentLineCommand(
                 productId, new BigDecimal(quantity), "P-1", "Producto", "VENTA",
-                new BigDecimal(price), BigDecimal.ZERO, true, "IVA", new BigDecimal("21"));
+                new BigDecimal(price), BigDecimal.ZERO, included, "IVA", new BigDecimal(tax));
     }
 
     private UsernamePasswordAuthenticationToken authentication() {

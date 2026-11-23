@@ -50,7 +50,7 @@ describe("PromotionWizard editing", () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps edited values after a conflict and lets the user retry or cancel", async () => {
+  it("keeps edited values after a conflict and lets the user retry or close", async () => {
     const promotion = editablePromotion();
     const onCreated = vi.fn();
     const onClose = vi.fn();
@@ -61,6 +61,9 @@ describe("PromotionWizard editing", () => {
       <PromotionWizard locale="es" session={session} editPromotion={promotion} onCreated={onCreated} onClose={onClose} />
     );
 
+    expect(screen.getByRole("button", { name: "Confirmar" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cerrar" })).toBeInTheDocument();
     expect(screen.getByRole("note")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: createTranslator("es")("promotion.field.type") })).toBeDisabled();
     fireEvent.change(screen.getByDisplayValue("Segunda unidad"), { target: { value: "Oferta modificada" } });
@@ -73,24 +76,42 @@ describe("PromotionWizard editing", () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ version: 4 })));
     expect(screen.getByDisplayValue("Oferta modificada")).toBeInTheDocument();
     expect(request).toHaveBeenCalledTimes(2);
-    fireEvent.click(screen.getByRole("button", { name: createTranslator("es")("common.cancel") }));
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("blocks repeated submit and disables Cancel while the request is pending", async () => {
+  it("blocks repeated submit and disables the header close button while the request is pending", async () => {
     const promotion = editablePromotion();
     const onCreated = vi.fn();
+    const onClose = vi.fn();
     let finish!: (value: PromotionView) => void;
     vi.mocked(apiRequest).mockReturnValue(new Promise<PromotionView>((resolve) => { finish = resolve; }));
-    const { container } = render(<PromotionWizard locale="es" session={session} editPromotion={promotion} onCreated={onCreated} />);
+    const { container } = render(<PromotionWizard locale="es" session={session} editPromotion={promotion} onCreated={onCreated} onClose={onClose} />);
     const form = container.querySelector("form")!;
     fireEvent.submit(form);
     fireEvent.submit(form);
 
     expect(apiRequest).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: createTranslator("es")("common.cancel") })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cerrar" })).toBeDisabled();
     finish({ ...promotion, version: 4 });
     await waitFor(() => expect(onCreated).toHaveBeenCalledOnce());
+  });
+
+  it("previews the lowest-priced units and submits the selected combination mode", async () => {
+    const promotion: PromotionView = {
+      ...editablePromotion(), type: "BUY_X_PAY_Y", buyQuantity: "3", payQuantity: "2",
+      discountPercent: null, buyXPayYMode: "SAME_PRODUCT"
+    };
+    vi.mocked(apiRequest).mockResolvedValue(promotion);
+    const { container } = render(<PromotionWizard locale="es" session={session} editPromotion={promotion} />);
+    expect(screen.getByRole("radio", { name: "Mismo producto" })).toBeChecked();
+    fireEvent.click(screen.getByRole("radio", { name: "Combinación de productos" }));
+    expect(screen.getByText(/se regalan las unidades de menor importe/i)).toBeInTheDocument();
+    fireEvent.submit(container.querySelector("form")!);
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/promotions/promo%2F1",
+      expect.objectContaining({ method: "PUT", body: expect.objectContaining({
+        promotion: expect.objectContaining({ buyXPayYMode: "MIXED_TARGETS", buyQuantity: "3", payQuantity: "2" })
+      }) })));
   });
 
   it("closes only the target picker on Escape", () => {

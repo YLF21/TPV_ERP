@@ -27,6 +27,8 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class TicketReturnValuationServiceTest {
 
@@ -236,6 +238,93 @@ class TicketReturnValuationServiceTest {
         assertThat(partial.remainingBasketValue()).isEqualByComparingTo("17.50");
         assertThat(total.refundableAmount()).isEqualByComparingTo("35.00");
         assertThat(total.remainingBasketValue()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void mixedTaxPartialReturnKeepsPromotionNetDiscountAsFinalSavingWithoutDuplicatingTax() {
+        var promotion = buyXPayY(3, 2);
+        var ticket = new CommercialDocument(storeId, UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 2), UUID.randomUUID(), BigDecimal.ZERO);
+        var netLine = new DocumentLine(ticket, productId, 1, 3, "NET", "Neto", "GENERAL",
+                new BigDecimal("10.00"), BigDecimal.ZERO, false, "IVA", new BigDecimal("21"));
+        var secondId = UUID.randomUUID();
+        var grossLine = new DocumentLine(ticket, secondId, 2, 1, "GROSS", "Final", "GENERAL",
+                new BigDecimal("20.00"), BigDecimal.ZERO, true, "IVA", new BigDecimal("10"));
+        ticket.addLine(netLine);
+        ticket.addLine(grossLine);
+        ticket.addLine(DocumentLine.special(ticket, 3, "PROMOCION 3x2", new BigDecimal("-10.00"),
+                false, "IVA", new BigDecimal("21"), promotion.rootVersionId(), promotion.id(), null));
+        ticket.getLineas().get(2).assignPromotionEngineVersion(PromotionEngine.CURRENT_VERSION);
+        var secondProduct = mock(Product.class);
+        when(secondProduct.getId()).thenReturn(secondId);
+        when(secondProduct.getDiscountType()).thenReturn(DiscountType.NORMAL);
+        when(products.findAllByStoreIdAndIdIn(any(), any())).thenReturn(List.of(product, secondProduct));
+        when(promotions.findAllById(any())).thenReturn(List.of(promotion));
+        when(targets.findByPromocionIdIn(any())).thenReturn(List.of());
+
+        var partial = service().value(ticket, Map.of(netLine.getId(), BigDecimal.ONE));
+        var total = service().value(ticket, Map.of(netLine.getId(), new BigDecimal("3"), grossLine.getId(), BigDecimal.ONE));
+
+        assertThat(ticket.getTotal()).isEqualByComparingTo("44.20");
+        assertThat(partial.selectedGross()).isEqualByComparingTo("12.10");
+        assertThat(partial.refundableAmount()).isEqualByComparingTo("12.10");
+        assertThat(partial.remainingBasketValue()).isEqualByComparingTo("32.10");
+        assertThat(partial.lostBenefits()).isZero();
+        assertThat(partial.taxAdjustments()).isEmpty();
+        assertThat(total.refundableAmount()).isEqualByComparingTo("44.20");
+        assertThat(total.remainingBasketValue()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2})
+    void returningUnrelatedProductKeepsOriginalPromotionEngineRules(int engineVersion) {
+        var promotion = buyXPayY(3, 2);
+        var ticket = new CommercialDocument(storeId, UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 2), UUID.randomUUID(), BigDecimal.ZERO);
+        var secondId = UUID.randomUUID();
+        var unrelatedId = UUID.randomUUID();
+        var first = new DocumentLine(ticket, productId, 1, 4, "A", "A", "GENERAL",
+                new BigDecimal("10"), BigDecimal.ZERO, true, "IVA", new BigDecimal("21"));
+        var second = new DocumentLine(ticket, secondId, 2, 2, "B", "B", "GENERAL",
+                new BigDecimal("9"), BigDecimal.ZERO, true, "IVA", new BigDecimal("10"));
+        var unrelated = new DocumentLine(ticket, unrelatedId, 3, 1, "C", "C", "GENERAL",
+                BigDecimal.ONE, BigDecimal.ZERO, true, "IVA", new BigDecimal("21"));
+        ticket.addLine(first);
+        ticket.addLine(second);
+        ticket.addLine(unrelated);
+        var oldDiscount = DocumentLine.special(ticket, 4, "PROMOCION 3x2", new BigDecimal("-10"),
+                true, "IVA", new BigDecimal("21"), promotion.rootVersionId(), promotion.id(), null);
+        ticket.addLine(oldDiscount);
+        if (engineVersion == 2) {
+            oldDiscount.assignPromotionEngineVersion(2);
+            var extraDiscount = DocumentLine.special(ticket, 5, "PROMOCION 3x2", new BigDecimal("-9"),
+                    true, "IVA", new BigDecimal("10"), promotion.rootVersionId(), promotion.id(), null);
+            extraDiscount.assignPromotionEngineVersion(2);
+            ticket.addLine(extraDiscount);
+        }
+        var secondProduct = mock(Product.class);
+        when(secondProduct.getId()).thenReturn(secondId);
+        when(secondProduct.getDiscountType()).thenReturn(DiscountType.NORMAL);
+        var unrelatedProduct = mock(Product.class);
+        when(unrelatedProduct.getId()).thenReturn(unrelatedId);
+        when(unrelatedProduct.getDiscountType()).thenReturn(DiscountType.NORMAL);
+        when(products.findAllByStoreIdAndIdIn(any(), any())).thenAnswer(invocation -> {
+            java.util.Collection<UUID> requested = invocation.getArgument(1);
+            return List.of(product, secondProduct, unrelatedProduct).stream()
+                    .filter(item -> requested.contains(item.getId())).toList();
+        });
+        when(promotions.findAllById(any())).thenReturn(List.of(promotion));
+        when(targets.findByPromocionIdIn(any())).thenReturn(List.of(
+                new PromotionTarget(promotion.id(), PromotionTargetType.PRODUCT, productId),
+                new PromotionTarget(promotion.id(), PromotionTargetType.PRODUCT, secondId)));
+
+        var result = service().value(ticket, Map.of(unrelated.getId(), BigDecimal.ONE));
+
+        assertThat(ticket.getTotal()).isEqualByComparingTo(engineVersion == 1 ? "49" : "40");
+        assertThat(result.refundableAmount()).isEqualByComparingTo("1");
+        assertThat(result.remainingBasketValue()).isEqualByComparingTo(engineVersion == 1 ? "48" : "39");
+        assertThat(result.lostBenefits()).isZero();
+        assertThat(result.taxAdjustments()).isEmpty();
     }
 
     private TicketReturnValuationService service() {

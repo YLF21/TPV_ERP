@@ -1,11 +1,13 @@
-import { sortProductsByCode } from "./productSearchOrdering";
-import { type ComponentProps, FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import { CaretDown, Info } from "@phosphor-icons/react";
+import { PromotionProductPicker, type PromotionCatalogProduct } from "./PromotionProductPicker";
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Info } from "@phosphor-icons/react";
 import { ApiError, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode, UserSession } from "../types";
 import { ErpSelect } from "./ErpSelect";
+import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { WindowCloseButton } from "./WindowCloseButton";
+import "./ProductCreateDialog.css";
 import "./PromotionWizard.css";
 import {
   assertValidPromotionDraft,
@@ -76,13 +78,6 @@ type PromotionNumericDraftField =
   | "couponValidFromDays"
   | "couponValidDays";
 
-type CatalogProduct = {
-  id: string;
-  code?: string | null;
-  barcode?: string | null;
-  name?: string | null;
-};
-
 type CatalogFamily = {
   id: string;
   name?: string | null;
@@ -107,6 +102,7 @@ export type PromotionTargetOption = {
   familyId?: string;
 };
 
+const targetPreviewLimit = 8;
 export const promotionProductsPath = "/products";
 export const promotionFamiliesPath = "/families";
 export const promotionMemberCategoriesPath = "/member-categories";
@@ -171,11 +167,12 @@ type PromotionWizardProps = {
   initialDraft?: PromotionDraft;
   editPromotion?: PromotionView;
   initialSection?: "basic" | "scope";
+  initialWarehouseId?: string;
   onClose?: () => void;
   onCreated?: (promotion: PromotionView) => void;
 };
 
-export function PromotionWizard({ locale, session, initialDraft, editPromotion, initialSection, onClose, onCreated }: PromotionWizardProps) {
+export function PromotionWizard({ locale, session, initialDraft, editPromotion, initialSection, initialWarehouseId, onClose, onCreated }: PromotionWizardProps) {
   const t = useMemo(() => createTranslator(locale), [locale]);
   const [draft, setDraft] = useState<PromotionDraft>(() =>
     editPromotion ? promotionDraftFromView(editPromotion) : initialDraft ?? createDefaultPromotionDraft()
@@ -183,12 +180,16 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
   const [validationErrors, setValidationErrors] = useState<PromotionValidationError[]>([]);
-  const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [products, setProducts] = useState<PromotionCatalogProduct[]>([]);
   const [families, setFamilies] = useState<CatalogFamily[]>([]);
   const [subfamilies, setSubfamilies] = useState<CatalogSubfamily[]>([]);
   const [memberCategories, setMemberCategories] = useState<MemberCategory[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
-  const [targetPickerOpen, setTargetPickerOpen] = useState(false);
+  const [targetPickerOpen, setTargetPickerOpen] = useState(initialSection === "scope" && draft.scope === "PRODUCT_LIST");
+  const [productLoadState, setProductLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [productRetry, setProductRetry] = useState(0);
+  const pickButton = useRef<HTMLButtonElement>(null);
+  const [reviewSelectedProducts, setReviewSelectedProducts] = useState(false);
   const [pickerTargetIds, setPickerTargetIds] = useState<string[]>([]);
   const [targetSearch, setTargetSearch] = useState("");
   const [subfamilyFamilyId, setSubfamilyFamilyId] = useState("");
@@ -198,15 +199,27 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
   const [couponValidUntilMode, setCouponValidUntilMode] = useState<CouponValidityMode>(() =>
     initialCouponMode(draft.couponValidUntilDate, draft.couponValidDays)
   );
-  const basicSectionRef = useRef<HTMLElement>(null);
-  const scopeSectionRef = useRef<HTMLElement>(null);
-  const productsSectionRef = useRef<HTMLElement>(null);
-  const productsLoaded = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const familyPickerRef = useRef<HTMLDivElement>(null);
+  const basicSectionRef = useRef<HTMLFieldSetElement>(null);
+  const scopeSectionRef = useRef<HTMLFieldSetElement>(null);
+  const productsSectionRef = useRef<HTMLFieldSetElement>(null);
   const savingRef = useRef(false);
   const familiesLoaded = useRef(false);
   const memberCategoriesLoaded = useRef(false);
   const subfamiliesLoaded = useRef(new Set<string>());
   const token = session.accessToken;
+
+  useEffect(() => {
+    const form = formRef.current;
+    if (targetPickerOpen) {
+      if (familyPickerRef.current) return activateModalFocusTrap(familyPickerRef.current as unknown as ModalFocusRoot, document);
+      return;
+    }
+    if (form?.closest('[role="dialog"]')) {
+      return activateModalFocusTrap(form as unknown as ModalFocusRoot, document, { restoreFocus: false });
+    }
+  }, [targetPickerOpen]);
 
   useEffect(() => {
     if (initialSection === "scope") {
@@ -219,7 +232,6 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
   }, [initialSection, editPromotion?.scope, initialDraft?.scope]);
 
   useEffect(() => {
-    productsLoaded.current = false;
     familiesLoaded.current = false;
     memberCategoriesLoaded.current = false;
     subfamiliesLoaded.current = new Set<string>();
@@ -231,17 +243,21 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
   }, [token]);
 
   useEffect(() => {
-    if (draft.scope === "PRODUCT_LIST" && !productsLoaded.current) {
-      productsLoaded.current = true;
-      setCatalogLoading(true);
-      void apiRequest<CatalogProduct[]>(promotionProductsPath, { token })
-        .then(setProducts)
-        .catch(() => {
-          productsLoaded.current = false;
-          setStatus(t("promotion.status.loadError"));
-        })
-        .finally(() => setCatalogLoading(false));
-    }
+    if (draft.scope !== "PRODUCT_LIST") return;
+    let current = true;
+    setProductLoadState("loading");
+    void apiRequest<PromotionCatalogProduct[]>(promotionProductsPath, { token })
+      .then(rows => {
+        if (current) {
+          setProducts(rows);
+          setProductLoadState("ready");
+        }
+      })
+      .catch(() => { if (current) setProductLoadState("error"); });
+    return () => { current = false; };
+  }, [draft.scope, token, productRetry]);
+
+  useEffect(() => {
     if ((draft.scope === "FAMILY" || draft.scope === "SUBFAMILY") && !familiesLoaded.current) {
       familiesLoaded.current = true;
       setCatalogLoading(true);
@@ -294,10 +310,6 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
       .finally(() => setCatalogLoading(false));
   }, [draft.customerSegment, token, t]);
 
-  const productOptions = useMemo(
-    () => sortProductsByCode(products, locale).map((product) => ({ id: product.id, label: productLabel(product) })),
-    [products, locale]
-  );
   const familyOptions = useMemo(
     () => families.map((family) => ({ id: family.id, label: family.name?.trim() || family.id })),
     [families]
@@ -310,24 +322,21 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
     })),
     [subfamilies]
   );
-  const currentTargetOptions = draft.scope === "PRODUCT_LIST"
-    ? productOptions
-    : draft.scope === "FAMILY"
+  const currentTargetOptions = draft.scope === "FAMILY"
       ? familyOptions
       : draft.scope === "SUBFAMILY"
         ? subfamilyOptions.filter((option) => option.familyId === subfamilyFamilyId)
         : [];
-  const knownTargetOptions = draft.scope === "PRODUCT_LIST"
-    ? productOptions
-    : draft.scope === "FAMILY"
-      ? familyOptions
-      : subfamilyOptions;
+  const targetLabels = useMemo(() => new Map(draft.scope === "PRODUCT_LIST"
+    ? products.map(product => [product.id, productLabel(product)] as const)
+    : (draft.scope === "FAMILY" ? familyOptions : subfamilyOptions).map(option => [option.id, option.label] as const)),
+    [draft.scope, products, familyOptions, subfamilyOptions]);
   const filteredTargetOptions = useMemo(
     () => filterPromotionTargetOptions(currentTargetOptions, targetSearch),
     [currentTargetOptions, targetSearch]
   );
-  const selectedTargetLabels = draft.targetIds.map(
-    (targetId) => knownTargetOptions.find((option) => option.id === targetId)?.label ?? targetId
+  const selectedTargetLabels = draft.targetIds.slice(0, draft.scope === "PRODUCT_LIST" ? targetPreviewLimit : undefined).map(
+    (targetId) => targetLabels.get(targetId) ?? targetId
   );
   const selectedCategory = memberCategories.find((category) => category.id === draft.memberCategoryId);
   const minimumAmountLabel = `${t("stock.minimum.title")} - ${t("stock.column.amount")}`;
@@ -373,7 +382,7 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
       : t(`promotion.segment.${draft.customerSegment}`);
     const targets = draft.scope === "SALE"
       ? t("promotion.create.saleScope")
-      : `${number(String(draft.targetIds.length))} ${t("promotion.create.selectedTargets")}`;
+      : t("promotion.create.selectedCount").replace("{count}", number(String(draft.targetIds.length)));
     return [
       [t("promotion.field.name"), draft.name.trim() || "—"],
       [t("promotion.field.type"), t(`promotion.type.${draft.type}`)],
@@ -409,7 +418,8 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
     setValidationErrors([]);
   }
 
-  function openTargetPicker() {
+  function openTargetPicker(selectedOnly = false) {
+    setReviewSelectedProducts(selectedOnly);
     setPickerTargetIds([...draft.targetIds]);
     setTargetSearch("");
     setTargetPickerOpen(true);
@@ -421,10 +431,15 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
       : [...current, targetId]);
   }
 
+  function closeTargetPicker() {
+    setTargetPickerOpen(false);
+    requestAnimationFrame(() => pickButton.current?.focus({ preventScroll: true }));
+  }
+
   function applyTargetSelection(targetIds = pickerTargetIds) {
     setDraft((current) => ({ ...current, targetIds: [...new Set(targetIds)] }));
     setValidationErrors([]);
-    setTargetPickerOpen(false);
+    closeTargetPicker();
   }
 
   function applyTargetOnDoubleClick(targetId: string) {
@@ -475,11 +490,11 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (savingRef.current) return;
+    if (savingRef.current || targetPickerOpen) return;
     const errors = validatePromotionDraft(draft);
     if (errors.length > 0) {
       setValidationErrors(errors);
-      setStatus(t("promotion.status.required"));
+      setStatus("");
       return;
     }
     savingRef.current = true;
@@ -508,47 +523,37 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
   }
 
   return (
-    <form className="promotion-wizard promotion-wizard-page" onSubmit={handleSubmit}>
-      <header className="promotion-create-heading">
-        <div className="promotion-create-heading__copy">
-          <span className="promotion-create-heading__eyebrow">{t("promotion.list.title")}</span>
-          <h2 id="promotion-create-title">{t(editPromotion ? "promotion.edit.title" : "promotion.create.title")}</h2>
-          <p>{t(editPromotion ? "promotion.edit.subtitle" : "promotion.create.subtitle")}</p>
-          {editPromotion && (editPromotion.used || (editPromotion.usageCount ?? 0) > 0) && (
-            <p role="note">{t("promotion.edit.usedNotice")}</p>
-          )}
-        </div>
-        <div className="promotion-create-heading__actions">
-          <button type="button" className="promotion-create-cancel erp-dialog-action-cancel" disabled={saving} onClick={onClose}>{t("common.cancel")}</button>
-          <button type="submit" className="promotion-create-save erp-dialog-action-confirm" disabled={saving}>
-            {t(saving ? "promotion.action.saving" : "promotion.action.save")}
-          </button>
-        </div>
+    <form ref={formRef} className="promotion-wizard promotion-wizard-page" onSubmit={handleSubmit}
+      onKeyDown={event => {
+        if (event.key === "Escape" && !event.defaultPrevented && !targetPickerOpen && !savingRef.current && onClose) {
+          event.preventDefault();
+          onClose();
+        }
+      }}>
+      <header className="product-editor-header">
+        <h2 id="promotion-create-title">{t(editPromotion ? "promotion.edit.title" : "promotion.create.title")}</h2>
+        {onClose && <WindowCloseButton aria-label={t("common.close")} onClick={onClose} disabled={saving} />}
       </header>
-
+      {editPromotion && (editPromotion.used || (editPromotion.usageCount ?? 0) > 0) && (
+        <p className="promotion-used-notice" role="note"><Info size={17} aria-hidden="true" />{t("promotion.edit.usedNotice")}</p>
+      )}
       <div className="promotion-create-layout">
         <div className="promotion-create-sections">
-          <section className="promotion-create-card" ref={basicSectionRef}>
-            <h3>1. {t("promotion.create.basic")}</h3>
+          <fieldset className="promotion-create-card" ref={basicSectionRef}>
+            <legend>{t("promotion.create.general")}</legend>
             <div className="promotion-create-fields">
               <label>
                 <span>{t("promotion.field.name")}<b className="promotion-required"> *</b></span>
-                <input required maxLength={160} value={draft.name}
+                <input autoFocus={initialSection !== "scope"} required maxLength={160} value={draft.name}
                   onChange={(event) => updateDraft("name", event.target.value)} />
               </label>
               <label>
                 <span>{t("promotion.field.type")}<b className="promotion-required"> *</b></span>
-                <PromotionFieldSelect aria-label={t("promotion.field.type")} value={draft.type}
+                <ErpSelect aria-label={t("promotion.field.type")} value={draft.type}
                   disabled={Boolean(editPromotion)}
                   options={promotionTypes.map((type) => ({ value: type, label: t("promotion.type." + type) }))}
                   onChange={(value) => updateDraft("type", value as PromotionType)} />
               </label>
-            </div>
-          </section>
-
-          <section className="promotion-create-card">
-            <h3>2. {t("promotion.create.validity")}</h3>
-            <div className="promotion-create-fields">
               <label>
                 <span>{t("promotion.field.startDate")}<b className="promotion-required"> *</b></span>
                 <input required type="date" value={draft.startDate}
@@ -560,20 +565,20 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
                   onChange={(event) => updateDraft("endDate", event.target.value)} />
               </label>
             </div>
-          </section>
+          </fieldset>
 
-          <section className="promotion-create-card" ref={scopeSectionRef}>
-            <h3>3. {t("promotion.create.application")}</h3>
+          <fieldset className="promotion-create-card" ref={scopeSectionRef}>
+            <legend>{t("promotion.create.application")}</legend>
             <div className="promotion-create-fields">
               <label>
                 <span>{t("promotion.field.scope")}<b className="promotion-required"> *</b></span>
-                <PromotionFieldSelect aria-label={t("promotion.field.scope")} value={draft.scope}
+                <ErpSelect aria-label={t("promotion.field.scope")} value={draft.scope}
                   options={promotionScopes.map((scope) => ({ value: scope, label: t("promotion.scope." + scope) }))}
                   onChange={(value) => updateScope(value as PromotionScope)} />
               </label>
               <label>
                 <span>{t("promotion.field.customerSegment")}<b className="promotion-required"> *</b></span>
-                <PromotionFieldSelect aria-label={t("promotion.field.customerSegment")} value={draft.customerSegment}
+                <ErpSelect aria-label={t("promotion.field.customerSegment")} value={draft.customerSegment}
                   options={promotionCustomerSegments.map((segment) => ({
                     value: segment, label: t("promotion.segment." + segment)
                   }))}
@@ -582,7 +587,7 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
               {draft.customerSegment === "MEMBER_CATEGORY" && (
                 <label>
                   <span>{t("promotion.field.memberCategoryId")}<b className="promotion-required"> *</b></span>
-                  <PromotionFieldSelect aria-label={t("promotion.field.memberCategoryId")} value={draft.memberCategoryId}
+                  <ErpSelect aria-label={t("promotion.field.memberCategoryId")} value={draft.memberCategoryId}
                     options={[
                       { value: "", label: t("common.select") },
                       ...memberCategories.map((category) => ({ value: category.id, label: categoryLabel(category) }))
@@ -591,10 +596,10 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
                 </label>
               )}
             </div>
-          </section>
+          </fieldset>
 
-          <section className="promotion-create-card">
-            <h3>4. {t("promotion.create.conditions")}</h3>
+          <fieldset className="promotion-create-card">
+            <legend>{t("promotion.create.rules")}</legend>
             <div className="promotion-create-fields">
               {(draft.type === "PURCHASE_THRESHOLD_COUPON" || draft.type === "PURCHASE_THRESHOLD_DISCOUNT")
                 && numberField("minimumAmount", minimumAmountLabel, { required: true })}
@@ -606,26 +611,23 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
                 && numberField("buyQuantity", t("promotion.field.buyQuantity"), {
                   min: "1", step: "1", required: true
                 })}
-              {draft.type === "SECOND_UNIT_PERCENT" && (
-                <p className="promotion-create-empty-condition">{t("promotion.create.noExtraConditions")}</p>
-              )}
-            </div>
-          </section>
-
-          <section className="promotion-create-card">
-            <h3>5. {t("promotion.create.benefit")}</h3>
-            <div className="promotion-create-fields">
               {draft.type === "BUY_X_PAY_Y" && (
                 <>
                   {numberField("payQuantity", t("promotion.field.payQuantity"), {
                     min: "0", step: "1", required: true
                   })}
-                  <label>
-                    <span>{t("promotion.field.buyXPayYMode")}</span>
-                    <PromotionFieldSelect aria-label={t("promotion.field.buyXPayYMode")} value={draft.buyXPayYMode}
-                      options={buyXPayYModes.map((mode) => ({ value: mode, label: buyXPayYModeLabel(mode, t) }))}
-                      onChange={(value) => updateDraft("buyXPayYMode", value as BuyXPayYMode)} />
-                  </label>
+                  <fieldset className="promotion-mode">
+                    <legend>{t("promotion.field.buyXPayYMode")}</legend>
+                    <div>
+                      {buyXPayYModes.map(mode => (
+                        <label key={mode}>
+                          <input type="radio" name="buyXPayYMode" value={mode}
+                            checked={draft.buyXPayYMode === mode} onChange={() => updateDraft("buyXPayYMode", mode)} />
+                          {buyXPayYModeLabel(mode, t)}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
                 </>
               )}
               {draft.type === "SECOND_UNIT_PERCENT"
@@ -653,7 +655,7 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
                   {numberField("couponMinimumAmount", minimumAmountLabel, { min: "0" })}
                   <label>
                     {t("salesReport.filter.dateFrom")}
-                    <PromotionFieldSelect
+                    <ErpSelect
                       aria-label={t("salesReport.filter.dateFrom")}
                       value={couponValidFromMode}
                       options={[
@@ -680,7 +682,7 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
                     })}
                   <label>
                     {t("salesReport.filter.dateTo")}
-                    <PromotionFieldSelect
+                    <ErpSelect
                       aria-label={t("salesReport.filter.dateTo")}
                       value={couponValidUntilMode}
                       options={[
@@ -710,33 +712,39 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
                 </>
               )}
             </div>
-          </section>
+          </fieldset>
 
-          <section className="promotion-create-card" ref={productsSectionRef}>
-            <h3>6. {t("promotion.create.products")}</h3>
+          <fieldset className="promotion-create-card" ref={productsSectionRef}>
+            <legend>{t("promotion.create.products")}</legend>
             <div className="promotion-create-products">
-              <p>{draft.scope === "SALE" ? t("promotion.create.saleScope") : t("promotion.create.selectTargets")}</p>
+              <p>{draft.scope === "SALE" ? t("promotion.create.saleScope")
+                : t("promotion.create.selectedCount").replace("{count}", String(draft.targetIds.length))}</p>
               {draft.scope !== "SALE" && (
-                <button type="button" className="promotion-create-pick" aria-haspopup="dialog" onClick={openTargetPicker}>
-                  {t("common.select")} ({draft.targetIds.length})
+                <button ref={pickButton} type="button" className="promotion-create-pick" aria-haspopup="dialog" onClick={() => openTargetPicker()}>
+                  {draft.scope === "PRODUCT_LIST" ? t("promotion.action.editProducts") : t("common.select")}
                 </button>
               )}
             </div>
-            {draft.scope !== "SALE" && (
-              <div className="promotion-create-target-list">
-                {selectedTargetLabels.length === 0
-                  ? t("promotion.create.noTargets")
-                  : selectedTargetLabels.map((label, index) => (
-                    <div key={draft.targetIds[index] + "-" + index}>{label}</div>
-                  ))}
-              </div>
+            {draft.scope !== "SALE" && selectedTargetLabels.length > 0 && (
+              <ul className="promotion-create-target-list">
+                {selectedTargetLabels.map((label, index) => <li key={draft.targetIds[index]}>{label}</li>)}
+                {draft.scope === "PRODUCT_LIST" && draft.targetIds.length > targetPreviewLimit && (
+                  <li><button type="button" className="promotion-show-all" onClick={() => openTargetPicker(true)}>
+                    {t("promotion.create.showAll").replace("{count}", String(draft.targetIds.length))}
+                  </button></li>
+                )}
+              </ul>
             )}
-          </section>
+          </fieldset>
         </div>
 
         <aside className="promotion-create-aside" aria-label={t("promotion.create.summary")}>
           <section className="promotion-create-summary-card">
             <h3>{t("promotion.create.summary")}</h3>
+            <div className="promotion-create-preview" aria-live="polite">
+              <strong>{t("promotion.create.preview")}</strong>
+              <p>{previewSentence}</p>
+            </div>
             <dl className="promotion-create-summary">
               {summaryRows.map(([label, value], index) => (
                 <div key={label + "-" + index}>
@@ -745,24 +753,35 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
                 </div>
               ))}
             </dl>
-            <div className="promotion-create-preview">
-              <strong><Info size={17} weight="regular" aria-hidden="true" />{t("promotion.create.preview")}</strong>
-              <p>{previewSentence}</p>
-            </div>
           </section>
         </aside>
       </div>
 
-      {status && <p className="promotion-status" role="status">{status}</p>}
-      {validationErrors.length > 0 && <span hidden>{validationErrors.join(",")}</span>}
+      <footer className="product-editor-footer erp-dialog-actions-row promotion-editor-footer">
+        <div className="promotion-editor-feedback" role="status">
+          {validationErrors.includes("BUY_PAY_RELATION_INVALID") ? t("promotion.create.buyPayInvalid")
+            : validationErrors.includes("TARGETS_REQUIRED") ? t("promotion.create.selectTargets")
+            : validationErrors.length ? t("promotion.status.required") : status}
+        </div>
+        <button type="submit" className="erp-dialog-action-confirm" disabled={saving}>
+          {t(saving ? "promotion.action.saving" : "common.confirm")}
+        </button>
+      </footer>
 
-      {targetPickerOpen && draft.scope !== "SALE" && (
-        <div className="filter-overlay stock-family-overlay" role="dialog" aria-modal="true" aria-labelledby="promotion-target-title"
+      {targetPickerOpen && draft.scope === "PRODUCT_LIST" && (
+        <PromotionProductPicker locale={locale} token={token} products={products}
+          productsLoading={productLoadState === "loading"} productsError={productLoadState === "error"}
+          onRetryProducts={() => setProductRetry(current => current + 1)} initialWarehouseId={initialWarehouseId}
+          initialSelectedOnly={reviewSelectedProducts} selectedProductIds={draft.targetIds} onApply={applyTargetSelection} onClose={closeTargetPicker} />
+      )}
+      {targetPickerOpen && (draft.scope === "FAMILY" || draft.scope === "SUBFAMILY") && (
+        <div ref={familyPickerRef} className="filter-overlay stock-family-overlay" role="dialog" aria-modal="true" aria-labelledby="promotion-target-title"
           onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
             if (event.key !== "Escape") return;
-            event.preventDefault();
             event.stopPropagation();
-            setTargetPickerOpen(false);
+            if (event.defaultPrevented) return;
+            event.preventDefault();
+            closeTargetPicker();
           }}>
           <section
             className="filter-dialog stock-family-dialog"
@@ -770,13 +789,13 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
           >
             <header className="filter-header">
               <h2 id="promotion-target-title">{t(`promotion.scope.${draft.scope}`)}</h2>
-              <WindowCloseButton aria-label={t("common.close")} onLight onClick={() => setTargetPickerOpen(false)} >{t("common.close")}</WindowCloseButton>
+              <WindowCloseButton aria-label={t("common.close")} onLight onClick={closeTargetPicker} >{t("common.close")}</WindowCloseButton>
             </header>
             <div className="promotion-form-grid" style={{ padding: 0, overflow: "visible" }}>
               {draft.scope === "SUBFAMILY" && (
                 <label>
                   {t("stock.column.family")}
-                  <PromotionFieldSelect
+                  <ErpSelect
                     aria-label={t("stock.column.family")}
                     value={subfamilyFamilyId}
                     options={families.map((family) => ({
@@ -788,7 +807,7 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
                 </label>
               )}
               <label className="report-search">
-                <input
+                <input autoFocus
                   type="search"
                   value={targetSearch}
                   aria-label={t("salesReport.search")}
@@ -800,7 +819,7 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
             <div className="stock-family-list">
               {catalogLoading && <p>{t("common.loading")}</p>}
               {!catalogLoading && filteredTargetOptions.length === 0 && (
-                <p>{t(draft.scope === "PRODUCT_LIST" ? "stock.bulkEdit.noMatches" : "stock.filter.noFamilies")}</p>
+                <p>{t("stock.filter.noFamilies")}</p>
               )}
               {filteredTargetOptions.map((option) => {
                 const selected = pickerTargetIds.includes(option.id);
@@ -822,7 +841,7 @@ export function PromotionWizard({ locale, session, initialDraft, editPromotion, 
                         onClick={() => togglePickerTarget(option.id)}
                         onDoubleClick={() => applyTargetOnDoubleClick(option.id)}
                       >
-                        <span className={draft.scope === "PRODUCT_LIST" ? "product-name-text" : ""}>{option.label}</span>
+                        <span>{option.label}</span>
                       </button>
                     </div>
                   </div>
@@ -847,7 +866,7 @@ function initialCouponMode(dateValue?: string, daysValue?: string): CouponValidi
   return daysValue ? "DAYS" : "NONE";
 }
 
-function productLabel(product: CatalogProduct) {
+function productLabel(product: PromotionCatalogProduct) {
   const name = product.name?.trim();
   const identifier = product.code?.trim() || product.barcode?.trim();
   if (identifier && name) {
@@ -863,7 +882,7 @@ function categoryLabel(category: MemberCategory) {
 }
 
 function buyXPayYModeLabel(mode: BuyXPayYMode, t: (key: string) => string) {
-  return mode === "SAME_PRODUCT" ? t("warehouseDocument.product") : t("salesReport.column.products");
+  return t("promotion.mode." + mode);
 }
 
 function promotionLocale(locale: LocaleCode) {
@@ -907,7 +926,8 @@ function promotionPreviewSentence(draft: PromotionDraft, locale: LocaleCode, t: 
 
   switch (draft.type) {
     case "BUY_X_PAY_Y":
-      if (draft.buyQuantity && draft.payQuantity) {
+      if (draft.payQuantity !== "" && Number.isInteger(Number(draft.payQuantity)) && Number.isInteger(Number(draft.buyQuantity))
+          && Number(draft.payQuantity) >= 0 && Number(draft.buyQuantity) > Number(draft.payQuantity)) {
         key = draft.buyXPayYMode === "SAME_PRODUCT"
           ? "promotion.create.previewBuySame" : "promotion.create.previewBuyMixed";
         values = { buy: number(draft.buyQuantity), pay: number(draft.payQuantity) };
@@ -962,8 +982,4 @@ function couponValiditySummary(draft: PromotionDraft, dayLabel: string, noEndLab
     ? formatPromotionDate(draft.couponValidUntilDate, locale)
     : draft.couponValidDays ? `${formatPromotionNumber(draft.couponValidDays, locale)} ${dayLabel}` : noEndLabel;
   return `${from} - ${until}`;
-}
-
-function PromotionFieldSelect(props: ComponentProps<typeof ErpSelect>) {
-  return <span className="promotion-field-select"><ErpSelect {...props} /><CaretDown size={13} aria-hidden="true" /></span>;
 }

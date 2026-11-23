@@ -44,6 +44,8 @@ public class DocumentLine {
     private UUID promotionId;
     @Column(name = "promocion_version_id")
     private UUID promotionVersionId;
+    @Column(name = "promocion_motor_version")
+    private Integer promotionEngineVersion;
     @Column(name = "cupon_promocional_id")
     private UUID promotionalCouponId;
     @Column(name = "documento_ajuste_id")
@@ -457,6 +459,21 @@ public class DocumentLine {
 
     public UUID getPromotionVersionId() {
         return promotionVersionId;
+    }
+
+    public Integer getPromotionEngineVersion() {
+        return promotionEngineVersion;
+    }
+
+    public void assignPromotionEngineVersion(Integer engineVersion) {
+        if (engineVersion == null) return;
+        if (lineType != DocumentLineType.PROMOTION || engineVersion != 2) {
+            throw new IllegalArgumentException("Version de motor de promocion no valida");
+        }
+        if (promotionEngineVersion != null && !promotionEngineVersion.equals(engineVersion)) {
+            throw new IllegalStateException("La version del motor de promocion es inmutable");
+        }
+        promotionEngineVersion = engineVersion;
     }
 
     public Set<Integer> getPromotionAffectedPositions() {

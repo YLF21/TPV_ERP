@@ -32,10 +32,39 @@ public record DocumentLineCommand(
         BigDecimal frozenTotal,
         String barcode,
         Boolean requiresSerialNumber,
-        Boolean discountEligible) {
+        Boolean discountEligible,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        Integer promotionEngineVersion) {
 
     private static final String HISTORICAL_OPEN_PRICE_RATE =
             "OPEN_PRICE";
+
+    public DocumentLineCommand(
+            UUID productoId, BigDecimal cantidad, String codigo, String nombre,
+            String tarifa, BigDecimal precioUnitario, BigDecimal descuento,
+            boolean impuestosIncluidos, String regimenImpuesto, BigDecimal porcentajeImpuesto,
+            DocumentLineType lineType, UUID promotionId, UUID promotionVersionId,
+            UUID promotionalCouponId, List<String> serialNumbers, boolean temporaryNameOverride,
+            boolean temporaryPriceOverride, TicketReturnService.ReturnSourceType returnSourceType,
+            String returnSourceCode, UUID returnSourceTicketId, UUID originalDocumentLineId,
+            UUID giftReceiptLineId, BigDecimal frozenBase, BigDecimal frozenTax, BigDecimal frozenTotal,
+            String barcode, Boolean requiresSerialNumber, Boolean discountEligible) {
+        this(productoId, cantidad, codigo, nombre, tarifa, precioUnitario, descuento,
+                impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
+                promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
+                temporaryNameOverride, temporaryPriceOverride, returnSourceType,
+                returnSourceCode, returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
+                frozenBase, frozenTax, frozenTotal, barcode, requiresSerialNumber, discountEligible, null);
+    }
+
+    DocumentLineCommand withPromotionEngineVersion(Integer engineVersion) {
+        return new DocumentLineCommand(productoId, cantidad, codigo, nombre, tarifa,
+                precioUnitario, descuento, impuestosIncluidos, regimenImpuesto, porcentajeImpuesto,
+                lineType, promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
+                temporaryNameOverride, temporaryPriceOverride, returnSourceType, returnSourceCode,
+                returnSourceTicketId, originalDocumentLineId, giftReceiptLineId, frozenBase, frozenTax,
+                frozenTotal, barcode, requiresSerialNumber, discountEligible, engineVersion);
+    }
 
     public DocumentLineCommand(
             UUID productoId,
@@ -98,7 +127,7 @@ public record DocumentLineCommand(
                 promotionalCouponId, serialNumbers, temporaryNameOverride,
                 temporaryPriceOverride, returnSourceType, returnSourceCode,
                 returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
-                frozenBase, frozenTax, frozenTotal, barcode, required, discountEligible);
+                frozenBase, frozenTax, frozenTotal, barcode, required, discountEligible, promotionEngineVersion);
     }
 
     DocumentLineCommand withDiscountEligible(Boolean eligible) {
@@ -108,7 +137,7 @@ public record DocumentLineCommand(
                 promotionalCouponId, serialNumbers, temporaryNameOverride,
                 temporaryPriceOverride, returnSourceType, returnSourceCode,
                 returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
-                frozenBase, frozenTax, frozenTotal, barcode, requiresSerialNumber, eligible);
+                frozenBase, frozenTax, frozenTotal, barcode, requiresSerialNumber, eligible, promotionEngineVersion);
     }
 
     public DocumentLineCommand(
@@ -240,7 +269,7 @@ public record DocumentLineCommand(
                 temporaryNameOverride, temporaryPriceOverride,
                 returnSourceType, returnSourceCode,
                 returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
-                null, null, null, barcode);
+                null, null, null, barcode).withPromotionEngineVersion(promotionEngineVersion);
     }
 
     public DocumentLineCommand withDiscount(BigDecimal discount, String rate) {
@@ -251,7 +280,7 @@ public record DocumentLineCommand(
                 temporaryNameOverride, temporaryPriceOverride,
                 returnSourceType, returnSourceCode,
                 returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
-                null, null, null, barcode);
+                null, null, null, barcode).withPromotionEngineVersion(promotionEngineVersion);
     }
 
     public DocumentLineCommand withBarcode(String value) {
@@ -262,7 +291,7 @@ public record DocumentLineCommand(
                 serialNumbers, temporaryNameOverride, temporaryPriceOverride,
                 returnSourceType, returnSourceCode, returnSourceTicketId,
                 originalDocumentLineId, giftReceiptLineId, frozenBase, frozenTax,
-                frozenTotal, value);
+                frozenTotal, value).withPromotionEngineVersion(promotionEngineVersion);
     }
 
     static String historicalOpenPriceRate() {
@@ -282,6 +311,7 @@ public record DocumentLineCommand(
         if (resolvedType != DocumentLineType.PRODUCT
                 || promotionId != null
                 || promotionVersionId != null
+                || promotionEngineVersion != null
                 || promotionalCouponId != null) {
             throw new IllegalArgumentException(
                     "Las lineas de promocion y cupon solo puede generarlas el backend");
@@ -323,7 +353,7 @@ public record DocumentLineCommand(
                 frozenAmounts ? line.getBase() : null,
                 frozenAmounts ? line.getImpuesto() : null,
                 frozenAmounts ? line.getTotal() : null,
-                line.getCodigoBarras());
+                line.getCodigoBarras()).withPromotionEngineVersion(line.getPromotionEngineVersion());
     }
 
     // Converts validated input into a line with a fiscal snapshot.
@@ -339,16 +369,20 @@ public record DocumentLineCommand(
                     throw new IllegalArgumentException(
                             "el ajuste historico necesita base, impuesto y total");
                 }
-                return DocumentLine.frozenSpecial(
+                var line = DocumentLine.frozenSpecial(
                         document, position, lineType, nombre, precioUnitario,
                         impuestosIncluidos, regimenImpuesto, porcentajeImpuesto,
                         promotionId, promotionVersionId, promotionalCouponId,
                         frozenBase, frozenTax, frozenTotal);
+                line.assignPromotionEngineVersion(promotionEngineVersion);
+                return line;
             }
-            return DocumentLine.special(
+            var line = DocumentLine.special(
                     document, position, nombre, precioUnitario, impuestosIncluidos,
                     regimenImpuesto, porcentajeImpuesto, promotionId,
                     promotionVersionId, promotionalCouponId, lineType);
+            line.assignPromotionEngineVersion(promotionEngineVersion);
+            return line;
         }
         if ((frozenBase == null) != (frozenTax == null)
                 || (frozenBase == null) != (frozenTotal == null)) {

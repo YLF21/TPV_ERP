@@ -1,0 +1,68 @@
+.promotion-excel-overlay.shared-excel-overlay { z-index: 1200; }
+
+.promotion-excel-dialog.shared-excel-dialog {
+  display: grid;
+  grid-template-rows: auto 33vh minmax(0, 1fr) auto auto;
+  background: #fff;
+  color: #001b3f;
+}
+
+.promotion-excel-dialog .shared-excel-config {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.promotion-excel-dialog .shared-excel-mapping.promotion-excel-mapping {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 14px;
+}
+
+.promotion-excel-mapping .shared-excel-mapping-row {
+  width: min(100%, 550px);
+  grid-template-columns: 30px minmax(120px, 1fr) minmax(160px, 1.5fr);
+}
+
+.promotion-excel-mapping select {
+  width: 100%;
+  height: 30px;
+  padding: 4px 7px;
+  border: 1px solid #6d8299;
+  background: #fffef0;
+  color: #001b3f;
+  font-weight: 800;
+}
+
+.promotion-excel-dialog .shared-excel-preview { overflow: auto; }
+.promotion-excel-dialog .shared-excel-results { overflow: auto; cursor: auto; user-select: text; }
+.promotion-excel-dialog .shared-excel-results table { width: 100%; }
+.promotion-excel-dialog .shared-excel-results p { padding: 12px; }
+.promotion-excel-pagination {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 34px;
+  border-top: 1px solid #bfccd9;
+  background: #e9eef4;
+  color: #001b3f;
+  font-weight: 800;
+}
+.promotion-excel-pagination button { min-height: 28px; }
+.promotion-excel-row-issue { background: #fff8f2; }
+.promotion-excel-dialog .shared-excel-bottom-tabs .promotion-excel-add {
+  margin-left: auto;
+  min-width: 170px;
+  background: #1d6faf;
+  color: #fff;
+}
+.promotion-excel-dialog .shared-excel-bottom-tabs .promotion-excel-add:disabled { opacity: .55; }
+
+@media (max-width: 640px) {
+  .promotion-excel-dialog .shared-excel-toolbar { gap: 5px; }
+  .promotion-excel-dialog .shared-excel-title span { display: none; }
+  .promotion-excel-dialog .shared-excel-bottom-tabs button { min-width: 105px; }
+}

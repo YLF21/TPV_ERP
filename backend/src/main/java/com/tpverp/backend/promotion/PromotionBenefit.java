@@ -1,6 +1,7 @@
 package com.tpverp.backend.promotion;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Set;
 import java.util.UUID;
 
@@ -31,5 +32,10 @@ public record PromotionBenefit(
             throw new IllegalArgumentException("promotionId y promotionVersionId son obligatorios");
         }
         affectedPositions = Set.copyOf(affectedPositions);
+    }
+
+    public BigDecimal payableAmount() {
+        return (taxIncluded ? amount : amount.multiply(BigDecimal.ONE.add(taxPercent.movePointLeft(2))))
+                .setScale(2, RoundingMode.HALF_UP);
     }
 }

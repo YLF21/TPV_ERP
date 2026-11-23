@@ -17,15 +17,28 @@ import org.springframework.stereotype.Service;
 @Service
 public class PromotionEngine {
 
+    public static final int CURRENT_VERSION = 2;
+
     private static final BigDecimal HUNDRED = new BigDecimal("100");
     private static final int MAX_EXACT_UNITS_PER_GROUP = 18;
     private static final int MAX_EXACT_CANDIDATES = 24;
     private static final int MAX_EXPANDED_UNITS = 10_000;
 
     public PromotionPreview preview(PromotionEvaluationRequest request) {
+        return preview(request, false);
+    }
+
+    public PromotionPreview previewLegacy(PromotionEvaluationRequest request) {
+        return preview(request, true);
+    }
+
+    private PromotionPreview preview(PromotionEvaluationRequest request, boolean legacy) {
         var candidates = new ArrayList<Candidate>();
         for (var promotion : request.promotions()) {
-            candidates.addAll(candidatesFor(promotion, request));
+            candidates.addAll(candidatesFor(promotion, request, legacy));
+        }
+        if (legacy) {
+            candidates.replaceAll(candidate -> new Candidate(candidate.benefits(), candidate.unitKeys(), false));
         }
 
         candidates.sort(Comparator
@@ -52,7 +65,7 @@ public class PromotionEngine {
                 .max()
                 .orElse(0) + 1;
         for (var benefit : preview.appliedPromotions()) {
-            result.add(DocumentLine.promotion(
+            var line = DocumentLine.promotion(
                     document,
                     position++,
                     "PROMOCION " + benefit.name(),
@@ -61,14 +74,17 @@ public class PromotionEngine {
                     benefit.taxRegime(),
                     benefit.taxPercent(),
                     benefit.promotionId(),
-                    null));
+                    null);
+            line.assignPromotionEngineVersion(CURRENT_VERSION);
+            result.add(line);
         }
         return result;
     }
 
     private static List<Candidate> candidatesFor(
             Promotion promotion,
-            PromotionEvaluationRequest request) {
+            PromotionEvaluationRequest request,
+            boolean legacy) {
         var lines = PromotionEligibility.eligibleLines(
                 promotion, request.lines(), request.targets());
         if (lines.isEmpty()) {
@@ -78,7 +94,7 @@ public class PromotionEngine {
             case PURCHASE_THRESHOLD_COUPON -> List.of();
             case PURCHASE_THRESHOLD_DISCOUNT -> thresholdDiscountCandidate(
                     promotion, lines, promotion.minimumAmount(), null);
-            case BUY_X_PAY_Y -> buyXPayYCandidates(promotion, lines);
+            case BUY_X_PAY_Y -> buyXPayYCandidates(promotion, lines, legacy);
             case SECOND_UNIT_PERCENT -> secondUnitPercentCandidates(promotion, lines);
             case FIXED_PACK_PRICE -> fixedPackPriceCandidates(promotion, lines);
             case QUANTITY_DISCOUNT -> thresholdDiscountCandidate(
@@ -158,18 +174,20 @@ public class PromotionEngine {
 
     private static List<Candidate> buyXPayYCandidates(
             Promotion promotion,
-            List<PromotionEvaluationLine> lines) {
+            List<PromotionEvaluationLine> lines,
+            boolean legacy) {
         var buy = wholeQuantity(promotion.buyQuantity());
         var pay = wholeQuantity(promotion.payQuantity());
-        if (buy <= 0 || pay < 0 || pay >= buy) {
+        if (buy <= 0 || pay < 0 || pay >= buy || (legacy && pay == 0)) {
             return List.of();
         }
         var grouped = groupedUnits(
                 lines,
-                promotion.buyXPayYMode() == BuyXPayYMode.SAME_PRODUCT);
+                promotion.buyXPayYMode() == BuyXPayYMode.SAME_PRODUCT,
+                legacy);
         var result = new ArrayList<Candidate>();
         for (var units : grouped.values()) {
-            result.addAll(buyXPayYCandidatesForGroup(promotion, units, buy, pay));
+            result.addAll(buyXPayYCandidatesForGroup(promotion, units, buy, pay, legacy));
         }
         return result;
     }
@@ -178,10 +196,15 @@ public class PromotionEngine {
             Promotion promotion,
             List<Unit> units,
             int buy,
-            int pay) {
+            int pay,
+            boolean legacy) {
         if (units.size() < buy) {
             return List.of();
         }
+        Function<List<Unit>, Candidate> createCandidate = legacy
+                ? pack -> unitCandidate(promotion, pack, pack.stream().sorted(Comparator.comparing(Unit::price))
+                        .limit(buy - pay).map(Unit::price).reduce(BigDecimal.ZERO, BigDecimal::add))
+                : pack -> buyXPayYCandidate(promotion, pack, buy - pay);
         if (units.size() <= MAX_EXACT_UNITS_PER_GROUP) {
             var combinations = new ArrayList<Candidate>();
             if (collectPackCombinations(
@@ -191,11 +214,7 @@ public class PromotionEngine {
                     0,
                     new ArrayList<>(),
                     combinations,
-                    pack -> pack.stream()
-                            .sorted(Comparator.comparing(Unit::price))
-                            .limit(buy - pay)
-                            .map(Unit::price)
-                            .reduce(BigDecimal.ZERO, BigDecimal::add))) {
+                    createCandidate)) {
                 return combinations;
             }
         }
@@ -203,11 +222,28 @@ public class PromotionEngine {
                 promotion,
                 units,
                 buy,
-                pack -> pack.stream()
-                        .sorted(Comparator.comparing(Unit::price))
-                        .limit(buy - pay)
-                        .map(Unit::price)
-                        .reduce(BigDecimal.ZERO, BigDecimal::add));
+                createCandidate,
+                legacy ? Comparator.comparing(Unit::price).reversed()
+                        : Comparator.comparing(Unit::payablePrice).reversed());
+    }
+
+    private static Candidate buyXPayYCandidate(Promotion promotion, List<Unit> pack, int freeCount) {
+        var freeUnits = pack.stream()
+                .sorted(Comparator.comparing(Unit::payablePrice))
+                .limit(freeCount)
+                .toList();
+        var amountsByTax = new LinkedHashMap<TaxKey, BigDecimal>();
+        for (var unit : freeUnits) {
+            amountsByTax.merge(TaxKey.of(unit.line()), unit.price(), BigDecimal::add);
+        }
+        var positions = pack.stream().map(unit -> unit.line().position())
+                .collect(java.util.stream.Collectors.toSet());
+        var benefits = amountsByTax.entrySet().stream()
+                .filter(entry -> entry.getValue().signum() > 0)
+                .map(entry -> benefit(promotion, positions, entry.getValue(), entry.getKey()))
+                .toList();
+        var keys = pack.stream().map(Unit::key).collect(java.util.stream.Collectors.toSet());
+        return new Candidate(benefits, keys);
     }
 
     private static List<Candidate> secondUnitPercentCandidates(
@@ -283,12 +319,15 @@ public class PromotionEngine {
             if (units.size() <= MAX_EXACT_UNITS_PER_GROUP) {
                 var combinations = new ArrayList<Candidate>();
                 if (collectPackCombinations(
-                        promotion, units, quantity, 0, new ArrayList<>(), combinations, discount)) {
+                        promotion, units, quantity, 0, new ArrayList<>(), combinations,
+                        pack -> unitCandidate(promotion, pack, discount.apply(pack)))) {
                     result.addAll(combinations);
                     continue;
                 }
             }
-            result.addAll(greedyPackCandidates(promotion, units, quantity, discount));
+            result.addAll(greedyPackCandidates(promotion, units, quantity,
+                    pack -> unitCandidate(promotion, pack, discount.apply(pack)),
+                    Comparator.comparing(Unit::price).reversed()));
         }
         return result;
     }
@@ -300,12 +339,12 @@ public class PromotionEngine {
             int start,
             List<Unit> selected,
             List<Candidate> result,
-            Function<List<Unit>, BigDecimal> discount) {
+            Function<List<Unit>, Candidate> createCandidate) {
         if (selected.size() == packSize) {
             if (result.size() == MAX_EXACT_CANDIDATES) {
                 return false;
             }
-            var candidate = unitCandidate(promotion, selected, discount.apply(selected));
+            var candidate = createCandidate.apply(selected);
             if (candidate.amount().signum() > 0) {
                 result.add(candidate);
             }
@@ -315,7 +354,7 @@ public class PromotionEngine {
         for (var index = start; index <= units.size() - needed; index++) {
             selected.add(units.get(index));
             if (!collectPackCombinations(
-                    promotion, units, packSize, index + 1, selected, result, discount)) {
+                    promotion, units, packSize, index + 1, selected, result, createCandidate)) {
                 selected.removeLast();
                 return false;
             }
@@ -328,14 +367,15 @@ public class PromotionEngine {
             Promotion promotion,
             List<Unit> units,
             int packSize,
-            Function<List<Unit>, BigDecimal> discount) {
+            Function<List<Unit>, Candidate> createCandidate,
+            Comparator<Unit> order) {
         var sorted = units.stream()
-                .sorted(Comparator.comparing(Unit::price).reversed())
+                .sorted(order)
                 .toList();
         var result = new ArrayList<Candidate>();
         for (var start = 0; start + packSize <= sorted.size(); start += packSize) {
             var pack = sorted.subList(start, start + packSize);
-            var candidate = unitCandidate(promotion, pack, discount.apply(pack));
+            var candidate = createCandidate.apply(pack);
             if (candidate.amount().signum() > 0) {
                 result.add(candidate);
             }
@@ -346,6 +386,13 @@ public class PromotionEngine {
     private static LinkedHashMap<GroupKey, List<Unit>> groupedUnits(
             List<PromotionEvaluationLine> lines,
             boolean sameProduct) {
+        return groupedUnits(lines, sameProduct, true);
+    }
+
+    private static LinkedHashMap<GroupKey, List<Unit>> groupedUnits(
+            List<PromotionEvaluationLine> lines,
+            boolean sameProduct,
+            boolean sameTax) {
         var result = new LinkedHashMap<GroupKey, List<Unit>>();
         var expanded = 0;
         for (var line : lines) {
@@ -354,7 +401,7 @@ public class PromotionEngine {
                 continue;
             }
             var key = new GroupKey(
-                    TaxKey.of(line),
+                    sameTax ? TaxKey.of(line) : null,
                     sameProduct ? line.productId() : null);
             var units = result.computeIfAbsent(key, ignored -> new ArrayList<>());
             for (var index = 1; index <= quantity; index++) {
@@ -481,7 +528,7 @@ public class PromotionEngine {
     }
 
     private static int wholeQuantity(BigDecimal quantity) {
-        if (quantity == null || quantity.signum() <= 0
+        if (quantity == null || quantity.signum() < 0
                 || quantity.stripTrailingZeros().scale() > 0
                 || quantity.compareTo(BigDecimal.valueOf(Integer.MAX_VALUE)) > 0) {
             return -1;
@@ -493,7 +540,11 @@ public class PromotionEngine {
         return amount.setScale(2, RoundingMode.HALF_UP);
     }
 
-    private record Candidate(List<PromotionBenefit> benefits, Set<String> unitKeys) {
+    private record Candidate(List<PromotionBenefit> benefits, Set<String> unitKeys, boolean finalAmounts) {
+
+        private Candidate(List<PromotionBenefit> benefits, Set<String> unitKeys) {
+            this(benefits, unitKeys, true);
+        }
 
         private Candidate {
             benefits = List.copyOf(benefits);
@@ -501,8 +552,7 @@ public class PromotionEngine {
         }
 
         BigDecimal amount() {
-            return benefits.stream()
-                    .map(PromotionBenefit::amount)
+            return benefits.stream().map(finalAmounts ? PromotionBenefit::payableAmount : PromotionBenefit::amount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
 
@@ -533,6 +583,10 @@ public class PromotionEngine {
 
         BigDecimal price() {
             return line.unitPrice();
+        }
+
+        BigDecimal payablePrice() {
+            return line.payableUnitAmount();
         }
 
         String key() {

@@ -1,3 +1,4 @@
+import "../../apps/app-gestion/src/GestionAccentColors.css";
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -10,15 +11,20 @@ import {
 import type { GestionNavigationItem } from "../../apps/app-gestion/src/GestionShell";
 import { GestionShell } from "../../apps/app-gestion/src/GestionShell";
 import { gestionNavigationGroups } from "../../apps/app-gestion/src/gestionNavigation";
+import { readExcelSheet } from "../../packages/app-common/src/components/excelImport";
 import { StockScreen } from "../../packages/app-common/src/components/StockScreen";
 import type { PromotionView } from "../../packages/app-common/src/components/PromotionWizard";
+import "../../packages/app-common/src/styles/DesktopWindowCorners.css";
+import "../../packages/app-common/src/styles/DesktopFieldControls.css";
 import "../../packages/app-common/src/styles/tpv.css";
 import "../../apps/app-gestion/src/gestion.css";
+import "../../apps/app-gestion/src/GestionControls.css";
 
 const parameters = new URLSearchParams(location.search);
 const requestedApp = parameters.get("app");
 const stockReviewApp = requestedApp === "gestion" || requestedApp === "venta" ? requestedApp : null;
 const stockReview = parameters.get("view") === "stock" && stockReviewApp !== null;
+if (!stockReview || stockReviewApp === "gestion") document.documentElement.dataset.app = "gestion";
 const supportedLocales: LocaleCode[] = ["es", "en", "zh"];
 const requestedLocale = parameters.get("locale") as LocaleCode | null;
 const initialLocale: LocaleCode = requestedLocale && supportedLocales.includes(requestedLocale) ? requestedLocale : "es";
@@ -68,7 +74,7 @@ let promotions: PromotionView[] = [
     discountPercent: 10, targets: yogurtTargets
   }),
   promo("promo-helados", "-15% en helados", "QUANTITY_DISCOUNT", "2026-08-01", "2026-08-31", {
-    status: "INACTIVE", discountPercent: 15
+    status: "INACTIVE", discountPercent: 15, targets: stockReview ? [{ type: "PRODUCT", targetId: "helado-chocolate" }] : []
   }),
   promo("promo-isotonicas", "2×1 bebidas isotónicas", "BUY_X_PAY_Y", "2026-08-01", "2026-08-31", {
     status: "INACTIVE", buyQuantity: 2, payQuantity: 1, buyXPayYMode: "SAME_PRODUCT"
@@ -77,10 +83,6 @@ let promotions: PromotionView[] = [
     status: "INACTIVE", discountPercent: 25
   })
 ];
-const expiredIceCreamPromotion = promo("promo-helados", "-15% en helados", "QUANTITY_DISCOUNT", "2026-08-01", "2026-08-31", {
-  status: "INACTIVE", discountPercent: 15, targets: [{ type: "PRODUCT", targetId: "helado-chocolate" }]
-});
-const stockPromotions = promotions.map(item => item.id === "promo-helados" ? expiredIceCreamPromotion : item);
 
 const families = [
   { id: "yogures", name: "Yogures" }, { id: "panaderia", name: "Panadería" }, { id: "fruta", name: "Fruta" },
@@ -98,11 +100,20 @@ window.fetch = async (input, init) => {
   if (url.origin !== location.origin) throw new TypeError(`Fetch externo bloqueado en fixture: ${url.origin}`);
   const path = url.pathname.replace(/^\/api\/v1/, "").replace(/\/$/, "") || "/";
   const method = (init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
-  const body = init?.body ? JSON.parse(String(init.body)) : {};
+  const body = typeof init?.body === "string" ? JSON.parse(init.body) : {};
   let result: unknown;
   let status = 200;
 
-  if (path === "/promotions" && method === "GET") result = stockReview ? stockPromotions : promotions;
+  if (path === "/product-excel-imports/read" && method === "POST" && init?.body instanceof FormData) {
+    const file = init.body.get("file");
+    if (!(file instanceof File)) throw new TypeError("Se necesita un archivo Excel de prueba");
+    const values = await readExcelSheet(file);
+    const populated = values.map(row => row.filter(value => value != null && value !== "").length);
+    result = { fileName: file.name, sha256: "fixture", sheetName: "1",
+      rows: values.map(row => row.map(value => ({ value }))), formulas: [],
+      nonEmptyRows: populated.filter(Boolean).length, columns: Math.max(0, ...values.map(row => row.length)),
+      nonEmptyCells: populated.reduce((sum, count) => sum + count, 0) };
+  } else if (path === "/promotions" && method === "GET") result = promotions;
   else if (path === "/promotions" && method === "POST") {
     const created = promo(`fixture-${Date.now()}`, String(body.name || "Promoción de ejemplo"), body.type || "QUANTITY_DISCOUNT",
       body.startDate || "2026-09-26", body.endDate ?? null, {
@@ -127,6 +138,10 @@ window.fetch = async (input, init) => {
       nextCursor: cursor === "fixture-page-2" ? null : "fixture-page-2",
       hasMore: cursor !== "fixture-page-2"
     };
+  } else if (path === "/stock" && method === "GET") {
+    result = url.searchParams.get("warehouseId") === warehouseId
+      ? products.map(product => ({ productId: product.id, warehouseId, quantity: product.id === "helado-chocolate" ? 4 : 18 }))
+      : [];
   } else if (path === "/warehouses" && method === "GET") result = stockWarehouses;
   else if (path === "/taxes/selectable" && method === "GET") result = [];
   else if (/^\/ui\/table-preferences\/(gestion|venta)\/[^/]+$/.test(path) && method === "GET") {
