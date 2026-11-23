@@ -22,6 +22,24 @@ class DocumentSyncPayloadFactoryTest {
     private static final Instant CONFIRMED_AT = Instant.parse("2026-09-10T10:00:00Z");
 
     @Test
+    void transportsPromotionEngineVersionWithoutInferringItForHistoricalLines() {
+        var document = document(CommercialDocumentType.TICKET);
+        var promotionId = UUID.randomUUID();
+        var promotionVersionId = UUID.randomUUID();
+        var promotion = DocumentLine.special(document, 2, "PROMOCION", new BigDecimal("-1"),
+                true, "IVA", new BigDecimal("21"), promotionId, promotionVersionId, null);
+        document.addLine(promotion);
+        when(relations.findOutgoingForSync(document.getId(), document.getTiendaId())).thenReturn(List.of());
+        var oldPayload = (List<?>) factory.create(document, 1).get("lineas");
+        assertThat(((Map<?, ?>) oldPayload.getLast()).containsKey("promocionMotorVersion")).isFalse();
+        assertThat(((Map<?, ?>) oldPayload.getLast()).containsKey("promocionVersionId")).isFalse();
+        promotion.assignPromotionEngineVersion(2);
+        var newPayload = (List<?>) factory.create(document, 2).get("lineas");
+        assertThat(((Map<?, ?>) newPayload.getLast()).get("promocionMotorVersion")).isEqualTo(2);
+        assertThat(((Map<?, ?>) newPayload.getLast()).get("promocionVersionId")).isEqualTo(promotionVersionId.toString());
+    }
+
+    @Test
     void transportsFrozenContactWithoutChangingTheSchemaOrConsultingCustomerMaster() {
         var document = document(CommercialDocumentType.TICKET);
         var addressId = UUID.randomUUID();

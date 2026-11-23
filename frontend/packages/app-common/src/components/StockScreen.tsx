@@ -2734,7 +2734,7 @@ export function StockScreen({
   const calendarTitle = new Intl.DateTimeFormat(calendarLocale, { month: "long", year: "numeric" }).format(calendarMonth);
   const promotionManagement = usePromotionManagement({
     enabled: app === "gestion" && canManageProducts && selectedView === "stock.promotions" && !partyDirectory,
-    locale, session,
+    locale, session, initialWarehouseId: effectiveWarehouseId === "TOTAL" ? defaultWarehouseId : effectiveWarehouseId,
     onSaved: (promotion) => {
       setStockPromotions(current => current.some(item => item.id === promotion.id)
         ? current.map(item => item.id === promotion.id ? promotion : item) : [promotion, ...current]);

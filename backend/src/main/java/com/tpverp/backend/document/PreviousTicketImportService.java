@@ -712,7 +712,8 @@ public class PreviousTicketImportService {
                 line.getPromotionId(), line.getPromotionVersionId(),
                 line.getPromotionalCouponId(),
                 List.of(), false, false, null, null, null, null, null,
-                line.getBase(), line.getImpuesto(), line.getTotal());
+                line.getBase(), line.getImpuesto(), line.getTotal())
+                .withPromotionEngineVersion(line.getPromotionEngineVersion());
     }
 
     private List<DocumentLineCommand> globalDiscountAdjustments(

@@ -37,6 +37,9 @@ public class SaleDocumentAuthorizationFingerprint {
             add(digest, line.getLineType());
             add(digest, line.getPromotionId());
             add(digest, line.getPromotionVersionId());
+            if (line.getPromotionEngineVersion() != null) {
+                add(digest, "promotionEngineVersion=" + line.getPromotionEngineVersion());
+            }
             add(digest, line.getPromotionalCouponId());
             add(digest, line.getOriginalDocumentLineId());
             add(digest, line.getCantidad());

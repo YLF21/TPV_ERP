@@ -161,7 +161,9 @@ public class ParkedSale {
                 uuid(value.get("returnSourceTicketId")),
                 uuid(value.get("originalDocumentLineId")),
                 uuid(value.get("giftReceiptLineId")))
-                .withBarcode(clean((String) value.get("codigoBarras")));
+                .withBarcode(clean((String) value.get("codigoBarras")))
+                .withPromotionEngineVersion(value.get("promocionMotorVersion") == null
+                        ? null : new BigDecimal(value.get("promocionMotorVersion").toString()).intValueExact());
     }
 
     private static Map<String, Object> snapshot(DocumentCommand command) {
@@ -188,6 +190,9 @@ public class ParkedSale {
                 : line.lineType().name());
         value.put("promocionId", string(line.promotionId()));
         value.put("promocionVersionId", string(line.promotionVersionId()));
+        if (line.promotionEngineVersion() != null) {
+            value.put("promocionMotorVersion", line.promotionEngineVersion());
+        }
         value.put("cuponPromocionalId", string(line.promotionalCouponId()));
         value.put("cantidad", line.cantidad());
         value.put("codigo", line.codigo());

@@ -93,6 +93,10 @@ public class DocumentSyncPayloadFactory {
         payload.put("productoId", nullableUuid(line.getProductoId()));
         payload.put("tipoLinea", line.getLineType().name());
         payload.put("promocionId", nullableUuid(line.getPromotionId()));
+        if (line.getPromotionEngineVersion() != null) {
+            payload.put("promocionVersionId", nullableUuid(line.getPromotionVersionId()));
+            payload.put("promocionMotorVersion", line.getPromotionEngineVersion());
+        }
         payload.put("cuponPromocionalId", nullableUuid(line.getPromotionalCouponId()));
         payload.put("posicion", line.getPosicion());
         payload.put("codigo", line.getCodigo());

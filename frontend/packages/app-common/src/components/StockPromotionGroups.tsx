@@ -218,6 +218,7 @@ export function StockPromotionGroups({
     defaultExpandedPromotionIds.find((id) => filteredGroups.some((group) => group.promotion.id === id))
       ?? filteredGroups[0]?.promotion.id ?? ""
   );
+  const focusedSelectionKey = useRef<number | null>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const listRef = useRef<HTMLDivElement>(null);
   const componentId = useId();
@@ -233,6 +234,12 @@ export function StockPromotionGroups({
     const row = selectedPromotion ? rowRefs.current.get(selectedPromotion.id) : null;
     if (list && row) ensureTableRowVisible(list, row);
   }, [selectedPromotion?.id]);
+  useLayoutEffect(() => {
+    if (!selectionRequest?.focus || focusedSelectionKey.current === selectionRequest.key
+        || selectedPromotion?.id !== selectionRequest.id) return;
+    focusedSelectionKey.current = selectionRequest.key;
+    rowRefs.current.get(selectionRequest.id)?.focus({ preventScroll: true });
+  }, [selectionRequest, selectedPromotion?.id]);
   const repeatGroupArrow = useTableArrowRepeat((direction) => {
     const focused = document.activeElement;
     const row = focused instanceof HTMLElement && listRef.current?.contains(focused)

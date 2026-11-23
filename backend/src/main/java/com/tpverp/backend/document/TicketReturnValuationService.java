@@ -248,11 +248,11 @@ public class TicketReturnValuationService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
         var taxTotals = selectedTaxTotals(remaining, globalFactor);
         var promotionPreview = historicalPromotionPreview(original, evaluationLines);
-        var directDiscount = Money.euros(promotionPreview.discountTotal());
+        var directDiscount = Money.euros(promotionPreview.payableDiscountTotal());
         promotionPreview.appliedPromotions().forEach(benefit -> addTaxAmount(
                 taxTotals,
                 new TaxKey(benefit.taxIncluded(), benefit.taxRegime(), benefit.taxPercent()),
-                benefit.amount().negate()));
+                benefit.payableAmount().negate()));
         var pendingBeforeCoupon = Money.euros(productGross.subtract(directDiscount))
                 .max(Money.euros(BigDecimal.ZERO));
         var couponDiscount = historicalCouponDiscount(original, pendingBeforeCoupon);
@@ -294,8 +294,18 @@ public class TicketReturnValuationService {
                     "No se puede recuperar la version historica de la promocion");
         }
         var targets = promotionTargets.findByPromocionIdIn(versionIds);
-        return promotionEngine.preview(new PromotionEvaluationRequest(
-                remaining, historical, targets));
+        var engineVersions = original.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.PROMOTION)
+                .filter(line -> line.getPromotionalCouponId() == null)
+                .map(line -> line.getPromotionEngineVersion() == null ? 1 : line.getPromotionEngineVersion())
+                .collect(Collectors.toSet());
+        if (engineVersions.size() != 1) {
+            throw new IllegalStateException("El documento combina versiones del motor de promociones");
+        }
+        var request = new PromotionEvaluationRequest(remaining, historical, targets);
+        return engineVersions.contains(1)
+                ? promotionEngine.previewLegacy(request)
+                : promotionEngine.preview(request);
     }
 
     private Map<TaxKey, BigDecimal> confirmedTaxRefunds(UUID originalDocumentId) {

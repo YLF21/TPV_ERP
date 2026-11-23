@@ -5,7 +5,7 @@ import type { LocaleCode, UserSession } from "../types";
 import { PromotionWizard, type PromotionView } from "./PromotionWizard";
 import "./PromotionManagement.css";
 
-export type PromotionSelectionRequest = { id: string; key: number };
+export type PromotionSelectionRequest = { id: string; key: number; focus?: boolean };
 export type PromotionManagementActions = {
   busy: boolean;
   onEditConditions: (promotion: PromotionView) => void;
@@ -13,8 +13,9 @@ export type PromotionManagementActions = {
   onToggleActive: (promotion: PromotionView) => void;
 };
 
-export function usePromotionManagement({ enabled, locale, session, onSaved, onRefresh }: {
+export function usePromotionManagement({ enabled, locale, session, initialWarehouseId, onSaved, onRefresh }: {
   enabled: boolean;
+  initialWarehouseId?: string;
   locale: LocaleCode;
   session: UserSession;
   onSaved: (promotion: PromotionView) => void;
@@ -47,9 +48,9 @@ export function usePromotionManagement({ enabled, locale, session, onSaved, onRe
     setEditor({ promotion, section, epoch: epoch.current });
   }
 
-  function closeEditor() {
+  function closeEditor(restoreFocus = true) {
     setEditor(null);
-    requestAnimationFrame(() => returnFocus.current?.focus({ preventScroll: true }));
+    if (restoreFocus) requestAnimationFrame(() => returnFocus.current?.focus({ preventScroll: true }));
   }
 
   useEffect(() => {
@@ -112,15 +113,15 @@ export function usePromotionManagement({ enabled, locale, session, onSaved, onRe
     }}>
     <section className="stock-promotion-editor">
       <PromotionWizard key={editor.promotion?.id ?? "create"} locale={locale} session={session}
-        editPromotion={editor.promotion} initialSection={editor.section} onClose={closeEditor}
+        initialWarehouseId={initialWarehouseId} editPromotion={editor.promotion} initialSection={editor.section} onClose={closeEditor}
         onCreated={saved => {
           if (editor.epoch !== epoch.current) return;
           onSaved(saved);
-          setSelectionRequest({ id: saved.id, key: ++selectionKey.current });
+          setSelectionRequest({ id: saved.id, key: ++selectionKey.current, focus: true });
           setError(false);
           setNotice(!editor.promotion ? "promotion.status.created"
             : saved.id !== editor.promotion.id ? "promotion.status.savedDraft" : "promotion.status.updated");
-          closeEditor();
+          closeEditor(false);
           onRefresh();
         }} />
     </section>

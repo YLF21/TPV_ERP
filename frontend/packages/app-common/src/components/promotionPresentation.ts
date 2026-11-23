@@ -33,7 +33,7 @@ export function promotionConditionSentences(promotion: PromotionView, t: Promoti
       ? format === "money" ? money.format(numeric) : number.format(numeric) : String(value) }));
   };
   if (promotion.type === "BUY_X_PAY_Y" && promotion.buyQuantity != null && promotion.payQuantity != null) {
-    rows.push(sentence(promotion.buyXPayYMode === "SAME_PRODUCT" ? "promotion.rule.buyPaySame" : "promotion.rule.buyPayMixed", { buy: number.format(Number(promotion.buyQuantity)), pay: number.format(Number(promotion.payQuantity)) }));
+    rows.push(sentence(promotion.buyXPayYMode === "MIXED_TARGETS" ? "promotion.rule.buyPayMixed" : "promotion.rule.buyPaySame", { buy: number.format(Number(promotion.buyQuantity)), pay: number.format(Number(promotion.payQuantity)) }));
     rows.push(t("promotion.rule.cheapestFree"));
   } else if (promotion.type === "SECOND_UNIT_PERCENT") {
     add("promotion.rule.secondUnit", promotion.discountPercent);

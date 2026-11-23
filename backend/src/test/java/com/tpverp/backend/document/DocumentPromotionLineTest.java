@@ -99,6 +99,29 @@ class DocumentPromotionLineTest {
                 .hasMessageContaining("backend");
     }
 
+    @Test
+    void frozenSnapshotRoundTripPreservesEngineVersionAndLegacyAbsence() {
+        var document = salesDocument();
+        var legacy = DocumentLine.special(document, 1, "PROMOCION", new BigDecimal("-1"),
+                true, "IVA", new BigDecimal("21"), UUID.randomUUID(), UUID.randomUUID(), null);
+        assertThat(DocumentLineCommand.from(legacy).toEntity(salesDocument(), 1).getPromotionEngineVersion())
+                .isNull();
+        legacy.assignPromotionEngineVersion(2);
+        var snapshot = DocumentLineCommand.from(legacy);
+        assertThat(snapshot.promotionEngineVersion()).isEqualTo(2);
+        assertThat(snapshot.toEntity(salesDocument(), 1).getPromotionEngineVersion()).isEqualTo(2);
+        var json = tools.jackson.databind.json.JsonMapper.builder().build();
+        var restored = json.readValue(json.writeValueAsString(snapshot), DocumentLineCommand.class);
+        assertThat(restored.toEntity(salesDocument(), 1).getPromotionEngineVersion()).isEqualTo(2);
+        var oldJson = json.valueToTree(snapshot);
+        ((tools.jackson.databind.node.ObjectNode) oldJson).remove("promotionEngineVersion");
+        assertThat(json.treeToValue(oldJson, DocumentLineCommand.class).promotionEngineVersion()).isNull();
+        assertThatThrownBy(() -> productLine(document, 2, BigDecimal.ONE).assignPromotionEngineVersion(2))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> legacy.assignPromotionEngineVersion(3))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static CommercialDocument salesDocument() {
         return new CommercialDocument(
                 UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,

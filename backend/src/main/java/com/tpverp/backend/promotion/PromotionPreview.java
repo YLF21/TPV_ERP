@@ -9,4 +9,9 @@ public record PromotionPreview(List<PromotionBenefit> appliedPromotions, BigDeci
         appliedPromotions = List.copyOf(appliedPromotions == null ? List.of() : appliedPromotions);
         discountTotal = discountTotal == null ? BigDecimal.ZERO : discountTotal;
     }
+
+    public BigDecimal payableDiscountTotal() {
+        return appliedPromotions.stream().map(PromotionBenefit::payableAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
 }
