@@ -5,6 +5,7 @@ import com.tpverp.backend.catalog.PriceUseMode;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.document.DocumentLineCommand;
 import com.tpverp.backend.document.Money;
+import com.tpverp.backend.document.QuantityPriceSnapshot;
 import com.tpverp.backend.party.CustomerRepository;
 import com.tpverp.backend.party.Member;
 import com.tpverp.backend.party.MemberRepository;
@@ -18,6 +19,17 @@ import org.springframework.stereotype.Service;
 public class AuthoritativePromotionPricing {
 
     private static final BigDecimal HUNDRED = new BigDecimal("100");
+
+    /** The client never supplies a rule or the list price used to evaluate it. */
+    public static QuantityPriceSnapshot quantityPriceSnapshot(Product product, DocumentLineCommand line) {
+        if (product.getQuantityPricing() == null || !product.getQuantityPricing().enabled()
+                || product.getDiscountType() == DiscountType.NONE
+                || product.getSalePrice() == null || product.getSalePrice().signum() <= 0
+                || "0".equals(product.getCode()) || line.temporaryPriceOverride()
+                || line.historicalOpenPriceOverride() || line.originalDocumentLineId() != null
+                || line.cantidad().signum() <= 0 || line.descuento().signum() > 0) return null;
+        return new QuantityPriceSnapshot(product.getQuantityPricing(), Money.unitPrice(product.getSalePrice()));
+    }
 
     private final CustomerRepository customers;
     private final MemberRepository members;

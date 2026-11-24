@@ -33,11 +33,11 @@ const tourExamples = {
         },
         {
           actions: [
-            "Selecciona el artículo sobre el que pregunta el cliente.",
-            "Pulsa F5 para consultar el stock de ese artículo.",
+            "Abre Consulta stock con Ctrl+F6.",
+            "Consulta el stock de la línea seleccionada o busca por código, código de barras o nombre.",
             "Con el cliente seleccionado, abre sus deudas con Ctrl+D."
           ],
-          example: "Ejemplo orientativo: un cliente pregunta por otra unidad y una deuda anterior. Consulta el artículo con F5 y su cuenta con Ctrl+D, según permisos.",
+          example: "Ejemplo orientativo: un cliente pregunta por otra unidad y una deuda anterior. Consulta el artículo con Ctrl+F6 y su cuenta con Ctrl+D, según permisos.",
           benefit: "Resuelve ambas consultas conservando el contexto de la venta."
         },
         {
@@ -159,11 +159,11 @@ const tourExamples = {
         },
         {
           actions: [
-            "Select the product the customer is asking about.",
-            "Press F5 to check stock for that product.",
+            "Open Stock lookup with Ctrl+F6.",
+            "View stock for the selected cart line or search by code, barcode or name.",
             "With the customer selected, open their receivables with Ctrl+D."
           ],
-          example: "Illustrative example: a customer asks about another unit and an earlier debt. Check the product with F5 and their account with Ctrl+D, within your permissions.",
+          example: "Illustrative example: a customer asks about another unit and an earlier debt. Check the product with Ctrl+F6 and their account with Ctrl+D, within your permissions.",
           benefit: "Answer both enquiries while keeping the context of the sale."
         },
         {
@@ -285,11 +285,11 @@ const tourExamples = {
         },
         {
           actions: [
-            "选择客户正在询问的商品。",
-            "按 F5 查询该商品的库存。",
+            "按 Ctrl+F6 打开库存查询。",
+            "如已选中购物车中的商品，将直接显示其库存。也可按编码、条码或名称搜索。",
             "选择客户后，按 Ctrl+D 查看其欠款。"
           ],
-          example: "示例情境：客户询问是否还有一件商品，以及之前的欠款。在权限允许范围内，按 F5 查库存，按 Ctrl+D 查客户账户。",
+          example: "示例情境：客户询问是否还有一件商品，以及之前的欠款。在权限允许范围内，按 Ctrl+F6 查库存，按 Ctrl+D 查客户账户。",
           benefit: "保留当前销售背景，同时解答商品与客户账户问题。"
         },
         {

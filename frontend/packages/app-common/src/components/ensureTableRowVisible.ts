@@ -11,9 +11,11 @@ export function ensureTableRowVisible(container: HTMLElement, row: HTMLElement) 
   const visibleTop = Math.min(viewportBottom, Array.from(headers).reduce(
     (top, header) => Math.max(top, header.getBoundingClientRect().bottom), viewportTop,
   ));
+  const footer = container.querySelector<HTMLElement>("[data-sticky-table-footer]");
+  const visibleBottom = footer ? Math.min(viewportBottom, footer.getBoundingClientRect().top) : viewportBottom;
   const bounds = row.getBoundingClientRect();
   const delta = bounds.top < visibleTop ? bounds.top - visibleTop
-    : bounds.bottom > viewportBottom ? bounds.bottom - viewportBottom : 0;
+    : bounds.bottom > visibleBottom ? bounds.bottom - visibleBottom : 0;
   if (delta !== 0) {
     container.scrollTop = Math.max(0, Math.min(
       container.scrollHeight - container.clientHeight, container.scrollTop + delta,

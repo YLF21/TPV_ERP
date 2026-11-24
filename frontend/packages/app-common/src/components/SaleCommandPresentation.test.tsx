@@ -12,7 +12,7 @@ const labels: SaleCommandLabels = {
   cashDrawer: "Abrir cajón",
   cashWithdrawal: "Retirada de efectivo",
   logout: "Cerrar sesión",
-  selectedStock: "Stock de línea",
+  stockLookup: "Consulta stock",
   productSales: "Ventas del producto",
   editProduct: "Modificar producto",
   ticketReturn: "Devolución por ticket",
@@ -72,6 +72,7 @@ describe("sale command presentations", () => {
     expect(screen.getByRole("navigation", { name: "Atajos" })).toBeTruthy();
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getByText("Ctrl+F")).toBeTruthy();
+    expect(screen.getByText("Ctrl+F6").parentElement?.textContent).toContain("Consulta stock");
     expect(screen.getByText("F12")).toBeTruthy();
     expect(screen.getByText("Ctrl+-")).toBeTruthy();
     expect(screen.getByText("Devolución por ticket")).toBeTruthy();

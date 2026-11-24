@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
 import {
@@ -8,6 +8,7 @@ import {
 } from "./productInformationResources";
 import type { StockInventoryRow } from "./StockScreen";
 import { ProductCommercialHistory } from "./ProductCommercialHistory";
+import { ProductOfferInformation } from "./ProductOfferInformation";
 import { ZoomableProductImage } from "./ZoomableProductImage";
 
 type SaleProductInformationPanelProps = {
@@ -49,29 +50,26 @@ function priceUseValue(value: string, t: (key: string) => string) {
   return valueOrDash(value);
 }
 
-function InformationSection({
-  title,
-  fields,
-  className = "",
-  children,
-}: {
-  title: string;
-  fields: InformationField[];
-  className?: string;
-  children?: ReactNode;
+function InformationFields({ fields }: { fields: InformationField[] }) {
+  return (
+    <dl className="sale-product-details-fields">
+      {fields.map((field) => (
+        <div className={field.wide ? "wide" : ""} key={field.label}>
+          <dt>{field.label}</dt>
+          <dd title={field.value}>{field.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function InformationSection({ title, fields, className = "" }: {
+  title: string; fields: InformationField[]; className?: string;
 }) {
   return (
     <section className={`sale-product-details-section${className ? ` ${className}` : ""}`}>
       <h3>{title}</h3>
-      <dl className="sale-product-details-fields">
-        {fields.map((field) => (
-          <div className={field.wide ? "wide" : ""} key={field.label}>
-            <dt>{field.label}</dt>
-            <dd title={field.value}>{field.value}</dd>
-          </div>
-        ))}
-      </dl>
-      {children}
+      <InformationFields fields={fields} />
     </section>
   );
 }
@@ -230,20 +228,19 @@ export function SaleProductInformationPanel({
             ]}
           />
 
-          <InformationSection
-            title={t("stock.detail.offer")}
-            className="sale-product-details-section--offer"
-            fields={[
-              { label: t("stock.column.offerActive"), value: translatedValue(product.offerActive, t) },
-              { label: t("stock.column.offerPrice"), value: decimal(product.offerPrice) },
-              { label: t("product.field.offerDiscountPercent"), value: percentage(product.offerDiscountPercent) },
-              { label: t("stock.column.offerFrom"), value: date(product.offerFrom) },
-              { label: t("stock.column.offerUntil"), value: date(product.offerUntil) },
-              { label: t("stock.column.promotion"), value: valueOrDash(product.promotionNames), wide: true },
-            ]}
-          >
-            <ProductCommercialHistory productId={product.productId} productName={product.name} locale={locale} token={token} />
-          </InformationSection>
+          <section className="sale-product-details-section sale-product-details-section--offer">
+            <ProductOfferInformation app="venta" product={product} locale={locale}>
+              <InformationFields fields={[
+                { label: t("stock.column.offerActive"), value: translatedValue(product.offerActive, t) },
+                { label: t("stock.column.offerPrice"), value: decimal(product.offerPrice) },
+                { label: t("product.field.offerDiscountPercent"), value: percentage(product.offerDiscountPercent) },
+                { label: t("stock.column.offerFrom"), value: date(product.offerFrom) },
+                { label: t("stock.column.offerUntil"), value: date(product.offerUntil) },
+                { label: t("stock.column.promotion"), value: valueOrDash(product.promotionNames), wide: true },
+              ]} />
+              <ProductCommercialHistory productId={product.productId} productName={product.name} locale={locale} token={token} />
+            </ProductOfferInformation>
+          </section>
 
           <InformationSection
             title={t("stock.detail.inventory")}

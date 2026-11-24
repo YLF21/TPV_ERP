@@ -1,4 +1,5 @@
 import { WindowCloseButton } from "./WindowCloseButton";
+import { Plus } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { apiBaseUrl } from "../api/runtime";
 import { formatProductQuantity } from "../sale/productQuantity";
@@ -75,13 +76,20 @@ export function filterSaleProductSearch<T extends SaleProductSearchOption>(
   query: string,
   limit = 100,
   locale = "es",
+  sort: TableSort<SaleProductSearchSortColumn> = defaultProductSearchSort,
 ) {
   const normalizedQuery = normalizedSearchValue(query);
   if (!normalizedQuery) return [];
   const matches = products
     .filter((product) => [product.code, product.barcode, product.barcode2, product.name]
       .some((value) => normalizedSearchValue(value).includes(normalizedQuery)));
-  return sortProductsByCode(matches, locale).slice(0, limit);
+  const codeOrdered = sortProductsByCode(matches, locale);
+  if (sort.column === "code" && sort.direction === "asc") return codeOrdered.slice(0, limit);
+  return sortTableRows(codeOrdered, sort, (product, column) => {
+    if (column === "stock") return product.totalStock == null ? null : Number(product.totalStock);
+    if (column === "price") return product.salePrice == null ? null : Number(product.salePrice);
+    return product[column];
+  }, locale).slice(0, limit);
 }
 
 export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
@@ -106,18 +114,8 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
   const [sort, setSort] = useState<TableSort<SaleProductSearchSortColumn>>(defaultProductSearchSort);
   const dialogRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const results = useMemo(() => sortTableRows(
-    filterSaleProductSearch(products, query, 100, locale),
-    sort,
-    (product, column) => {
-      if (column === "code") return product.code;
-      if (column === "barcode") return product.barcode;
-      if (column === "name") return product.name;
-      if (column === "stock") return product.totalStock == null ? null : Number(product.totalStock);
-      return product.salePrice == null ? null : Number(product.salePrice);
-    },
-    locale
-  ), [products, query, sort, locale]);
+  const results = useMemo(() => filterSaleProductSearch(products, query, 100, locale, sort),
+    [products, query, sort, locale]);
   const activeId = results.some((product) => product.id === selectedId)
     ? selectedId
     : results[0]?.id ?? "";
@@ -164,10 +162,11 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
-    if (event.key === "F5" && onCreateProduct) {
+    const hasModifier = event.ctrlKey || event.metaKey || event.altKey || event.shiftKey;
+    if (event.key === "F5" && !hasModifier && (onCreateProduct || createProductLabel)) {
       event.preventDefault();
       event.stopPropagation();
-      onCreateProduct();
+      if (!event.repeat) onCreateProduct?.();
       return;
     }
     if (event.key === "Escape") {
@@ -261,13 +260,14 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
             value={query}
             onChange={(event) => updateQuery(event.target.value)}
           />
-          {interfaceMode === "KEYBOARD" && onCreateProduct && createProductLabel && (
+          {onCreateProduct && createProductLabel && (
             <button
               type="button"
               className="sale-product-search-create-action"
               aria-keyshortcuts="F5"
               onClick={onCreateProduct}
             >
+              <Plus size={16} weight="bold" aria-hidden="true" />
               <span>{createProductLabel}</span>
               <kbd aria-hidden="true">F5</kbd>
             </button>

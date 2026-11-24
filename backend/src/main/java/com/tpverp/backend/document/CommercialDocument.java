@@ -436,7 +436,7 @@ public class CommercialDocument {
         lineas.clear();
         replacement.lineas.forEach(source -> {
             var copy = DocumentLineCommand.from(source).toEntity(this);
-            if (source.getLineType() == DocumentLineType.PROMOTION) {
+            if (source.getLineType() == DocumentLineType.PROMOTION || source.getLineType() == DocumentLineType.QUANTITY_PRICE) {
                 copy.assignPromotionAffectedPositions(
                         source.getPromotionAffectedPositions());
             }

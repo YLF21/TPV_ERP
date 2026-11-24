@@ -45,6 +45,16 @@ describe("ensureTableRowVisible", () => {
     expect(container.scrollTop).toBe(200);
   });
 
+  it("keeps the selected row above a fixed table footer", () => {
+    const { container, row } = tableViewport(57, 103);
+    const footer = container.querySelector("table")!.createTFoot();
+    footer.dataset.stickyTableFooter = "";
+    vi.spyOn(footer, "getBoundingClientRect").mockReturnValue({ top: 82 } as DOMRect);
+    ensureTableRowVisible(container, row);
+    expect(container.scrollTop).toBe(221);
+    expect(container.scrollLeft).toBe(80);
+  });
+
   it("clamps at the final row without wrapping or scrolling horizontally", () => {
     const { container, row } = tableViewport(100, 140);
     container.scrollTop = 390;

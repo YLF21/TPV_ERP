@@ -25,6 +25,13 @@ describe("saleCommandFromKeyboard", () => {
     }
   });
 
+  it("opens stock with Ctrl+F6 and sales history with F6", () => {
+    expect(saleCommandFromKeyboard(key("F6", { ctrlKey: true }))).toBe("stock");
+    expect(saleCommandFromKeyboard(key("F6"))).toBe("sales-history");
+    expect(saleCommandFromKeyboard(key("F5"))).toBeNull();
+    expect(saleCommandFromKeyboard(key("F6", { ctrlKey: true, shiftKey: true }))).toBeNull();
+  });
+
   it("resolves the EAN and product-label shortcuts exactly", () => {
     expect(saleCommandFromKeyboard(key("F2", { ctrlKey: true })))
       .toBe("ean-generator");

@@ -1,0 +1,83 @@
+.filter-overlay.quantity-pricing-overlay {
+  z-index: var(--tpv-layer-nested-modal, 1510);
+  padding: 16px;
+}
+
+/* The editor and its discard confirmation are sibling portals under body. */
+.quantity-pricing-overlay ~ .erp-confirm-overlay {
+  z-index: calc(var(--tpv-layer-nested-modal, 1510) + 1);
+}
+.quantity-pricing-dialog.filter-dialog {
+  --pricing-field-height: 38px;
+  --pricing-width: min(680px, calc(100vw - 24px));
+  --pricing-height: min(540px, calc(100dvh - 24px));
+  position: absolute;
+  width: var(--pricing-width);
+  height: var(--pricing-height);
+  max-height: var(--pricing-height);
+  left: clamp(0px, var(--pricing-left, calc((100% - var(--pricing-width)) / 2)), calc(100% - var(--pricing-width)));
+  top: clamp(0px, var(--pricing-top, calc((100% - var(--pricing-height)) / 2)), calc(100% - var(--pricing-height)));
+  gap: 0;
+}
+.quantity-pricing-header { cursor: grab; user-select: none; touch-action: none; }
+.quantity-pricing-header:active { cursor: grabbing; }
+.quantity-pricing-header h2 { margin: 0; font-size: 19px; }
+.quantity-pricing-body { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px; }
+.quantity-pricing-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.quantity-pricing-modes label {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 38px;
+  padding: 6px 8px;
+  border: 1px solid #aabaca;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--tpv-v3-navy);
+  text-align: center;
+  font-weight: 700;
+  cursor: pointer;
+}
+.quantity-pricing-modes input[type="radio"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.quantity-pricing-modes label:has(:checked) { border-color: #0065fe; background: #0065fe; color: #fff; }
+.quantity-pricing-modes label:has(:focus-visible) { outline: 2px solid #12385f; outline-offset: 2px; }
+@media (forced-colors: active) {
+  .quantity-pricing-modes label:has(:checked) { border: 3px solid Highlight; }
+}
+.quantity-pricing-help, .quantity-pricing-hint { margin: 12px 0; font-size: 13px; }
+.quantity-pricing-tiers { display: grid; gap: 8px; }
+.quantity-pricing-tier { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--pricing-field-height); gap: 8px; align-items: end; }
+.quantity-pricing-tier label, .quantity-pricing-simulator label { display: grid; gap: 4px; font-size: 13px; font-weight: 700; }
+.quantity-pricing-tier input, .quantity-pricing-simulator input { box-sizing: border-box; min-width: 0; width: 100%; height: var(--pricing-field-height); padding: 6px 8px; border: 1px solid #9cafc2; border-radius: 0; background: #fff; font-size: 14px; }
+.quantity-pricing-tier input[aria-invalid="true"] { border-color: #c02c2c; background: #fff4f4; }
+.quantity-pricing-remove {
+  position: relative;
+  height: var(--pricing-field-height);
+  --erp-window-close-size: var(--pricing-field-height);
+  --erp-window-close-inset: 0;
+  --erp-window-close-border: 1px solid #bac6d2;
+  --erp-window-close-background: #e1e6eb;
+  --erp-window-close-hover-background: #cfd8e1;
+}
+.quantity-pricing-add { margin-top: 10px; min-height: 36px; border: 1px solid #8099b5; border-radius: 0; background: #fff; color: var(--tpv-v3-navy); font-weight: 700; }
+.quantity-pricing-error { color: #b52222; font-weight: 700; }
+.quantity-pricing-simulator { margin: 14px 0 0; padding: 10px; border: 1px solid #aabaca; background: #fff; }
+.quantity-pricing-simulator legend { padding: 0 5px; font-weight: 800; }
+.quantity-pricing-simulator label { max-width: 170px; }
+.quantity-pricing-simulator div { display: grid; gap: 4px; margin-top: 10px; }
+.quantity-pricing-footer { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; padding: 10px 16px; border-top: 1px solid #b9c7d5; background: #fff; }
+.quantity-pricing-state { padding: 3px 8px; border: 1px solid #c5d0dc; border-radius: 4px; color: #34485f; background: #f3f5f7; font-size: 12px; font-weight: 700; }
+.quantity-pricing-state[data-enabled="true"] { color: #13542d; border-color: #a4cdb3; background: #eaf6ee; }
+.quantity-pricing-footer .quantity-pricing-state { margin-inline-end: auto; }
+.quantity-pricing-footer button.erp-dialog-action-confirm { min-width: 120px; min-height: 40px; font-weight: 700; }
+.product-quantity-pricing-control { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 2px 0 8px; font-size: 13px; }
+.product-quantity-pricing-control button { min-height: 36px; padding: 5px 10px; border: 1px solid #8099b5; border-radius: 0; background: #fff; color: var(--tpv-v3-navy); font-weight: 800; }
+@media (max-width: 500px) { .quantity-pricing-modes { grid-template-columns: 1fr; } }

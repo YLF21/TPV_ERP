@@ -702,7 +702,8 @@ public class PreviousTicketImportService {
                     DocumentLineType.PRODUCT, null, null, null, serials,
                     false, false, null, null, null, null, null,
                     line.getBase(), line.getImpuesto(), line.getTotal(),
-                    line.getCodigoBarras());
+                    line.getCodigoBarras()).withQuantityPriceSnapshot(line.getQuantityPriceSnapshot())
+                    .withPromotionEngineVersion(line.getPromotionEngineVersion());
         }
         return new DocumentLineCommand(
                 null, BigDecimal.ONE, line.getCodigo(), line.getNombre(), null,

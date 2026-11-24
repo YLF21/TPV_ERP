@@ -23,6 +23,8 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "documento_linea", uniqueConstraints = @UniqueConstraint(
@@ -46,6 +48,21 @@ public class DocumentLine {
     private UUID promotionVersionId;
     @Column(name = "promocion_motor_version")
     private Integer promotionEngineVersion;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "precio_cantidad_snapshot", columnDefinition = "jsonb")
+    private QuantityPriceSnapshot quantityPriceSnapshot;
+
+    public QuantityPriceSnapshot getQuantityPriceSnapshot() {
+        return quantityPriceSnapshot;
+    }
+
+    void assignQuantityPriceSnapshot(QuantityPriceSnapshot snapshot) {
+        if (snapshot != null && lineType != DocumentLineType.PRODUCT) {
+            throw new IllegalArgumentException("El precio por cantidad requiere una línea de producto");
+        }
+        this.quantityPriceSnapshot = snapshot;
+    }
     @Column(name = "cupon_promocional_id")
     private UUID promotionalCouponId;
     @Column(name = "documento_ajuste_id")
@@ -220,7 +237,7 @@ public class DocumentLine {
         this.promotionalCouponId = promotionalCouponId;
         this.posicion = posicion;
         this.cantidad = BigDecimal.ONE.setScale(3, Money.ROUNDING);
-        this.codigo = required(description, "description");
+        this.codigo = lineType == DocumentLineType.QUANTITY_PRICE ? "PRECIO_CANTIDAD" : required(description, "description");
         this.nombre = required(description, "description");
         this.tarifa = null;
         this.precioUnitario = Money.euros(amount);
@@ -229,6 +246,21 @@ public class DocumentLine {
         this.regimenImpuesto = taxRegime(regimenImpuesto);
         this.porcentajeImpuesto = Money.validPercentage(porcentajeImpuesto);
         calculateAmounts();
+    }
+
+    public static DocumentLine quantityPrice(
+            CommercialDocument document, int position, String description, BigDecimal amount,
+            boolean taxIncluded, String regime, BigDecimal percent,
+            BigDecimal base, BigDecimal tax, BigDecimal total) {
+        return frozenSpecial(document, position, DocumentLineType.QUANTITY_PRICE,
+                description, amount, taxIncluded, regime, percent, null, null, null, base, tax, total);
+    }
+
+    public static DocumentLine quantityPrice(
+            CommercialDocument document, int position, String description, BigDecimal amount,
+            boolean taxIncluded, String regime, BigDecimal percent) {
+        return special(document, position, description, amount, taxIncluded, regime, percent,
+                null, null, null, DocumentLineType.QUANTITY_PRICE);
     }
 
     public static DocumentLine promotion(
@@ -281,7 +313,7 @@ public class DocumentLine {
                 couponId, explicitType);
     }
 
-    static DocumentLine frozenSpecial(
+    public static DocumentLine frozenSpecial(
             CommercialDocument documento,
             int posicion,
             DocumentLineType type,
@@ -467,7 +499,10 @@ public class DocumentLine {
 
     public void assignPromotionEngineVersion(Integer engineVersion) {
         if (engineVersion == null) return;
-        if (lineType != DocumentLineType.PROMOTION || engineVersion != 2) {
+        boolean adjustment = lineType == DocumentLineType.PROMOTION || lineType == DocumentLineType.QUANTITY_PRICE;
+        boolean pricedProduct = lineType == DocumentLineType.PRODUCT && quantityPriceSnapshot != null;
+        if ((!adjustment && !pricedProduct) || (engineVersion != 2 && engineVersion != 3)
+                || (pricedProduct && engineVersion != 3)) {
             throw new IllegalArgumentException("Version de motor de promocion no valida");
         }
         if (promotionEngineVersion != null && !promotionEngineVersion.equals(engineVersion)) {
@@ -480,8 +515,8 @@ public class DocumentLine {
         return Set.copyOf(promotionAffectedPositions);
     }
 
-    void assignPromotionAffectedPositions(Collection<Integer> positions) {
-        if (lineType != DocumentLineType.PROMOTION) {
+    public void assignPromotionAffectedPositions(Collection<Integer> positions) {
+        if (lineType != DocumentLineType.PROMOTION && lineType != DocumentLineType.QUANTITY_PRICE) {
             throw new IllegalStateException(
                     "Solo una linea de promocion puede identificar productos afectados");
         }

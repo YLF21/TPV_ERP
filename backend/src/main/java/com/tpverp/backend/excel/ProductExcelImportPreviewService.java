@@ -1087,6 +1087,7 @@ public class ProductExcelImportPreviewService {
         String prohibitedDiscount = product.getDiscountType() == com.tpverp.backend.catalog.DiscountType.NONE ? "1" : "0";
         result.put("discountType", prohibitedDiscount); result.put("prohibitedDiscount", prohibitedDiscount);
         result.put("packageQuantity", decimalSnapshot(product.getPackageQuantity())); result.put("stockMin", decimalSnapshot(product.getStockMin())); result.put("stockMax", decimalSnapshot(product.getStockMax()));
+        result.put("quantityPricing", product.getQuantityPricing());
         return result;
     }
 

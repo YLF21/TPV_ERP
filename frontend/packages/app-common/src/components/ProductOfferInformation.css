@@ -1,0 +1,70 @@
+.product-offer-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+.stock-product-information-section--offer .product-offer-tabs {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--tpv-v3-line);
+  background: var(--tpv-v3-surface-alt);
+}
+.product-offer-tabs > button[role="tab"] {
+  min-width: 0;
+  min-height: 34px;
+  padding: 4px 8px;
+  border: 1px solid #abbcd0;
+  border-radius: 4px;
+  background: #fff;
+  color: var(--tpv-v3-navy, #07254f);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.2;
+  white-space: normal;
+  cursor: pointer;
+}
+.product-offer-tabs > button[aria-selected="true"] {
+  border-color: #0065fe;
+  background: #0065fe;
+  color: #fff;
+}
+.product-offer-tabs > button[aria-selected="false"]:hover { background: #edf4ff; }
+.product-offer-tabs > button:focus-visible,
+.product-quantity-tiers:focus-visible { outline: 2px solid #153f76; outline-offset: 1px; }
+.sale-product-information-dialog.is-touch .product-offer-tabs > button { min-height: 44px; }
+
+/* Keep both views in the same grid cell so switching tabs preserves the surrounding layout. */
+.product-offer-panels { display: grid; flex: 1; min-width: 0; }
+.product-offer-panel {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.product-offer-panel[aria-hidden="true"] { visibility: hidden; }
+.sale-product-details-section--offer .product-offer-panels { margin-top: 12px; }
+.stock-product-information-section--offer .product-quantity-panel { padding: 10px 12px; }
+.product-quantity-panel { gap: 8px; color: var(--tpv-v3-text, #122e52); }
+.product-quantity-panel > h4 { margin: 0; font-size: 14px; line-height: 1.3; }
+.product-quantity-panel > p { margin: 0; font-size: 12px; line-height: 1.4; }
+.product-quantity-status { color: #75531b; font-weight: 700; }
+.product-quantity-tiers { max-height: 12rem; overflow: auto; }
+.product-quantity-tiers table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.product-quantity-tiers th, .product-quantity-tiers td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--tpv-v3-line, #b9c6d6);
+  text-align: left;
+}
+.product-quantity-tiers th {
+  position: sticky;
+  top: 0;
+  background: var(--tpv-v3-surface-alt, #edf2f7);
+  color: var(--tpv-v3-navy, #07254f);
+}
+.product-quantity-tiers :is(th, td):last-child { text-align: right; }

@@ -89,7 +89,7 @@ describe("SaleProductSearchDialog", () => {
     expect(filterSaleProductSearch(products, "alt-cafe").map((product) => product.id)).toEqual(["coffee"]);
   });
 
-  it("sorts the visible stock while keeping the secondary barcode as a search-only value", () => {
+  it("sorts each data column in both directions and leaves the image header passive", () => {
     render(
       <SaleProductSearchDialog
         initialQuery="00"
@@ -100,10 +100,32 @@ describe("SaleProductSearchDialog", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: labels.stock }));
-
-    expect(screen.getAllByRole("option")[0]).toHaveAccessibleName(/Pan integral/);
+    expect(screen.queryByRole("button", { name: labels.image })).not.toBeInTheDocument();
+    for (const [label, firstName, secondName, firstDirection] of [
+      [labels.code, "Pan integral", "Café molido", "desc"],
+      [labels.barcode, "Café molido", "Pan integral", "asc"],
+      [labels.name, "Café molido", "Pan integral", "asc"],
+      [labels.stock, "Pan integral", "Café molido", "asc"],
+      [labels.price, "Pan integral", "Café molido", "asc"],
+    ]) {
+      const header = screen.getByRole("button", { name: label });
+      fireEvent.click(header);
+      expect(header).toHaveAttribute("data-sort-direction", firstDirection);
+      expect(screen.getAllByRole("option")[0]).toHaveTextContent(firstName);
+      fireEvent.click(header);
+      expect(screen.getAllByRole("option")[0]).toHaveTextContent(secondName);
+    }
     expect(screen.queryByRole("button", { name: /Código de barras 2/i })).not.toBeInTheDocument();
+  });
+
+  it("orders all matches before limiting the visible results", () => {
+    const catalogue = Array.from({ length: 105 }, (_, index) => ({
+      id: String(index), code: String(index), name: "Artículo", salePrice: index,
+    }));
+    const results = filterSaleProductSearch(catalogue, "artículo", 100, "es", { column: "price", direction: "desc" });
+    expect(results).toHaveLength(100);
+    expect(results[0].id).toBe("104");
+    expect(results[99].id).toBe("5");
   });
 
   it("opens with the original query and selects a result from the keyboard", () => {
@@ -221,12 +243,12 @@ describe("SaleProductSearchDialog", () => {
     expect(onSelect).toHaveBeenCalledWith(products[0]);
   });
 
-  it("opens product creation from the F5 button or keyboard shortcut", () => {
+  it.each(["KEYBOARD", "TOUCH"] as const)("opens product creation from the button or F5 in %s mode", (interfaceMode) => {
     const onCreateProduct = vi.fn();
     render(
       <SaleProductSearchDialog
         initialQuery="cafe"
-        interfaceMode="KEYBOARD"
+        interfaceMode={interfaceMode}
         labels={labels}
         products={products}
         createProductLabel="Añadir producto"
@@ -244,6 +266,17 @@ describe("SaleProductSearchDialog", () => {
     fireEvent.keyDown(screen.getByRole("combobox", { name: labels.query }), { key: "F5" });
 
     expect(onCreateProduct).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the search open on F5 when the operator cannot create products", () => {
+    const onClose = vi.fn();
+    const onSelect = vi.fn();
+    render(<SaleProductSearchDialog initialQuery="cafe" labels={labels} products={products}
+      interfaceMode="TOUCH" createProductLabel="Añadir producto" onClose={onClose} onSelect={onSelect} />);
+    expect(screen.queryByRole("button", { name: "Añadir producto" })).not.toBeInTheDocument();
+    expect(fireEvent.keyDown(screen.getByRole("combobox"), { key: "F5" })).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("selects with one touch and uses explicit information and add actions", () => {

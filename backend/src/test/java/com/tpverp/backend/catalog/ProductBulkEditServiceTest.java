@@ -24,6 +24,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -209,13 +211,60 @@ class ProductBulkEditServiceTest {
         var supplier = new ProductBulkEditContent.Row(supplierBase.id(), false, supplierBase.query(),
                 supplierBase.product(), supplierBase.draft(), List.of(), principal.suppliers().getFirst());
         var image = row("image", UUID.randomUUID());
-        ProductBulkEdit edit = new ProductBulkEdit(storeId, "20260711001", "Lista", List.of(edited, principal, supplier, image), userId, Instant.now());
+        // A current snapshot explicitly records that there is no quantity rule.
+        // An omitted field belongs to a legacy snapshot and permits field-only hydration.
+        var content = List.of(edited, principal, supplier, image).stream()
+                .map(row -> new ProductBulkEditContent.Row(row.id(), row.selected(), row.query(),
+                        row.product().withQuantityPricing(com.fasterxml.jackson.databind.node.NullNode.getInstance()),
+                        row.draft(), row.suppliers(), row.pendingSupplier(), row.principalSupplierChanged(),
+                        row.pendingPrincipalSupplierId(), row.pendingSuppliers()))
+                .toList();
+        ProductBulkEdit edit = new ProductBulkEdit(storeId, "20260711001", "Lista", content, userId, Instant.now());
         when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
         when(images.findByEdicion_IdOrderByPosicionAsc(edit.getId())).thenReturn(List.of(stagedImage(edit, image.product().productId(), 0)));
         var opened = service.get(edit.getId());
         assertThat(opened.productSnapshotsRefreshed()).isFalse();
         assertThat(opened.content()).isEqualTo(edit.getContenido());
         verify(products, never()).findAllByStoreIdAndIdIn(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyCollection());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void legacyHydrationPreservesEveryPendingChangeAndRequiresMatchingProductVersion(boolean matchingVersion) {
+        var base = rowWithPrincipalChange("legacy", UUID.randomUUID(), UUID.randomUUID());
+        var additional = rowWithPrincipalChange("additional", UUID.randomUUID(), UUID.randomUUID())
+                .suppliers().getFirst();
+        var row = new ProductBulkEditContent.Row(base.id(), true, base.query(), base.product(),
+                base.product().withActive("false"), base.suppliers(), base.suppliers().getFirst(),
+                base.principalSupplierChanged(), base.pendingPrincipalSupplierId(), List.of(additional));
+        var edit = new ProductBulkEdit(storeId, "20260711001", "Lista", List.of(row), userId, Instant.now());
+        var current = new Product(storeId, UUID.randomUUID(), null, UUID.randomUUID(),
+                "Otro nombre", "Otra descripcion", new BigDecimal("99"), true);
+        org.springframework.test.util.ReflectionTestUtils.setField(current, "id", row.product().productId());
+        org.springframework.test.util.ReflectionTestUtils.setField(current, "version", matchingVersion ? 0L : 1L);
+        current.setPrice(PriceTier.VENTA, new BigDecimal("199"));
+        var pricing = new QuantityPricing(QuantityPricing.Mode.PACK,
+                List.of(new QuantityPricing.Tier(3, new BigDecimal("5.99"))));
+        current.configureQuantityPricing(pricing);
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+        var image = stagedImage(edit, row.product().productId(), 0);
+        when(images.findByEdicion_IdOrderByPosicionAsc(edit.getId())).thenReturn(List.of(image));
+        when(products.findAllByStoreIdAndIdIn(storeId, Set.of(current.getId()))).thenReturn(List.of(current));
+
+        var opened = service.get(edit.getId());
+
+        var expectedProduct = matchingVersion ? row.product().withQuantityPricing(pricing.toJson()) : row.product();
+        var expected = new ProductBulkEditContent.Row(row.id(), row.selected(), row.query(), expectedProduct,
+                row.draft(), row.suppliers(), row.pendingSupplier(), row.principalSupplierChanged(),
+                row.pendingPrincipalSupplierId(), row.pendingSuppliers());
+        assertThat(opened.content()).containsExactly(expected);
+        assertThat(opened.productSnapshotsRefreshed()).isEqualTo(matchingVersion);
+        assertThat(edit.getContenido()).containsExactly(row);
+        assertThat(edit.getContenido().getFirst().product().quantityPricing()).isNull();
+        org.mockito.Mockito.verifyNoInteractions(catalog, productSuppliers, productImages);
+        verify(repository, never()).saveAndFlush(org.mockito.ArgumentMatchers.any());
+        verify(images).findByEdicion_IdOrderByPosicionAsc(edit.getId());
+        org.mockito.Mockito.verifyNoMoreInteractions(images);
     }
 
     @Test

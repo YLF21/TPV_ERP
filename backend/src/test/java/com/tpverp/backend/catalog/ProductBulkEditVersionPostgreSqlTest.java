@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.audit.AuditService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
@@ -154,6 +155,143 @@ class ProductBulkEditVersionPostgreSqlTest {
         assertPersistenceVersions(second);
         assertThat(jdbc.queryForObject("select familia_id from producto where id = ?", UUID.class, base.productId())).isEqualTo(familyId);
         assertThat(jdbc.queryForObject("select impuesto_id from producto where id = ?", UUID.class, base.productId())).isEqualTo(secondTaxId);
+    }
+
+    @Test
+    void disabledQuantityPricingPersistsWithoutLosingTiersAndCanBeReactivated() throws Exception {
+        var rule = new QuantityPricing(QuantityPricing.Mode.PACK,
+                List.of(new QuantityPricing.Tier(3, new BigDecimal("5.99"))), false);
+        var created = catalog.createProduct(request(familyId, taxId).withQuantityPricing(rule.toJson()));
+        assertThat(catalog.product(created.getId()).getQuantityPricing()).isEqualTo(rule);
+        assertThat(jdbc.queryForObject("select quantity_pricing->>'enabled' from producto where id = ?",
+                String.class, created.getId())).isEqualTo("false");
+        var current = ProductBulkEditContent.ProductData.fromProduct(catalog.product(created.getId()));
+        var saved = service.create(new ProductBulkEditService.ProductBulkCreateRequest(
+                "Regla desactivada", List.of(row(current, ProductBulkEditContent.ProductData.empty()))), authentication);
+        assertThat(QuantityPricing.fromJson(service.get(saved.id()).content().getFirst().product().quantityPricing()))
+                .isEqualTo(rule);
+        var active = new QuantityPricing(rule.mode(), rule.tiers(), true);
+        catalog.updateProduct(created.getId(), request(familyId, taxId).withQuantityPricing(active.toJson()));
+        assertThat(catalog.product(created.getId()).getQuantityPricing()).isEqualTo(active);
+        assertThat(jdbc.queryForObject("select quantity_pricing->>'enabled' from producto where id = ?",
+                String.class, created.getId())).isEqualTo("true");
+    }
+
+    @Test
+    void quantityPricingPersistsAndInvalidatesStaleBulkDraft() throws Exception {
+        var json = new ObjectMapper();
+        var pricing = json.readTree("""
+                {"mode":"PACK","tiers":[{"quantity":3,"price":"5.99"}]}
+                """);
+        var base = new TransactionTemplate(transactionManager).execute(status ->
+                ProductBulkEditContent.ProductData.fromProduct(
+                        catalog.createProduct(request(familyId, taxId))));
+        var saved = service.create(new ProductBulkEditService.ProductBulkCreateRequest(
+                "Regla antigua", List.of(row(base, ProductBulkEditContent.ProductData.empty()))), authentication);
+        var changed = catalog.updateProduct(base.productId(),
+                request(familyId, taxId).withQuantityPricing(pricing));
+        assertThat(changed.getQuantityPricing().mode()).isEqualTo(QuantityPricing.Mode.PACK);
+        assertThat(changed.getVersion()).isGreaterThan(base.version());
+        assertThat(jdbc.queryForObject(
+                "select quantity_pricing->>'mode' from producto where id = ?", String.class,
+                base.productId())).isEqualTo("PACK");
+        assertThat(jdbc.queryForObject(
+                "select quantity_pricing->'tiers'->0->>'price' from producto where id = ?", String.class,
+                base.productId())).isEqualTo("5.99");
+        assertThatThrownBy(() -> service.apply(saved.id(), new ProductBulkEditService.ProductBulkApplyRequest(
+                saved.version(), List.of(new CatalogService.BulkProductUpdate(base.productId(), base.version(),
+                        request(familyId, taxId).withQuantityPricing(base.quantityPricing()))),
+                List.of(), List.of(row(base, base))), authentication))
+                .isInstanceOf(ProductBulkEditConflictException.class);
+        var reopened = service.get(saved.id());
+        assertThat(QuantityPricing.fromJson(reopened.content().getFirst().product().quantityPricing()))
+                .isEqualTo(changed.getQuantityPricing());
+        catalog.updateProduct(base.productId(),
+                request(familyId, taxId).withQuantityPricing(com.fasterxml.jackson.databind.node.NullNode.getInstance()));
+        assertThat(jdbc.queryForObject("select quantity_pricing is null from producto where id = ?",
+                Boolean.class, base.productId())).isTrue();
+    }
+
+    @Test
+    void bulkDraftExplicitNullClearsRuleAndLegacyOmissionPreservesIt() throws Exception {
+        var json = new ObjectMapper();
+        var pricing = json.readTree("""
+                {"mode":"UNIT_THRESHOLD","tiers":[{"quantity":3,"price":"8.50"}]}
+                """);
+        var base = new TransactionTemplate(transactionManager).execute(status ->
+                ProductBulkEditContent.ProductData.fromProduct(catalog.createProduct(
+                        request(familyId, taxId).withQuantityPricing(pricing))));
+        catalog.updateProduct(base.productId(), request(familyId, taxId));
+        assertThat(jdbc.queryForObject("select quantity_pricing->>'mode' from producto where id = ?",
+                String.class, base.productId())).isEqualTo("UNIT_THRESHOLD");
+        var current = ProductBulkEditContent.ProductData.fromProduct(catalog.product(base.productId()));
+        var clear = json.readValue("{\"quantityPricing\":null}",
+                ProductBulkEditContent.ProductData.class);
+        var saved = service.create(new ProductBulkEditService.ProductBulkCreateRequest(
+                "Limpiar tramos", List.of(row(current, clear))), authentication);
+        var reopened = service.get(saved.id());
+        assertThat(reopened.content().getFirst().draft().quantityPricing().isNull()).isTrue();
+        var applied = service.apply(reopened.id(), new ProductBulkEditService.ProductBulkApplyRequest(
+                reopened.version(), List.of(new CatalogService.BulkProductUpdate(
+                        current.productId(), current.version(),
+                        request(familyId, taxId).withQuantityPricing(
+                                com.fasterxml.jackson.databind.node.NullNode.getInstance()))),
+                List.of(), List.of(row(current, clear))), authentication);
+        assertThat(applied.content().getFirst().product().quantityPricing().isNull()).isTrue();
+        assertThat(jdbc.queryForObject("select quantity_pricing is null from producto where id = ?",
+                Boolean.class, current.productId())).isTrue();
+    }
+
+    @Test
+    void legacyDraftWithOtherEditsHydratesQuantityPricingOnlyAtMatchingProductVersion() throws Exception {
+        var json = new ObjectMapper();
+        var originalRule = json.readTree("""
+                {"mode":"PACK","tiers":[{"quantity":3,"price":"5.99"}]}
+                """);
+        var base = new TransactionTemplate(transactionManager).execute(status ->
+                ProductBulkEditContent.ProductData.fromProduct(catalog.createProduct(
+                        request(familyId, taxId).withQuantityPricing(originalRule))));
+        var legacy = classificationData(base, familyId, taxId);
+        var pendingFamily = classificationData(base, secondFamilyId, taxId);
+        var saved = service.create(new ProductBulkEditService.ProductBulkCreateRequest(
+                "Borrador antiguo", List.of(row(legacy, pendingFamily))), authentication);
+        var opened = service.get(saved.id());
+        assertThat(opened.productSnapshotsRefreshed()).isTrue();
+        assertThat(QuantityPricing.fromJson(opened.content().getFirst().product().quantityPricing()))
+                .isEqualTo(QuantityPricing.fromJson(originalRule));
+        assertThat(opened.content().getFirst().draft()).isEqualTo(pendingFamily);
+        assertThat(opened.content().getFirst().effectiveProduct().familyId())
+                .isEqualTo(secondFamilyId.toString());
+        assertThat(jdbc.queryForObject("select contenido::text from producto_edicion_masiva where id=?",
+                String.class, saved.id())).doesNotContain("quantityPricing");
+        var replacement = json.readTree("""
+                {"mode":"PACK","tiers":[{"quantity":4,"price":"7.00"}]}
+                """);
+        catalog.updateProduct(base.productId(), request(familyId, taxId).withQuantityPricing(replacement));
+        var stale = service.get(saved.id());
+        assertThat(stale.productSnapshotsRefreshed()).isFalse();
+        assertThat(stale.content().getFirst().product().quantityPricing()).isNull();
+        assertThat(stale.content().getFirst().draft()).isEqualTo(pendingFamily);
+        assertThatThrownBy(() -> service.apply(saved.id(), new ProductBulkEditService.ProductBulkApplyRequest(
+                saved.version(), List.of(new CatalogService.BulkProductUpdate(base.productId(), base.version(),
+                        request(secondFamilyId, taxId))), List.of(), List.of(row(legacy, pendingFamily))), authentication))
+                .isInstanceOf(ProductBulkEditConflictException.class);
+    }
+
+    @Test
+    void legacyDraftHydratesKnownNullWhenProductHasNoQuantityRule() {
+        var base = new TransactionTemplate(transactionManager).execute(status ->
+                ProductBulkEditContent.ProductData.fromProduct(catalog.createProduct(
+                        request(familyId, taxId))));
+        var legacy = classificationData(base, familyId, taxId);
+        var pendingFamily = classificationData(base, secondFamilyId, taxId);
+        var saved = service.create(new ProductBulkEditService.ProductBulkCreateRequest(
+                "Borrador sin regla", List.of(row(legacy, pendingFamily))), authentication);
+        var opened = service.get(saved.id());
+        assertThat(opened.content().getFirst().product().quantityPricing().isNull()).isTrue();
+        assertThat(opened.content().getFirst().draft()).isEqualTo(pendingFamily);
+        assertThat(opened.content().getFirst().effectiveProduct().familyId())
+                .isEqualTo(secondFamilyId.toString());
     }
 
     @Test

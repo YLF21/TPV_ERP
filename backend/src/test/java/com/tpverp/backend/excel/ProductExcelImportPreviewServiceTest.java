@@ -10,6 +10,7 @@ import static org.mockito.Mockito.doThrow;
 
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.catalog.Product;
+import com.tpverp.backend.catalog.QuantityPricing;
 import com.tpverp.backend.catalog.ProductIdentifier;
 import com.tpverp.backend.catalog.ProductIdentifierRepository;
 import com.tpverp.backend.catalog.ProductRepository;
@@ -210,6 +211,9 @@ class ProductExcelImportPreviewServiceTest {
         when(product.getDiscountType()).thenReturn(com.tpverp.backend.catalog.DiscountType.NORMAL);
         when(product.getPurchasePrice()).thenReturn(new BigDecimal("9007199254740993.01"));
         when(product.getPackageQuantity()).thenReturn(new BigDecimal("1234567890123456.001"));
+        var quantityRule = new QuantityPricing(QuantityPricing.Mode.PACK,
+                List.of(new QuantityPricing.Tier(3, new BigDecimal("99999999999999999.999"))));
+        when(product.getQuantityPricing()).thenReturn(quantityRule);
         when(product.isActive()).thenReturn(false);
         when(product.isRequiresSerialNumber()).thenReturn(true);
         when(products.findAllByStoreIdAndIdIn(any(), any())).thenReturn(List.of(product));
@@ -223,6 +227,7 @@ class ProductExcelImportPreviewServiceTest {
         assertThat(result.rows()).singleElement().satisfies(row -> assertThat(row.databaseData())
                 .containsEntry("purchasePrice", "9007199254740993.01")
                 .containsEntry("packageQuantity", "1234567890123456.001")
+                .containsEntry("quantityPricing", quantityRule)
                 .containsEntry("active", "0")
                 .containsEntry("requiresSerialNumber", "1"));
     }

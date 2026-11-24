@@ -44,7 +44,7 @@ La pantalla ya dispone de menús superiores y de un manejador global de teclado.
 | Documento | `Ctrl+Shift+D` | Eliminar descuentos manuales | Implementado |
 | Documento | `Ctrl+P` | Método de impresión para la compra actual | Implementado |
 | Producto | `F1` | Consulta de precio | Implementado |
-| Producto | `F5` | Stock de la línea seleccionada | Implementado |
+| Producto | `Ctrl+F6` | Consulta stock. Abre con el producto seleccionado o permite buscar con el carrito vacío. | Implementado |
 | Producto | `F6` | Historial de ventas del producto | Implementado |
 | Producto | `F7` | Modificar ficha completa del catálogo con autorización | Implementado |
 | Producto | `Pausa` | Cambiar cantidad, `0` elimina y solo `-1 + Pausa` permite negativo | Implementado |

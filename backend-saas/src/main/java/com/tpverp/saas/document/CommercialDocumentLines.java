@@ -15,7 +15,8 @@ record CommercialDocumentLines(Status status, UUID warehouseLocalId, List<Line> 
             "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
     private static final Pattern DECIMAL = Pattern.compile("-?[0-9]+(?:\\.[0-9]+)?");
     private static final Set<String> LINE_TYPES = Set.of("PRODUCT", "PROMOTION", "PROMOTIONAL_COUPON",
-            "MEMBER_BALANCE", "MANUAL_DISCOUNT", "DOCUMENT_DISCOUNT", "RETURN_ADJUSTMENT");
+            "MEMBER_BALANCE", "MANUAL_DISCOUNT", "DOCUMENT_DISCOUNT", "RETURN_ADJUSTMENT",
+            "QUANTITY_PRICE");
 
     CommercialDocumentLines { lines = List.copyOf(lines); }
 
@@ -38,7 +39,9 @@ record CommercialDocumentLines(Status status, UUID warehouseLocalId, List<Line> 
                 // The source document stores codigo as varchar(128); keep invalid legacy text out of the index.
                 if (code != null && code.codePointCount(0, code.length()) > 128) return invalid();
                 if ("PRODUCT".equals(type) && (code == null || code.isBlank())) return invalid();
-                lines.add(new Line(position, optionalUuid(fields.get("productoId")), type, code,
+                UUID productId = optionalUuid(fields.get("productoId"));
+                if ("QUANTITY_PRICE".equals(type) && productId != null) return invalid();
+                lines.add(new Line(position, productId, type, code,
                         optionalText(fields.get("nombre")), optionalText(fields.get("tarifa")), decimal(fields.get("cantidad")),
                         decimal(fields.get("precioUnitario")), decimal(fields.get("descuento")),
                         decimal(fields.get("total"))));

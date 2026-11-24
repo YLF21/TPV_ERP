@@ -170,6 +170,7 @@ import { SaleMutationAuthorizationDialog } from "./SaleMutationAuthorizationDial
 import { userCanManageStockProducts } from "./stockAccess";
 import {
   formatProductQuantity,
+  formatQuantityValue,
   isProductQuantityPrecisionValid,
   normalizeProductQuantity,
   parseProductQuantityInput,
@@ -1737,7 +1738,7 @@ function SaleScreenContent({
     cashDrawer: t("sale.shortcut.cashDrawer"),
     cashWithdrawal: t("sale.shortcut.cashWithdrawal"),
     logout: t("sale.shortcut.logout"),
-    selectedStock: t("sale.shortcut.selectedStock"),
+    stockLookup: t("sale.shortcut.stockLookup"),
     productSales: t("sale.shortcut.productSales"),
     editProduct: t("sale.shortcut.editProduct"),
     ticketReturn: t("sale.shortcut.ticketReturn"),
@@ -3007,7 +3008,7 @@ function SaleScreenContent({
       );
     }
 
-    return (
+    const element = (
       <tr
         className={`sale-cart-row${selected ? " selected" : ""}${localLine.previousTicketImportOrigin ? ` historical-import ${localLine.previousTicketImportOrigin.pricingMode === "CURRENT_REPRICING" ? "current-repricing-import" : "frozen-exact-import"}` : ""}`}
         key={cartLineId}
@@ -3023,6 +3024,7 @@ function SaleScreenContent({
         {visibleCartColumns.map((column) => renderCell(column.key))}
       </tr>
     );
+    return { element, quantity, totalAmount };
   }
 
   async function prepareSalesCashSession() {
@@ -3307,6 +3309,7 @@ function SaleScreenContent({
   }
 
   function renderReturnPromotionAdjustmentRow(line: AuthoritativeSaleLine) {
+    const totalAmount = finiteAmount(line.finalSubtotal);
     function renderCell(column: SaleCartColumnKey) {
       if (column === "code") {
         return <td className="sale-cart-code" data-column-key={column} key={column}>{t("sale.cart.returnAdjustment.code")}</td>;
@@ -3321,18 +3324,44 @@ function SaleScreenContent({
       if (column === "total") {
         return (
           <td className="sale-cart-number sale-cart-total" data-column-key={column} key={column}>
-            +{formatSaleAmount(finiteAmount(line.finalSubtotal))} €
+            +{formatSaleAmount(totalAmount)} €
           </td>
         );
       }
       return <td data-column-key={column} key={column} />;
     }
 
-    return (
+    const element = (
       <tr className="sale-cart-return-adjustment" key={line.lineId}>
         {visibleCartColumns.map((column) => renderCell(column.key))}
       </tr>
     );
+    return { element, quantity: 0, totalAmount };
+  }
+
+  function renderCartRows() {
+    if (!authoritativeLineBreakdown) {
+      return lines.map(line => renderCartRow(line, undefined, lastConfirmedLinePricing[saleCartLineIdentity(line)]));
+    }
+    if (previousTicketImportBatch) {
+      const products = authoritativeLineBreakdown.filter(line => !line.lineType || line.lineType === "PRODUCT");
+      if (previousTicketImportBatch.pricingMode === "CURRENT_REPRICING") {
+        return lines.map((line, index) => renderCartRow(line, products[index]));
+      }
+      const imported = lines.filter(line => line.previousTicketImportOrigin);
+      const current = lines.filter(line => !line.previousTicketImportOrigin);
+      return [
+        ...imported.map(line => renderCartRow(line)),
+        ...current.map((line, index) => renderCartRow(line, products[imported.length + index])),
+      ];
+    }
+    let productIndex = 0;
+    return authoritativeLineBreakdown.flatMap(line => {
+      if (line.lineType === "RETURN_ADJUSTMENT") return [renderReturnPromotionAdjustmentRow(line)];
+      if (line.lineType === "MANUAL_DISCOUNT") return [];
+      const product = lines[productIndex++];
+      return product ? [renderCartRow(product, line)] : [];
+    });
   }
 
   function updateMatchingVoucherPrintOutcome(
@@ -5165,8 +5194,6 @@ function SaleScreenContent({
           || Boolean(selectedLine.returnOrigin)
           || Boolean(selectedLine.previousTicketImportOrigin)
           || paymentLocked;
-      case "stock":
-        return !selectedLine || paymentLocked;
       case "serial-number":
         return !selectedLine || Boolean(selectedLine.returnOrigin) || paymentLocked
           || Boolean(selectedLine.previousTicketImportOrigin
@@ -5198,6 +5225,7 @@ function SaleScreenContent({
         return paymentLocked || parkedSaleSaving || Boolean(previousTicketImportBatch)
           || (lines.length > 0 && saleMutationSecurityUnavailable);
       case "sale-comment":
+      case "stock":
       case "print-method":
       case "next-units":
       case "next-package":
@@ -5675,8 +5703,8 @@ function SaleScreenContent({
           onSelect: () => executeSaleCommand("price-lookup"),
         },
         {
-          type: "action", id: "stock", label: commandLabels.selectedStock, shortcut: "F5",
-          disabled: !selectedLine || paymentLocked,
+          type: "action", id: "stock", label: commandLabels.stockLookup, shortcut: "Ctrl+F6",
+          disabled: saleCommandDisabled("stock"),
           onSelect: () => executeSaleCommand("stock"),
         },
         {
@@ -5838,6 +5866,12 @@ function SaleScreenContent({
     touchAction("cancel-ticket", commandLabels.cancelOtherTicket),
   ];
 
+  const cartRows = renderCartRows();
+  const cartQuantity = cartRows.reduce((sum, row) => sum + Math.round(row.quantity * 1000), 0) / 1000;
+  const cartSumCents = cartRows.reduce<number | null>((sum, row) =>
+    sum === null || row.totalAmount == null ? null : sum + Math.round(row.totalAmount * 100), 0);
+  const rowCountColumn = cartColumnVisible("image") ? "image" : "name";
+
   return (
     <SaleTouchKeyboardScope locale={locale} interfaceMode={interfaceMode}>
     <main inert={controlSaving || undefined} aria-busy={controlSaving} className={`sale-screen work-screen ${interfaceMode === "TOUCH" ? "touch-mode" : "keyboard-mode"}`}>
@@ -5915,50 +5949,39 @@ function SaleScreenContent({
                 </tr>
               </thead>
               <tbody>
-                {authoritativeLineBreakdown && !previousTicketImportBatch
-                  ? (() => {
-                      let productIndex = 0;
-                      return authoritativeLineBreakdown.map((line) => {
-                        if (line.lineType === "RETURN_ADJUSTMENT") {
-                          return renderReturnPromotionAdjustmentRow(line);
-                        }
-                        if (line.lineType === "MANUAL_DISCOUNT") {
-                          return null;
-                        }
-                        const localLine = lines[productIndex++];
-                        return localLine ? renderCartRow(localLine, line) : null;
-                      });
-                    })()
-                  : previousTicketImportBatch && authoritativeLineBreakdown
-                    ? (() => {
-                        const authoritativeProducts = authoritativeLineBreakdown.filter(
-                          (line) => !line.lineType || line.lineType === "PRODUCT",
-                        );
-                        if (previousTicketImportBatch.pricingMode === "CURRENT_REPRICING") {
-                          return lines.map((line, index) => renderCartRow(
-                            line,
-                            authoritativeProducts[index],
-                          ));
-                        }
-                        const imported = lines.filter((line) => line.previousTicketImportOrigin);
-                        const current = lines.filter((line) => !line.previousTicketImportOrigin);
-                        const currentAuthoritative = authoritativeProducts.slice(imported.length);
-                        return [
-                          ...imported.map((line) => renderCartRow(line)),
-                          ...current.map((line, index) => renderCartRow(line, currentAuthoritative[index])),
-                        ];
-                      })()
-                    : lines.map((line) => renderCartRow(
-                        line,
-                        undefined,
-                        lastConfirmedLinePricing[saleCartLineIdentity(line)],
-                      ))}
+                {cartRows.map(row => row.element)}
                 <tr className="sale-cart-grid-filler" aria-hidden="true">
                   {visibleCartColumns.map((column) => (
                     <td data-column-key={column.key} key={column.key} />
                   ))}
                 </tr>
               </tbody>
+              <tfoot className="sale-cart-summary" data-sticky-table-footer>
+                <tr className="sale-cart-summary-row" aria-label={t("sale.cart.summary")}>
+                  {visibleCartColumns.map(({ key }) => {
+                    if (key === rowCountColumn) {
+                      const label = t("sale.cart.summary.rows");
+                      return (
+                        <td key={key} data-column-key={key} className="sale-cart-row-count" aria-label={`${label}: ${cartRows.length}`}>
+                          <small>{label}</small>
+                          {cartRows.length}
+                        </td>
+                      );
+                    }
+                    if (key === "quantity") {
+                      const quantity = formatQuantityValue(cartQuantity, locale);
+                      const label = t("sale.cart.summary.quantity");
+                      return <td key={key} data-column-key={key} title={label} aria-label={`${label}: ${quantity}`}>{quantity}</td>;
+                    }
+                    if (key === "total") {
+                      const amount = cartSumCents === null ? "—" : `${formatSaleAmount(cartSumCents / 100)} €`;
+                      const label = t("sale.cart.summary.amount");
+                      return <td key={key} data-column-key={key} title={label} aria-label={`${label}: ${amount}`} aria-busy={cartSumCents === null || undefined}>{amount}</td>;
+                    }
+                    return <td key={key} data-column-key={key} />;
+                  })}
+                </tr>
+              </tfoot>
             </table>
           </div>
           {paymentLocked && lines.length === 0 && (
@@ -6544,7 +6567,7 @@ function SaleScreenContent({
       {consultationMode === "STOCK" && (
         <SaleProductConsultationDialog
           products={selectableProducts}
-          initialProduct={selectedLine?.product}
+          initialProduct={(selectedLine ?? lines[0])?.product}
           token={session.accessToken}
           onClose={() => {
             setConsultationMode(null);

@@ -167,6 +167,129 @@ async function applyChanges() {
 }
 
 describe("Stock bulk editing save and apply", () => {
+  it.each(["venta", "gestion"] as const)("keeps quantity pricing in its own eleven-column tab in %s", async (app) => {
+    const paused = { mode: "PACK" as const, enabled: false, tiers: [
+      { quantity: 3, price: "9.99" }, { quantity: 5, price: "15.25" }
+    ] };
+    const product = { ...initialProduct, quantityPricing: paused };
+    mockBulkEditing([], { content: [rowFor(product)] });
+    const { container } = await openWorkspace(app);
+    const tabs = Array.from(container.querySelectorAll<HTMLElement>(".bulk-edit-tabs button"));
+    expect(tabs.map(tab => tab.textContent)).toEqual([
+      "Página principal", "Información de productos", "Precio venta", "Precio de miembro",
+      "Precio mayor", "Precio oferta", "Precio por cantidad", "Imagen"
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: /^Precio por cantidad$/ }));
+    expect(screen.queryByRole("button", { name: "Configurar precios por cantidad" })).toBeNull();
+    const header = container.querySelector(".bulk-edit-head")!;
+    const row = container.querySelector('[data-bulk-row-id="row-1"]')!;
+    expect(header.children).toHaveLength(12); // 11 data columns plus the selection checkbox.
+    expect(row.children).toHaveLength(12);
+    expect(header.textContent).toContain("Regla de precio por cantidad");
+    expect(header.textContent).toContain("Cantidad");
+    expect(header.textContent).toContain("Precio");
+    expect(header.textContent).toContain("Stock");
+    expect((within(row as HTMLElement).getByRole("combobox", { name: "Precios por cantidad" }) as HTMLSelectElement).value).toBe("PACK");
+    expect(within(row as HTMLElement).getByText("No aplicado")).toBeTruthy();
+    expect(within(row as HTMLElement).getAllByRole("textbox", { name: /^Cantidad \d/ })).toHaveLength(2);
+    expect(within(row as HTMLElement).getAllByRole("textbox", { name: /^Precio del lote \d/ })).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: /Editar seleccionado/ }));
+    for (const action of ["Añadir regla a productos sin regla", "Reemplazar regla", "Aplicar reglas guardadas", "No aplicar reglas guardadas", "Quitar regla"]) {
+      expect(screen.getByRole("button", { name: action })).toBeTruthy();
+    }
+  });
+
+  it("saves, reopens and applies a paused multi-tier rule without losing its state or decimal precision", async () => {
+    const paused = { mode: "PACK" as const, enabled: false, tiers: [
+      { quantity: 5, price: "15.25" }, { quantity: 3, price: "9.99" }
+    ] };
+    const product = { ...initialProduct, quantityPricing: paused };
+    const applied = { ...product, version: 5, quantityPricing: { ...paused, tiers: [
+      { quantity: 3, price: "8.125" }, { quantity: 5, price: "15.25" }, { quantity: 8, price: "20" }
+    ] } };
+    const backend = mockBulkEditing([applied], { content: [rowFor(product)] });
+    const { container } = await openWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: /^Precio por cantidad$/ }));
+    const row = within(container.querySelector<HTMLElement>('[data-bulk-row-id="row-1"]')!);
+    fireEvent.change(row.getByRole("textbox", { name: "Precio del lote 2" }), { target: { value: "8,125" } });
+    fireEvent.click(row.getByRole("button", { name: "Añadir tramo" }));
+    fireEvent.change(row.getByRole("textbox", { name: "Cantidad 3" }), { target: { value: "8" } });
+    fireEvent.change(row.getByRole("textbox", { name: "Precio del lote 3" }), { target: { value: "20" } });
+    expect(row.getByText("No aplicado")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Guardar$/ }));
+    await waitFor(() => expect(backend.saves).toHaveLength(1));
+    expect(backend.saves[0].content[0].draft.quantityPricing).toEqual({ ...paused, tiers: [
+      { quantity: 3, price: "8.125" }, { quantity: 5, price: "15.25" }, { quantity: 8, price: "20" }
+    ] });
+    fireEvent.click(screen.getByRole("button", { name: "Volver a listas" }));
+    await waitFor(() => expect((screen.getByRole("button", { name: "Abrir" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.doubleClick((await screen.findByText("Lista de prueba")).closest("tr")!);
+    await screen.findByRole("button", { name: /^Precio por cantidad$/ });
+    fireEvent.click(screen.getByRole("button", { name: /^Precio por cantidad$/ }));
+    const reopened = within(container.querySelector<HTMLElement>('[data-bulk-row-id="row-1"]')!);
+    expect((reopened.getByRole("textbox", { name: "Precio del lote 1" }) as HTMLInputElement).value).toBe("8.125");
+    expect(reopened.getByText("No aplicado")).toBeTruthy();
+    await applyChanges();
+    expect(backend.applies[0].body.updates).toHaveLength(1);
+    expect(backend.applies[0].body.updates[0].product.quantityPricing).toEqual(applied.quantityPricing);
+  });
+
+  it("blocks both save and apply before sending an incomplete quantity tier", async () => {
+    const product = { ...initialProduct, quantityPricing: null };
+    const backend = mockBulkEditing([], { content: [rowFor(product)] });
+    const { container } = await openWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: /^Precio por cantidad$/ }));
+    const row = within(container.querySelector<HTMLElement>('[data-bulk-row-id="row-1"]')!);
+    fireEvent.change(row.getByRole("combobox", { name: "Precios por cantidad" }), { target: { value: "PACK" } });
+    fireEvent.change(row.getByRole("textbox", { name: "Cantidad 1" }), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Guardar$/ }));
+    expect(backend.saves).toHaveLength(0);
+    expect(backend.applies).toHaveLength(0);
+    expect(screen.getByText(/CAFE-1.*Hay campos sin rellenar/)).toBeTruthy();
+    await confirmApplyChanges();
+    expect(backend.saves).toHaveLength(0);
+    expect(backend.applyAttempts).toHaveLength(0);
+    expect((row.getByRole("textbox", { name: "Precio del lote 1" }) as HTMLInputElement).value).toBe("");
+  });
+
+  it("changes only selected saved rules and keeps quick tier editing on the same field with Enter", async () => {
+    const paused = { mode: "PACK" as const, enabled: false, tiers: [{ quantity: 3, price: "9.99" }] };
+    const first = { ...initialProduct, quantityPricing: paused };
+    const second = { ...initialProduct, productId: "product-2", code: "CABLE-1", quantityPricing: paused };
+    const backend = mockBulkEditing([], { content: [
+      rowFor(first), { ...rowFor(second), id: "row-2", selected: false }
+    ] });
+    const { container } = await openWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: /^Precio por cantidad$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Editar seleccionado/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar reglas guardadas" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Activar reglas" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Activar reglas" }));
+    const firstRow = within(container.querySelector<HTMLElement>('[data-bulk-row-id="row-1"]')!);
+    const secondRow = within(container.querySelector<HTMLElement>('[data-bulk-row-id="row-2"]')!);
+    expect(firstRow.getByText("Aplicado")).toBeTruthy();
+    expect(secondRow.getByText("No aplicado")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edición rápida" }));
+    fireEvent.click(within(screen.getByRole("menu")).getByRole("button", { name: /^Precio$/ }));
+    const displayedPrices = Array.from(container.querySelectorAll<HTMLInputElement>('[data-bulk-quick-field="tierPrice"]'));
+    expect(displayedPrices).toHaveLength(2);
+    expect(displayedPrices.map(input => input.closest("[data-bulk-row-id]")?.getAttribute("data-bulk-row-id"))).toEqual(["row-2", "row-1"]);
+    displayedPrices[0].focus();
+    fireEvent.keyDown(displayedPrices[0], { key: "Enter" });
+    expect(document.activeElement).toBe(displayedPrices[1]);
+    fireEvent.keyDown(displayedPrices[1], { key: "Enter", shiftKey: true });
+    expect(document.activeElement).toBe(displayedPrices[0]);
+    fireEvent.change(displayedPrices[1], { target: { value: "8,5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Terminar modo rápido" }));
+    expect((firstRow.getByRole("textbox", { name: "Precio del lote 1" }) as HTMLInputElement).value).toBe("8,5");
+    expect((secondRow.getByRole("textbox", { name: "Precio del lote 1" }) as HTMLInputElement).value).toBe("9.99");
+    expect(backend.saves).toHaveLength(0);
+    expect(backend.applyAttempts).toHaveLength(0);
+  });
+
   it("edits the main table stock limits through both menus without updating stock quantities", async () => {
     const first = { ...initialProduct, stockMin: "2", stockMax: "20" };
     const second = { ...first, productId: "product-2", code: "CAFE-2" };

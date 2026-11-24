@@ -1446,7 +1446,8 @@ public class PosCashService {
             var promotions = ticket.getLineas().stream()
                     .filter(line -> line.getLineType() != DocumentLineType.PRODUCT)
                     .filter(line -> line.getPosicion() > historicalLineCount)
-                    .filter(line -> line.getPromotionId() != null || line.getPromotionalCouponId() != null)
+                    .filter(line -> line.getPromotionId() != null || line.getPromotionalCouponId() != null
+                            || line.getLineType() == DocumentLineType.QUANTITY_PRICE)
                     .map(line -> new AppliedPromotion(
                             line.getPromotionId(), line.getPromotionalCouponId(),
                             line.getPromotionVersionId(), line.getLineType().name(),
@@ -1742,6 +1743,7 @@ public class PosCashService {
         var currentReductions = currentLines.stream()
                 .filter(line -> line.getTotal().signum() < 0)
                 .filter(line -> line.getLineType() == DocumentLineType.PROMOTION
+                        || line.getLineType() == DocumentLineType.QUANTITY_PRICE
                         || line.getLineType() == DocumentLineType.PROMOTIONAL_COUPON
                         || line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT
                         || line.getLineType() == DocumentLineType.MANUAL_DISCOUNT
@@ -1990,7 +1992,8 @@ public class PosCashService {
                 documentDiscountAmount = Money.euros(documentDiscountAmount.add(total.abs()));
             } else if (adjustment.getLineType() == DocumentLineType.MEMBER_BALANCE) {
                 memberBalanceDiscount = Money.euros(memberBalanceDiscount.add(total.abs()));
-            } else if (adjustment.getLineType() == DocumentLineType.PROMOTION) {
+            } else if (adjustment.getLineType() == DocumentLineType.PROMOTION
+                    || adjustment.getLineType() == DocumentLineType.QUANTITY_PRICE) {
                 promotionDiscount = Money.euros(promotionDiscount.add(total.abs()));
                 var candidate = new AppliedPromotion(
                         adjustment.getPromotionId(), adjustment.getPromotionalCouponId(),

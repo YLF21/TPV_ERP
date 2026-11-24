@@ -17,6 +17,7 @@ import type { SaleProduct } from "./SaleScreen";
 import { SaleProductInformationPanel } from "./SaleProductInformationPanel";
 import { ReplenishmentRequestButton } from "./ReplenishmentRequestButton";
 import type { StockInventoryRow } from "./StockScreen";
+import type { QuantityPricing } from "../quantityPricing";
 
 type ProductDetailView = {
   id: string;
@@ -48,6 +49,7 @@ type ProductDetailView = {
   memberPrice?: number | string | null;
   wholesalePrice?: number | string | null;
   offerPrice?: number | string | null;
+  quantityPricing?: QuantityPricing;
 };
 
 type StockLevelView = {
@@ -148,6 +150,7 @@ export function buildSaleProductInformationRow(
     memberPrice: valueText(product.memberPrice),
     wholesalePrice: valueText(product.wholesalePrice),
     offerPrice: valueText(product.offerPrice),
+    quantityPricing: product.quantityPricing,
     offerDiscountPercent: valueText(product.offerDiscountPercent),
     productType: valueText(product.productType),
     discountType: valueText(product.priceUseMode ?? product.discountType),
@@ -335,7 +338,7 @@ export function SaleProductInformationDialog({
     >
       <header>
         <h2 id="sale-product-information-title">{product.name ?? t("sale.main.unnamedProduct")}</h2>
-        <WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose} onLight >×</WindowCloseButton>
+        <WindowCloseButton type="button" aria-label={t("common.close")} onClick={onClose}>×</WindowCloseButton>
       </header>
       <div ref={contentRef} className="sale-product-information-content">
         {loading && <p className="sale-product-information-state" role="status">{t("sale.productInformation.loading")}</p>}

@@ -21,7 +21,7 @@ type DialogStep = "edit" | "review" | "draft" | "confirmed";
 
 type SourceLine = {
   id: string;
-  type: "PRODUCT" | "PROMOTION" | "PROMOTIONAL_COUPON" | "MANUAL_DISCOUNT";
+  type: "PRODUCT" | "PROMOTION" | "PROMOTIONAL_COUPON" | "QUANTITY_PRICE" | "MANUAL_DISCOUNT";
   code: string;
   name: string;
   originalQuantity: number | string;

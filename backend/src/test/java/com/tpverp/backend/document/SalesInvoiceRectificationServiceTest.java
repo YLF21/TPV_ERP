@@ -70,6 +70,11 @@ class SalesInvoiceRectificationServiceTest {
     void createsLinkedR1DifferenceDraftWithoutConfirmingIt() {
         var original = confirmedInvoice();
         var sourceLine = original.getLineas().getFirst();
+        sourceLine.assignQuantityPriceSnapshot(new QuantityPriceSnapshot(
+                new com.tpverp.backend.catalog.QuantityPricing(com.tpverp.backend.catalog.QuantityPricing.Mode.PACK,
+                        List.of(new com.tpverp.backend.catalog.QuantityPricing.Tier(3, new BigDecimal("150")))),
+                new BigDecimal("60.50")));
+        sourceLine.assignPromotionEngineVersion(3);
         when(documents.findLockedDocument(original.getId(), store.getId()))
                 .thenReturn(Optional.of(original));
         when(documents.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -92,11 +97,44 @@ class SalesInvoiceRectificationServiceTest {
         assertThat(result.metadata().getOriginalDocumentId()).isEqualTo(original.getId());
         assertThat(result.document().getLineas().getFirst().getOriginalDocumentLineId())
                 .isEqualTo(sourceLine.getId());
+        assertThat(result.document().getLineas().getFirst().getPromotionEngineVersion()).isEqualTo(3);
+        assertThat(result.document().getLineas().getFirst().getQuantityPriceSnapshot())
+                .isEqualTo(sourceLine.getQuantityPriceSnapshot());
         verify(rectifications).save(result.metadata());
         verify(relations).save(any(DocumentRelation.class));
         verify(operationalEvents).record(
                 result.document(), DocumentOperationalEventType.CREADO,
                 user.getId(), result.document().getTerminalOrigenId(), result.document().getCreadoEn());
+    }
+
+    @Test
+    void cancellationPreservesTaxRoundingOfCompactedPromotionApplications() {
+        var original = new CommercialDocument(store.getId(), UUID.randomUUID(), CommercialDocumentType.FACTURA_VENTA,
+                LocalDate.of(2026, 7, 21), user.getId(), BigDecimal.ZERO, true);
+        original.setParties(UUID.randomUUID(), null, null);
+        var product = new DocumentLine(original, UUID.randomUUID(), 1, 6, "P", "Producto", "VENTA",
+                new BigDecimal("2.00"), BigDecimal.ZERO, true, "IVA", new BigDecimal("21"));
+        original.addLine(product);
+        // Three discounts of 2.00 each carry 1.65 base + .35 tax per application.
+        var promotion = DocumentLine.frozenSpecial(original, 2, DocumentLineType.PROMOTION, "2x1",
+                new BigDecimal("-6.00"), true, "IVA", new BigDecimal("21"), UUID.randomUUID(), UUID.randomUUID(), null,
+                new BigDecimal("-4.95"), new BigDecimal("-1.05"), new BigDecimal("-6.00"));
+        promotion.assignPromotionEngineVersion(3);
+        original.addLine(promotion);
+        original.confirm("FV-001-26-000001", user.getId(), NOW, false);
+        when(documents.findByIdAndTiendaId(original.getId(), store.getId())).thenReturn(Optional.of(original));
+        var request = new SalesInvoiceRectificationRequest(SalesInvoiceRectificationReason.OPERATION_CANCELLATION,
+                "Cancelacion completa con redondeo fiscal por aplicacion",
+                List.of(new SalesInvoiceRectificationRequest.LineRequest(product.getId(), new BigDecimal("-6"), new BigDecimal("2.00")),
+                        new SalesInvoiceRectificationRequest.LineRequest(promotion.getId(), BigDecimal.ONE.negate(), new BigDecimal("6.00"))));
+
+        var result = service.preview(original.getId(), request, authentication()).document();
+
+        assertThat(result.getTotal()).isEqualByComparingTo(original.getTotal().negate());
+        assertThat(result.getBaseTotal()).isEqualByComparingTo(original.getBaseTotal().negate());
+        assertThat(result.getImpuestoTotal()).isEqualByComparingTo(original.getImpuestoTotal().negate());
+        assertThat(result.getLineas().getLast().getBase()).isEqualByComparingTo("4.95");
+        assertThat(result.getLineas().getLast().getImpuesto()).isEqualByComparingTo("1.05");
     }
 
     @Test

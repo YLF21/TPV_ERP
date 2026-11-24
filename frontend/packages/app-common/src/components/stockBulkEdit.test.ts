@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { bulkQuantityPricingPreview, equalQuantityPricing } from "./stockBulkQuantityPricing";
+import type { QuantityPricing } from "../quantityPricing";
 import { readSheet } from "read-excel-file/browser";
 import {
   buildStockBulkSupplierPrincipalAssignments,
@@ -70,6 +72,65 @@ const product: StockInventoryRow = {
 };
 
 describe("stock bulk edit", () => {
+  it("serializes edited tiers in quantity order without changing the grid order or rounding prices", () => {
+    const rule: QuantityPricing = { mode: "PACK", enabled: false, tiers: [
+      { quantity: 20, price: "99999999999999999,125" }, { quantity: 10, price: "0" }
+    ] };
+    const row = { id: "tiers", selected: true, query: "", product: { ...product, quantityPricing: null },
+      draft: { quantityPricing: rule } };
+    expect(validateStockBulkRows([row])).toEqual([]);
+    expect(buildStockBulkUpdates([row])[0].product.quantityPricing).toEqual({
+      ...rule, tiers: [{ quantity: 10, price: "0" }, { quantity: 20, price: "99999999999999999.125" }]
+    });
+    expect(rule.tiers[0]).toEqual({ quantity: 20, price: "99999999999999999,125" });
+    for (const [quantity, price, issue] of [[20, "2", "duplicate"], [0, "", "missingFields"], [10, "1.2345", "price"]] as const) {
+      const result = validateStockBulkRows([{ ...row, draft: { quantityPricing: {
+        ...rule, tiers: [rule.tiers[0], { quantity, price }]
+      } } }]);
+      expect(result).toContainEqual({ rowId: row.id, field: "quantityPricing", code: "invalidQuantityPricing", issue });
+    }
+  });
+
+  it("previews quantity rules only for selected known products and honors the current draft", () => {
+    const pack: QuantityPricing = { mode: "PACK", tiers: [{ quantity: 10, price: 3 }] };
+    const unit: QuantityPricing = { mode: "UNIT_THRESHOLD", tiers: [{ quantity: 12, price: 0.8 }] };
+    const row = { id: "configured", selected: true, query: "", product: { ...product, quantityPricing: pack }, draft: {} };
+    const rows = [row, { ...row, id: "removed-in-draft", draft: { quantityPricing: null, salePrice: "0.50" } },
+      { ...row, id: "unselected", selected: false }, { ...row, id: "legacy", product }];
+    const preview = bulkQuantityPricingPreview(rows, "missing", unit);
+    expect(preview.map(item => item.id)).toEqual(["configured", "removed-in-draft"]);
+    expect(preview.filter(item => item.change)).toEqual([expect.objectContaining({ id: "removed-in-draft", basePrice: "0.50", before: null, after: unit })]);
+    expect(bulkQuantityPricingPreview(rows, "replace", unit).filter(item => item.change)).toHaveLength(2);
+    expect(bulkQuantityPricingPreview(rows, "remove", null).filter(item => item.change).map(item => item.id)).toEqual(["configured"]);
+    for (const proposed of [unit, null]) {
+      const edited = { ...row, draft: { quantityPricing: proposed } };
+      expect(stockBulkRowsChanged([edited])).toBe(true);
+      expect(buildStockBulkUpdates([edited])[0].product.quantityPricing).toEqual(proposed);
+      expect(stockBulkEffectiveProduct(edited)?.quantityPricing).toEqual(proposed);
+    }
+    const same = { ...row, draft: { quantityPricing: { ...pack, tiers: [{ quantity: 10, price: "3.00" }] } } };
+    expect(buildStockBulkUpdates([same])).toHaveLength(0);
+    expect(equalQuantityPricing(
+      { ...pack, tiers: [{ quantity: 10, price: "99999999999999999.998" }] },
+      { ...pack, tiers: [{ quantity: 10, price: "99999999999999999.999" }] }
+    )).toBe(false);
+    expect(equalQuantityPricing(pack, { ...pack, enabled: true })).toBe(true);
+    expect(equalQuantityPricing(pack, { ...pack, enabled: false })).toBe(false);
+    const inactive = { ...pack, enabled: false };
+    expect(bulkQuantityPricingPreview([row], "replace", inactive)[0]).toEqual(expect.objectContaining({
+      before: pack, after: inactive, change: true
+    }));
+    const inactiveDraft = { ...row, draft: { quantityPricing: inactive } };
+    expect(stockBulkRowsChanged([inactiveDraft])).toBe(true);
+    expect(buildStockBulkUpdates([inactiveDraft])[0].product.quantityPricing).toEqual(inactive);
+    expect(bulkQuantityPricingPreview([inactiveDraft], "replace", pack)[0]).toEqual(expect.objectContaining({
+      before: inactive, after: pack, change: true
+    }));
+    expect(bulkQuantityPricingPreview([inactiveDraft], "remove", null)[0]).toEqual(expect.objectContaining({
+      before: inactive, after: null, change: true
+    }));
+    expect(buildStockBulkUpdates([{ ...row, draft: { name: "Nuevo" } }])[0].product).not.toHaveProperty("quantityPricing");
+  });
   it("swaps effective code and primary barcode as strings, preserving drafts and product versions", () => {
     const rows = [
       { id: "existing", selected: true, query: "2004461", product: { ...product, version: 9, code: "2004461", barcode: "8435606744034", barcode2: "00001234" }, draft: { name: "Nombre pendiente", code: "0002004461" } },

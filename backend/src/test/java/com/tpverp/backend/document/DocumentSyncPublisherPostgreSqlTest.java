@@ -10,6 +10,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tpverp.backend.persistence.FlywayPostgreSqlConfiguration;
+import com.tpverp.backend.catalog.QuantityPricing;
 import com.tpverp.backend.sync.SyncOperation;
 import com.tpverp.backend.sync.SyncOutboxService;
 import jakarta.persistence.EntityManager;
@@ -117,11 +118,60 @@ class DocumentSyncPublisherPostgreSqlTest {
     }
 
     @Test
+    void ticketPersistsQuantityPriceSnapshotAndAdjustmentInOutbox() {
+        var rule = new QuantityPricing(QuantityPricing.Mode.PACK,
+                List.of(new QuantityPricing.Tier(3, new BigDecimal("5.99"))));
+        UUID documentId = Objects.requireNonNull(transaction().execute(status -> {
+            var ticket = new CommercialDocument(fixture.storeId(), fixture.warehouseId(),
+                    CommercialDocumentType.TICKET, DATE, fixture.userId(), BigDecimal.ZERO);
+            ticket.setParties(fixture.customerId(), null, null);
+            var product = new DocumentLine(ticket, fixture.productId(), 1, 3, "P1", "Synthetic product",
+                    "VENTA", new BigDecimal("2.50"), BigDecimal.ZERO, false, "IGIC", BigDecimal.ZERO);
+            product.assignQuantityPriceSnapshot(new QuantityPriceSnapshot(rule, new BigDecimal("2.50")));
+            product.assignPromotionEngineVersion(3);
+            ticket.addLine(product);
+            var adjustment = DocumentLine.quantityPrice(ticket, 2, "Precio por 3", new BigDecimal("-1.51"),
+                    false, "IGIC", BigDecimal.ZERO);
+            adjustment.assignPromotionEngineVersion(3);
+            ticket.addLine(adjustment);
+            ticket.confirm("T-" + ticket.getId().toString().replace("-", "").substring(0, 24),
+                    fixture.userId(), NOW, false);
+            documents.save(ticket);
+            publisher.schedule(fixture.companyId(), ticket, null, SyncOperation.CONFIRMAR);
+            return ticket.getId();
+        }));
+        assertThat(jdbc.queryForObject("""
+                select precio_cantidad_snapshot->'rule'->>'mode'
+                  from documento_linea where documento_id=? and posicion=1
+                """, String.class, documentId)).isEqualTo("PACK");
+        assertThat(jdbc.queryForObject("""
+                select tipo_linea from documento_linea where documento_id=? and posicion=2
+                """, String.class, documentId)).isEqualTo("QUANTITY_PRICE");
+        transaction().execute(status -> {
+            var reloaded = documents.findById(documentId).orElseThrow();
+            assertThat(reloaded.getLineas()).hasSize(2);
+            assertThat(reloaded.getLineas().getFirst().getQuantityPriceSnapshot().rule()).isEqualTo(rule);
+            assertThat(reloaded.getLineas()).allSatisfy(line ->
+                    assertThat(line.getPromotionEngineVersion()).isEqualTo(3));
+            return null;
+        });
+        assertThat(events(documentId)).singleElement().satisfies(event -> {
+            assertThat(event.payload().at("/lineas/0/precioCantidadSnapshot/rule/mode").textValue())
+                    .isEqualTo("PACK");
+            assertThat(event.payload().at("/lineas/1/tipoLinea").textValue())
+                    .isEqualTo("QUANTITY_PRICE");
+            assertThat(event.payload().at("/lineas/1/productoId").isNull()).isTrue();
+            assertThat(event.payload().at("/lineas/0/promocionMotorVersion").intValue()).isEqualTo(3);
+            assertThat(event.payload().at("/lineas/1/promocionMotorVersion").intValue()).isEqualTo(3);
+        });
+    }
+
+    @Test
     void coalescesRepeatedSchedulesAndIncludesPaymentAndRelationAddedAfterScheduling() {
         assertThat(jdbc.queryForObject("""
                 select max(version::integer) from flyway_schema_history
                  where success = true and version ~ '^[0-9]+$'
-                """, Integer.class)).isEqualTo(304);
+                """, Integer.class)).isEqualTo(307);
         UUID documentId = Objects.requireNonNull(transaction().execute(status -> {
             var document = documents.save(newDocument(CommercialDocumentType.FACTURA_VENTA));
             publisher.schedule(fixture.companyId(), document, null, SyncOperation.CONFIRMAR);

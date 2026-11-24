@@ -2,10 +2,14 @@ package com.tpverp.backend.promotion;
 
 import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.DocumentLine;
+import com.tpverp.backend.document.DocumentLineType;
+import com.tpverp.backend.document.QuantityPriceSnapshot;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,7 +21,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class PromotionEngine {
 
-    public static final int CURRENT_VERSION = 2;
+    public static final int CURRENT_VERSION = 3;
+
+    public static int versionFor(PromotionEvaluationRequest request) {
+        return request.quantityPrices().isEmpty() ? 2 : CURRENT_VERSION;
+    }
 
     private static final BigDecimal HUNDRED = new BigDecimal("100");
     private static final int MAX_EXACT_UNITS_PER_GROUP = 18;
@@ -25,6 +33,14 @@ public class PromotionEngine {
     private static final int MAX_EXPANDED_UNITS = 10_000;
 
     public PromotionPreview preview(PromotionEvaluationRequest request) {
+        if (versionFor(request) == 2) return previewVersion2(request);
+        var quantityPrices = quantityPriceCandidates(request).stream()
+                .map(candidate -> candidate.benefits().getFirst()).toList();
+        return MixedBasketPricing.preview(request, quantityPrices);
+    }
+
+    /** Replays tickets issued by the previous candidate-based engine. */
+    public PromotionPreview previewVersion2(PromotionEvaluationRequest request) {
         return preview(request, false);
     }
 
@@ -37,6 +53,7 @@ public class PromotionEngine {
         for (var promotion : request.promotions()) {
             candidates.addAll(candidatesFor(promotion, request, legacy));
         }
+        if (!legacy) candidates.addAll(quantityPriceCandidates(request));
         if (legacy) {
             candidates.replaceAll(candidate -> new Candidate(candidate.benefits(), candidate.unitKeys(), false));
         }
@@ -47,7 +64,7 @@ public class PromotionEngine {
                 .thenComparing(candidate -> candidate.unitKeys().toString()));
 
         var selectedCandidates = candidates.size() > MAX_EXACT_CANDIDATES
-                ? selectGreedy(candidates)
+                ? selectLarge(candidates)
                 : selectBest(candidates);
         var selected = selectedCandidates.stream()
                 .flatMap(candidate -> candidate.benefits().stream())
@@ -65,20 +82,91 @@ public class PromotionEngine {
                 .max()
                 .orElse(0) + 1;
         for (var benefit : preview.appliedPromotions()) {
-            var line = DocumentLine.promotion(
-                    document,
-                    position++,
-                    "PROMOCION " + benefit.name(),
-                    benefit.amount().negate(),
-                    benefit.taxIncluded(),
-                    benefit.taxRegime(),
-                    benefit.taxPercent(),
-                    benefit.promotionId(),
-                    null);
-            line.assignPromotionEngineVersion(CURRENT_VERSION);
+            var line = benefitLine(document, position++, benefit);
+            line.assignPromotionEngineVersion(preview.engineVersion());
+            line.assignPromotionAffectedPositions(benefit.affectedPositions());
             result.add(line);
         }
         return result;
+    }
+
+    public static DocumentLine benefitLine(CommercialDocument document, int position, PromotionBenefit benefit) {
+        if (benefit.quantityPrice()) return quantityPriceLine(document, position, benefit);
+        var amounts = benefit.quantityAmounts();
+        if (amounts == null) amounts = quantityAmounts(benefit.amount(),
+                new TaxKey(benefit.taxIncluded(), benefit.taxRegime(), benefit.taxPercent()));
+        return DocumentLine.frozenSpecial(document, position,
+                DocumentLineType.PROMOTION, "PROMOCION " + benefit.name(),
+                benefit.amount().negate(), benefit.taxIncluded(), benefit.taxRegime(), benefit.taxPercent(),
+                benefit.promotionId(), benefit.promotionVersionId(), null, amounts.base().negate(),
+                amounts.tax().negate(), amounts.total().negate());
+    }
+
+    public static DocumentLine quantityPriceLine(CommercialDocument document, int position, PromotionBenefit benefit) {
+        var amounts = benefit.quantityAmounts();
+        return amounts == null
+                ? DocumentLine.quantityPrice(document, position, benefit.name(), benefit.amount().negate(),
+                        benefit.taxIncluded(), benefit.taxRegime(), benefit.taxPercent())
+                : DocumentLine.quantityPrice(document, position, benefit.name(), benefit.amount().negate(),
+                        benefit.taxIncluded(), benefit.taxRegime(), benefit.taxPercent(),
+                        amounts.base().negate(), amounts.tax().negate(), amounts.total().negate());
+    }
+
+    private static List<Candidate> quantityPriceCandidates(PromotionEvaluationRequest request) {
+        var grouped = new LinkedHashMap<QuantityGroup, List<PromotionEvaluationLine>>();
+        for (var line : request.lines()) {
+            var snapshot = request.quantityPrices().get(line.position());
+            if (snapshot == null || !line.discountable() || line.manualDiscount()) continue;
+            var key = new QuantityGroup(line.productId(), TaxKey.of(line), snapshot);
+            grouped.computeIfAbsent(key, ignored -> new ArrayList<>()).add(line);
+        }
+        var result = new ArrayList<Candidate>();
+        for (var entry : grouped.entrySet()) {
+            var lines = entry.getValue();
+            var snapshot = entry.getKey().snapshot();
+            var quantity = PromotionEligibility.quantity(lines);
+            var calculation = QuantityPricingCalculator.calculate(snapshot.rule(), snapshot.salePrice(), quantity);
+            var total = calculation.total();
+            if (calculation.appliedTiers().isEmpty()) continue;
+            // Each original document row has already rounded its monetary amount.
+            var baseline = lines.stream().map(line -> euros(line.unitPrice().multiply(line.quantity())))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            var saving = euros(baseline.subtract(total));
+            if (saving.signum() <= 0) continue;
+            var tax = entry.getKey().tax();
+            var baselineBase = BigDecimal.ZERO;
+            var baselineTax = BigDecimal.ZERO;
+            var baselineTotal = BigDecimal.ZERO;
+            for (var line : lines) {
+                var amounts = quantityAmounts(euros(line.unitPrice().multiply(line.quantity())), tax);
+                baselineBase = baselineBase.add(amounts.base());
+                baselineTax = baselineTax.add(amounts.tax());
+                baselineTotal = baselineTotal.add(amounts.total());
+            }
+            var target = quantityAmounts(total, tax);
+            var reduction = new PromotionBenefit.QuantityAmounts(
+                    euros(baselineBase.subtract(target.base())), euros(baselineTax.subtract(target.tax())),
+                    euros(baselineTotal.subtract(target.total())));
+            if (reduction.total().signum() <= 0) continue;
+            var positions = lines.stream().map(PromotionEvaluationLine::position)
+                    .collect(java.util.stream.Collectors.toSet());
+            var benefit = new PromotionBenefit(null, null, calculation.description(), positions,
+                    saving, tax.included(), tax.regime(), tax.percent(), true, reduction);
+            // A quantity rate prices the complete product group: its units cannot
+            // simultaneously receive another automatic promotion.
+            var keys = lines.stream().map(line -> line.position() + "#ALL")
+                    .collect(java.util.stream.Collectors.toSet());
+            result.add(new Candidate(List.of(benefit), keys));
+        }
+        return result;
+    }
+
+    static PromotionBenefit.QuantityAmounts quantityAmounts(BigDecimal amount, TaxKey tax) {
+        var base = tax.included() ? euros(amount.divide(
+                BigDecimal.ONE.add(tax.percent().movePointLeft(2)), 6, RoundingMode.HALF_UP)) : amount;
+        var taxAmount = tax.included() ? euros(amount.subtract(base))
+                : euros(base.multiply(tax.percent().movePointLeft(2)));
+        return new PromotionBenefit.QuantityAmounts(base, taxAmount, euros(base.add(taxAmount)));
     }
 
     private static List<Candidate> candidatesFor(
@@ -107,6 +195,12 @@ public class PromotionEngine {
             List<PromotionEvaluationLine> lines,
             BigDecimal minimumAmount,
             BigDecimal minimumQuantity) {
+        var benefits = thresholdBenefits(promotion, lines, minimumAmount, minimumQuantity);
+        return benefits.isEmpty() ? List.of() : List.of(new Candidate(benefits, lineUnitKeys(lines)));
+    }
+
+    static List<PromotionBenefit> thresholdBenefits(
+            Promotion promotion, List<PromotionEvaluationLine> lines, BigDecimal minimumAmount, BigDecimal minimumQuantity) {
         var subtotal = PromotionEligibility.subtotal(lines);
         var payableSubtotal = PromotionEligibility.payableSubtotal(lines);
         var quantity = PromotionEligibility.quantity(lines);
@@ -118,10 +212,7 @@ public class PromotionEngine {
         if (discount.signum() <= 0) {
             return List.of();
         }
-        var benefits = allocatedBenefits(promotion, lines, discount, subtotal);
-        return benefits.isEmpty()
-                ? List.of()
-                : List.of(new Candidate(benefits, lineUnitKeys(lines)));
+        return allocatedBenefits(promotion, lines, discount, subtotal);
     }
 
     private static BigDecimal discountAmount(Promotion promotion, BigDecimal subtotal) {
@@ -428,7 +519,7 @@ public class PromotionEngine {
                 keys);
     }
 
-    private static PromotionBenefit benefit(
+    static PromotionBenefit benefit(
             Promotion promotion,
             Set<Integer> positions,
             BigDecimal amount,
@@ -481,6 +572,133 @@ public class PromotionEngine {
             usedUnits.addAll(candidate.unitKeys());
         }
         return selected;
+    }
+
+    private static List<Candidate> selectLarge(List<Candidate> candidates) {
+        if (candidates.stream().noneMatch(Candidate::quantityPrice)) return selectGreedy(candidates);
+        // Equal consumed units are interchangeable for every other candidate.
+        // Keep the largest payable benefit (input is sorted by that amount).
+        var distinct = new LinkedHashMap<Consumption, Candidate>();
+        for (var candidate : candidates) {
+            distinct.putIfAbsent(new Consumption(candidate.unitKeys(), candidate.quantityPrice()), candidate);
+        }
+        candidates = List.copyOf(distinct.values());
+        var graph = conflictGraph(candidates);
+        var pending = new BitSet(candidates.size());
+        pending.set(0, candidates.size());
+        var result = new ArrayList<Candidate>();
+        while (!pending.isEmpty()) {
+            var component = new BitSet(candidates.size());
+            var frontier = new BitSet(candidates.size());
+            frontier.set(pending.nextSetBit(0));
+            while (!frontier.isEmpty()) {
+                var index = frontier.nextSetBit(0);
+                frontier.clear(index);
+                if (component.get(index)) continue;
+                component.set(index);
+                pending.clear(index);
+                var neighbors = (BitSet) graph[index].clone();
+                neighbors.andNot(component);
+                frontier.or(neighbors);
+            }
+            var values = component.stream().mapToObj(candidates::get).toList();
+            if (values.stream().noneMatch(Candidate::quantityPrice)) {
+                result.addAll(values.size() <= MAX_EXACT_CANDIDATES ? selectBest(values) : selectGreedy(values));
+            } else {
+                result.addAll(new ExactComponentSelection(candidates, graph, component).solve());
+            }
+        }
+        return result;
+    }
+
+    private static BitSet[] conflictGraph(List<Candidate> candidates) {
+        var owners = new HashMap<String, BitSet>();
+        var positions = new HashMap<String, BitSet>();
+        for (int index = 0; index < candidates.size(); index++) {
+            for (var key : candidates.get(index).unitKeys()) {
+                owners.computeIfAbsent(key, ignored -> new BitSet()).set(index);
+                var position = key.substring(0, key.indexOf('#'));
+                positions.computeIfAbsent(position, ignored -> new BitSet()).set(index);
+            }
+        }
+        var graph = new BitSet[candidates.size()];
+        for (int index = 0; index < candidates.size(); index++) graph[index] = new BitSet();
+        for (var entry : owners.entrySet()) {
+            var key = entry.getKey();
+            var participants = key.endsWith("#ALL")
+                    ? positions.get(key.substring(0, key.indexOf('#'))) : entry.getValue();
+            for (int index = entry.getValue().nextSetBit(0); index >= 0;
+                    index = entry.getValue().nextSetBit(index + 1)) {
+                graph[index].or(participants);
+                for (int other = participants.nextSetBit(0); other >= 0;
+                        other = participants.nextSetBit(other + 1)) graph[other].set(index);
+            }
+        }
+        for (int index = 0; index < graph.length; index++) graph[index].clear(index);
+        return graph;
+    }
+
+    /** Exact weighted independent set for each component interacting with a quantity rate. */
+    private static final class ExactComponentSelection {
+        private final List<Candidate> candidates;
+        private final BitSet[] graph;
+        private final BitSet component;
+        private final BigDecimal[] weights;
+        private List<Integer> best = List.of();
+        private BigDecimal bestAmount = BigDecimal.ZERO;
+
+        private ExactComponentSelection(List<Candidate> candidates, BitSet[] graph, BitSet component) {
+            this.candidates = candidates;
+            this.graph = graph;
+            this.component = component;
+            weights = candidates.stream().map(Candidate::amount).toArray(BigDecimal[]::new);
+        }
+
+        private List<Candidate> solve() {
+            search(component, new ArrayList<>(), BigDecimal.ZERO);
+            return best.stream().map(candidates::get).toList();
+        }
+
+        private void search(BitSet available, List<Integer> selected, BigDecimal amount) {
+            var upperBound = amount;
+            for (int index = available.nextSetBit(0); index >= 0; index = available.nextSetBit(index + 1)) {
+                upperBound = upperBound.add(weights[index]);
+            }
+            if (upperBound.compareTo(bestAmount) <= 0) return;
+            var remaining = (BitSet) available.clone();
+            var originalSize = selected.size();
+            int pivot = -1;
+            int largestDegree = -1;
+            for (int index = available.nextSetBit(0); index >= 0; index = available.nextSetBit(index + 1)) {
+                var conflicts = (BitSet) graph[index].clone();
+                conflicts.and(available);
+                var degree = conflicts.cardinality();
+                if (degree == 0) {
+                    // A positive isolated benefit is mandatory in every optimum.
+                    selected.add(index);
+                    amount = amount.add(weights[index]);
+                    remaining.clear(index);
+                } else if (degree > largestDegree) {
+                    largestDegree = degree;
+                    pivot = index;
+                }
+            }
+            if (pivot < 0) {
+                if (amount.compareTo(bestAmount) > 0) {
+                    bestAmount = amount;
+                    best = List.copyOf(selected);
+                }
+            } else {
+                remaining.clear(pivot);
+                var with = (BitSet) remaining.clone();
+                with.andNot(graph[pivot]);
+                selected.add(pivot);
+                search(with, selected, amount.add(weights[pivot]));
+                selected.removeLast();
+                search(remaining, selected, amount);
+            }
+            while (selected.size() > originalSize) selected.removeLast();
+        }
     }
 
     private static Selection search(
@@ -536,7 +754,7 @@ public class PromotionEngine {
         return quantity.intValueExact();
     }
 
-    private static BigDecimal euros(BigDecimal amount) {
+    static BigDecimal euros(BigDecimal amount) {
         return amount.setScale(2, RoundingMode.HALF_UP);
     }
 
@@ -561,17 +779,27 @@ public class PromotionEngine {
                     ? ""
                     : benefits.getFirst().name();
         }
+
+        boolean quantityPrice() {
+            return !benefits.isEmpty() && benefits.getFirst().quantityPrice();
+        }
     }
 
     private record Selection(List<Candidate> candidates, BigDecimal total) {
     }
 
+    private record Consumption(Set<String> units, boolean quantityPrice) {
+    }
+
     private record GroupKey(TaxKey tax, UUID productId) {
     }
 
-    private record TaxKey(boolean included, String regime, BigDecimal percent) {
+    private record QuantityGroup(UUID productId, TaxKey tax, QuantityPriceSnapshot snapshot) {
+    }
 
-        private static TaxKey of(PromotionEvaluationLine line) {
+    record TaxKey(boolean included, String regime, BigDecimal percent) {
+
+        static TaxKey of(PromotionEvaluationLine line) {
             return new TaxKey(
                     line.taxIncluded(),
                     line.taxRegime(),

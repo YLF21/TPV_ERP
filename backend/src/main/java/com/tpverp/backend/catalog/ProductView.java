@@ -41,7 +41,8 @@ public record ProductView(
         BigDecimal salePrice,
         BigDecimal memberPrice,
         BigDecimal wholesalePrice,
-        BigDecimal offerPrice) {
+        BigDecimal offerPrice,
+        @JsonInclude(JsonInclude.Include.ALWAYS) QuantityPricing quantityPricing) {
 
     public static ProductView publicView(Product product) {
         return from(product, false);
@@ -91,6 +92,7 @@ public record ProductView(
                 product.getSalePrice(),
                 product.getMemberPrice(),
                 product.getWholesalePrice(),
-                product.getOfferPrice());
+                product.getOfferPrice(),
+                product.getQuantityPricing());
     }
 }

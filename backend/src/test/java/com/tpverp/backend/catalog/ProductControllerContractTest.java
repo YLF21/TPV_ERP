@@ -79,7 +79,8 @@ class ProductControllerContractTest {
                 new BigDecimal("21.00"),
                 "IVA",
                 new BigDecimal("6"),
-                new BigDecimal("14.000"))));
+                new BigDecimal("14.000"),
+                null)));
 
         mvc.perform(get("/api/v1/products/sale")
                         .with(user("seller").authorities(() -> VENTA)))

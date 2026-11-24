@@ -37,6 +37,17 @@ public class SaleDocumentAuthorizationFingerprint {
             add(digest, line.getLineType());
             add(digest, line.getPromotionId());
             add(digest, line.getPromotionVersionId());
+            if (line.getQuantityPriceSnapshot() != null) {
+                var snapshot = line.getQuantityPriceSnapshot();
+                add(digest, "quantityPricing=" + snapshot.rule().mode());
+                // Preserve fingerprints of historical active snapshots.
+                if (!snapshot.rule().enabled()) add(digest, "quantityPricing.enabled=false");
+                add(digest, snapshot.salePrice().stripTrailingZeros().toPlainString());
+                for (var tier : snapshot.rule().tiers()) {
+                    add(digest, Integer.toString(tier.quantity()));
+                    add(digest, tier.price().stripTrailingZeros().toPlainString());
+                }
+            }
             if (line.getPromotionEngineVersion() != null) {
                 add(digest, "promotionEngineVersion=" + line.getPromotionEngineVersion());
             }

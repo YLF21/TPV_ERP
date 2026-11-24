@@ -98,6 +98,40 @@ class CommercialDocumentSyncPostgreSqlTest {
     }
 
     @Test
+    void quantityPriceLineProjectsWithoutProductAndRetainsStoreSnapshot() throws Exception {
+        Site site = site();
+        UUID documentId = UUID.randomUUID();
+        var payload = payload(1, "CONFIRMADO", "5.99");
+        var product = CommercialDocumentLinesTest.line("A-1");
+        product.put("productoId", UUID.randomUUID().toString());
+        product.put("cantidad", "3.000");
+        product.put("precioUnitario", "2.500");
+        product.put("total", "7.50");
+        product.put("precioCantidadSnapshot", Map.of(
+                "rule", Map.of("mode", "PACK", "tiers", List.of(Map.of("quantity", 3, "price", "5.99"))),
+                "salePrice", "2.50"));
+        var adjustment = CommercialDocumentLinesTest.line("PRECIO_CANTIDAD");
+        adjustment.put("posicion", 2);
+        adjustment.put("tipoLinea", "QUANTITY_PRICE");
+        adjustment.put("productoId", null);
+        adjustment.put("cantidad", "1.000");
+        adjustment.put("precioUnitario", "-1.53");
+        adjustment.put("total", "-1.53");
+        payload.put("lineas", List.of(product, adjustment));
+        var request = request(site, documentId, SyncOperation.CONFIRMAR, payload);
+        sync.receive(request, site.token());
+        assertThat(row(site, documentId)).containsEntry("line_projection_status", "READY")
+                .containsEntry("store_id", site.store().getId());
+        assertThat(lines(site, documentId)).hasSize(2);
+        assertThat(lines(site, documentId).get(1)).containsEntry("line_type", "QUANTITY_PRICE")
+                .containsEntry("product_local_id", null)
+                .containsEntry("product_code", "PRECIO_CANTIDAD");
+        var savedPayload = mapper.readTree(events.findById(request.eventId()).orElseThrow().getPayload());
+        assertThat(savedPayload.path("lineas").get(0).path("precioCantidadSnapshot"))
+                .isEqualTo(mapper.valueToTree(product.get("precioCantidadSnapshot")));
+    }
+
+    @Test
     void missingAndInvalidLinesNeverRejectValidHeadersAndReplaceObsoleteLineRows() {
         Site site = site();
         UUID id = UUID.randomUUID();

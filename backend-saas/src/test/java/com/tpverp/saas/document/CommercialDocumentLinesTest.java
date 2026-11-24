@@ -61,6 +61,24 @@ class CommercialDocumentLinesTest {
         assertThat(result.lines().getFirst().priceTariff()).isNull();
     }
 
+    @Test
+    void quantityPriceLineHasNoProductIdentityAndPreservesItsAdjustment() {
+        var line = line("PRECIO_CANTIDAD");
+        line.put("tipoLinea", "QUANTITY_PRICE");
+        line.put("productoId", null);
+        line.put("total", "-1.53");
+        var parsed = CommercialDocumentLines.parse(Map.of("lineas", List.of(line)));
+        assertThat(parsed.status()).isEqualTo(CommercialDocumentLines.Status.READY);
+        assertThat(parsed.lines()).singleElement().satisfies(value -> {
+            assertThat(value.type()).isEqualTo("QUANTITY_PRICE");
+            assertThat(value.productLocalId()).isNull();
+            assertThat(value.total()).isEqualByComparingTo("-1.53");
+        });
+        line.put("productoId", UUID.randomUUID().toString());
+        assertThat(CommercialDocumentLines.parse(Map.of("lineas", List.of(line))).status())
+                .isEqualTo(CommercialDocumentLines.Status.INVALID);
+    }
+
     @ParameterizedTest
     @MethodSource("invalidFields")
     void marksMalformedLinesInvalidWithoutReturningPartialRows(String field, Object value) {

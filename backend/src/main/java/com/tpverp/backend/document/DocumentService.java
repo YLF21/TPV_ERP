@@ -1790,7 +1790,14 @@ public class DocumentService {
                     command.lineType(), command.promotionId(), command.promotionVersionId(),
                     command.promotionalCouponId(), selected.serialNumbers())
                     .withBarcode(command.barcode())
+                    .withQuantityPriceSnapshot(command.quantityPriceSnapshot())
                     .toEntity(refund);
+        } else if (source.getLineType() == DocumentLineType.QUANTITY_PRICE) {
+            line = DocumentLine.quantityPrice(refund, refund.getLineas().size() + 1, source.getNombre(),
+                    source.getPrecioUnitario().negate(), source.isImpuestosIncluidos(), source.getRegimenImpuesto(),
+                    source.getPorcentajeImpuesto(), source.getBase().negate(), source.getImpuesto().negate(),
+                    source.getTotal().negate());
+            line.assignPromotionEngineVersion(source.getPromotionEngineVersion());
         } else {
             line = DocumentLine.special(refund, refund.getLineas().size() + 1, source.getNombre(),
                     source.getPrecioUnitario().negate(), source.isImpuestosIncluidos(), source.getRegimenImpuesto(),
@@ -1901,9 +1908,6 @@ public class DocumentService {
             return PromotionContext.empty();
         }
         var active = activePromotions(document, customer);
-        if (active.isEmpty()) {
-            return new PromotionContext(List.of(), List.of(), List.of(), customer);
-        }
         return new PromotionContext(
                 active,
                 promotionTargets(active),
@@ -1927,31 +1931,30 @@ public class DocumentService {
         var active = context.promotions().stream()
                 .filter(DocumentService::isDirectLinePromotion)
                 .toList();
-        if (active.isEmpty() || context.lines().isEmpty()) {
+        if (context.lines().isEmpty()) {
             return;
         }
-        var preview = promotionEngine.preview(new PromotionEvaluationRequest(
+        var quantityPrices = document.getLineas().stream()
+                .filter(line -> line.getQuantityPriceSnapshot() != null)
+                .collect(java.util.stream.Collectors.toMap(
+                        DocumentLine::getPosicion, DocumentLine::getQuantityPriceSnapshot));
+        var request = new PromotionEvaluationRequest(
                 context.lines(),
                 active,
-                context.targets()));
+                context.targets(), quantityPrices);
+        var preview = promotionEngine.preview(request);
+        var engineVersion = PromotionEngine.versionFor(request);
+        document.getLineas().stream()
+                .filter(line -> line.getQuantityPriceSnapshot() != null)
+                .forEach(line -> line.assignPromotionEngineVersion(engineVersion));
         var position = document.getLineas().stream()
                 .mapToInt(DocumentLine::getPosicion)
                 .max()
                 .orElse(0) + 1;
         for (var benefit : preview.appliedPromotions()) {
-            var promotionLine = DocumentLine.special(
-                    document,
-                    position++,
-                    "PROMOCION " + benefit.name(),
-                    benefit.amount().negate(),
-                    benefit.taxIncluded(),
-                    benefit.taxRegime(),
-                    benefit.taxPercent(),
-                    benefit.promotionId(),
-                    benefit.promotionVersionId(),
-                    null);
+            var promotionLine = PromotionEngine.benefitLine(document, position++, benefit);
             promotionLine.assignPromotionAffectedPositions(benefit.affectedPositions());
-            promotionLine.assignPromotionEngineVersion(PromotionEngine.CURRENT_VERSION);
+            promotionLine.assignPromotionEngineVersion(engineVersion);
             document.addLine(promotionLine);
             active.stream()
                     .filter(promotion -> promotion.id().equals(benefit.promotionVersionId()))
@@ -3390,7 +3393,10 @@ public class DocumentService {
                             snapshot.product(), documentDate, customer, line, true)
                     : promotionPricing.priceLine(
                             snapshot.product(), documentDate, customer, line);
-            return snapshot.authoritativeSnapshot(priced);
+            return snapshot.authoritativeSnapshot(priced).withQuantityPriceSnapshot(
+                    salesDocument && globalDiscount.signum() == 0
+                            ? AuthoritativePromotionPricing.quantityPriceSnapshot(snapshot.product(), line)
+                            : null);
         }).toList();
     }
 

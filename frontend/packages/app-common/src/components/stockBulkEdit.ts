@@ -1,3 +1,5 @@
+import { normalizeQuantityPricingTiers, validateQuantityPricing, type QuantityPricing, type QuantityPricingIssue } from "../quantityPricing";
+import { equalQuantityPricing } from "./stockBulkQuantityPricing";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ApiError, apiProblemCode } from "../api/client";
 import { roundUnitPrice } from "../money";
@@ -114,6 +116,7 @@ export type StockBulkValidationError = {
     | "invalidNumber"
     | "invalidPercentage"
     | "invalidDate"
+    | "invalidQuantityPricing"
     | "offerPriceRequired"
     | "offerDiscountRequired"
     | "offerFromRequired";
@@ -204,6 +207,7 @@ export type StockBulkProductUpdate = {
   productId: string;
   expectedVersion: number;
   product: {
+    quantityPricing?: QuantityPricing;
     active: boolean;
     familyId: string;
     subfamilyId: string | null;
@@ -285,7 +289,9 @@ export function stockBulkRowsChanged(rows: StockBulkEditRowData[]) {
   return rows.some((row) => (!row.product && (row.query.trim() || Object.keys(row.draft).length > 0))
     || row.pendingSupplier || row.pendingSuppliers?.length || row.principalSupplierChanged || (row.product && Object.keys(row.draft).some((key) => {
     const field = key as keyof StockInventoryRow;
-    return text(row.draft[field]) !== text(row.product?.[field]);
+    return field === "quantityPricing"
+      ? !equalQuantityPricing(row.draft.quantityPricing, row.product?.quantityPricing)
+      : text(row.draft[field]) !== text(row.product?.[field]);
   })));
 }
 
@@ -298,8 +304,20 @@ export function stockOfferPriceFromDiscount(salePrice: unknown, discountPercent:
   return roundUnitPrice(Math.max(0, sale - sale * discount / 100)).toFixed(3).replace(/(\.\d{2})0$/, "$1");
 }
 
+export function stockBulkQuantityPricingErrors(rows: StockBulkEditRowData[]) {
+  return rows.flatMap(row => {
+    const rule = row.draft.quantityPricing;
+    if (!rule) return [];
+    const [issue] = validateQuantityPricing(rule);
+    if (!issue) return [];
+    const missing = rule.tiers.some(tier => !tier.quantity || !String(tier.price).trim());
+    return [{ rowId: row.id, field: "quantityPricing", code: "invalidQuantityPricing",
+      issue: missing ? "missingFields" : issue } satisfies StockBulkValidationError & { issue: QuantityPricingIssue | "missingFields" }];
+  });
+}
+
 export function validateStockBulkRows(rows: StockBulkEditRowData[]): StockBulkValidationError[] {
-  const errors: StockBulkValidationError[] = [];
+  const errors: StockBulkValidationError[] = stockBulkQuantityPricingErrors(rows);
   const productRows = rows.filter((row) => row.product);
   const firstRowByProduct = new Map<string, string>();
 
@@ -684,7 +702,9 @@ export function mergeStockBulkPurchaseDocumentProducts(
 export function buildStockBulkUpdates(rows: StockBulkEditRowData[]): StockBulkProductUpdate[] {
   return rows.filter((row) => row.product && Object.keys(row.draft).some((key) => {
     const field = key as keyof StockInventoryRow;
-    return text(row.draft[field]) !== text(row.product?.[field]);
+    return field === "quantityPricing"
+      ? !equalQuantityPricing(row.draft.quantityPricing, row.product?.quantityPricing)
+      : text(row.draft[field]) !== text(row.product?.[field]);
   })).map((row) => {
     const value = <K extends keyof StockInventoryRow>(field: K) => row.draft[field] ?? row.product?.[field];
     const priceUseMode = normalizedPriceUse(value("discountType"));
@@ -706,6 +726,9 @@ export function buildStockBulkUpdates(rows: StockBulkEditRowData[]): StockBulkPr
       productId: row.product!.productId,
       expectedVersion: Number(row.product!.version ?? 0),
       product: {
+        ...(row.draft.quantityPricing !== undefined ? {
+          quantityPricing: row.draft.quantityPricing && normalizeQuantityPricingTiers(row.draft.quantityPricing)
+        } : {}),
         active: value("active") === undefined ? true : booleanValue(value("active")),
         familyId: requiredText(value("familyId"), "familyId"),
         subfamilyId: nullableText(value("subfamilyId")),
@@ -756,7 +779,7 @@ export function stockBulkEffectiveProduct(row: StockBulkEditRowData): StockInven
     return undefined;
   }
   const changes = Object.fromEntries(
-    Object.entries(row.draft).filter(([, value]) => value !== null && value !== undefined)
+    Object.entries(row.draft).filter(([key, value]) => value !== undefined && (value !== null || key === "quantityPricing"))
   ) as Partial<StockInventoryRow>;
   return { ...row.product, ...changes };
 }
