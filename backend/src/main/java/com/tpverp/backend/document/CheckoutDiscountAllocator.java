@@ -140,6 +140,7 @@ final class CheckoutDiscountAllocator {
                             || eligibleProductIds.contains(line.getProductoId()));
         }
         return (line.getLineType() == DocumentLineType.PROMOTION
+                || line.getLineType() == DocumentLineType.QUANTITY_PRICE
                 || line.getLineType() == DocumentLineType.PROMOTIONAL_COUPON
                 || line.getLineType() == DocumentLineType.DOCUMENT_DISCOUNT
                 || line.getLineType() == DocumentLineType.MEMBER_BALANCE)

@@ -93,20 +93,31 @@ public class ProductBulkEditService {
         if (edit.getEstado() != ProductBulkEditStatus.PENDING) return content;
         Set<UUID> imageProductIds = images.findByEdicion_IdOrderByPosicionAsc(edit.getId()).stream()
                 .map(ProductBulkEditImage::getProductId).filter(Objects::nonNull).collect(Collectors.toSet());
-        Set<UUID> eligible = content.stream()
+        Set<UUID> unchanged = content.stream()
                 .filter(row -> row.product() != null && row.pendingSupplier() == null && row.pendingSuppliers().isEmpty()
                         && !row.principalSupplierChanged() && !imageProductIds.contains(row.product().productId())
                         && row.product().equals(row.effectiveProduct()))
                 .map(row -> row.product().productId()).collect(Collectors.toSet());
+        Set<UUID> eligible = new HashSet<>(unchanged);
+        content.stream().filter(row -> row.product() != null && row.product().quantityPricing() == null)
+                .map(row -> row.product().productId()).forEach(eligible::add);
         if (eligible.isEmpty()) return content;
         Map<UUID, Product> current = products.findAllByStoreIdAndIdIn(edit.getStoreId(), eligible).stream()
                 .collect(Collectors.toMap(Product::getId, Function.identity()));
         Map<UUID, Product> changed = content.stream().filter(row -> row.product() != null)
+                .filter(row -> unchanged.contains(row.product().productId()))
                 .filter(row -> current.containsKey(row.product().productId()))
                 .filter(row -> !Objects.equals(row.product().version(), current.get(row.product().productId()).getVersion()))
                 .map(row -> current.get(row.product().productId()))
                 .collect(Collectors.toMap(Product::getId, Function.identity()));
-        if (changed.isEmpty()) return content;
+        Map<UUID, Product> hydrate = content.stream().filter(row -> row.product() != null)
+                .filter(row -> row.product().quantityPricing() == null)
+                .filter(row -> current.containsKey(row.product().productId()))
+                .filter(row -> Objects.equals(row.product().version(),
+                        current.get(row.product().productId()).getVersion()))
+                .map(row -> current.get(row.product().productId()))
+                .collect(Collectors.toMap(Product::getId, Function.identity()));
+        if (changed.isEmpty() && hydrate.isEmpty()) return content;
         Map<UUID, String> familyNames = families.findAllById(changed.values().stream()
                         .map(Product::getFamilyId).collect(Collectors.toSet())).stream()
                 .filter(family -> edit.getStoreId().equals(family.getStoreId()))
@@ -121,7 +132,16 @@ public class ProductBulkEditService {
                 .collect(Collectors.toMap(StoreTax::getId, tax -> tax.getPercentage().stripTrailingZeros().toPlainString() + "%"));
         return content.stream().map(row -> {
             Product product = row.product() == null ? null : changed.get(row.product().productId());
-            if (product == null) return row;
+            if (product == null) {
+                Product currentProduct = row.product() == null ? null : hydrate.get(row.product().productId());
+                if (currentProduct == null) return row;
+                var snapshot = row.product().withQuantityPricing(currentProduct.getQuantityPricing() == null
+                        ? com.fasterxml.jackson.databind.node.NullNode.getInstance()
+                        : currentProduct.getQuantityPricing().toJson());
+                return new ProductBulkEditContent.Row(row.id(), row.selected(), row.query(), snapshot,
+                        row.draft(), row.suppliers(), row.pendingSupplier(), row.principalSupplierChanged(),
+                        row.pendingPrincipalSupplierId(), row.pendingSuppliers());
+            }
             ProductBulkEditContent.ProductData refreshed = ProductBulkEditContent.ProductData.fromProduct(product)
                     .withDisplayContext(row.product(), familyNames.get(product.getFamilyId()),
                             subfamilyNames.get(product.getSubfamilyId()), taxNames.get(product.getTaxId()));
@@ -397,7 +417,11 @@ public class ProductBulkEditService {
                         "updates[" + index + "] referencia un producto ausente de content: "
                                 + update.productId());
             }
-            requireUpdateMatchesContent(update, effective, index);
+            ProductBulkEditContent.Row contentRow = content.stream()
+                    .filter(row -> row.product() != null
+                            && update.productId().equals(row.product().productId()))
+                    .findFirst().orElseThrow();
+            requireUpdateMatchesContent(update, effective, contentRow.draft(), index);
         }
         if (request.supplierAssignments().size() > 100) {
             throw new IllegalArgumentException(
@@ -551,7 +575,8 @@ public class ProductBulkEditService {
                 && text(draft.description()) == null && text(draft.comments()) == null
                 && text(draft.familyId()) == null && text(draft.subfamilyId()) == null
                 && text(draft.taxId()) == null && text(draft.purchasePrice()) == null
-                && text(draft.salePrice()) == null && text(draft.productType()) == null);
+                && text(draft.salePrice()) == null && text(draft.productType()) == null
+                && draft.quantityPricing() == null);
     }
 
     private static void requireCreateMatchesContent(
@@ -599,6 +624,8 @@ public class ProductBulkEditService {
         requireCreateDecimal(path, "stockMin", content.stockMin(), product.stockMin());
         requireCreateDecimal(path, "stockMax", content.stockMax(), product.stockMax());
         requireCreateDecimal(path, "packageQuantity", content.packageQuantity(), product.packageQuantity());
+        requireSame(path, "quantityPricing", QuantityPricing.fromJson(content.quantityPricing()),
+                QuantityPricing.fromJson(product.quantityPricing()));
         if (product.requiresSerialNumber() != null) {
             throw new IllegalArgumentException(path + ".product.requiresSerialNumber no esta permitido en content");
         }
@@ -672,6 +699,7 @@ public class ProductBulkEditService {
     private static void requireUpdateMatchesContent(
             CatalogService.BulkProductUpdate update,
             ProductBulkEditContent.ProductData content,
+            ProductBulkEditContent.ProductData draft,
             int index) {
         String path = "updates[" + index + "]";
         requireSame(path, "expectedVersion", content.version(), update.expectedVersion());
@@ -708,6 +736,13 @@ public class ProductBulkEditService {
         requireSame(path, "packageQuantity", decimal(content.packageQuantity()), product.packageQuantity());
         requireSame(path, "active", content.active() == null ? Boolean.TRUE : bool(content.active()),
                 product.active());
+        if (draft.quantityPricing() != null && product.quantityPricing() == null) {
+            throw new IllegalArgumentException(path + ".product.quantityPricing no coincide con content");
+        }
+        if (product.quantityPricing() != null) {
+            requireSame(path, "quantityPricing", QuantityPricing.fromJson(content.quantityPricing()),
+                    QuantityPricing.fromJson(product.quantityPricing()));
+        }
     }
 
     private static void requireSame(String path, String field, Object expected, Object actual) {

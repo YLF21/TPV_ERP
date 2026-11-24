@@ -921,7 +921,7 @@ combinación elegida. Se mantiene la solicitud de demo como acción principal.
 
 El recorrido tiene doce capturas distintas, tres por aplicación:
 
-- Venta: cobro parcial, consulta de stock mediante F5 y estado operativo local.
+- Venta: cobro parcial, consulta de stock mediante Ctrl+F6 y estado operativo local.
 - Gestión: existencias por almacén, correspondencia de columnas de la muestra
   Excel y configuración de roles y permisos.
 - PDA: diferencia de inventario, comprobación de un documento confirmado y

@@ -96,7 +96,17 @@ public class PromotionService {
                     false,
                     product.getDiscountType() != DiscountType.NONE);
         }).toList();
-        return engine.preview(new PromotionEvaluationRequest(lines, activePromotions, promotionTargets));
+        var quantityPrices = new java.util.HashMap<Integer, com.tpverp.backend.document.QuantityPriceSnapshot>();
+        for (var line : lines) {
+            var product = productSnapshots.get(line.productId()).product();
+            if (line.discountable() && product.getQuantityPricing() != null
+                    && product.getQuantityPricing().enabled()
+                    && product.getSalePrice().signum() > 0 && !"0".equals(product.getCode())) {
+                quantityPrices.put(line.position(), new com.tpverp.backend.document.QuantityPriceSnapshot(
+                        product.getQuantityPricing(), product.getSalePrice()));
+            }
+        }
+        return engine.preview(new PromotionEvaluationRequest(lines, activePromotions, promotionTargets, quantityPrices));
     }
 
     @Transactional

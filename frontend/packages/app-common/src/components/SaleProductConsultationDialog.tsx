@@ -1,10 +1,12 @@
 import { WindowCloseButton } from "./WindowCloseButton";
 import { DialogDismissButton } from "./DialogDismissButton";
 import { sortProductsByCode } from "./productSearchOrdering";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { apiRequest } from "../api/client";
 import type { SaleProduct } from "./SaleScreen";
 import { useProductInformationResources } from "./productInformationResources";
+import "./SaleProductConsultationDialog.css";
 
 type StockPage = {
   items?: Array<{
@@ -63,11 +65,25 @@ export function SaleProductConsultationDialog({
   token,
   onClose,
 }: Props) {
-  const [query, setQuery] = useState(initialProduct?.code ?? "");
+  const searchInput = useRef<HTMLInputElement>(null);
+  const resultsId = useId();
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [query, setQuery] = useState(initialProduct?.code ?? initialProduct?.barcode ?? initialProduct?.barcode2 ?? initialProduct?.name ?? "");
   const [selected, setSelected] = useState<SaleProduct | null>(initialProduct);
   const [stock, setStock] = useState<number | null>(null);
   const [stockError, setStockError] = useState("");
   const results = useMemo(() => sortProductsByCode(products.filter((product) => matches(product, query))).slice(0, 30), [products, query]);
+  const activeIndex = Math.max(0, results.findIndex((product) => product.id === highlightedId));
+  const activeProduct = selected ? undefined : results[activeIndex];
+  const activeOptionId = activeProduct ? `${resultsId}-${activeProduct.id}` : undefined;
+
+  useLayoutEffect(() => {
+    searchInput.current?.select();
+  }, []);
+
+  useEffect(() => {
+    if (activeOptionId) document.getElementById(activeOptionId)?.scrollIntoView?.({ block: "nearest" });
+  }, [activeOptionId, query]);
 
   useEffect(() => {
     if (!selected) {
@@ -94,9 +110,15 @@ export function SaleProductConsultationDialog({
   }, [selected, token]);
 
   function choose(product: SaleProduct | undefined) {
-    if (!product) return;
-    setSelected(product);
-    setQuery(product.code ?? product.barcode ?? product.barcode2 ?? product.name ?? "");
+    if (product) {
+      // Select the displayed code after React replaces the search term.
+      flushSync(() => {
+        setSelected(product);
+        setQuery(product.code ?? product.barcode ?? product.barcode2 ?? product.name ?? "");
+      });
+    }
+    searchInput.current?.focus({ preventScroll: true });
+    searchInput.current?.select();
   }
 
   return (
@@ -111,17 +133,31 @@ export function SaleProductConsultationDialog({
           <label>
             Código, código de barras o nombre
             <input
+              ref={searchInput}
               autoFocus
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls={selected ? undefined : resultsId}
+              aria-expanded={!selected}
+              aria-activedescendant={activeOptionId}
               value={query}
               onChange={(event) => {
                 setQuery(event.target.value);
                 setSelected(null);
+                setHighlightedId(null);
               }}
               onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing) return;
                 if (event.key === "Escape") onClose();
+                if (activeProduct && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+                  event.preventDefault();
+                  const step = event.key === "ArrowDown" ? 1 : -1;
+                  const nextIndex = Math.max(0, Math.min(activeIndex + step, results.length - 1));
+                  setHighlightedId(results[nextIndex].id);
+                }
                 if (event.key === "Enter") {
                   event.preventDefault();
-                  choose(results[0]);
+                  choose(selected ?? activeProduct);
                 }
               }}
             />
@@ -130,9 +166,10 @@ export function SaleProductConsultationDialog({
 
         <div className="sale-consultation-content">
           {!selected && (
-            <div className="sale-consultation-results" role="listbox" aria-label="Productos">
+            <div id={resultsId} className="sale-consultation-results" role="listbox" aria-label="Productos">
               {results.map((product) => (
-                <button type="button" role="option" aria-selected="false" key={product.id} onClick={() => choose(product)}>
+                <button type="button" role="option" id={`${resultsId}-${product.id}`} tabIndex={-1}
+                  aria-selected={activeProduct?.id === product.id} key={product.id} onClick={() => choose(product)}>
                   <span>{product.code ?? product.barcode ?? product.barcode2 ?? "—"}</span>
                   <strong>{product.name ?? "Producto sin nombre"}</strong>
                   <b>{money(product.salePrice)} €</b>

@@ -26,6 +26,22 @@ class SaleDocumentAuthorizationFingerprintTest {
                 .isNotEqualTo(original);
     }
 
+    @Test
+    void ruleActivationIsIncludedInAuthorizationWithoutChangingLegacyActiveFingerprint() throws Exception {
+        var document = document();
+        var rule = com.tpverp.backend.catalog.QuantityPricing.fromJson(new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree("{\"mode\":\"PACK\",\"tiers\":[{\"quantity\":3,\"price\":5.99}]}"));
+        var line = document.getLineas().getFirst();
+        line.assignQuantityPriceSnapshot(new QuantityPriceSnapshot(rule, new BigDecimal("2.50")));
+        var historical = fingerprints.fingerprint(document);
+        line.assignQuantityPriceSnapshot(new QuantityPriceSnapshot(
+                new com.tpverp.backend.catalog.QuantityPricing(rule.mode(), rule.tiers(), false), new BigDecimal("2.50")));
+        assertThat(fingerprints.fingerprint(document)).isNotEqualTo(historical);
+        line.assignQuantityPriceSnapshot(new QuantityPriceSnapshot(
+                new com.tpverp.backend.catalog.QuantityPricing(rule.mode(), rule.tiers(), true), new BigDecimal("2.50")));
+        assertThat(fingerprints.fingerprint(document)).isEqualTo(historical);
+    }
+
     private static CommercialDocument document() {
         var document = new CommercialDocument(
                 UUID.randomUUID(),

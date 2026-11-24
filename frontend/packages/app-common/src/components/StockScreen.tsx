@@ -73,6 +73,7 @@ import {
   stockBulkDisplayedSupplier,
   stockBulkPendingSuppliers,
   stockBulkEffectiveProduct,
+  stockBulkQuantityPricingErrors,
   swapStockBulkCodeAndBarcode,
   stockOfferPriceFromDiscount,
   stockBulkVersionedDeletePath,
@@ -109,6 +110,11 @@ import {
   syncStockBulkDraftImages
 } from "./StockBulkImagePanel";
 import type { StockBulkImagePanelHandle, StockBulkImageSnapshot } from "./StockBulkImagePanel";
+import { normalizeQuantityPricingTiers, type QuantityPricing } from "../quantityPricing";
+import { quantityPricingMessages } from "../i18n/QuantityPricingMessages";
+import { StockBulkQuantityPricingCell, type StockBulkQuantityPricingField } from "./StockBulkQuantityPricingCell";
+import { bulkQuantityPricingPreview, type QuantityPricingAction } from "./stockBulkQuantityPricing";
+import { StockBulkQuantityPricingDialog } from "./StockBulkQuantityPricingDialog";
 import { StockBulkPriceActionsDialog } from "./StockBulkPriceActionsDialog";
 import { applyStockBulkPriceActionChanges, type StockBulkPriceField } from "./stockBulkPriceActions";
 import { STOCK_BULK_NEW_SHORTCUT, StockBulkWorkspaceList } from "./StockBulkWorkspaceList";
@@ -176,7 +182,7 @@ const partyNavigationIcon: Record<PartyDirectoryKind, Icon> = {
 };
 
 type StockDetailTab = "stock" | "sales";
-export type StockBulkEditTab = "main" | "info" | "salePrice" | "memberPrice" | "wholesalePrice" | "offer" | "image";
+export type StockBulkEditTab = "main" | "info" | "salePrice" | "memberPrice" | "wholesalePrice" | "offer" | "quantityPricing" | "image";
 export type BulkPriceUseMode = "NORMAL" | "MEMBER_PRICE" | "OFFER_PRICE" | "OFFER_DISCOUNT";
 type BulkWorkspaceDialog = "save" | "comments" | "rename" | "clear" | "close" | "apply" | "delete" | "reload" | null;
 type BulkWorkspaceView = "list" | "editor";
@@ -185,6 +191,7 @@ type BulkValueField =
   | "name"
   | "description"
   | "purchasePrice"
+  | "purchaseDiscountPercent"
   | "salePrice"
   | "memberPrice"
   | "wholesalePrice"
@@ -192,8 +199,9 @@ type BulkValueField =
   | "offerDiscountPercent"
   | "stockMin"
   | "stockMax";
-type BulkQuickEditField = BulkValueField | "benefit";
+type BulkQuickEditField = BulkValueField | "benefit" | StockBulkQuantityPricingField;
 type BulkSelectedAction =
+  | QuantityPricingAction
   | "supplier"
   | "principalSupplier"
   | "family"
@@ -256,6 +264,7 @@ type PagedResult<T> = {
 };
 
 type ProductView = {
+  quantityPricing?: QuantityPricing;
   id: string;
   active?: boolean | null;
   version?: number | null;
@@ -384,6 +393,7 @@ export const stockBulkImportMenuItems = [
 ] as const;
 
 export type StockInventoryRow = {
+  quantityPricing?: QuantityPricing;
   productId: string;
   active?: string;
   version?: number;
@@ -523,6 +533,7 @@ export const stockBulkSelectedActionsByTab: Record<StockBulkEditTab, BulkSelecte
     "purchasePrice", "offerPrice", "benefit", "offerDiscountPercent", "priceUse", "offerActive", "offerDates",
     "productActive", "supplier", "principalSupplier", "family"
   ],
+  quantityPricing: ["missing", "replace", "enable", "disable", "remove", "purchasePrice", "purchaseDiscountPercent", "salePrice"],
   image: ["productActive", "supplier", "principalSupplier"]
 };
 
@@ -536,6 +547,7 @@ export const stockBulkQuickEditFieldsByTab: Record<StockBulkEditTab, BulkQuickEd
   memberPrice: ["purchasePrice", "memberPrice", "benefit"],
   wholesalePrice: ["purchasePrice", "wholesalePrice", "benefit"],
   offer: ["purchasePrice", "offerPrice", "benefit", "offerDiscountPercent"],
+  quantityPricing: ["quantityRule", "tierQuantity", "tierPrice", "purchasePrice", "purchaseDiscountPercent", "salePrice"],
   image: []
 };
 const defaultStockInventoryFilters: StockInventoryFilters = {
@@ -687,6 +699,19 @@ const stockBulkColumnsByTab: Record<StockBulkEditTab, StockColumnDefinition[]> =
     { key: "offerUntil", labelKey: "stock.column.offerUntil", defaultWidth: 160 },
     { key: "family", labelKey: "stock.column.family", defaultWidth: 210 },
     { key: "totalStock", labelKey: "stock.column.totalStock", defaultWidth: 120 }
+  ],
+  quantityPricing: [
+    { key: "image", labelKey: "stock.column.image", defaultWidth: 76 },
+    { key: "code", labelKey: "stock.column.code", defaultWidth: 116 },
+    { key: "barcode", labelKey: "stock.column.barcode", defaultWidth: 145 },
+    { key: "name", labelKey: "stock.column.name", defaultWidth: 226 },
+    { key: "purchasePrice", labelKey: "stock.column.purchasePrice", defaultWidth: 112 },
+    { key: "purchaseDiscount", labelKey: "stock.column.purchaseDiscount", defaultWidth: 148 },
+    { key: "salePrice", labelKey: "stock.column.salePrice", defaultWidth: 112 },
+    { key: "quantityRule", labelKey: "stock.bulkEdit.quantityRule", defaultWidth: 208 },
+    { key: "tierQuantity", labelKey: "stock.bulkEdit.tierQuantity", defaultWidth: 110 },
+    { key: "tierPrice", labelKey: "stock.bulkEdit.tierPrice", defaultWidth: 138 },
+    { key: "totalStock", labelKey: "stock.column.stock", defaultWidth: 76 }
   ],
   image: [
     { key: "code", labelKey: "stock.column.code", defaultWidth: 130 },
@@ -1062,6 +1087,7 @@ export function stockRowToProductEdit(row: StockInventoryRow): ProductCreateEdit
       code: row.code,
       barcode: row.barcode,
       barcode2: row.barcode2 ?? "",
+      quantityPricing: row.quantityPricing,
       salePrice: row.salePrice || "0.00",
       memberPrice: row.memberPrice,
       wholesalePrice: row.wholesalePrice,
@@ -1126,6 +1152,7 @@ const stockBulkPersistedProductKeys = [
   "purchasePrice",
   "purchaseDiscountPercent",
   "salePrice",
+  "quantityPricing",
   "memberPrice",
   "wholesalePrice",
   "offerPrice",
@@ -1156,6 +1183,9 @@ function stockBulkPersistedProductData<T extends Partial<StockInventoryRow>>(val
   return Object.fromEntries(stockBulkPersistedProductKeys.flatMap((key) => {
     const fieldValue = value[key];
     if (fieldValue === undefined) return [];
+    if (key === "quantityPricing" && value.quantityPricing) {
+      return [[key, normalizeQuantityPricingTiers(value.quantityPricing)]];
+    }
     if ((key === "quantity" || key === "totalQuantity") && fieldValue !== null) {
       return [[key, String(fieldValue)]];
     }
@@ -1370,6 +1400,7 @@ export function buildStockInventoryRows(
       stockMin: valueText(product.stockMin),
       stockMax: valueText(product.stockMax),
       supplierName: "",
+      quantityPricing: product.quantityPricing,
       salePrice: valueText(product.salePrice),
       memberPrice: valueText(product.memberPrice),
       wholesalePrice: valueText(product.wholesalePrice),
@@ -1493,6 +1524,8 @@ export function stockBulkProductFromPreviewDatabaseData(
     stockMin: text("stockMin"),
     stockMax: text("stockMax"),
     supplierName: current?.supplierName ?? "",
+    quantityPricing: databaseData && "quantityPricing" in databaseData
+      ? databaseData.quantityPricing as QuantityPricing : current?.quantityPricing,
     salePrice: text("salePrice"),
     memberPrice: text("memberPrice"),
     wholesalePrice: text("wholesalePrice"),
@@ -1754,6 +1787,12 @@ export function hydrateStockBulkProductActivation(
 ) {
   const productsById = new Map(products.map((product) => [product.productId, product]));
   return cloneBulkRows(rows).map((row) => {
+    if (!row.product) return row;
+    const latest = productsById.get(row.product.productId);
+    if (row.product.quantityPricing === undefined && latest?.quantityPricing !== undefined
+        && latest.version === row.product.version) {
+      row = { ...row, product: { ...row.product, quantityPricing: latest.quantityPricing } };
+    }
     if (!row.product || valueText(row.product.active)) {
       return row;
     }
@@ -2346,6 +2385,7 @@ export function StockScreen({
   const bulkSupplierFilterRequest = useRef(0);
   const [bulkFamilyDialogOpen, setBulkFamilyDialogOpen] = useState(false);
   const [bulkDecimalDialogOpen, setBulkDecimalDialogOpen] = useState(false);
+  const [bulkQuantityAction, setBulkQuantityAction] = useState<QuantityPricingAction | null>(null);
   const [bulkPriceActionsOpen, setBulkPriceActionsOpen] = useState(false);
   const [bulkEditorDialog, setBulkEditorDialog] = useState<BulkEditorDialog>(null);
   const [bulkSwapConfirmation, setBulkSwapConfirmation] = useState<{ scope: "selected" | "all"; rowIds: string[] } | null>(null);
@@ -3151,7 +3191,7 @@ export function StockScreen({
       return;
     }
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (bulkWorkspaceView === "list") {
+      if (bulkQuantityAction || bulkWorkspaceView === "list") {
         return;
       }
       if (bulkApplyInFlightRef.current) {
@@ -3228,7 +3268,7 @@ export function StockScreen({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeBulkDraft, app, bulkAfterSave, bulkBusy, bulkDecimalDialogOpen, bulkDialog, bulkDirty, bulkDraftName, bulkEditorDialog, bulkExcelImportOpen, bulkFamilyDialogOpen, bulkFilterOpen, bulkFinder, bulkImagesDirty, bulkImportOpen, bulkPriceActionsOpen, bulkPurchaseDocumentKind, bulkQuickEditField, bulkQuickEditOpen, bulkRows, bulkSupplierDialogMode, bulkSwapConfirmation, bulkWorkspaceView, selectedView, session.accessToken]);
+  }, [activeBulkDraft, app, bulkAfterSave, bulkBusy, bulkDecimalDialogOpen, bulkDialog, bulkDirty, bulkDraftName, bulkEditorDialog, bulkExcelImportOpen, bulkFamilyDialogOpen, bulkFilterOpen, bulkFinder, bulkImagesDirty, bulkImportOpen, bulkPriceActionsOpen, bulkQuantityAction, bulkPurchaseDocumentKind, bulkQuickEditField, bulkQuickEditOpen, bulkRows, bulkSupplierDialogMode, bulkSwapConfirmation, bulkWorkspaceView, selectedView, session.accessToken]);
 
   useEffect(() => {
     if (!bulkFileOpen && !bulkEditSelectedOpen && !bulkQuickEditOpen) {
@@ -3788,6 +3828,11 @@ export function StockScreen({
   }
 
   function startBulkQuickEdit(field: BulkQuickEditField) {
+    if (bulkEditTab === "quantityPricing" && !bulkQuickEditElements(field).length) {
+      setBulkQuickEditOpen(false);
+      setBulkStatus(t("stock.bulkEdit.noEditableQuantityCell"));
+      return;
+    }
     setBulkQuickEditField(field);
     setBulkQuickEditOpen(false);
     window.requestAnimationFrame(() => {
@@ -3922,8 +3967,17 @@ export function StockScreen({
     setBulkRows((current) => setAllStockBulkRowsSelected(current, selected));
   }
 
-  function bulkSelectedActionLabel(action: BulkSelectedAction) {
-    const labels: Record<BulkSelectedAction, string> = {
+  function bulkSelectedActionLabel(action: BulkSelectedAction | BulkQuickEditField) {
+    const labels: Record<BulkSelectedAction | BulkQuickEditField, string> = {
+      missing: "stock.bulkEdit.quantityMissing",
+      replace: "stock.bulkEdit.quantityReplace",
+      enable: "stock.bulkEdit.quantityEnable",
+      disable: "stock.bulkEdit.quantityDisable",
+      remove: "stock.bulkEdit.quantityRemove",
+      quantityRule: "stock.bulkEdit.quantityRule",
+      tierQuantity: "stock.bulkEdit.tierQuantity",
+      tierPrice: "stock.bulkEdit.tierPrice",
+      purchaseDiscountPercent: "stock.column.purchaseDiscount",
       supplier: "stock.column.supplier",
       principalSupplier: "stock.bulkEdit.principalSupplier",
       family: "stock.column.family",
@@ -3974,7 +4028,7 @@ export function StockScreen({
   }
 
   function openBulkEditor(
-    action: Exclude<BulkSelectedAction, "supplier" | "principalSupplier" | "swapCodeBarcode">,
+    action: Exclude<BulkSelectedAction, "supplier" | "principalSupplier" | "swapCodeBarcode" | QuantityPricingAction>,
     rowIds: string[]
   ) {
     const firstRow = bulkRows.find((row) => rowIds.includes(row.id));
@@ -4080,6 +4134,16 @@ export function StockScreen({
       setBulkEditSelectedOpen(false);
       return;
     }
+    if (action === "missing" || action === "replace" || action === "enable" || action === "disable" || action === "remove") {
+      setBulkEditSelectedOpen(false);
+      if (!canManageProducts || bulkBusy) return;
+      const candidates = bulkQuantityPricingPreview(bulkRows, action, null);
+      const applicable = candidates.some(row =>
+        action === "replace" || (action === "missing" ? row.before === null : row.change));
+      if (applicable) setBulkQuantityAction(action);
+      else setBulkStatus(t("stock.bulkEdit.noChanges"));
+      return;
+    }
     if (action === "supplier") {
       void openBulkSupplierDialog("assign");
       return;
@@ -4112,6 +4176,11 @@ export function StockScreen({
       const control = scope === "selected" ? bulkEditSelectedRef.current : bulkQuickEditRef.current;
       control?.querySelector("button")?.focus({ preventScroll: true });
     });
+  }
+
+  function closeBulkQuantityAction() {
+    setBulkQuantityAction(null);
+    window.requestAnimationFrame(() => bulkEditSelectedRef.current?.querySelector("button")?.focus({ preventScroll: true }));
   }
 
   function confirmBulkSwap() {
@@ -4296,6 +4365,27 @@ export function StockScreen({
     return normalizeStockBulkContent(stockBulkContentRows(bulkRows));
   }
 
+  function reportInvalidQuantityPricing() {
+    const errors = stockBulkQuantityPricingErrors(bulkRows);
+    if (!errors.length) return false;
+    const first = errors[0];
+    const row = bulkRows.find(item => item.id === first.rowId);
+    const words = quantityPricingMessages(locale);
+    const message = first.issue === "price" ? words.invalidPrice
+      : first.issue === "quantity" ? words.invalidQuantity : words[first.issue];
+    setBulkStatus([row?.product?.code, message].filter(Boolean).join(" · "));
+    setBulkEditTab("quantityPricing");
+    setBulkValidationErrors(errors);
+    setBulkDialog(null);
+    setBulkAfterSave(null);
+    window.requestAnimationFrame(() => {
+      const target = Array.from(bulkTableRef.current?.querySelectorAll<HTMLElement>("[data-bulk-row-id]") ?? [])
+        .find(element => element.dataset.bulkRowId === first.rowId);
+      target?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    });
+    return true;
+  }
+
   async function reloadBulkDrafts() {
     if (!session.accessToken) {
       return [];
@@ -4344,6 +4434,7 @@ export function StockScreen({
     if (!session.accessToken || bulkBusy) {
       return null;
     }
+    if (reportInvalidQuantityPricing()) return null;
     const name = bulkDraftName.trim() || activeBulkDraft?.name || "";
     if (!name) {
       setBulkAfterSave(afterAction);
@@ -4531,6 +4622,7 @@ export function StockScreen({
     }
     const validationErrors = validateStockBulkRows(bulkRows);
     if (validationErrors.length > 0) {
+      if (validationErrors[0].field === "quantityPricing" && reportInvalidQuantityPricing()) return;
       setBulkValidationErrors(validationErrors);
       setBulkDialog(null);
       setBulkStatus(t("stock.bulkEdit.validationErrors").replace("{count}", String(validationErrors.length)));
@@ -4715,6 +4807,7 @@ export function StockScreen({
 
   async function exportBulkExcel() {
     if (!session.accessToken || bulkBusy) return;
+    if (reportInvalidQuantityPricing()) return;
     setBulkBusy(true);
     try {
       const content = currentBulkContent();
@@ -4961,7 +5054,7 @@ export function StockScreen({
   }
 
   function currentBulkDecimalField() {
-    if (bulkEditTab === "salePrice") return "salePrice" as const;
+    if (bulkEditTab === "salePrice" || bulkEditTab === "quantityPricing") return "salePrice" as const;
     if (bulkEditTab === "memberPrice") return "memberPrice" as const;
     if (bulkEditTab === "wholesalePrice") return "wholesalePrice" as const;
     if (bulkEditTab === "offer") return "offerPrice" as const;
@@ -6214,6 +6307,26 @@ export function StockScreen({
     );
     const commonStart = renderCommonStart();
 
+    if (bulkEditTab === "quantityPricing") {
+      const rule = row.draft.quantityPricing === undefined ? product?.quantityPricing : row.draft.quantityPricing;
+      return (
+        <div className={rowClassName} data-bulk-row-id={row.id} key={row.id}>
+          {commonStart}
+          <span className="product-name-text">{bulkValue(row, "name")}</span>
+          {renderBulkEditableCell(row, "purchasePrice", "stock.column.purchasePrice")}
+          {renderBulkEditableCell(row, "purchaseDiscountPercent", "stock.column.purchaseDiscount")}
+          {renderBulkEditableCell(row, "salePrice", "stock.column.salePrice")}
+          {(["quantityRule", "tierQuantity", "tierPrice"] as const).map((field) => (
+            <StockBulkQuantityPricingCell key={field} field={field} value={rule} locale={locale}
+              disabled={!canManageProducts || bulkBusy || !product} invalid={bulkCellInvalid(row, "quantityPricing")}
+              onChange={quantityPricing => patchBulkRows([row.id], () => ({ quantityPricing }), ["quantityPricing"])}
+              onKeyDown={handleBulkEntryNavigation} quickField={bulkQuickEditField} />
+          ))}
+          <span>{product?.totalQuantity ?? "-"}</span>
+        </div>
+      );
+    }
+
     if (bulkEditTab === "info") {
       return (
         <div className={rowClassName} data-bulk-row-id={row.id} key={row.id}>
@@ -6378,6 +6491,9 @@ export function StockScreen({
       <span key="code">{t("stock.column.code")}</span>,
       <span key="barcode">{t("stock.column.barcode")}</span>
     ];
+    if (bulkEditTab === "quantityPricing") {
+      return [base[0], ...bulkColumnDefinitions.map(column => label(column.labelKey, column.key))];
+    }
     if (bulkEditTab === "info") {
       return [
         ...base,
@@ -6523,7 +6639,6 @@ export function StockScreen({
   }
 
   function renderBulkLeftActions(includeFilter = true, includeFile = true) {
-    const priceTabs: StockBulkEditTab[] = ["salePrice", "memberPrice", "wholesalePrice", "offer"];
     return (
       <>
         {includeFile && renderBulkFileControl()}
@@ -6555,7 +6670,7 @@ export function StockScreen({
           </button>
           </>
         )}
-        {priceTabs.includes(bulkEditTab) && (
+        {currentBulkDecimalField() && (
           <>
             <button type="button" onClick={openBulkDecimalDialog}>{t("stock.bulkEdit.decimalAdjust")}{app !== "pda" && <Tag size={16} aria-hidden="true" />}</button>
             <button type="button" onClick={openBulkPriceActionsDialog}>{t("stock.bulkEdit.priceActions")}{app !== "pda" && <Tag size={16} aria-hidden="true" />}</button>
@@ -6679,7 +6794,7 @@ export function StockScreen({
     const valueInvalid = editor.kind === "value" && (
       (valueRequired && !editor.value.trim())
       || (editor.value.trim() !== "" && (!Number.isFinite(numericValue) || Number(numericValue) < 0))
-      || (editor.field === "offerDiscountPercent" && numericValue !== null && numericValue > 100)
+      || (["offerDiscountPercent", "purchaseDiscountPercent"].includes(editor.field) && numericValue !== null && numericValue > 100)
     );
     const benefitValue = editor.kind === "benefit" && editor.value.trim()
       ? Number(editor.value.replace(",", "."))
@@ -7512,15 +7627,6 @@ export function StockScreen({
     const priceFields = { salePrice: "SALE_PRICE", memberPrice: "MEMBER_PRICE", wholesalePrice: "WHOLESALE_PRICE", offerPrice: "OFFER_PRICE" } as const;
     const priceField = currentBulkDecimalField();
     const defaultPriceActionField: StockBulkPriceField = priceField ? priceFields[priceField] : "SALE_PRICE";
-    const tabs: Array<{ key: StockBulkEditTab; label: string }> = [
-      { key: "main", label: "stock.bulkEdit.main" },
-      { key: "info", label: "stock.bulkEdit.info" },
-      { key: "salePrice", label: "stock.bulkEdit.salePrice" },
-      { key: "memberPrice", label: "stock.bulkEdit.memberPrice" },
-      { key: "wholesalePrice", label: "stock.bulkEdit.wholesalePrice" },
-      { key: "offer", label: "stock.bulkEdit.offer" },
-      { key: "image", label: "stock.bulkEdit.image" }
-    ];
     return (
       <div className="bulk-edit-screen">
         <div className="bulk-edit-controls">
@@ -7665,6 +7771,17 @@ export function StockScreen({
           onClose={() => setBulkDecimalDialogOpen(false)}
           onApply={applyBulkDecimalEnding}
         />
+        {bulkQuantityAction && <StockBulkQuantityPricingDialog rows={bulkRows} locale={locale} action={bulkQuantityAction}
+          onClose={closeBulkQuantityAction}
+          onConfirm={(changes) => {
+            if (changes.size) {
+              commitBulkRows(current => current.map(row => changes.has(row.id)
+                ? { ...row, draft: { ...row.draft, quantityPricing: changes.get(row.id)! } } : row));
+              clearBulkValidationFields([...changes.keys()], ["quantityPricing"]);
+            }
+            closeBulkQuantityAction();
+          }}
+        />}
         {bulkPriceActionsOpen && <StockBulkPriceActionsDialog
           locale={locale}
           token={session.accessToken ?? ""}
@@ -7703,6 +7820,7 @@ export function StockScreen({
       { key: "memberPrice", label: "stock.bulkEdit.memberPrice" },
       { key: "wholesalePrice", label: "stock.bulkEdit.wholesalePrice" },
       { key: "offer", label: "stock.bulkEdit.offer" },
+      ...(canManageProducts ? [{ key: "quantityPricing" as const, label: "stock.bulkEdit.quantityPricing" }] : []),
       { key: "image", label: "stock.bulkEdit.image" }
     ];
     return (
@@ -8828,6 +8946,7 @@ export function StockScreen({
             <div className={`stock-detail-content stock-detail-content--${detailTab}`} id="stock-detail-panel" role="tabpanel" aria-labelledby={`stock-detail-tab-${detailTab}`}>
               {detailTab === "stock" && (
                 <StockProductInformationPanel
+                  app={app}
                   product={detailRow}
                   locale={locale}
                   token={session.accessToken}

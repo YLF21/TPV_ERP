@@ -1,8 +1,9 @@
 import { useMemo, type ReactNode } from "react";
-import type { LocaleCode } from "../types";
+import type { AppKind, LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { StockInventoryRow } from "./StockScreen";
 import { ProductCommercialHistory } from "./ProductCommercialHistory";
+import { ProductOfferInformation } from "./ProductOfferInformation";
 import { ZoomableProductImage } from "./ZoomableProductImage";
 import {
   calculateNetPurchasePrice,
@@ -15,6 +16,7 @@ export {
 } from "./productInformationResources";
 
 type StockProductInformationPanelProps = {
+  app?: AppKind;
   product: StockInventoryRow;
   locale: LocaleCode;
   token?: string;
@@ -77,6 +79,7 @@ function InformationSection({ title, fields }: { title: string; fields: Informat
 }
 
 export function StockProductInformationPanel({
+  app = "gestion",
   product,
   locale,
   token,
@@ -174,16 +177,17 @@ export function StockProductInformationPanel({
           />
         </section>
         <section className="stock-product-information-section stock-product-information-section--offer">
-          <h3>{t("stock.detail.offer")}</h3>
-          <InformationFields fields={[
-            { label: t("stock.column.offerActive"), value: translatedValue(product.offerActive, t) },
-            { label: t("stock.column.offerPrice"), value: decimal(product.offerPrice) },
-            { label: t("product.field.offerDiscountPercent"), value: percentage(product.offerDiscountPercent) },
-            { label: t("stock.column.offerFrom"), value: date(product.offerFrom) },
-            { label: t("stock.column.offerUntil"), value: date(product.offerUntil) },
-            { label: t("stock.column.promotion"), value: valueOrDash(product.promotionNames), wide: true }
-          ]} />
-          <ProductCommercialHistory productId={product.productId} productName={product.name} locale={locale} token={token} />
+          <ProductOfferInformation app={app} product={product} locale={locale}>
+            <InformationFields fields={[
+              { label: t("stock.column.offerActive"), value: translatedValue(product.offerActive, t) },
+              { label: t("stock.column.offerPrice"), value: decimal(product.offerPrice) },
+              { label: t("product.field.offerDiscountPercent"), value: percentage(product.offerDiscountPercent) },
+              { label: t("stock.column.offerFrom"), value: date(product.offerFrom) },
+              { label: t("stock.column.offerUntil"), value: date(product.offerUntil) },
+              { label: t("stock.column.promotion"), value: valueOrDash(product.promotionNames), wide: true }
+            ]} />
+            <ProductCommercialHistory productId={product.productId} productName={product.name} locale={locale} token={token} />
+          </ProductOfferInformation>
         </section>
       </div>
 

@@ -44,13 +44,15 @@ describe("product edit authorization", () => {
       active: true,
       taxesIncluded: true,
       offerActive: false,
-      salePrice: 4
+      salePrice: 4,
+      quantityPricing: { mode: "PACK", tiers: [{ quantity: 3, price: 10 }] }
     });
 
     expect(result.form).toMatchObject({
       name: "Cafe",
       purchasePrice: "2",
-      salePrice: "4"
+      salePrice: "4",
+      quantityPricing: { mode: "PACK", tiers: [{ quantity: 3, price: 10 }] }
     });
     expect(result.initialData).toMatchObject({
       purchaseDiscountPercent: 10,

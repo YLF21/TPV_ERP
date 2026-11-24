@@ -14,6 +14,7 @@ import com.tpverp.backend.promotion.PromotionEvaluationLine;
 import com.tpverp.backend.promotion.PromotionEvaluationRequest;
 import com.tpverp.backend.promotion.PromotionPreview;
 import com.tpverp.backend.promotion.PromotionRepository;
+import com.tpverp.backend.promotion.PromotionTarget;
 import com.tpverp.backend.promotion.PromotionTargetRepository;
 import com.tpverp.backend.promotion.PromotionalCoupon;
 import com.tpverp.backend.promotion.PromotionalCouponBenefitType;
@@ -129,6 +130,12 @@ public class TicketReturnValuationService {
                 .max(Money.euros(BigDecimal.ZERO));
         var previouslyRefunded = Money.euros(
                 documents.confirmedReturnAmount(original.getId()));
+        // Crossing an inclusive threshold can increase the value of the remaining
+        // basket. A later return cannot reclaim money already refunded.
+        if (previouslyRefunded.compareTo(original.getTotal()) <= 0
+                && sourceLines.values().stream().anyMatch(line -> line.getQuantityPriceSnapshot() != null)) {
+            cumulativeRefund = cumulativeRefund.max(previouslyRefunded);
+        }
         var currentRefund = Money.euros(cumulativeRefund.subtract(previouslyRefunded));
         if (currentRefund.signum() < 0) {
             throw new IllegalStateException(
@@ -285,27 +292,34 @@ public class TicketReturnValuationService {
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
-        if (versionIds.isEmpty() || remaining.isEmpty()) {
+        var snapshots = original.getLineas().stream()
+                .filter(line -> line.getQuantityPriceSnapshot() != null)
+                .collect(Collectors.toMap(DocumentLine::getPosicion, DocumentLine::getQuantityPriceSnapshot));
+        if ((versionIds.isEmpty() && snapshots.isEmpty()) || remaining.isEmpty()) {
             return new PromotionPreview(List.of(), Money.euros(BigDecimal.ZERO));
         }
-        var historical = promotions.findAllById(versionIds);
+        var historical = versionIds.isEmpty() ? List.<Promotion>of() : promotions.findAllById(versionIds);
         if (historical.size() != versionIds.size()) {
             throw new IllegalStateException(
                     "No se puede recuperar la version historica de la promocion");
         }
-        var targets = promotionTargets.findByPromocionIdIn(versionIds);
+        var targets = versionIds.isEmpty() ? List.<PromotionTarget>of()
+                : promotionTargets.findByPromocionIdIn(versionIds);
         var engineVersions = original.getLineas().stream()
-                .filter(line -> line.getLineType() == DocumentLineType.PROMOTION)
+                .filter(line -> line.getLineType() == DocumentLineType.PROMOTION
+                        || line.getLineType() == DocumentLineType.QUANTITY_PRICE
+                        || line.getQuantityPriceSnapshot() != null)
                 .filter(line -> line.getPromotionalCouponId() == null)
-                .map(line -> line.getPromotionEngineVersion() == null ? 1 : line.getPromotionEngineVersion())
+                .map(line -> line.getPromotionEngineVersion() != null
+                        ? line.getPromotionEngineVersion() : snapshots.isEmpty() ? 1 : 2)
                 .collect(Collectors.toSet());
-        if (engineVersions.size() != 1) {
+        if (engineVersions.size() > 1) {
             throw new IllegalStateException("El documento combina versiones del motor de promociones");
         }
-        var request = new PromotionEvaluationRequest(remaining, historical, targets);
-        return engineVersions.contains(1)
-                ? promotionEngine.previewLegacy(request)
-                : promotionEngine.preview(request);
+        var request = new PromotionEvaluationRequest(remaining, historical, targets, snapshots);
+        if (engineVersions.contains(1)) return promotionEngine.previewLegacy(request);
+        if (engineVersions.contains(3)) return promotionEngine.preview(request);
+        return promotionEngine.previewVersion2(request);
     }
 
     private Map<TaxKey, BigDecimal> confirmedTaxRefunds(UUID originalDocumentId) {
@@ -571,7 +585,7 @@ public class TicketReturnValuationService {
                 line.getPorcentajeImpuesto(),
                 line.getDescuento().signum() > 0
                         || globalFactor.compareTo(BigDecimal.ONE) < 0,
-                product.getDiscountType() != DiscountType.NONE,
+                line.getQuantityPriceSnapshot() != null || product.getDiscountType() != DiscountType.NONE,
                 payableUnitAmount(line, globalFactor));
     }
 

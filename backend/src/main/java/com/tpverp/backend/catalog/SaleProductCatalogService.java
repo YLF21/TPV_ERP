@@ -213,6 +213,7 @@ public class SaleProductCatalogService {
                 tax.getPercentage(),
                 taxRegime,
                 product.getPackageQuantity(),
-                totalStock);
+                totalStock,
+                product.getQuantityPricing());
     }
 }

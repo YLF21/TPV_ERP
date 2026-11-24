@@ -1,6 +1,38 @@
 package com.tpverp.backend.document;
 import static org.assertj.core.api.Assertions.*;import com.fasterxml.jackson.databind.ObjectMapper;import java.math.BigDecimal;import java.time.LocalDate;import java.util.*;import org.junit.jupiter.api.Test;
+import com.tpverp.backend.catalog.QuantityPricing;
 class PosCardDocumentSnapshotTest {
+ @Test void approvedCardReplayKeepsQuantityRuleAndCentExactFrozenTax() {
+  var codec = new PosCardDocumentSnapshot(new ObjectMapper().findAndRegisterModules());
+  var ticket = new CommercialDocument(UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+          LocalDate.now(), UUID.randomUUID(), BigDecimal.ZERO);
+  var product = UUID.randomUUID();
+  var rule = new QuantityPricing(QuantityPricing.Mode.PACK,
+          List.of(new QuantityPricing.Tier(3, new BigDecimal("0.05"))));
+  var snapshot = new QuantityPriceSnapshot(rule, new BigDecimal("0.03"));
+  for (int position = 1; position <= 3; position++) {
+   var line = new DocumentLine(ticket, product, position, 1, "P", "Producto", "VENTA",
+           snapshot.salePrice(), BigDecimal.ZERO, false, "IVA", new BigDecimal("21"));
+   line.assignQuantityPriceSnapshot(snapshot);
+   ticket.addLine(line);
+  }
+  var discount = DocumentLine.quantityPrice(ticket, 4, "Lote", new BigDecimal("-0.04"), false,
+          "IVA", new BigDecimal("21"), new BigDecimal("-0.04"), new BigDecimal("-0.02"), new BigDecimal("-0.06"));
+  discount.assignPromotionEngineVersion(2);
+  ticket.addLine(discount);
+  var quoted = ApprovedCardTicketSnapshot.from(ticket, UUID.randomUUID());
+  var frozen = new ApprovedCardTicketSnapshot(quoted.storeId(), quoted.warehouseId(), quoted.date(), quoted.customerId(),
+          quoted.paymentMethodId(), quoted.globalDiscount(), quoted.baseTotal(), quoted.taxTotal(), quoted.total(),
+          quoted.lines().stream().map(line -> line.productoId() == null ? line :
+                  line.withRequiresSerialNumber(false).withDiscountEligible(true)).toList());
+  var restored = codec.deserialize(codec.serialize(frozen));
+  assertThat(restored.total()).isEqualByComparingTo("0.06");
+  assertThat(restored.lines().getFirst().quantityPriceSnapshot()).isEqualTo(snapshot);
+  var adjustment = restored.lines().getLast().toEntity(ticket, 4);
+  assertThat(adjustment.getLineType()).isEqualTo(DocumentLineType.QUANTITY_PRICE);
+  assertThat(adjustment.getImpuesto()).isEqualByComparingTo("-0.02");
+  assertThat(adjustment.getTotal()).isEqualByComparingTo("-0.06");
+ }
  @Test void preservesServerPromotionEngineVersionAndLeavesLegacySnapshotUnmarked() {
   var snapshots = new PosCardDocumentSnapshot(new ObjectMapper().findAndRegisterModules());
   var document = new CommercialDocument(UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,

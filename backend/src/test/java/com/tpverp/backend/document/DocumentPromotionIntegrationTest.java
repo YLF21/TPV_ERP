@@ -12,6 +12,7 @@ import com.tpverp.backend.cash.CashPaymentRecorder;
 import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.IdentifierType;
 import com.tpverp.backend.catalog.PriceTier;
+import com.tpverp.backend.catalog.QuantityPricing;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.ProductType;
@@ -207,6 +208,204 @@ class DocumentPromotionIntegrationTest {
     }
 
     @Test
+    void largeQuantityQuoteAndPaymentChoosePromotionBeyondExpansionLimitWithCompactTaxLines() {
+        var tax = new StoreTax(store.getId(), new BigDecimal("21.00"), true);
+        var product = realProduct("BULK", "Compra grande", "12.10", tax);
+        product.configureQuantityPricing(new QuantityPricing(QuantityPricing.Mode.UNIT_THRESHOLD,
+                List.of(new QuantityPricing.Tier(2, new BigDecimal("9.68")))));
+        var promotion = buyXPayY("2x1", 2, 1);
+        org.mockito.Mockito.doReturn(Map.of(product.getId(),
+                        new PromotionCatalogGateway.ProductSnapshot(product, tax)))
+                .when(promotionCatalog).products(any(), any());
+        org.mockito.Mockito.doReturn(List.of(product)).when(productRepository).findAllByStoreIdAndIdIn(any(), any());
+        when(promotionRepository.findByEmpresaIdAndEstado(store.getEmpresa().getId(), PromotionStatus.ACTIVE))
+                .thenReturn(List.of(promotion));
+        when(promotionTargetRepository.findByPromocionIdIn(List.of(promotion.id()))).thenReturn(List.of());
+        var authoritative = serviceWithPricing(new AuthoritativePromotionPricing(customerRepository, memberRepository));
+        var command = command(CommercialDocumentType.TICKET, List.of(line(product.getId(), "10002", "0.01")));
+
+        var quote = authoritative.quoteTicket(command, authentication());
+
+        assertThat(quote.getTotal()).isEqualByComparingTo("60512.10");
+        assertThat(quote.getBaseTotal()).isEqualByComparingTo("50010.00");
+        assertThat(quote.getImpuestoTotal()).isEqualByComparingTo("10502.10");
+        assertThat(quote.getLineas()).extracting(DocumentLine::getLineType)
+                .containsExactly(DocumentLineType.PRODUCT, DocumentLineType.PROMOTION);
+        assertThat(quote.getLineas()).allSatisfy(line ->
+                assertThat(line.getPromotionEngineVersion()).isEqualTo(3));
+        assertThat(quote.getLineas().getFirst().getQuantityPriceSnapshot()).isNotNull();
+        assertThat(DocumentLineCommand.from(quote.getLineas().getFirst()).toEntity(quote)
+                .getPromotionEngineVersion()).isEqualTo(3);
+        assertConfirmedAtQuotedAmounts(authoritative, command, quote);
+    }
+
+    @Test
+    void largeMixedBasketReservesQuantityPricedProductBeforeGroupingOtherPromotionUnits() {
+        var tax = new StoreTax(store.getId(), new BigDecimal("21.00"), true);
+        var quantityProduct = realProduct("PACK", "Paquete", "12.10", tax);
+        quantityProduct.configureQuantityPricing(new QuantityPricing(QuantityPricing.Mode.PACK,
+                List.of(new QuantityPricing.Tier(100, new BigDecimal("605.00")))));
+        var promotedProduct = realProduct("PROMO", "Promocionado", "10.89", tax);
+        var promotion = buyXPayY("3x2", 3, 2);
+        org.mockito.Mockito.doReturn(Map.of(
+                        quantityProduct.getId(), new PromotionCatalogGateway.ProductSnapshot(quantityProduct, tax),
+                        promotedProduct.getId(), new PromotionCatalogGateway.ProductSnapshot(promotedProduct, tax)))
+                .when(promotionCatalog).products(any(), any());
+        org.mockito.Mockito.doReturn(List.of(quantityProduct, promotedProduct))
+                .when(productRepository).findAllByStoreIdAndIdIn(any(), any());
+        when(promotionRepository.findByEmpresaIdAndEstado(store.getEmpresa().getId(), PromotionStatus.ACTIVE))
+                .thenReturn(List.of(promotion));
+        when(promotionTargetRepository.findByPromocionIdIn(List.of(promotion.id()))).thenReturn(List.of());
+        var authoritative = serviceWithPricing(new AuthoritativePromotionPricing(customerRepository, memberRepository));
+        var command = command(CommercialDocumentType.TICKET, List.of(
+                line(quantityProduct.getId(), "100", "0.01"), line(promotedProduct.getId(), "51", "999.00")));
+
+        var quote = authoritative.quoteTicket(command, authentication());
+
+        // Reserving A leaves all 51 B units available for 17 complete 3x2 packs.
+        assertThat(quote.getTotal()).isEqualByComparingTo("975.26");
+        assertThat(quote.getBaseTotal()).isEqualByComparingTo("806.00");
+        assertThat(quote.getImpuestoTotal()).isEqualByComparingTo("169.26");
+        assertThat(quote.getLineas()).hasSize(4);
+        assertThat(quote.getLineas().stream().filter(line -> line.getLineType() == DocumentLineType.PROMOTION))
+                .singleElement().satisfies(line -> {
+                    assertThat(line.getTotal()).isEqualByComparingTo("-185.13");
+                    assertThat(line.getPromotionAffectedPositions()).containsExactly(2);
+                });
+        assertConfirmedAtQuotedAmounts(authoritative, command, quote);
+    }
+
+    private void assertConfirmedAtQuotedAmounts(DocumentService authoritative, DocumentCommand command,
+            CommercialDocument quote) {
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any())).thenReturn(Optional.empty());
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var ticket = authoritative.createTicket(command,
+                List.of(new PaymentCommand(cash.getId(), quote.getTotal(), true, null, null)), authentication());
+        assertThat(ticket.getTotal()).isEqualByComparingTo(quote.getTotal());
+        assertThat(ticket.getBaseTotal()).isEqualByComparingTo(quote.getBaseTotal());
+        assertThat(ticket.getImpuestoTotal()).isEqualByComparingTo(quote.getImpuestoTotal());
+        assertThat(ticket.getBaseTotal().add(ticket.getImpuestoTotal())).isEqualByComparingTo(ticket.getTotal());
+        assertThat(ticket.getLineas()).hasSameSizeAs(quote.getLineas());
+        assertThat(ticket.getPagos()).singleElement().satisfies(payment ->
+                assertThat(payment.getImporte()).isEqualByComparingTo(quote.getTotal()));
+        verify(stockGateway).confirm(ticket);
+    }
+
+    @ParameterizedTest
+    @EnumSource(QuantityPricing.Mode.class)
+    void quantityRuleCanBeDisabledAndReactivatedBetweenCheckoutQuotes(QuantityPricing.Mode mode) {
+        var productId = UUID.randomUUID();
+        var product = product(productId, UUID.randomUUID(), null);
+        when(product.getSalePrice()).thenReturn(new BigDecimal("2.00"));
+        var tiers = List.of(new QuantityPricing.Tier(3,
+                new BigDecimal(mode == QuantityPricing.Mode.PACK ? "3.00" : "1.00")));
+        var active = new QuantityPricing(mode, tiers, true);
+        when(product.getQuantityPricing()).thenReturn(active);
+        org.mockito.Mockito.doReturn(Map.of(productId, productSnapshot(product)))
+                .when(promotionCatalog).products(any(), any());
+        when(productRepository.findAllByStoreIdAndIdIn(store.getId(), List.of(productId)))
+                .thenReturn(List.of(product));
+        var authoritative = serviceWithPricing(new AuthoritativePromotionPricing(customerRepository, memberRepository));
+        var command = command(CommercialDocumentType.TICKET, List.of(line(productId, "3", "0.01")));
+        var first = authoritative.quoteTicket(command, authentication());
+        assertThat(first.getTotal()).isEqualByComparingTo("3.00");
+        when(product.getQuantityPricing()).thenReturn(new QuantityPricing(mode, tiers, false));
+        var disabled = authoritative.quoteTicket(command, authentication());
+        assertThat(disabled.getTotal()).isEqualByComparingTo("6.00");
+        assertThat(disabled.getLineas()).singleElement().satisfies(line -> {
+            assertThat(line.getLineType()).isEqualTo(DocumentLineType.PRODUCT);
+            assertThat(line.getQuantityPriceSnapshot()).isNull();
+        });
+        assertThat(first.getLineas().getFirst().getQuantityPriceSnapshot().rule()).isEqualTo(active);
+        when(product.getQuantityPricing()).thenReturn(active);
+        var reactivated = authoritative.quoteTicket(command, authentication());
+        assertThat(reactivated.getTotal()).isEqualByComparingTo(first.getTotal());
+        assertThat(reactivated.getLineas().getFirst().getQuantityPriceSnapshot().rule().tiers()).isEqualTo(tiers);
+    }
+
+    @Test
+    void quantityPackIsAuthoritativeAcrossSplitRowsWithoutAnyPromotionAndPaidAtExactTotal() {
+        var productId = UUID.randomUUID();
+        var product = product(productId, UUID.randomUUID(), null);
+        when(product.getSalePrice()).thenReturn(new BigDecimal("2.00"));
+        when(product.getQuantityPricing()).thenReturn(new QuantityPricing(QuantityPricing.Mode.PACK,
+                List.of(new QuantityPricing.Tier(3, new BigDecimal("5.00")))));
+        org.mockito.Mockito.doReturn(Map.of(productId, productSnapshot(product)))
+                .when(promotionCatalog).products(any(), any());
+        when(productRepository.findAllByStoreIdAndIdIn(store.getId(), List.of(productId)))
+                .thenReturn(List.of(product));
+        var authoritative = serviceWithPricing(new AuthoritativePromotionPricing(customerRepository, memberRepository));
+        var command = command(CommercialDocumentType.TICKET,
+                List.of(line(productId, "1", "0.01"), line(productId, "2", "999.00")));
+
+        var quote = authoritative.quoteTicket(command, authentication());
+        assertThat(quote.getTotal()).isEqualByComparingTo("5.00");
+        assertThat(quote.getLineas()).extracting(DocumentLine::getLineType)
+                .containsExactly(DocumentLineType.PRODUCT, DocumentLineType.PRODUCT, DocumentLineType.QUANTITY_PRICE);
+        assertThat(quote.getLineas().getFirst().getPrecioUnitario()).isEqualByComparingTo("2.00");
+        assertThat(quote.getLineas().getFirst().getQuantityPriceSnapshot()).isNotNull();
+        assertThat(quote.getLineas().getLast().getPromotionAffectedPositions()).containsExactlyInAnyOrder(1, 2);
+        assertThat(quote.getBaseTotal().add(quote.getImpuestoTotal())).isEqualByComparingTo("5.00");
+
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any())).thenReturn(Optional.empty());
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var ticket = authoritative.createTicket(command,
+                List.of(new PaymentCommand(cash.getId(), new BigDecimal("5.00"), true, null, null)),
+                authentication());
+        assertThat(ticket.getTotal()).isEqualByComparingTo(quote.getTotal());
+        verify(stockGateway).confirm(ticket);
+    }
+
+    @Test
+    void quantityPriceCannotBypassTheProductDiscountLock() {
+        var productId = UUID.randomUUID();
+        var product = product(productId, UUID.randomUUID(), null);
+        when(product.getSalePrice()).thenReturn(new BigDecimal("2.00"));
+        when(product.getDiscountType()).thenReturn(DiscountType.NONE);
+        when(product.getQuantityPricing()).thenReturn(new QuantityPricing(QuantityPricing.Mode.PACK,
+                List.of(new QuantityPricing.Tier(3, new BigDecimal("1.00")))));
+        org.mockito.Mockito.doReturn(Map.of(productId, productSnapshot(product)))
+                .when(promotionCatalog).products(any(), any());
+        when(productRepository.findAllByStoreIdAndIdIn(store.getId(), List.of(productId)))
+                .thenReturn(List.of(product));
+        var quote = serviceWithPricing(new AuthoritativePromotionPricing(customerRepository, memberRepository))
+                .quoteTicket(command(CommercialDocumentType.TICKET, List.of(line(productId, "3", "0.01"))),
+                        authentication());
+        assertThat(quote.getTotal()).isEqualByComparingTo("6.00");
+        assertThat(quote.getLineas()).singleElement().satisfies(line ->
+                assertThat(line.getQuantityPriceSnapshot()).isNull());
+    }
+
+    @Test
+    void changingCartQuantityRequotesAnInclusiveUnitThresholdForEveryUnit() {
+        var productId = UUID.randomUUID();
+        var product = product(productId, UUID.randomUUID(), null);
+        when(product.getSalePrice()).thenReturn(new BigDecimal("2.00"));
+        when(product.getQuantityPricing()).thenReturn(new QuantityPricing(QuantityPricing.Mode.UNIT_THRESHOLD,
+                List.of(new QuantityPricing.Tier(3, new BigDecimal("1.50")))));
+        org.mockito.Mockito.doReturn(Map.of(productId, productSnapshot(product)))
+                .when(promotionCatalog).products(any(), any());
+        when(productRepository.findAllByStoreIdAndIdIn(store.getId(), List.of(productId)))
+                .thenReturn(List.of(product));
+        var authoritative = serviceWithPricing(new AuthoritativePromotionPricing(customerRepository, memberRepository));
+        var below = authoritative.quoteTicket(command(CommercialDocumentType.TICKET,
+                List.of(line(productId, "2", "0.01"))), authentication());
+        var reached = authoritative.quoteTicket(command(CommercialDocumentType.TICKET,
+                List.of(line(productId, "3", "0.01"))), authentication());
+        var above = authoritative.quoteTicket(command(CommercialDocumentType.TICKET,
+                List.of(line(productId, "4", "0.01"))), authentication());
+        assertThat(below.getTotal()).isEqualByComparingTo("4.00");
+        assertThat(below.getLineas()).hasSize(1);
+        assertThat(reached.getTotal()).isEqualByComparingTo("4.50");
+        assertThat(above.getTotal()).isEqualByComparingTo("6.00");
+        assertThat(reached.getLineas().getLast().getNombre()).contains("desde 3 uds", "1.50/ud");
+    }
+
+    @Test
     void ticketAppliesBuyXPayYPromotionBeforePaymentValidation() {
         var productId = UUID.randomUUID();
         var product = product(productId, UUID.randomUUID(), null);
@@ -347,7 +546,7 @@ class DocumentPromotionIntegrationTest {
                     assertThat(item.getPorcentajeImpuesto()).isEqualByComparingTo("10.00");
                     assertThat(item.getPromotionId()).isEqualTo(promotion.rootVersionId());
                     assertThat(item.getPromotionVersionId()).isEqualTo(promotion.id());
-                    assertThat(item.getPromotionEngineVersion()).isEqualTo(PromotionEngine.CURRENT_VERSION);
+                    assertThat(item.getPromotionEngineVersion()).isEqualTo(2);
                     assertThat(item.getPromotionAffectedPositions()).containsExactlyInAnyOrder(1, 2);
                 });
         assertThat(ticket.getLineas().stream().map(DocumentLine::getBase).reduce(BigDecimal.ZERO, BigDecimal::add))

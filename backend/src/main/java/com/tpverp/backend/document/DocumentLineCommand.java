@@ -34,7 +34,9 @@ public record DocumentLineCommand(
         Boolean requiresSerialNumber,
         Boolean discountEligible,
         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-        Integer promotionEngineVersion) {
+        Integer promotionEngineVersion,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        QuantityPriceSnapshot quantityPriceSnapshot) {
 
     private static final String HISTORICAL_OPEN_PRICE_RATE =
             "OPEN_PRICE";
@@ -54,7 +56,7 @@ public record DocumentLineCommand(
                 promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
                 temporaryNameOverride, temporaryPriceOverride, returnSourceType,
                 returnSourceCode, returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
-                frozenBase, frozenTax, frozenTotal, barcode, requiresSerialNumber, discountEligible, null);
+                frozenBase, frozenTax, frozenTotal, barcode, requiresSerialNumber, discountEligible, null, null);
     }
 
     DocumentLineCommand withPromotionEngineVersion(Integer engineVersion) {
@@ -63,7 +65,16 @@ public record DocumentLineCommand(
                 lineType, promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
                 temporaryNameOverride, temporaryPriceOverride, returnSourceType, returnSourceCode,
                 returnSourceTicketId, originalDocumentLineId, giftReceiptLineId, frozenBase, frozenTax,
-                frozenTotal, barcode, requiresSerialNumber, discountEligible, engineVersion);
+                frozenTotal, barcode, requiresSerialNumber, discountEligible, engineVersion, quantityPriceSnapshot);
+    }
+
+    public DocumentLineCommand withQuantityPriceSnapshot(QuantityPriceSnapshot snapshot) {
+        return new DocumentLineCommand(productoId, cantidad, codigo, nombre, tarifa,
+                precioUnitario, descuento, impuestosIncluidos, regimenImpuesto, porcentajeImpuesto,
+                lineType, promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
+                temporaryNameOverride, temporaryPriceOverride, returnSourceType, returnSourceCode,
+                returnSourceTicketId, originalDocumentLineId, giftReceiptLineId, frozenBase, frozenTax,
+                frozenTotal, barcode, requiresSerialNumber, discountEligible, promotionEngineVersion, snapshot);
     }
 
     public DocumentLineCommand(
@@ -127,7 +138,7 @@ public record DocumentLineCommand(
                 promotionalCouponId, serialNumbers, temporaryNameOverride,
                 temporaryPriceOverride, returnSourceType, returnSourceCode,
                 returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
-                frozenBase, frozenTax, frozenTotal, barcode, required, discountEligible, promotionEngineVersion);
+                frozenBase, frozenTax, frozenTotal, barcode, required, discountEligible, promotionEngineVersion, quantityPriceSnapshot);
     }
 
     DocumentLineCommand withDiscountEligible(Boolean eligible) {
@@ -137,7 +148,7 @@ public record DocumentLineCommand(
                 promotionalCouponId, serialNumbers, temporaryNameOverride,
                 temporaryPriceOverride, returnSourceType, returnSourceCode,
                 returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
-                frozenBase, frozenTax, frozenTotal, barcode, requiresSerialNumber, eligible, promotionEngineVersion);
+                frozenBase, frozenTax, frozenTotal, barcode, requiresSerialNumber, eligible, promotionEngineVersion, quantityPriceSnapshot);
     }
 
     public DocumentLineCommand(
@@ -269,7 +280,7 @@ public record DocumentLineCommand(
                 temporaryNameOverride, temporaryPriceOverride,
                 returnSourceType, returnSourceCode,
                 returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
-                null, null, null, barcode).withPromotionEngineVersion(promotionEngineVersion);
+                null, null, null, barcode, requiresSerialNumber, discountEligible, promotionEngineVersion, quantityPriceSnapshot);
     }
 
     public DocumentLineCommand withDiscount(BigDecimal discount, String rate) {
@@ -280,7 +291,7 @@ public record DocumentLineCommand(
                 temporaryNameOverride, temporaryPriceOverride,
                 returnSourceType, returnSourceCode,
                 returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
-                null, null, null, barcode).withPromotionEngineVersion(promotionEngineVersion);
+                null, null, null, barcode, requiresSerialNumber, discountEligible, promotionEngineVersion, quantityPriceSnapshot);
     }
 
     public DocumentLineCommand withBarcode(String value) {
@@ -291,7 +302,7 @@ public record DocumentLineCommand(
                 serialNumbers, temporaryNameOverride, temporaryPriceOverride,
                 returnSourceType, returnSourceCode, returnSourceTicketId,
                 originalDocumentLineId, giftReceiptLineId, frozenBase, frozenTax,
-                frozenTotal, value).withPromotionEngineVersion(promotionEngineVersion);
+                frozenTotal, value, requiresSerialNumber, discountEligible, promotionEngineVersion, quantityPriceSnapshot);
     }
 
     static String historicalOpenPriceRate() {
@@ -312,6 +323,7 @@ public record DocumentLineCommand(
                 || promotionId != null
                 || promotionVersionId != null
                 || promotionEngineVersion != null
+                || quantityPriceSnapshot != null
                 || promotionalCouponId != null) {
             throw new IllegalArgumentException(
                     "Las lineas de promocion y cupon solo puede generarlas el backend");
@@ -353,7 +365,8 @@ public record DocumentLineCommand(
                 frozenAmounts ? line.getBase() : null,
                 frozenAmounts ? line.getImpuesto() : null,
                 frozenAmounts ? line.getTotal() : null,
-                line.getCodigoBarras()).withPromotionEngineVersion(line.getPromotionEngineVersion());
+                line.getCodigoBarras()).withPromotionEngineVersion(line.getPromotionEngineVersion())
+                        .withQuantityPriceSnapshot(line.getQuantityPriceSnapshot());
     }
 
     // Converts validated input into a line with a fiscal snapshot.
@@ -399,6 +412,8 @@ public record DocumentLineCommand(
                         nombre, tarifa, precioUnitario, descuento, impuestosIncluidos,
                         regimenImpuesto, porcentajeImpuesto, frozenBase, frozenTax,
                         frozenTotal);
+        line.assignQuantityPriceSnapshot(quantityPriceSnapshot);
+        line.assignPromotionEngineVersion(promotionEngineVersion);
         line.assignSerialNumbers(serialNumbers);
         line.assignTemporaryOverrides(temporaryNameOverride, temporaryPriceOverride);
         if (originalDocumentLineId != null) {

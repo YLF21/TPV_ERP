@@ -14,21 +14,21 @@
 /* Outrank legacy window-specific !important button rules in both desktop apps. */
 button.erp-window-close.erp-window-close.erp-window-close.erp-window-close {
   position: absolute !important;
-  inset: 3px 3px auto auto !important;
+  inset: var(--erp-window-close-inset, 3px 3px auto auto) !important;
   display: grid !important;
   place-items: center !important;
   box-sizing: border-box;
-  width: 44px !important;
-  height: 44px !important;
-  min-width: 44px !important;
-  min-height: 44px !important;
-  max-width: 44px !important;
-  max-height: 44px !important;
+  width: var(--erp-window-close-size, 44px) !important;
+  height: var(--erp-window-close-size, 44px) !important;
+  min-width: var(--erp-window-close-size, 44px) !important;
+  min-height: var(--erp-window-close-size, 44px) !important;
+  max-width: var(--erp-window-close-size, 44px) !important;
+  max-height: var(--erp-window-close-size, 44px) !important;
   margin: 0 !important;
   padding: 0 !important;
-  border: 0 !important;
+  border: var(--erp-window-close-border, 0) !important;
   border-radius: 4px !important;
-  background: transparent !important;
+  background: var(--erp-window-close-background, transparent) !important;
   color: #fff !important;
   box-shadow: none !important;
   transform: none !important;
@@ -62,7 +62,7 @@ button.erp-window-close.erp-window-close.erp-window-close.erp-window-close-on-li
 
 button.erp-window-close.erp-window-close.erp-window-close.erp-window-close-on-light:hover:not(:disabled),
 button.erp-window-close.erp-window-close.erp-window-close.erp-window-close-on-light:focus-visible {
-  background: rgba(11, 46, 89, .12) !important;
+  background: var(--erp-window-close-hover-background, rgba(11, 46, 89, .12)) !important;
 }
 
 button.erp-window-close:disabled {

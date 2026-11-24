@@ -7,7 +7,7 @@ type SaleCommandLabels = {
   cashDrawer: string;
   cashWithdrawal: string;
   logout: string;
-  selectedStock: string;
+  stockLookup: string;
   productSales: string;
   editProduct: string;
   ticketReturn: string;
@@ -68,7 +68,7 @@ export function KeyboardSaleCommandBar({
       <span><kbd>F2</kbd> {labels.calculator}</span>
       <span><kbd>F3</kbd> {labels.cashDrawer}</span>
       <span><kbd>F4</kbd> {labels.logout}</span>
-      <span><kbd>F5</kbd> {labels.selectedStock}</span>
+      <span><kbd>Ctrl+F6</kbd> {labels.stockLookup}</span>
       <span><kbd>F6</kbd> {labels.productSales}</span>
       <span><kbd>F7</kbd> {labels.editProduct}</span>
       <span><kbd>F10</kbd> {labels.ticketReturn}</span>

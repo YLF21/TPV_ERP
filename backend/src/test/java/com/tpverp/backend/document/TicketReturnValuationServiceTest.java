@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.catalog.DiscountType;
+import com.tpverp.backend.catalog.QuantityPricing;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.party.MemberDocumentLoyaltyLineRepository;
@@ -44,7 +45,7 @@ class TicketReturnValuationServiceTest {
             mock(PromotionTargetRepository.class);
     private final PromotionalCouponRepository coupons =
             mock(PromotionalCouponRepository.class);
-    private final PromotionEngine engine = new PromotionEngine();
+    private final PromotionEngine engine = org.mockito.Mockito.spy(new PromotionEngine());
     private final UUID storeId = UUID.randomUUID();
     private final UUID productId = UUID.randomUUID();
     private final Product product = mock(Product.class);
@@ -325,6 +326,123 @@ class TicketReturnValuationServiceTest {
         assertThat(result.remainingBasketValue()).isEqualByComparingTo(engineVersion == 1 ? "48" : "39");
         assertThat(result.lostBenefits()).isZero();
         assertThat(result.taxAdjustments()).isEmpty();
+    }
+
+    @Test
+    void newQuantitySnapshotWithoutWinningAdjustmentRetainsVersionThroughPartialReturn() {
+        var fixture = ticketWithoutPromotion(3, "2.00");
+        fixture.productLine().assignQuantityPriceSnapshot(new QuantityPriceSnapshot(
+                new QuantityPricing(QuantityPricing.Mode.UNIT_THRESHOLD,
+                        List.of(new QuantityPricing.Tier(4, new BigDecimal("1.50")))), new BigDecimal("2.00")));
+        fixture.productLine().assignPromotionEngineVersion(3);
+
+        var result = service().value(fixture.ticket(), Map.of(fixture.productLine().getId(), BigDecimal.ONE));
+
+        assertThat(result.refundableAmount()).isEqualByComparingTo("2.00");
+        assertThat(result.remainingBasketValue()).isEqualByComparingTo("4.00");
+        org.mockito.Mockito.verify(engine).preview(any());
+        org.mockito.Mockito.verify(engine, org.mockito.Mockito.never()).previewVersion2(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {2, 3})
+    void largeBasketReturnReplaysTheOriginalQuantityPricingEngine(int engineVersion) {
+        var fixture = ticketWithoutPromotion(100, "12.10");
+        var ticket = fixture.ticket();
+        var first = fixture.productLine();
+        first.assignQuantityPriceSnapshot(new QuantityPriceSnapshot(
+                new QuantityPricing(QuantityPricing.Mode.PACK,
+                        List.of(new QuantityPricing.Tier(100, new BigDecimal("605.00")))), new BigDecimal("12.10")));
+        if (engineVersion == 3) first.assignPromotionEngineVersion(3);
+        var secondId = UUID.randomUUID();
+        var unrelatedId = UUID.randomUUID();
+        var second = new DocumentLine(ticket, secondId, 2, 51, "B", "B", "GENERAL",
+                new BigDecimal("10.89"), BigDecimal.ZERO, true, "IVA", new BigDecimal("21"));
+        var unrelated = new DocumentLine(ticket, unrelatedId, 3, 1, "C", "C", "GENERAL",
+                new BigDecimal("1.21"), BigDecimal.ZERO, true, "IVA", new BigDecimal("21"));
+        ticket.addLine(second);
+        ticket.addLine(unrelated);
+        var quantityDiscount = DocumentLine.quantityPrice(ticket, 4, "100 x 605", new BigDecimal("-605.00"),
+                true, "IVA", new BigDecimal("21"));
+        quantityDiscount.assignPromotionEngineVersion(engineVersion);
+        ticket.addLine(quantityDiscount);
+        var promotion = buyXPayY(3, 2);
+        int packs = engineVersion == 2 ? 16 : 17;
+        // Historical v2 greedily consumed two B units together with the reserved A;
+        // v3 regroups all B units after selecting A's quantity price.
+        for (int index = 0; index < packs; index++) {
+            var discount = DocumentLine.special(ticket, 5 + index, "PROMOCION 3x2", new BigDecimal("-10.89"),
+                    true, "IVA", new BigDecimal("21"), promotion.rootVersionId(), promotion.id(), null);
+            discount.assignPromotionEngineVersion(engineVersion);
+            ticket.addLine(discount);
+        }
+        var secondProduct = mock(Product.class);
+        when(secondProduct.getId()).thenReturn(secondId);
+        when(secondProduct.getDiscountType()).thenReturn(DiscountType.NORMAL);
+        var unrelatedProduct = mock(Product.class);
+        when(unrelatedProduct.getId()).thenReturn(unrelatedId);
+        when(unrelatedProduct.getDiscountType()).thenReturn(DiscountType.NORMAL);
+        when(products.findAllByStoreIdAndIdIn(any(), any())).thenAnswer(invocation -> {
+            java.util.Collection<UUID> requested = invocation.getArgument(1);
+            return List.of(product, secondProduct, unrelatedProduct).stream()
+                    .filter(item -> requested.contains(item.getId())).toList();
+        });
+        when(promotions.findAllById(any())).thenReturn(List.of(promotion));
+        when(targets.findByPromocionIdIn(any())).thenReturn(List.of(
+                new PromotionTarget(promotion.id(), PromotionTargetType.PRODUCT, productId),
+                new PromotionTarget(promotion.id(), PromotionTargetType.PRODUCT, secondId)));
+
+        var result = service().value(ticket, Map.of(unrelated.getId(), BigDecimal.ONE));
+
+        assertThat(ticket.getTotal()).isEqualByComparingTo(engineVersion == 2 ? "987.36" : "976.47");
+        assertThat(result.remainingBasketValue()).isEqualByComparingTo(engineVersion == 2 ? "986.15" : "975.26");
+        assertThat(result.refundableAmount()).isEqualByComparingTo("1.21");
+        assertThat(result.lostBenefits()).isZero();
+        assertThat(result.taxAdjustments()).isEmpty();
+    }
+
+    @Test
+    void partialPackReturnUsesOriginalRuleAndPriceEvenAfterCatalogChange() {
+        var fixture = ticketWithoutPromotion(11, "0.50");
+        var ticket = fixture.ticket();
+        var line = fixture.productLine();
+        var pack = new QuantityPricing(QuantityPricing.Mode.PACK,
+                List.of(new QuantityPricing.Tier(10, new BigDecimal("3.00"))));
+        line.assignQuantityPriceSnapshot(new QuantityPriceSnapshot(pack, new BigDecimal("0.50")));
+        ticket.addLine(DocumentLine.quantityPrice(ticket, 2, "10 x 3", new BigDecimal("-2.00"),
+                true, "IVA", new BigDecimal("21")));
+        when(product.getDiscountType()).thenReturn(DiscountType.NONE);
+        var result = service().value(ticket, Map.of(line.getId(), BigDecimal.ONE));
+        assertThat(result.remainingBasketValue()).isEqualByComparingTo("3.00");
+        assertThat(result.refundableAmount()).isEqualByComparingTo("0.50");
+        assertThat(service().value(ticket, Map.of(line.getId(), new BigDecimal("11"))).refundableAmount())
+                .isEqualByComparingTo("3.50");
+        ticket.confirm("T-100", UUID.randomUUID(), java.time.Instant.now(), false);
+        assertThat(TicketPrintView.from(ticket).lines()).hasSize(2);
+        assertThat(DocumentLineCommand.from(line).toEntity(ticket).getQuantityPriceSnapshot())
+                .isEqualTo(line.getQuantityPriceSnapshot());
+        org.mockito.Mockito.verify(engine, org.mockito.Mockito.atLeastOnce()).previewVersion2(any());
+        org.mockito.Mockito.verify(engine, org.mockito.Mockito.never()).preview(any());
+    }
+
+    @Test
+    void consecutiveThresholdReturnsNeverReclaimPriorRefundAndFullReturnSettlesBalance() {
+        var fixture = ticketWithoutPromotion(13, "1.00");
+        var line = fixture.productLine();
+        var ticket = fixture.ticket();
+        var threshold = new QuantityPricing(QuantityPricing.Mode.UNIT_THRESHOLD,
+                List.of(new QuantityPricing.Tier(12, new BigDecimal("0.80"))));
+        line.assignQuantityPriceSnapshot(new QuantityPriceSnapshot(threshold, BigDecimal.ONE));
+        ticket.addLine(DocumentLine.quantityPrice(ticket, 2, "12+", new BigDecimal("-2.60"),
+                true, "IVA", new BigDecimal("21")));
+        assertThat(service().value(ticket, Map.of(line.getId(), BigDecimal.ONE)).refundableAmount())
+                .isEqualByComparingTo("0.80");
+        when(documents.confirmedRefundedQuantity(line.getId())).thenReturn(BigDecimal.ONE);
+        when(documents.confirmedReturnAmount(ticket.getId())).thenReturn(new BigDecimal("0.80"));
+        assertThat(service().value(ticket, Map.of(line.getId(), BigDecimal.ONE)).refundableAmount())
+                .isEqualByComparingTo("0.00");
+        assertThat(service().value(ticket, Map.of(line.getId(), new BigDecimal("12"))).refundableAmount())
+                .isEqualByComparingTo("9.60");
     }
 
     private TicketReturnValuationService service() {

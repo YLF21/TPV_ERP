@@ -1,5 +1,8 @@
 package com.tpverp.backend.catalog;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
@@ -1246,6 +1249,9 @@ public class CatalogService {
         product.configurePurchaseDiscount(request.purchaseDiscountPercent());
         product.configureStockLimits(request.stockMin(), request.stockMax());
         product.configurePackageQuantity(request.packageQuantity());
+        if (request.quantityPricing() != null) {
+            product.configureQuantityPricing(QuantityPricing.fromJson(request.quantityPricing()));
+        }
         if (request.requiresSerialNumber() != null || request.productType() != ProductType.UNIT) {
             product.configureSerialNumberTracking(
                     request.productType() == ProductType.UNIT
@@ -2019,7 +2025,11 @@ public class CatalogService {
             BigDecimal stockMax,
             BigDecimal packageQuantity,
             Boolean active,
-            Boolean requiresSerialNumber) {
+            Boolean requiresSerialNumber,
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            @tools.jackson.databind.annotation.JsonDeserialize(using = QuantityPricingHttpJson.ReadField.class)
+            @tools.jackson.databind.annotation.JsonSerialize(using = QuantityPricingHttpJson.WriteField.class)
+            JsonNode quantityPricing) {
 
         public ProductRequest {
             if (discountType == DiscountType.NONE) {
@@ -2039,7 +2049,35 @@ public class CatalogService {
                     memberPrice, wholesalePrice, offerPrice,
                     offerDiscountPercent, purchaseDiscountPercent, offerActive,
                     offerFrom, offerUntil, stockMin, stockMax, packageQuantity,
-                    active, requiresSerialNumber);
+                    active, requiresSerialNumber, quantityPricing);
+        }
+
+        public ProductRequest withQuantityPricing(JsonNode pricing) {
+            return new ProductRequest(
+                    familyId, subfamilyId, taxId, productType, discountType,
+                    priceUseMode, name, description, comments, purchasePrice,
+                    taxesIncluded, code, barcode, barcode2, salePrice,
+                    memberPrice, wholesalePrice, offerPrice,
+                    offerDiscountPercent, purchaseDiscountPercent, offerActive,
+                    offerFrom, offerUntil, stockMin, stockMax, packageQuantity,
+                    active, requiresSerialNumber, pricing);
+        }
+
+        public ProductRequest(
+                UUID familyId, UUID subfamilyId, UUID taxId, ProductType productType,
+                DiscountType discountType, PriceUseMode priceUseMode, String name,
+                String description, String comments, BigDecimal purchasePrice,
+                boolean taxesIncluded, String code, String barcode, String barcode2,
+                BigDecimal salePrice, BigDecimal memberPrice, BigDecimal wholesalePrice,
+                BigDecimal offerPrice, BigDecimal offerDiscountPercent,
+                BigDecimal purchaseDiscountPercent, boolean offerActive, LocalDate offerFrom,
+                LocalDate offerUntil, BigDecimal stockMin, BigDecimal stockMax,
+                BigDecimal packageQuantity, Boolean active, Boolean requiresSerialNumber) {
+            this(familyId, subfamilyId, taxId, productType, discountType, priceUseMode, name,
+                    description, comments, purchasePrice, taxesIncluded, code, barcode, barcode2,
+                    salePrice, memberPrice, wholesalePrice, offerPrice, offerDiscountPercent,
+                    purchaseDiscountPercent, offerActive, offerFrom, offerUntil, stockMin,
+                    stockMax, packageQuantity, active, requiresSerialNumber, null);
         }
 
         public ProductRequest(

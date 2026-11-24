@@ -1160,6 +1160,7 @@ describe("ProductCreateDialog", () => {
       barcode: "8430000000011",
       barcode2: "8430000000012",
       salePrice: "3.95",
+      quantityPricing: null,
       memberPrice: "3.70",
       wholesalePrice: "3.40",
       offerPrice: "3.20",
@@ -1186,6 +1187,7 @@ describe("ProductCreateDialog", () => {
       barcode: "8430000000011",
       barcode2: "8430000000012",
       salePrice: "3.95",
+      quantityPricing: null,
       memberPrice: "3.70",
       wholesalePrice: "3.40",
       offerPrice: "3.20",
@@ -1339,6 +1341,7 @@ describe("ProductCreateDialog", () => {
       "barcode",
       "barcode2",
       "salePrice",
+      "quantityPricing",
       "memberPrice",
       "wholesalePrice",
       "offerPrice",
@@ -1709,6 +1712,67 @@ describe("ProductCreateDialog", () => {
     expect(productCreateValidationErrors(resolved, [], "product-1")).toEqual(
       [],
     );
+  });
+
+  it("retries a failed product PUT with the same quantity pricing draft", async () => {
+    const draft = { mode: "PACK" as const, tiers: [{ quantity: 3, price: "5.00" }], enabled: true };
+    const bodies: unknown[] = [];
+    let putCount = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/families")) return new Response(JSON.stringify([
+        { id: "family-1", familyCode: "123", name: "Bebidas" },
+      ]), { status: 200 });
+      if (url.includes("/families/resolve?code=123")) return new Response(JSON.stringify({
+        family: { id: "family-1", familyCode: "123", name: "Bebidas" },
+      }), { status: 200 });
+      if (url.endsWith("/taxes/selectable")) return new Response(JSON.stringify([
+        { id: "tax-1", percentage: 7 },
+      ]), { status: 200 });
+      if (url.endsWith("/products")) return new Response("[]", { status: 200 });
+      if (url.endsWith("/products/management/product-1") && init?.method === "PUT") {
+        bodies.push(JSON.parse(String(init.body)));
+        putCount += 1;
+        return putCount === 1
+          ? new Response(JSON.stringify({ detail: "Fallo temporal" }), { status: 503 })
+          : new Response(JSON.stringify({ id: "product-1" }), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const onClose = vi.fn();
+    const onCreated = vi.fn();
+    try {
+      const view = render(<ProductCreateDialog open locale="es" token="token"
+        editProduct={{ id: "product-1", form: {
+          familyId: "family-1", familyBusinessCode: "123", taxId: "tax-1",
+          name: "Cafe", code: "A001", purchasePrice: "1", salePrice: "2",
+          quantityPricing: draft,
+        } }} onClose={onClose} onCreated={onCreated} />);
+      const save = view.getByRole("button", { name: "Guardar F9" });
+      const businessId = view.container.querySelector<HTMLInputElement>('input[data-product-field-name="familyBusinessCode"]')!;
+      await waitFor(() => expect(view.container.textContent).toContain("Bebidas"));
+      fireEvent.change(businessId, { target: { value: "12" } });
+      fireEvent.change(businessId, { target: { value: "123" } });
+      await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/families/resolve?code=123"))).toBe(true));
+      await waitFor(() => expect(businessId).toHaveAttribute("aria-busy", "false"));
+      fireEvent.click(save);
+      await waitFor(() => expect(putCount).toBe(1));
+      await waitFor(() => expect(view.container.querySelector("#product-create-status")?.textContent).not.toBe(""));
+      expect(view.container.querySelector("#product-create-status")?.textContent).toContain("No se pudo completar la operación");
+      expect(save).not.toBeDisabled();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(onCreated).not.toHaveBeenCalled();
+      fireEvent.click(save);
+      await waitFor(() => expect(putCount).toBe(2));
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(onCreated).toHaveBeenCalledTimes(1);
+      expect(bodies).toHaveLength(2);
+      expect(bodies[0]).toEqual(bodies[1]);
+      expect(bodies[1]).toMatchObject({ quantityPricing: draft });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("renders the reorganized product form with image panel", () => {

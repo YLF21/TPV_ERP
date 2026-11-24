@@ -1048,6 +1048,12 @@ describe("StockScreen", () => {
 
     expect(hydrated.product?.active).toBe("common.no");
     expect(hydrated.draft.active).toBe("common.no");
+    const row = { ...hydrated, product: { ...liveProduct, version: 2, quantityPricing: undefined } };
+    const catalog = { ...liveProduct, quantityPricing: { mode: "PACK" as const, tiers: [{ quantity: 10, price: "3" }] } };
+    expect(hydrateStockBulkProductActivation([row], [{ ...catalog, version: 2 }])[0].product?.quantityPricing)
+      .toEqual(catalog.quantityPricing);
+    expect(hydrateStockBulkProductActivation([row], [{ ...catalog, version: 3 }])[0].product?.quantityPricing)
+      .toBeUndefined();
   });
 
   it("moves the selected stock row with arrow keys", () => {

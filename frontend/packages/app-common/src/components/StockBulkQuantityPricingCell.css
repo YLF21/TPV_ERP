@@ -1,0 +1,92 @@
+.bulk-edit-row > .bulk-quantity-pricing-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 3px;
+  padding: 5px 7px;
+  white-space: normal;
+  overflow: visible;
+}
+
+.bulk-edit-row > .bulk-quantity-pricing-cell select,
+.bulk-edit-row > .bulk-quantity-pricing-cell input {
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  border: 1px solid #aab9cc;
+  border-radius: 3px;
+  background: #fff;
+  color: #17233b;
+  font: inherit;
+  padding: 2px 5px;
+}
+
+.bulk-edit-row > .bulk-quantity-pricing-cell select { font-size: 11px; }
+
+.bulk-quantity-pricing-cell select:focus-visible,
+.bulk-quantity-pricing-cell input:focus-visible,
+.bulk-quantity-pricing-cell button:focus-visible {
+  outline: 2px solid #244e86;
+  outline-offset: 1px;
+}
+
+.bulk-quantity-pricing-cell.invalid select,
+.bulk-quantity-pricing-cell.invalid input {
+  border-color: #c93b3b;
+  background: #fff1f1;
+}
+
+.bulk-quantity-pricing-tiers { display: flex; flex-direction: column; gap: 3px; }
+.bulk-quantity-pricing-tier { display: flex; align-items: center; gap: 3px; min-height: 28px; }
+.bulk-quantity-pricing-tier input { flex: 1; }
+.bulk-quantity-pricing-cell .bulk-quantity-pricing-remove {
+  flex: 0 0 24px;
+  width: 24px;
+  min-width: 24px;
+  max-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  max-height: 24px;
+  box-sizing: border-box;
+  border: 1px solid #aab9cc;
+  border-radius: 3px;
+  background: #fff;
+  color: #6f2630;
+  font: inherit;
+  line-height: 20px;
+  text-align: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.bulk-quantity-pricing-cell .bulk-quantity-pricing-add,
+.bulk-quantity-pricing-footer {
+  align-self: flex-start;
+  height: 26px;
+  min-height: 26px;
+  box-sizing: border-box;
+}
+
+.bulk-quantity-pricing-cell .bulk-quantity-pricing-add {
+  width: 26px;
+  min-width: 26px;
+  max-width: 26px;
+  border: 1px solid #aab9cc;
+  border-radius: 3px;
+  background: #f5f8fc;
+  color: #244e86;
+  padding: 0;
+  font: inherit;
+  line-height: 22px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.bulk-quantity-pricing-cell button:disabled { opacity: .5; cursor: default; }
+.bulk-quantity-pricing-state,
+.bulk-quantity-pricing-empty,
+.bulk-quantity-pricing-unknown { color: #52647b; font-size: 11px; }
+.bulk-quantity-pricing-state[data-enabled="false"] { color: #805400; }

@@ -93,8 +93,9 @@ final class DocumentPercentDiscountAllocator {
         document.getLineas().stream()
                 .filter(line -> line.getTotal().signum() < 0)
                 .filter(line -> line.getLineType() == DocumentLineType.PROMOTION
+                        || line.getLineType() == DocumentLineType.QUANTITY_PRICE
                         || line.getLineType() == DocumentLineType.PROMOTIONAL_COUPON)
-                .filter(line -> line.getLineType() != DocumentLineType.PROMOTION
+                .filter(line -> (line.getLineType() != DocumentLineType.PROMOTION && line.getLineType() != DocumentLineType.QUANTITY_PRICE)
                         || line.getPromotionAffectedPositions().isEmpty()
                         || line.getPromotionAffectedPositions().stream()
                                 .anyMatch(eligiblePositions::contains))

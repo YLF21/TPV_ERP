@@ -1,5 +1,7 @@
 package com.tpverp.backend.document;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -18,6 +20,8 @@ import org.hibernate.type.SqlTypes;
 @Entity
 @Table(name = "venta_aparcada")
 public class ParkedSale {
+    private static final ObjectMapper JSON = new ObjectMapper();
+
 
     @Id
     private UUID id;
@@ -163,7 +167,8 @@ public class ParkedSale {
                 uuid(value.get("giftReceiptLineId")))
                 .withBarcode(clean((String) value.get("codigoBarras")))
                 .withPromotionEngineVersion(value.get("promocionMotorVersion") == null
-                        ? null : new BigDecimal(value.get("promocionMotorVersion").toString()).intValueExact());
+                        ? null : new BigDecimal(value.get("promocionMotorVersion").toString()).intValueExact())
+                .withQuantityPriceSnapshot(JSON.convertValue(value.get("precioCantidadSnapshot"), QuantityPriceSnapshot.class));
     }
 
     private static Map<String, Object> snapshot(DocumentCommand command) {
@@ -190,6 +195,9 @@ public class ParkedSale {
                 : line.lineType().name());
         value.put("promocionId", string(line.promotionId()));
         value.put("promocionVersionId", string(line.promotionVersionId()));
+        if (line.quantityPriceSnapshot() != null) {
+            value.put("precioCantidadSnapshot", line.quantityPriceSnapshot());
+        }
         if (line.promotionEngineVersion() != null) {
             value.put("promocionMotorVersion", line.promotionEngineVersion());
         }

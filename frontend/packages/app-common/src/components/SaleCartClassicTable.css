@@ -78,3 +78,32 @@
 .sale-cart-table--classic .sale-cart-row.historical-import > td:first-child {
   box-shadow: inset 3px 0 #466f98 !important;
 }
+
+.sale-cart-table .sale-cart-summary {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+}
+
+.sale-cart-table .sale-cart-summary-row > td {
+  box-sizing: border-box;
+  height: 34px;
+  padding: 4px 8px;
+  border-top: 2px solid #8faac4;
+  border-bottom: 0;
+  background: #e7eff7;
+  color: #12385f;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.sale-cart-summary-row > [data-column-key="image"] { text-align: center; }
+.sale-cart-summary-row > :is([data-column-key="quantity"], [data-column-key="total"]) { text-align: right; }
+.sale-cart-summary-row .sale-cart-row-count { line-height: 14px; }
+.sale-cart-row-count small {
+  display: block;
+  color: #465e76;
+  font-size: 10px;
+  line-height: 12px;
+}

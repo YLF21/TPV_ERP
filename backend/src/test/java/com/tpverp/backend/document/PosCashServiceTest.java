@@ -169,6 +169,36 @@ class PosCashServiceTest {
     }
 
     @Test
+    void quantitySavingsAreVisibleAndReduceTheEligibleMemberBalanceTotal() {
+        var productId = UUID.randomUUID();
+        var product = mock(Product.class);
+        when(product.getId()).thenReturn(productId);
+        when(product.getSalePrice()).thenReturn(new BigDecimal("2.00"));
+        when(product.getDiscountType()).thenReturn(DiscountType.NORMAL);
+        var ticket = new CommercialDocument(UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 11, 23), UUID.randomUUID(), BigDecimal.ZERO);
+        ticket.addLine(new DocumentLine(ticket, productId, 1, new BigDecimal("3"), "P", "Producto", "VENTA",
+                new BigDecimal("2.00"), BigDecimal.ZERO, true, "IVA", new BigDecimal("21")));
+        var adjustment = DocumentLine.quantityPrice(ticket, 2, "PRECIO POR CANTIDAD: 3 uds a 5.00",
+                new BigDecimal("-1.00"), true, "IVA", new BigDecimal("21"));
+        adjustment.assignPromotionAffectedPositions(List.of(1));
+        ticket.addLine(adjustment);
+        var request = new PosCashController.SaleRequest(null,
+                List.of(new PosCashController.LineRequest(productId, new BigDecimal("3"), BigDecimal.ZERO)));
+        var quote = PosCashService.Quote.from(ticket, request, Map.of(productId, product),
+                AuthoritativePromotionPricing.CustomerContext.anonymous());
+        assertThat(quote.total()).isEqualByComparingTo("5.00");
+        assertThat(quote.memberBalanceEligibleTotal()).isEqualByComparingTo("5.00");
+        assertThat(quote.promotionPreview().appliedPromotions()).singleElement()
+                .satisfies(promotion -> assertThat(promotion.kind()).isEqualTo("QUANTITY_PRICE"));
+        assertThat(quote.lineBreakdown()).singleElement().satisfies(line -> {
+            assertThat(line.promotionDiscount()).isEqualByComparingTo("1.00");
+            assertThat(line.finalSubtotal()).isEqualByComparingTo("5.00");
+            assertThat(line.appliedPromotions()).hasSize(1);
+        });
+    }
+
+    @Test
     void appliedMemberBalanceIsAttributedToEligibleLineAndCapRemainsStable() {
         var storeId = UUID.randomUUID();
         var warehouseId = UUID.randomUUID();

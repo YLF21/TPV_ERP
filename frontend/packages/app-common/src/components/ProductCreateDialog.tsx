@@ -9,6 +9,9 @@ import type { KeyboardEvent } from "react";
 import "./ProductCreateDialog.css";
 import { ApiConnectionError, ApiError, apiRequest } from "../api/client";
 import { roundUnitPrice } from "../money";
+import { QuantityPricingEditor } from "../QuantityPricingEditor";
+import { isQuantityPricingEnabled, quantityPricingSummary, validateQuantityPricing, type QuantityPricing } from "../quantityPricing";
+import { quantityPricingMessages } from "../i18n/QuantityPricingMessages";
 import { apiBaseUrl } from "../api/runtime";
 import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -81,6 +84,7 @@ export type ProductCreateFormState = {
   barcode: string;
   barcode2: string;
   salePrice: string;
+  quantityPricing: QuantityPricing | undefined;
   memberPrice: string;
   wholesalePrice: string;
   offerPrice: string;
@@ -257,6 +261,7 @@ export function createDefaultProductForm(): ProductCreateFormState {
     barcode: "",
     barcode2: "",
     salePrice: "0.00",
+    quantityPricing: null,
     memberPrice: "",
     wholesalePrice: "",
     offerPrice: "",
@@ -283,6 +288,9 @@ export function createProductFormFromEditProduct(product?: ProductCreateEditProd
     ...(product?.initialData?.stockMax !== undefined ? { stockMax: decimalText(product.initialData.stockMax) } : {}),
     ...(product?.initialData?.requiresSerialNumber !== undefined ? { requiresSerialNumber: Boolean(product.initialData.requiresSerialNumber) } : {})
   };
+  if (product && !("quantityPricing" in product.form)) {
+    form.quantityPricing = undefined;
+  }
   if (form.discountType === "NONE") {
     return {
       ...form,
@@ -349,6 +357,11 @@ export function buildCreateProductRequest(
     barcode: emptyToNull(form.barcode),
     barcode2: emptyToNull(form.barcode2),
     salePrice: decimalOrZero(form.salePrice),
+    ...(form.quantityPricing === undefined ? {} : { quantityPricing: form.quantityPricing && {
+      ...form.quantityPricing,
+      tiers: [...form.quantityPricing.tiers].sort((a, b) => a.quantity - b.quantity)
+        .map((tier) => ({ ...tier, price: String(tier.price).trim().replace(",", ".") }))
+    } }),
     memberPrice: emptyToNull(form.memberPrice),
     wholesalePrice: emptyToNull(form.wholesalePrice),
     // The lock controls price application; it must not destroy configuration
@@ -459,6 +472,9 @@ export function productCreateValidationErrors(
   }
   if (!form.salePrice.trim()) {
     errors.push("salePrice");
+  }
+  if (validateQuantityPricing(form.quantityPricing ?? null).length) {
+    errors.push("quantityPricing");
   }
   const packageQuantity = parseOptionalNonNegativeDecimal(form.packageQuantity);
   if (packageQuantity === "INVALID") {
@@ -814,6 +830,8 @@ export function ProductCreateDialog({
   onCreated
 }: ProductCreateDialogProps) {
   const t = useMemo(() => createTranslator(locale), [locale]);
+  const quantityWords = quantityPricingMessages(locale);
+  const [quantityPricingOpen, setQuantityPricingOpen] = useState(false);
   const [confirmImageRemoval, setConfirmImageRemoval] = useState(false);
   const requestHeaders = operationalAuthorizationId
     ? { "X-Operational-Authorization": operationalAuthorizationId }
@@ -856,6 +874,7 @@ export function ProductCreateDialog({
   const [selectedPrincipalSupplierId, setSelectedPrincipalSupplierId] = useState("");
   const [supplierSaving, setSupplierSaving] = useState(false);
   const formRef = useRef<HTMLDivElement | null>(null);
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
   const familySearchInputRef = useRef<HTMLInputElement | null>(null);
   const familyResolveRequestRef = useRef(0);
   const resolvedSubfamilyRef = useRef(new Set<string>());
@@ -1126,6 +1145,7 @@ export function ProductCreateDialog({
   }
 
   function resetDialogState() {
+    setQuantityPricingOpen(false);
     ++familyResolveRequestRef.current;
     ++familySearchRequestRef.current;
     setForm(createProductFormFromInitial(editProduct, initialForm));
@@ -1162,6 +1182,7 @@ export function ProductCreateDialog({
   }
 
   function closeProductDialog() {
+    setQuantityPricingOpen(false);
     ++familyResolveRequestRef.current;
     ++familySearchRequestRef.current;
     setForm(createDefaultProductForm());
@@ -1206,6 +1227,7 @@ export function ProductCreateDialog({
     ++familySearchRequestRef.current;
     const nextForm = createProductFormFromInitial(editProduct, initialForm);
     setForm(nextForm);
+    setQuantityPricingOpen(false);
     setSelectedProductFamily({
       familyId: nextForm.familyId,
       subfamilyId: nextForm.subfamilyId
@@ -1239,6 +1261,11 @@ export function ProductCreateDialog({
     setDeletingImage(false);
     changeImage(null);
   }, [open, editProduct?.id, initialFormSignature]);
+
+  // The closing search dialog restores focus during cleanup. Focus the new field afterwards.
+  useEffect(() => {
+    if (open) barcodeInputRef.current?.focus();
+  }, [open]);
 
   useEffect(() => {
     if (!open || !token || !editProduct?.id || !editProduct.imageId) {
@@ -1395,7 +1422,7 @@ export function ProductCreateDialog({
     }
 
     function handleProductShortcut(event: globalThis.KeyboardEvent) {
-      if (event.defaultPrevented) return;
+      if (event.defaultPrevented || quantityPricingOpen) return;
       const action = productCreateKeyAction(event.key);
       if (!action) {
         return;
@@ -1424,7 +1451,7 @@ export function ProductCreateDialog({
 
     window.addEventListener("keydown", handleProductShortcut);
     return () => window.removeEventListener("keydown", handleProductShortcut);
-  }, [open, form, token, imageFile, saving, supplierPickerOpen, familyPickerOpen, offerPickerOpen, openDropdown]);
+  }, [open, form, token, imageFile, saving, supplierPickerOpen, familyPickerOpen, offerPickerOpen, openDropdown, quantityPricingOpen]);
 
   useEffect(() => {
     if (!open || (!openDropdown && !offerPickerOpen)) {
@@ -2038,9 +2065,7 @@ export function ProductCreateDialog({
     } catch (error) {
       setStatus(productCreateErrorMessage(error, t("product.create.saveError"), t("product.create.duplicateIdentifier")));
     } finally {
-      if (!closeAfterSave) {
-        setSaving(false);
-      }
+      setSaving(false);
     }
   }
 
@@ -2136,11 +2161,14 @@ export function ProductCreateDialog({
 
   return (
     <div className={`filter-overlay product-create-overlay${classicWindow ? " erp-classic-overlay" : ""}`} role="dialog" aria-modal="true" aria-labelledby="product-create-title">
+      {quantityPricingOpen && <QuantityPricingEditor locale={locale} value={form.quantityPricing ?? null} basePrice={form.salePrice}
+        onConfirm={(value) => { setForm((current) => ({ ...current, quantityPricing: value })); setQuantityPricingOpen(false); }}
+        onClose={() => setQuantityPricingOpen(false)} />}
       {confirmImageRemoval && <ErpConfirmDialog title={t("common.confirm")} message={t("product.image.removeConfirm")}
         confirmLabel={t("common.confirm")} cancelLabel={t("common.cancel")}
         onCancel={() => setConfirmImageRemoval(false)}
         onConfirm={() => { setConfirmImageRemoval(false); void removeSelectedImage(true); }} />}
-      <section inert={confirmImageRemoval || undefined} className={`filter-dialog product-create-dialog${classicWindow ? " erp-classic-window" : ""}`}>
+      <section inert={confirmImageRemoval || quantityPricingOpen || undefined} className={`filter-dialog product-create-dialog${classicWindow ? " erp-classic-window" : ""}`}>
         <header className="product-editor-header">
           <div>
             <h2 id="product-create-title">{t(editingProduct ? "product.edit.title" : "product.create.title")}</h2>
@@ -2156,7 +2184,7 @@ export function ProductCreateDialog({
             <div className="product-create-row product-create-row-two">
               <label className={fieldClass("barcode")}>
                 <span>{requiredLabel("stock.column.barcode", true)}</span>
-                <input data-product-field data-product-field-name="barcode" value={form.barcode} onChange={(event) => updateField("barcode", event.target.value)} autoFocus />
+                <input ref={barcodeInputRef} data-product-field data-product-field-name="barcode" value={form.barcode} onChange={(event) => updateField("barcode", event.target.value)} />
               </label>
               <label className={fieldClass("code")}>
                 <span>{requiredLabel("stock.column.code", true)}</span>
@@ -2288,6 +2316,15 @@ export function ProductCreateDialog({
                 <input data-product-field data-product-field-name="wholesalePrice" inputMode="decimal" value={form.wholesalePrice} onChange={(event) => updateField("wholesalePrice", event.target.value)} />
               </label>
             </div>
+            {editingProduct && <div className="product-quantity-pricing-control">
+              <button type="button" data-product-field data-product-field-name="quantityPricing" onClick={() => setQuantityPricingOpen(true)}>{quantityWords.button}</button>
+              <span className="quantity-pricing-state" data-enabled={isQuantityPricingEnabled(form.quantityPricing)}>
+                {form.quantityPricing === undefined ? quantityWords.unknownState
+                  : isQuantityPricingEnabled(form.quantityPricing) ? quantityWords.applied : quantityWords.notApplied}
+              </span>
+              {form.quantityPricing && <span>{quantityPricingSummary(form.quantityPricing, form.salePrice, locale)}
+                {isQuantityPricingEnabled(form.quantityPricing) && isNoDiscountLocked(form) && (" · " + quantityWords.blocked)}</span>}
+            </div>}
             <div className="product-create-offer-area">
               {renderPriceUseOptions()}
               <label className={fieldClass("offerPrice")}>

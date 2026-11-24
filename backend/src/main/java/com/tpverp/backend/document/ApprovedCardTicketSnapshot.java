@@ -184,6 +184,7 @@ public record ApprovedCardTicketSnapshot(
                 source.returnSourceCode(), source.returnSourceTicketId(),
                 line.originalDocumentLineId(), source.giftReceiptLineId(),
                 line.frozenBase(), line.frozenTax(), line.frozenTotal(),
-                line.barcode()).withPromotionEngineVersion(line.promotionEngineVersion());
+                line.barcode()).withPromotionEngineVersion(line.promotionEngineVersion())
+                .withQuantityPriceSnapshot(line.quantityPriceSnapshot());
     }
 }

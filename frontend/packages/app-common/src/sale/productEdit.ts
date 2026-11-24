@@ -1,4 +1,5 @@
 import { apiRequest } from "../api/client";
+import type { QuantityPricing } from "../quantityPricing";
 import type {
   DiscountTypeCode,
   PriceUseModeCode,
@@ -33,6 +34,7 @@ type ProductManagementView = {
   barcode?: string | null;
   barcode2?: string | null;
   salePrice: number | string;
+  quantityPricing?: QuantityPricing;
   memberPrice?: number | string | null;
   wholesalePrice?: number | string | null;
   offerPrice?: number | string | null;
@@ -90,6 +92,7 @@ export function productEditDialogValue(product: ProductManagementView): ProductC
       barcode: product.barcode ?? "",
       barcode2: product.barcode2 ?? "",
       salePrice: text(product.salePrice),
+      ...("quantityPricing" in product ? { quantityPricing: product.quantityPricing ?? null } : {}),
       memberPrice: text(product.memberPrice),
       wholesalePrice: text(product.wholesalePrice),
       offerPrice: text(product.offerPrice),

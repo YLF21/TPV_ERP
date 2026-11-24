@@ -1,0 +1,42 @@
+/* The stock consultation keeps its frame while results, details, and the
+   scoped touch keyboard change. Only the center pane is allowed to scroll. */
+.sale-action-overlay .sale-action-dialog.wide.sale-product-consultation {
+  box-sizing: border-box;
+  width: min(760px, calc(100dvw - 32px));
+  height: min(620px, calc(100dvh - 32px));
+  max-height: calc(100dvh - 32px);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+.sale-product-consultation > .sale-consultation-content {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sale-product-consultation .sale-consultation-results {
+  max-height: none;
+  min-height: 0;
+  overflow-y: visible;
+}
+
+.sale-touch-keyboard-scope[data-sale-touch] .sale-action-dialog.wide.sale-product-consultation {
+  width: min(1000px, calc(100dvw - 32px)) !important;
+  height: min(805px, calc(100dvh - 32px));
+}
+
+.sale-product-consultation.sale-touch-keyboard-host > .sale-consultation-search {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.sale-product-consultation.sale-touch-keyboard-host > .sale-consultation-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+@media (max-width: 650px) {
+  .sale-action-overlay .sale-action-dialog.wide.sale-product-consultation {
+    overflow: hidden;
+  }
+}

@@ -201,6 +201,8 @@ public class SalesInvoiceRectificationService {
             var line = metadata.isAffectsStock()
                     ? stockLine(draft, source, request, position)
                     : economicLine(draft, source, request, position);
+            line.assignQuantityPriceSnapshot(source.getQuantityPriceSnapshot());
+            line.assignPromotionEngineVersion(source.getPromotionEngineVersion());
             line.identifyRefundOf(source.getId());
             result.add(line);
         }
@@ -241,12 +243,21 @@ public class SalesInvoiceRectificationService {
             throw new IllegalArgumentException(
                     "Las promociones y cupones solo admiten rectificacion completa");
         }
-        var line = DocumentLine.special(
-                draft, position, source.getNombre(),
+        if (source.getLineType() == DocumentLineType.QUANTITY_PRICE) {
+            var reversal = DocumentLine.quantityPrice(draft, position, source.getNombre(),
+                    source.getPrecioUnitario().negate(), source.isImpuestosIncluidos(),
+                    source.getRegimenImpuesto(), source.getPorcentajeImpuesto(),
+                    source.getBase().negate(), source.getImpuesto().negate(), source.getTotal().negate());
+            reversal.assignPromotionEngineVersion(source.getPromotionEngineVersion());
+            return reversal;
+        }
+        var line = DocumentLine.frozenSpecial(
+                draft, position, source.getLineType(), source.getNombre(),
                 source.getPrecioUnitario().negate(), source.isImpuestosIncluidos(),
                 source.getRegimenImpuesto(), source.getPorcentajeImpuesto(),
                 source.getPromotionId(), source.getPromotionVersionId(),
-                source.getPromotionalCouponId());
+                source.getPromotionalCouponId(), source.getBase().negate(),
+                source.getImpuesto().negate(), source.getTotal().negate());
         line.assignPromotionEngineVersion(source.getPromotionEngineVersion());
         return line;
     }
@@ -273,7 +284,8 @@ public class SalesInvoiceRectificationService {
                 request.unitPrice().multiply(BigDecimal.valueOf(request.quantity().signum())),
                 source.isImpuestosIncluidos(), source.getRegimenImpuesto(),
                 source.getPorcentajeImpuesto(), source.getPromotionId(),
-                source.getPromotionVersionId(), source.getPromotionalCouponId());
+                source.getPromotionVersionId(), source.getPromotionalCouponId(),
+                source.getLineType() == DocumentLineType.QUANTITY_PRICE ? DocumentLineType.QUANTITY_PRICE : null);
         line.assignPromotionEngineVersion(source.getPromotionEngineVersion());
         return line;
     }

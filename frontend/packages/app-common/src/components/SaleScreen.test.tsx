@@ -1730,6 +1730,12 @@ describe("SaleScreen", () => {
 
     expect(document.querySelector(".sale-total > strong")?.textContent).toBe("—");
     expect(document.querySelector(".sale-cart-total")?.textContent).toBe("—");
+    expect(document.querySelector('tfoot .sale-cart-summary-row [data-column-key="image"]'))
+      .toHaveTextContent("1");
+    expect(document.querySelector('tfoot .sale-cart-summary-row [data-column-key="quantity"]'))
+      .toHaveTextContent("1");
+    expect(document.querySelector('tfoot .sale-cart-summary-row [data-column-key="total"]'))
+      .toHaveTextContent("—");
 
     const cashAction = screen.getByRole("button", { name: /Efectivo/ });
     await waitFor(() => expect(cashAction).toBeDisabled());
@@ -1746,6 +1752,8 @@ describe("SaleScreen", () => {
     expect(screen.getByText("Nombre autoritativo backend")).toBeInTheDocument();
     expect(document.querySelector(".sale-total > strong")?.textContent).toBe("10,00");
     expect(document.querySelector(".sale-cart-total")?.textContent).toContain("10,00");
+    expect(document.querySelector('tfoot .sale-cart-summary-row [data-column-key="total"]'))
+      .toHaveTextContent("10,00");
   });
 
   it("keeps confirmed totals and promotions while an updated quote is pending", async () => {
@@ -2122,6 +2130,139 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(input, { key: "Enter" });
   }
 
+  it.each(["KEYBOARD", "TOUCH"] as const)(
+    "keeps a cart summary below its lines and above promotions in %s mode",
+    async (interfaceMode) => {
+      const weightedCoffee = { ...products[0], productType: "WEIGHT" as const };
+      const cartProducts = [weightedCoffee, products[1]];
+      vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+        const path = new URL(url, "http://localhost").pathname;
+        if (path.endsWith("/products/sale")) {
+          return new Response(JSON.stringify(cartProducts), { status: 200 });
+        }
+        if (path.endsWith("/stock/settings")) {
+          return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200 });
+        }
+        if (path.endsWith("/pos/sales/quote")) {
+          const request = JSON.parse(String(options?.body)) as {
+            lines: Array<{ productId: string; quantity: number }>;
+          };
+          const lineBreakdown = request.lines.map((line, index) => {
+            const product = cartProducts.find((item) => item.id === line.productId)!;
+            const finalSubtotal = (Number(product.salePrice) * line.quantity).toFixed(2);
+            return {
+              ...authoritativeQuote(product, finalSubtotal).lineBreakdown[0],
+              lineId: `product:${product.id}:${index + 1}`,
+              position: index + 1,
+              quantity: line.quantity.toFixed(3),
+              normalUnitPrice: Number(product.salePrice).toFixed(2),
+              baseUnitPrice: Number(product.salePrice).toFixed(2),
+              baseSubtotal: finalSubtotal,
+              commercialSubtotal: finalSubtotal,
+              finalSubtotal,
+            };
+          });
+          const total = lineBreakdown.reduce((sum, line) => sum + Number(line.finalSubtotal), 0).toFixed(2);
+          return new Response(JSON.stringify({
+            ...authoritativeQuote(weightedCoffee, total),
+            total,
+            productTotal: total,
+            memberBalanceEligibleTotal: total,
+            lineBreakdown,
+            promotionPreview: {
+              appliedPromotions: [{ id: "summary-promotion", name: "PROMOCION RESUMEN", discountAmount: "0.00" }],
+            },
+          }), { status: 200 });
+        }
+        throw new Error(`unexpected request ${path}`);
+      }));
+
+      renderSaleScreen(vi.fn(), "es", { interfaceMode });
+      const table = await screen.findByRole("table", { name: "Líneas del ticket" });
+      const summary = () => table.querySelector<HTMLElement>("tfoot tr.sale-cart-summary-row")!;
+      const cell = (key: string) => summary().querySelector<HTMLElement>(`[data-column-key="${key}"]`)!;
+      expect(summary()).toBeInTheDocument();
+      expect(table.querySelectorAll("tbody tr.sale-cart-row")).toHaveLength(0);
+      expect(cell("image")).toHaveTextContent("0");
+      expect(cell("quantity")).toHaveTextContent("0");
+      expect(cell("total")).toHaveTextContent("0,00");
+
+      const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+      await waitFor(() => expect(search).toBeEnabled());
+      submitQuickEntry(search, "CAF-001");
+      submitQuickEntry(search, "PAN-001");
+      await waitFor(() => expect(table.querySelectorAll("tbody tr.sale-cart-row")).toHaveLength(2));
+      await waitFor(() => expect(cell("total")).toHaveTextContent("12,50"));
+      expect(cell("image")).toHaveTextContent("2");
+      expect(cell("quantity")).toHaveTextContent("2");
+      expect(summary().compareDocumentPosition(screen.getByText("PROMOCION RESUMEN")))
+        .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+      if (interfaceMode === "TOUCH") {
+        fireEvent.click(screen.getByRole("button", { name: "Fila anterior" }));
+        fireEvent.click(screen.getByRole("button", { name: "Cantidad" }));
+        const dialog = screen.getByRole("dialog", { name: "Cambiar cantidad" });
+        fireEvent.change(within(dialog).getByRole("textbox", { name: "Nueva cantidad" }), {
+          target: { value: "0,125" },
+        });
+        fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+        await waitFor(() => expect(cell("quantity")).toHaveTextContent("1,125"));
+        await waitFor(() => expect(cell("total")).toHaveTextContent("3,75"));
+        expect(cell("image")).toHaveTextContent("2");
+      }
+    },
+  );
+
+  it("counts a visible return adjustment as a row and adds its total without adding quantity", async () => {
+    const product = products[0];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify([product]), { status: 200 });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200 });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        const productQuote = authoritativeQuote(product);
+        return new Response(JSON.stringify({
+          ...productQuote,
+          total: "12.50",
+          lineBreakdown: [
+            { ...productQuote.lineBreakdown[0], lineType: "PRODUCT" },
+            {
+              ...productQuote.lineBreakdown[0],
+              lineId: "return-adjustment:2",
+              position: 2,
+              lineType: "RETURN_ADJUSTMENT",
+              productId: null,
+              code: "AJUSTE POR PERDIDA DE PROMOCION",
+              name: "AJUSTE POR PERDIDA DE PROMOCION",
+              quantity: "1.000",
+              baseSubtotal: "2.50",
+              commercialSubtotal: "2.50",
+              finalSubtotal: "2.50",
+            },
+          ],
+        }), { status: 200 });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    const table = await screen.findByRole("table", { name: "Líneas del ticket" });
+    await waitFor(() => expect(table.querySelector("tbody tr.sale-cart-return-adjustment")).toBeInTheDocument());
+    const summary = table.querySelector("tfoot tr.sale-cart-summary-row")!;
+    expect(table.querySelectorAll("tbody tr.sale-cart-row, tbody tr.sale-cart-return-adjustment"))
+      .toHaveLength(2);
+    expect(summary.querySelector('[data-column-key="image"]')).toHaveTextContent("2");
+    expect(summary.querySelector('[data-column-key="quantity"]')).toHaveTextContent("1");
+    expect(summary.querySelector('[data-column-key="total"]')).toHaveTextContent("12,50");
+  });
+
   async function importPreviousTicketFromMenu() {
     fireEvent.click(screen.getByRole("button", { name: /FACTURA\/TICKET/ }));
     const action = await screen.findByRole("menuitem", { name: "Importar ticket anterior" });
@@ -2412,7 +2553,7 @@ describe("SaleScreen", () => {
     expect(search).toHaveFocus();
   });
 
-  it("connects F1, F2, F5 and F6 to their consultation windows", async () => {
+  it("keeps F1, F2 and F6 independent and allows stock lookup with an empty cart", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/products/sale")) {
@@ -2441,6 +2582,15 @@ describe("SaleScreen", () => {
     const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
 
+    fireEvent.click(screen.getByRole("button", { name: createTranslator("es")("sale.menu.product") }));
+    const stockAction = screen.getByRole("menuitem", { name: /Consulta stock/ });
+    expect(stockAction).toBeEnabled();
+    fireEvent.click(stockAction);
+    const emptyStock = screen.getByRole("dialog", { name: "Consulta de stock" });
+    expect(within(emptyStock).getByRole("listbox", { name: "Productos" })).toBeInTheDocument();
+    expect(within(emptyStock).queryByText("Producto consultado")).not.toBeInTheDocument();
+    fireEvent.click(within(emptyStock).getAllByRole("button", { name: "Cerrar" })[0]);
+
     fireEvent.keyDown(search, { key: "F6" });
     const emptyHistory = screen.getByRole("dialog", { name: "Historial de ventas" });
     expect(within(emptyHistory).getByText("Busca un producto para consultar sus ventas")).toBeInTheDocument();
@@ -2457,6 +2607,8 @@ describe("SaleScreen", () => {
 
     submitQuickEntry(search, "CAF-001");
     fireEvent.keyDown(search, { key: "F5" });
+    expect(screen.queryByRole("dialog", { name: "Consulta de stock" })).not.toBeInTheDocument();
+    fireEvent.keyDown(search, { key: "F6", ctrlKey: true });
     expect(screen.getByRole("dialog", { name: "Consulta de stock" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getAllByText(/10,00/).length).toBeGreaterThan(0));
     fireEvent.click(screen.getAllByRole("button", { name: "Cerrar" })[0]);
@@ -2464,6 +2616,73 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(search, { key: "F6" });
     expect(screen.getByRole("dialog", { name: "Historial de ventas" })).toBeInTheDocument();
     expect(screen.queryByText("No hay una sesión válida para consultar el historial")).not.toBeInTheDocument();
+  });
+
+  it("opens Ctrl+F6 stock lookup for the selected cart line without changing F6 sales history", async () => {
+    const saleProducts = products.slice(0, 2);
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify(saleProducts), { status: 200 });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        const request = JSON.parse(String(options?.body)) as {
+          lines: Array<{ productId: string; quantity: number }>;
+        };
+        const lineBreakdown = request.lines.map((line, index) => ({
+          ...authoritativeQuote(saleProducts.find((product) => product.id === line.productId)!).lineBreakdown[0],
+          lineId: `product:${line.productId}:${index + 1}`,
+          position: index + 1,
+          productId: line.productId,
+          code: saleProducts.find((product) => product.id === line.productId)!.code,
+          quantity: line.quantity.toFixed(3),
+          finalSubtotal: String(saleProducts.find((product) => product.id === line.productId)!.salePrice),
+        }));
+        return new Response(JSON.stringify({
+          ...authoritativeQuote(saleProducts[0], "12.50"),
+          total: "12.50",
+          productTotal: "12.50",
+          memberBalanceEligibleTotal: "12.50",
+          lineBreakdown,
+        }), { status: 200 });
+      }
+      if (path.endsWith("/stock/page")) {
+        return new Response(JSON.stringify({
+          items: saleProducts.map((product) => ({ product: { id: product.id }, stock: [{ quantity: 3 }] })),
+        }), { status: 200 });
+      }
+      if (path.includes("/sales-history")) return new Response("[]", { status: 200 });
+      return new Response("{}", { status: 200 });
+    }));
+
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    submitQuickEntry(search, "PAN-001");
+    const cart = await screen.findByRole("table", { name: "Líneas del ticket" });
+    await waitFor(() => expect(cart.querySelectorAll("tbody tr.sale-cart-row")).toHaveLength(2));
+    const rows = cart.querySelectorAll<HTMLElement>("tbody tr.sale-cart-row");
+    const firstLineButton = within(rows[0]).getByRole("button");
+    fireEvent.click(firstLineButton);
+    expect(firstLineButton).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.keyDown(search, { key: "F6", ctrlKey: true });
+    const stock = screen.getByRole("dialog", { name: "Consulta de stock" });
+    expect(within(stock).getByRole("heading", { name: "Cafe molido" })).toBeInTheDocument();
+    expect(within(stock).queryByRole("heading", { name: "Pan integral" })).not.toBeInTheDocument();
+    const stockSearch = within(stock).getByRole("combobox", { name: "Código, código de barras o nombre" }) as HTMLInputElement;
+    expect(stockSearch).toHaveFocus();
+    expect(stockSearch).toHaveValue("CAF-001");
+    expect(stockSearch.selectionStart).toBe(0);
+    expect(stockSearch.selectionEnd).toBe("CAF-001".length);
+    await userEvent.setup().keyboard("PAN-001");
+    expect(stockSearch).toHaveValue("PAN-001");
+    fireEvent.click(within(stock).getAllByRole("button", { name: "Cerrar" })[0]);
+
+    fireEvent.keyDown(search, { key: "F6" });
+    expect(screen.getByRole("dialog", { name: "Historial de ventas" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Consulta de stock" })).not.toBeInTheDocument();
   });
 
   it.each([
@@ -4589,7 +4808,9 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(search).toHaveFocus());
   });
 
-  it("opens product creation with F5 from product search only for product managers", async () => {
+  it.each(["KEYBOARD", "TOUCH"] as const)(
+    "opens product creation from the product search with barcode focus in %s mode, only for product managers",
+    async (interfaceMode) => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/products/sale")) {
@@ -4600,7 +4821,7 @@ describe("SaleScreen", () => {
       }
       return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
     }));
-    renderSaleScreen();
+    renderSaleScreen(vi.fn(), "es", { interfaceMode });
     const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
     fireEvent.keyDown(search, { key: "Delete" });
@@ -4608,10 +4829,24 @@ describe("SaleScreen", () => {
     const productSearch = await screen.findByRole("dialog", { name: "Buscador de productos" });
     const createButton = within(productSearch).getByRole("button", { name: /Añadir producto/ });
     expect(createButton).toHaveAttribute("aria-keyshortcuts", "F5");
-    fireEvent.keyDown(within(productSearch).getByRole("combobox"), { key: "F5" });
+    fireEvent.click(createButton);
 
-    expect(screen.queryByRole("dialog", { name: "Buscador de productos" })).not.toBeInTheDocument();
-    const createDialog = await screen.findByRole("dialog", { name: "Añadir producto" });
+    let createDialog = await screen.findByRole("dialog", { name: "Añadir producto" });
+    let barcodeInput = createDialog.querySelector<HTMLInputElement>('[data-product-field-name="barcode"]')!;
+    await waitFor(() => expect(barcodeInput).toHaveFocus());
+    await userEvent.keyboard("EAN-DIRECTO");
+    expect(barcodeInput).toHaveValue("EAN-DIRECTO");
+    fireEvent.click(within(createDialog).getAllByRole("button", { name: "Cerrar" })[0]);
+
+    const returnedProductSearch = await screen.findByRole("dialog", { name: "Buscador de productos" });
+    const productSearchInput = within(returnedProductSearch).getByRole("combobox");
+    fireEvent.keyDown(productSearchInput, { key: "F5" });
+
+    createDialog = await screen.findByRole("dialog", { name: "Añadir producto" });
+    barcodeInput = createDialog.querySelector<HTMLInputElement>('[data-product-field-name="barcode"]')!;
+    await waitFor(() => expect(barcodeInput).toHaveFocus());
+    await userEvent.keyboard("EAN-F5");
+    expect(barcodeInput).toHaveValue("EAN-F5");
     fireEvent.click(within(createDialog).getAllByRole("button", { name: "Cerrar" })[0]);
     expect(await screen.findByRole("dialog", { name: "Buscador de productos" })).toBeInTheDocument();
 
@@ -4623,7 +4858,10 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(restrictedSearch).toBeEnabled());
     fireEvent.keyDown(restrictedSearch, { key: "Delete" });
     expect(screen.queryByRole("button", { name: /Añadir producto/ })).not.toBeInTheDocument();
-  });
+    fireEvent.keyDown(within(screen.getByRole("dialog", { name: "Buscador de productos" })).getByRole("combobox"), { key: "F5" });
+    expect(screen.queryByRole("dialog", { name: "Añadir producto" })).not.toBeInTheDocument();
+    },
+  );
 
   it("does not start cash payment from PageDown when checkout is disabled for an empty sale", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", {

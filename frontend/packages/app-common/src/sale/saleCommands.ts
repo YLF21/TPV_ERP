@@ -73,6 +73,7 @@ export function saleCommandFromKeyboard(
     if (key === "p") return "print-method";
     if (key === "r") return "gift-receipt";
     if (event.key === "F4") return "clear-sale";
+    if (event.key === "F6") return "stock";
     if (event.key === "F11") return "cancel-ticket";
     if (event.key === "PageUp") return "temporary-price";
     if (event.key === "+" || event.code === "NumpadAdd") return "add-quantity";
@@ -92,7 +93,6 @@ export function saleCommandFromKeyboard(
     case "F2": return "calculator";
     case "F3": return "cash-drawer";
     case "F4": return "logout";
-    case "F5": return "stock";
     case "F6": return "sales-history";
     case "F7": return "edit-product";
     case "F8": return "close-cash";

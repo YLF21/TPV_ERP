@@ -135,4 +135,36 @@ describe("StockProductInformationPanel", () => {
     expect(html.match(/<button\b/g)).toHaveLength(1);
     expect(html).not.toMatch(/<(?:input|select|textarea)\b|contenteditable=/i);
   });
+
+  it("shows paused threshold tiers as not applied in management, preserving three decimal places", () => {
+    const html = renderToStaticMarkup(
+      <StockProductInformationPanel
+        product={{ ...product, quantityPricing: {
+          mode: "UNIT_THRESHOLD", enabled: false,
+          tiers: [{ quantity: 12, price: "0.875" }],
+        } }}
+        locale="es" canReadSuppliers={false} canViewPurchaseFields={false}
+      />
+    );
+
+    expect(html).toContain("Precio por cantidad");
+    expect(html).toContain("No aplicado");
+    expect(html).toContain("Desde");
+    expect(html).toContain("Precio por unidad");
+    expect(html).toContain("0,875");
+  });
+
+  it("does not expose paused quantity pricing in the stock view of sales", () => {
+    const html = renderToStaticMarkup(
+      <StockProductInformationPanel app="venta"
+        product={{ ...product, quantityPricing: {
+          mode: "PACK", enabled: false, tiers: [{ quantity: 3, price: "1.234" }],
+        } }}
+        locale="es" canReadSuppliers={false} canViewPurchaseFields={false}
+      />
+    );
+
+    expect(html).not.toContain('role="tab"');
+    expect(html).not.toContain("No aplicado");
+  });
 });

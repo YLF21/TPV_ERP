@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SaleProduct } from "./SaleScreen";
 import {
   buildSaleProductInformationRow,
+  loadSaleProductInformation,
   SaleProductInformationDialog,
 } from "./SaleProductInformationDialog";
 
@@ -65,6 +66,7 @@ describe("SaleProductInformationDialog", () => {
   });
 
   it("builds the existing product-information row with stock and active promotions", () => {
+    const quantityPricing = { mode: "PACK" as const, enabled: false, tiers: [{ quantity: 3, price: "5.999" }] };
     const row = buildSaleProductInformationRow(
       {
         id: "product-1",
@@ -75,6 +77,8 @@ describe("SaleProductInformationDialog", () => {
         priceUseMode: "OFFER_PRICE",
         offerActive: true,
         salePrice: 6.5,
+        discountType: "NONE",
+        quantityPricing,
       },
       [
         { productId: "product-1", warehouseId: "warehouse-1", quantity: 3 },
@@ -100,6 +104,25 @@ describe("SaleProductInformationDialog", () => {
     expect(row.subfamilyName).toBe("Café");
     expect(row.taxName).toBe("7%");
     expect(row.promotionNames).toBe("Oferta café");
+    expect(row.quantityPricing).toBe(quantityPricing);
+    expect(row.quantityPricing?.tiers[0].price).toBe("5.999");
+    expect(row.backendDiscountType).toBe("NONE");
+  });
+
+  it("preserves quantity pricing from the public product endpoint", async () => {
+    const rule = { mode: "UNIT_THRESHOLD", enabled: true, tiers: [{ quantity: 4, price: "2.123" }] };
+    const fetchMock = vi.fn(async (url: string) => String(url).includes("/products/product-1")
+      ? jsonResponse({ ...product, discountType: "NONE", quantityPricing: rule })
+      : jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const row = await loadSaleProductInformation(product.id, "token", false);
+
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/products/product-1"))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/products/management/"))).toBe(false);
+    expect(row.quantityPricing).toEqual(rule);
+    expect(row.quantityPricing?.tiers[0].price).toBe("2.123");
+    expect(row.backendDiscountType).toBe("NONE");
   });
 
   it("loads the full information and adds with Insert in keyboard mode", async () => {

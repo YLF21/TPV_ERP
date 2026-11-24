@@ -1,6 +1,8 @@
 package com.tpverp.backend.catalog;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -97,6 +99,7 @@ public final class ProductBulkEditContent {
             if (!productIds.add(row.product().productId())) {
                 throw invalid(index, "producto duplicado: " + row.product().productId());
             }
+            QuantityPricing.fromJson(row.draft().quantityPricing());
             validateProduct(row.effectiveProduct(), index);
         }
         return List.copyOf(rows);
@@ -131,6 +134,7 @@ public final class ProductBulkEditContent {
         percentage(product.purchaseDiscountPercent(), rowIndex, "purchaseDiscountPercent");
         percentage(product.offerDiscountPercent(), rowIndex, "offerDiscountPercent");
         nonNegative(product.packageQuantity(), rowIndex, "packageQuantity", false);
+        QuantityPricing.fromJson(product.quantityPricing());
         booleanValue(product.active(), rowIndex, "active");
         date(product.offerFrom(), rowIndex, "offerFrom");
         date(product.offerUntil(), rowIndex, "offerUntil");
@@ -284,7 +288,8 @@ public final class ProductBulkEditContent {
                 product.subfamilyId(), product.subfamilyName(), product.taxId(), product.taxName(),
                 product.taxesIncluded(), product.offerActive(), product.offerFrom(),
                 product.offerUntil(), product.warehouseName(), product.quantity(),
-                product.totalQuantity(), product.stockMin(), product.stockMax(), product.active());
+                product.totalQuantity(), product.stockMin(), product.stockMax(), product.active())
+                + (product.quantityPricing() == null ? 0 : product.quantityPricing().toString().length());
     }
 
     private static long estimatedSize(SupplierData supplier) {
@@ -378,6 +383,7 @@ public final class ProductBulkEditContent {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ProductData(
             UUID productId,
             Long version,
@@ -415,7 +421,30 @@ public final class ProductBulkEditContent {
             String stockMin,
             String stockMax,
             String active,
-            String packageQuantity) {
+            String packageQuantity,
+            @tools.jackson.databind.annotation.JsonDeserialize(using = QuantityPricingHttpJson.ReadField.class)
+            @tools.jackson.databind.annotation.JsonSerialize(using = QuantityPricingHttpJson.WriteField.class)
+            JsonNode quantityPricing) {
+
+        public ProductData(
+                UUID productId, Long version, String imageId, String warehouseId,
+                String code, String barcode, String barcode2, String name, String description,
+                String comments, String purchasePrice, String purchaseDiscountPercent,
+                String salePrice, String memberPrice, String wholesalePrice, String offerPrice,
+                String offerDiscountPercent, String productType, String discountType,
+                String backendDiscountType, String familyId, String familyName,
+                String subfamilyId, String subfamilyName, String taxId, String taxName,
+                String taxesIncluded, String offerActive, String offerFrom, String offerUntil,
+                String warehouseName, String quantity, String totalQuantity, String stockMin,
+                String stockMax, String active, String packageQuantity) {
+            this(productId, version, imageId, warehouseId, code, barcode, barcode2,
+                    name, description, comments, purchasePrice, purchaseDiscountPercent,
+                    salePrice, memberPrice, wholesalePrice, offerPrice, offerDiscountPercent,
+                    productType, discountType, backendDiscountType, familyId, familyName,
+                    subfamilyId, subfamilyName, taxId, taxName, taxesIncluded, offerActive,
+                    offerFrom, offerUntil, warehouseName, quantity, totalQuantity, stockMin,
+                    stockMax, active, packageQuantity, null);
+        }
 
         /**
          * Creates the persisted representation used by a bulk-edit row.  The
@@ -442,7 +471,10 @@ public final class ProductBulkEditContent {
                     product.getOfferFrom() == null ? null : product.getOfferFrom().toString(),
                     product.getOfferUntil() == null ? null : product.getOfferUntil().toString(),
                     null, null, null, string(product.getStockMin()), string(product.getStockMax()),
-                    Boolean.toString(product.isActive()), string(product.getPackageQuantity()));
+                    Boolean.toString(product.isActive()), string(product.getPackageQuantity()),
+                    product.getQuantityPricing() == null
+                            ? com.fasterxml.jackson.databind.node.NullNode.getInstance()
+                            : product.getQuantityPricing().toJson());
         }
 
         private static String string(Object value) {
@@ -457,7 +489,7 @@ public final class ProductBulkEditContent {
                     wholesalePrice, offerPrice, offerDiscountPercent, productType, discountType, backendDiscountType,
                     familyId, familyLabel, subfamilyId, subfamilyLabel, taxId, taxLabel, taxesIncluded, offerActive,
                     offerFrom, offerUntil, previous.warehouseName(), previous.quantity(), previous.totalQuantity(),
-                    stockMin, stockMax, active, packageQuantity);
+                    stockMin, stockMax, active, packageQuantity, quantityPricing);
         }
 
         private static String enumName(Enum<?> value) {
@@ -599,7 +631,8 @@ public final class ProductBulkEditContent {
                     pick(changes.stockMin, stockMin),
                     pick(changes.stockMax, stockMax),
                     pick(changes.active, active),
-                    pick(changes.packageQuantity, packageQuantity));
+                    pick(changes.packageQuantity, packageQuantity),
+                    pick(changes.quantityPricing, quantityPricing));
         }
 
         public ProductData withPersistenceState(long actualVersion, UUID actualImageId) {
@@ -620,7 +653,18 @@ public final class ProductBulkEditContent {
                     productType, discountType, backendDiscountType, familyId, familyName,
                     subfamilyId, subfamilyName, taxId, taxName, taxesIncluded, offerActive,
                     offerFrom, offerUntil, warehouseName, quantity, totalQuantity,
-                    stockMin, stockMax, nextActive, packageQuantity);
+                    stockMin, stockMax, nextActive, packageQuantity, quantityPricing);
+        }
+
+        public ProductData withQuantityPricing(JsonNode value) {
+            return new ProductData(
+                    productId, version, imageId, warehouseId, code, barcode, barcode2,
+                    name, description, comments, purchasePrice, purchaseDiscountPercent,
+                    salePrice, memberPrice, wholesalePrice, offerPrice, offerDiscountPercent,
+                    productType, discountType, backendDiscountType, familyId, familyName,
+                    subfamilyId, subfamilyName, taxId, taxName, taxesIncluded, offerActive,
+                    offerFrom, offerUntil, warehouseName, quantity, totalQuantity, stockMin,
+                    stockMax, active, packageQuantity, value);
         }
 
         private ProductData copyWithPersistenceState(Long actualVersion, String actualImageId) {
@@ -661,7 +705,8 @@ public final class ProductBulkEditContent {
                     stockMin,
                     stockMax,
                     active,
-                    packageQuantity);
+                    packageQuantity,
+                    quantityPricing);
         }
 
         private static <T> T pick(T preferred, T fallback) {

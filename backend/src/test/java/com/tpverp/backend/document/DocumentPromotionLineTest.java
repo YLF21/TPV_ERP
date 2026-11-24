@@ -119,6 +119,8 @@ class DocumentPromotionLineTest {
         assertThatThrownBy(() -> productLine(document, 2, BigDecimal.ONE).assignPromotionEngineVersion(2))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> legacy.assignPromotionEngineVersion(3))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> legacy.assignPromotionEngineVersion(4))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
