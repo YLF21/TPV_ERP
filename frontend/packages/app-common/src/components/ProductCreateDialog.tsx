@@ -2790,14 +2790,14 @@ export function ProductCreateDialog({
         </div>
       )}
       {supplierPickerOpen && (
-        <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="product-principal-supplier-title">
-          <section className={`filter-dialog bulk-supplier-dialog${classicWindow ? " erp-classic-window" : ""}`}>
-            <header className="filter-header">
+        <div className="filter-overlay erp-classic-overlay" role="dialog" aria-modal="true" aria-labelledby="product-principal-supplier-title">
+          <section className={`filter-dialog product-supplier-picker${classicWindow ? " erp-classic-window" : ""}`}>
+            <header className="product-editor-header">
               <div>
                 <h2 id="product-principal-supplier-title">{t("product.supplier.selectPrincipal")}</h2>
                 <span>{editProduct?.form.name ?? ""}</span>
               </div>
-              <WindowCloseButton type="button" aria-label={t("common.close")} onLight={!classicWindow} onClick={() => setSupplierPickerOpen(false)} >{t("common.close")}</WindowCloseButton>
+              <WindowCloseButton aria-label={t("common.close")} onClick={() => setSupplierPickerOpen(false)}>{t("common.close")}</WindowCloseButton>
             </header>
             <div className="bulk-supplier-list" role="listbox" aria-label={t("product.supplier.selectPrincipal")}>
               {productSuppliers.length === 0 && <p>{t("product.supplier.noLinks")}</p>}
@@ -2831,7 +2831,7 @@ export function ProductCreateDialog({
                 );
               })}
             </div>
-            <footer className="filter-actions">
+            <footer className="product-editor-footer erp-dialog-actions-row">
               <button
                 type="button"
                 disabled={supplierSaving}
