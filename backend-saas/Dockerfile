@@ -6,7 +6,7 @@ RUN mvn -f backend-saas/pom.xml -B -q dependency:go-offline
 COPY backend-saas/src ./backend-saas/src
 RUN mvn -f backend-saas/pom.xml -B -q -DskipTests package
 
-FROM eclipse-temurin:25-jre@sha256:ecdc0adb37bde1a281c4d245a3cd535004b1fc8322d560f5b09463b248c81df0
+FROM eclipse-temurin:25-jre@sha256:4ed132f6832e9804b123e89a849a7b4502756ae64a4ee08ebab939d9d5d0a9fa
 WORKDIR /app
 ARG UBUNTU_APT_MIRROR=""
 COPY .github/scripts/configure-ubuntu-apt.sh /tmp/configure-ubuntu-apt.sh
